@@ -47,3 +47,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Command** / **Event** | A request to change project data / the notice that it changed |
 | **Edit** | One kind of change, implemented by a plug-in, that knows how to undo itself |
 | **Project data** / **Session state** | Saved, undoable content / live, unsaved, never-undone state |
+| **Project index** | The orchestrator's list of every document; creating, renaming and deleting documents are edits on it |
+| **Stand-in** | A typed placeholder tile (ground, wall, door, pickup) used until real art exists |
+| **Wall family** | A kind of wall (for example "old brick"); art for a family supplies one variant per neighbour arrangement |
+| **Ground** / **on top** | The two layers of a cell: its ground tile, and at most one tile sitting on it |
+| **Draft** | A text field's unsaved text; Enter saves it as an ordinary edit |
+| **Pick** | Choosing something in a Map window for another window, through the orchestrator |

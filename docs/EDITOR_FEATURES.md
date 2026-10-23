@@ -40,8 +40,18 @@ under consideration), **open** (undecided).
   current family, which defaults to unassigned (the stand-in) or the last family
   used. The family is a property that can be changed for a whole selection: a
   connected run, a room, or every wall in an area, plus a replace-everywhere
-  command. Floors and roads can follow the same pattern. *Open:* whether walls
-  occupy tiles or sit on tile edges.
+  command. Floors and roads can follow the same pattern.
+- **Agreed:** walls **occupy whole tiles** (a wall is one tile thick and a
+  doorway is a tile), not tile edges.
+- **Agreed:** a cell has a **ground** tile and at most **one thing on top** (a
+  wall, a door or a pickup stand-in). Objects and placements come later.
+- **Agreed:** stand-ins are **built in** for now; editable definitions arrive
+  with the definition editor.
+- **Agreed:** a Map window opens a **zone** and shows one floor at a time, with
+  the **floor below shown faintly** (it can be turned off). All views of a zone
+  share one undo list.
+- **Agreed:** pan and zoom the map; integer cell sizes keep pixel art uniformly
+  scaled once real tiles replace stand-ins.
 - **Tentative:** keep the map view simple at first (no full lighting or
   visibility editing) and enrich it over time.
 - **Agreed:** portal-linked maps do not need to be shown stitched together;

@@ -58,13 +58,16 @@ one undo step (D3).
 
 Each window undoes its own recent edits, in order, whatever they touched. Views
 of the same map share one undo list: undo in any of them takes back the last
-change to that map, whichever view made it. An undo is itself a command; the
+change to that map, whichever view made it. A Map window shows a zone, so the
+views of one zone share an undo list across all its floors. An undo is itself a command; the
 orchestrator holds the histories.
 
 If something an undo would revert was changed afterwards from a different
 window, the undo is refused with a message rather than overwriting that change.
-The first build compares individual items (for a floor, its cells). *Open:*
-whether other kinds of documents need a broader rule.
+The first build compares individual items (for a floor, each layer of each
+cell and each anchor). Undoing the creation of a document is refused once
+another window has changed that document. *Open:* whether other kinds of
+documents need a broader rule.
 
 Closing a window ends its undo list (unless another view shares it). Undo does
 not survive quitting the editor; versions (D9) cover older changes. Each undo
@@ -80,6 +83,24 @@ Names are unique within their scope (for example no two anchors with the same
 name in one zone). Deleting something that other content references shows where
 it is used and lets the author cancel or proceed; proceeding leaves broken
 references flagged in a Problems view, and the deletion can be undone.
+
+**How the first build does it:**
+
+- Creating, renaming and deleting documents are edits on the **project index**,
+  an in-memory list of every document that the orchestrator rebuilds from the
+  files on load. They are journaled, broadcast and undoable like any edit, and
+  windows subscribe to the index for names.
+- An edit can need values only the orchestrator has. Before applying it, the
+  orchestrator **prepares** it: a new document or anchor gets its permanent ID,
+  and a deletion gets the document's full contents, so undo recreates exactly
+  what was deleted. The prepared edit is what is journaled and broadcast, and
+  the result returns the new ID.
+- Names are unique per kind of document; a floor's name only within the zone
+  that lists it. Anchor names are unique per floor; the zone-wide check waits
+  for the Problems view.
+- Where-used is a question windows ask the orchestrator, answered from the
+  references each document declares. The Problems view is not built yet: a
+  broken reference shows as broken where it is displayed.
 
 ## D5 — What each window holds
 
@@ -157,7 +178,11 @@ Readable JSON with stable key order, one file per document, floors stored
 separately so small edits make small diffs, folders mirroring the project
 browser, art as PNG. File names combine the name and a short ID
 (`floor-1--PJY7525V.json`), so renaming shows as a git rename. Editor state
-(journal, backups, logs, lock) lives in a git-ignored `.berad` folder.
+(journal, backups, logs, lock) lives in a git-ignored `.berad` folder. Files of
+deleted or renamed documents move to `.berad/backups/removed` rather than being
+destroyed. Two files holding one document, which a crash during a rename can
+leave, resolve to the newer one on load. For now, folders follow the kind of
+document (`tilefloors`, `zones`, `texts`) rather than the project browser.
 *Open:* chunking very large floors.
 
 ## D12 — Testing
@@ -177,7 +202,9 @@ browser, art as PNG. File names combine the name and a short ID
   side, showing that window's selection; it can collapse, and each window
   remembers that. There are no separate inspector windows.
 - **Selection stays local:** selecting in one window changes only that window.
-- **Opening something already open** brings its window to the front.
+- **Opening something already open** brings its window to the front. A
+  process cannot raise another process's window, so the window asks for
+  attention instead (on macOS its Dock icon bounces).
 - **Several views of one map** are allowed through an explicit "New view"; all
   views show every change and share undo (D3). During preview, every view of the
   map shows the live entities.
@@ -186,8 +213,14 @@ browser, art as PNG. File names combine the name and a short ID
   zone and opens one; with one open, it is used; with several, the editor asks
   which, marking the maps that show the thing being picked. Picking uses four
   messages through the orchestrator (ask for candidate maps, start picking,
-  answer, cancel); the requesting window then makes an ordinary edit. *Open:*
-  the message contents, designed when the first window needs picking.
+  answer, cancel); the requesting window then makes an ordinary edit.
+  Contents, as built: *ask* names what to pick and is answered with the open
+  Map windows, their zones and whether each holds something pickable; *start*
+  names a Map window, or a zone for the orchestrator to open one on, and is
+  forwarded to that window; *answer* gives the floor and item picked; *cancel*
+  can come from either side. A second pick in the same Map window replaces the
+  first, and a window closing cancels its picks.
+- *Not built yet:* collapsing the inspector.
 
 ## D14 — How edits work
 

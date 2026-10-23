@@ -32,9 +32,22 @@ in its own repository.
 make demo     # build the editor and open a sample project in .cache/demo-project
 ```
 
-A Map window opens on a sample floor. Drag to paint; `1`-`6` pick a tile;
+The project browser and a Map window open on a sample zone with two floors.
+
+- **Project browser:** create zones, floors and text documents; rename in the
+  inspector (Enter saves); delete with a where-used check; reorder floors;
+  double-click or Enter opens.
+- **Map window:** tools on the left (`G` ground, `W` walls, `O` doors and
+  pickups, `E` erase, `A` anchors, `S` select walls), `1`-`9` pick a tile or wall
+  family. With Select walls, click a wall for its run, double-click inside a
+  room for its walls, or drag an area, then pick a family to change them all.
+  `PageUp` / `PageDown` change floor; the floor below shows faintly (`F`).
+  Scroll pans, `Cmd`+scroll or `Cmd+=` / `Cmd+-` zoom, `Space`+drag pans.
+- **Text window:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
+  Escape reverts; "Pick on map" chooses an anchor in a Map window.
+
 `Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
-opens another view of the same map, and the views update live and share undo;
+opens another view of the same zone, and the views update live and share undo;
 `Cmd+W` closes a window. The editor quits when its last window closes. Every
 change is saved automatically; the files are in the project folder.
 
@@ -58,6 +71,13 @@ project's `.berad/logs`.
 - Every saved file is a **versioned envelope** (`engine/content`), upgraded step
   by step on load after a backup. Edits are journaled before they are
   acknowledged and folded into the files, written then renamed.
+- The **project index** (`editor/plugins/project`) lists every document.
+  Creating, renaming and deleting documents are ordinary edits on it, so they
+  are journaled and undoable like any other change.
+- **Views** (`editor/views`) share a frame (`editor/views/frame`) and a small
+  widget kit (`editor/ui`). Text fields keep a draft (`editor/ui/textedit`) and
+  use berad-text for layout; the window runs the input method so accents and
+  composed characters work.
 
 ## Checks
 

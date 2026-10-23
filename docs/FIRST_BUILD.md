@@ -29,7 +29,7 @@ game features.
 | 1. Core | Protocol, codec, framing; orchestrator services; the paint edit through the plug-in list; versioned files | Scripted clients paint and undo; contract tests pass; round-trip time measured | Done (PR #3) |
 | 2. First window | One program running as orchestrator or window; a Map window painting in strict mode; inspector; speed readout | Painting within one frame | Done (PR #3) |
 | 3. Two views and failures | New view; live updates; shared undo; crash notice and report; clean shutdown | Killing either process loses nothing; reports captured | Done (PR #3) |
-| 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map | Text editing judged by its author | Next |
+| 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map; project browser; zones with several floors; layers, stand-ins, walls and wall families; pan, zoom and a tile picker | Text editing judged by its author | Built (PR #5), awaiting that judgement |
 | 5. Stretch | VM-guest embedding; "create version" through git | Optional | Later |
 
 ## Results so far
@@ -49,11 +49,43 @@ game features.
 
 ## Step 4 decisions
 
-- Text fields keep a local draft; Enter saves (D1).
+- Text fields keep a local draft; Enter saves, Cmd+Enter or Ctrl+J starts a new
+  line, Escape reverts (D1).
 - Pick on map uses four messages through the orchestrator (D13).
 - Anchors live inside the floor document ([vocabulary](VOCABULARY.md)), which
   raises the floor format to version 2: the first real use of upgrade with
   backup.
+- Added to the step: the project browser, zones with several floors, pan and
+  zoom with a tile picker, stand-in tiles, and walls drawn as structure with
+  families.
+- Walls occupy whole tiles. A cell has a ground tile and one thing on top.
+  Stand-ins are built in for now.
+- A Map window opens a zone, one floor at a time, with the floor below shown
+  faintly; views of a zone share undo.
+
+## Step 4 results
+
+- The engine gained zones (`engine/zone`), stand-in definitions with the wall
+  neighbour mask (`engine/tiles`), and floor format version 2 with layers and
+  anchors, upgraded from version 1 with a backup.
+- Document creation, renaming and deletion are undoable edits on the project
+  index (D4). Tests cover create, rename and delete with undo and redo, name
+  scopes, windows closing when their document is deleted, recovery of all of it
+  from the journal after a simulated crash, and two files holding one document.
+- The four pick messages are covered by orchestrator tests, including picks
+  cancelled from either side, replaced, ended by a closing window, and a pick
+  that opens a Map window on a zone and is answered by it.
+- Text editing is a tested core (`editor/ui/textedit`): grapheme-safe deletion
+  and caret movement, word movement, draft undo, the draft lifecycle and the
+  replacement that press-and-hold accents send. Layout, wrapping and caret
+  placement use berad-text.
+- Real-window tests (`make gui-test`) paint and undo, draw walls, change a
+  room's family by double-clicking inside it and a run's family on the upper
+  floor, add and name an anchor, write in the Text window (new line, accent,
+  Enter), pick the anchor as its location, and create, rename, delete and undo
+  in the project browser.
+- Not yet judged by a person: typing feel, real press-and-hold accents and other
+  input methods, and copy and paste with the system clipboard.
 
 ## If something fails
 
@@ -65,6 +97,11 @@ game features.
 ## Known limitations
 
 - Project locking is Unix-only.
+- The clipboard uses the operating system's command-line tools (`pbcopy` and
+  `pbpaste` on macOS); elsewhere without them, copy and paste work within one
+  window only.
+- The inspector cannot collapse yet, and there is no Problems view.
+- Anchor names are unique per floor, not yet per zone.
 - A second launch on an open project is refused with directions (D10).
 - Saving runs on the orchestrator's loop every two seconds, briefly delaying
   commands while it writes.
