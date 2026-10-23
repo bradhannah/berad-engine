@@ -21,13 +21,16 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/picker"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
-	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
 // ViewName is the Text window's view name; its target is a text document.
 const ViewName = "text"
+
+// cancelledHere is the reason given when a pick is cancelled in this window.
+const cancelledHere = "cancelled in the text window"
 
 const (
 	bodyTop       = ui.Inset + ui.LineHeight + 4
@@ -35,14 +38,6 @@ const (
 	pickWidth     = 120
 	buttonGap     = 8
 	shortID       = 6
-)
-
-type dialogKind int
-
-const (
-	dialogNone dialogKind = iota
-	dialogChooseMap
-	dialogChooseZone
 )
 
 // State is one Text window.
@@ -56,11 +51,7 @@ type State struct {
 	pickBtn  *ui.Button
 	clearBtn *ui.Button
 	subs     map[ids.ULID]bool
-
-	picking    string
-	picks      int
-	dialog     *ui.Dialog
-	dialogKind dialogKind
+	picker   *picker.Picker
 }
 
 // New returns the Text window for a document.
@@ -72,7 +63,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		pickBtn:  ui.NewButton("pick", "Pick on map"),
 		clearBtn: ui.NewButton("clear", "Clear"),
 		subs:     map[ids.ULID]bool{},
-		picking:  "", picks: 0, dialog: nil, dialogKind: dialogNone,
+		picker:   picker.New(window),
 	}
 	view.body.Placeholder = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."
 	view.focus.Register(view.body)
@@ -96,7 +87,7 @@ func (s *State) Title(docs frame.Docs) string {
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
 // Picking reports whether a pick is in progress.
-func (s *State) Picking() bool { return s.picking != "" }
+func (s *State) Picking() bool { return s.picker.Picking() }
 
 // Body returns the body field.
 func (s *State) Body() *ui.TextField { return s.body }
@@ -131,14 +122,7 @@ func (s *State) text(docs frame.Docs) (textdoc.Document, bool) {
 
 // Changed reacts to picks and keeps the location's floor subscribed.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
-	switch {
-	case update.PickAnswer != nil && update.PickAnswer.Pick == s.picking:
-		s.picking = ""
-		s.answered(*update.PickAnswer, ctx)
-	case update.PickCancel != nil && update.PickCancel.Pick == s.picking:
-		s.picking = ""
-		ctx.Frame.Status("Pick cancelled: " + update.PickCancel.Reason)
-	}
+	s.picker.Changed(update, ctx)
 	if document, ok := s.text(ctx.Docs); ok && !document.Location.IsZero() {
 		s.subscribe(document.Location.Floor, ctx)
 	}
@@ -177,7 +161,7 @@ func (s *State) layout() {
 	clearLeft := s.pickBtn.Rect.Max.X + buttonGap
 	s.clearBtn.Rect = image.Rect(clearLeft, buttons, clearLeft+pickWidth, buttons+ui.ButtonH)
 	s.pickBtn.Label = "Pick on map"
-	if s.picking != "" {
+	if s.picker.Picking() {
 		s.pickBtn.Label = "Cancel pick"
 	}
 }
@@ -190,25 +174,25 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.body.Field.SetSaved(document.Body)
 		s.clearBtn.Disabled = document.Location.IsZero()
 	}
-	if s.dialog != nil {
-		s.updateDialog(input, ctx)
+	if s.picker.Dialog() != nil {
+		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 
 		return
 	}
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.body && outcome == textedit.OutcomeCommit {
 		s.saveBody(ctx)
 	}
-	if s.focus.Current() == nil && s.picking != "" &&
-		input.Consume(ui.KeyEscape, ui.Plain()) {
-		s.cancelPick(ctx)
+	if s.focus.Current() == nil && s.picker.Picking() && input.Consume(ui.KeyEscape, ui.Plain()) {
+		s.picker.Cancel(ctx, cancelledHere)
 	}
 	frame.CommonKeys(input, ctx)
 	switch {
 	case s.pickBtn.Update(input):
-		if s.picking != "" {
-			s.cancelPick(ctx)
+		if s.picker.Picking() {
+			s.picker.Cancel(ctx, cancelledHere)
 		} else {
-			s.askPick(ctx)
+			label := "the location of “" + s.zoneNames(ctx.Docs).Name(s.document, "this text") + "”"
+			s.picker.Start(ctx, label, s.answered)
 		}
 	case s.clearBtn.Update(input):
 		cleared := textdoc.SetLocationArgs{Location: floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}}
@@ -239,30 +223,6 @@ func (s *State) saveBody(ctx *frame.Context) {
 		})
 }
 
-// askPick asks which maps could answer (D13): none open asks which zone to
-// open, one open is used, several open asks which, marking the maps that
-// hold anchors.
-func (s *State) askPick(ctx *frame.Context) {
-	ctx.Requests.PickAsk(protocol.PickAnchor, func(maps []protocol.PickMap, err error) {
-		if err != nil {
-			ctx.Frame.Status(err.Error())
-
-			return
-		}
-		switch len(maps) {
-		case 0:
-			s.chooseZone(ctx)
-		case 1:
-			only := protocol.PickStart{
-				Pick: "", What: "", Label: "", Window: maps[0].Window, Zone: maps[0].Zone, From: ids.ULID{},
-			}
-			s.startPick(ctx, only)
-		default:
-			s.chooseMap(ctx, maps)
-		}
-	})
-}
-
 func (s *State) zoneNames(docs frame.Docs) *project.Index {
 	found := project.NewIndex(nil)
 	docs.View(project.IndexID(), func(document client.Document) {
@@ -272,97 +232,6 @@ func (s *State) zoneNames(docs frame.Docs) *project.Index {
 	})
 
 	return found
-}
-
-func (s *State) chooseZone(ctx *frame.Context) {
-	index := s.zoneNames(ctx.Docs)
-	zones := index.OfFormat(zone.FormatName)
-	if len(zones) == 0 {
-		ctx.Frame.Status("There are no zones to pick from. Create one in the project browser.")
-
-		return
-	}
-	list := &ui.List{ID: "zones", Rect: ui.Zero(), Rows: nil, Selected: zones[0].ID.String()}
-	for _, entry := range zones {
-		list.Rows = append(list.Rows, ui.Row{
-			ID: entry.ID.String(), Label: entry.Name, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false,
-		})
-	}
-	s.dialog = ui.NewDialog("No map is open. Open which zone to pick from?", nil,
-		ui.DialogButton("open", "Open map"), ui.DialogButton(ui.DialogCancel, "Cancel"))
-	s.dialog.List = list
-	s.dialogKind = dialogChooseZone
-}
-
-func (s *State) chooseMap(ctx *frame.Context, maps []protocol.PickMap) {
-	index := s.zoneNames(ctx.Docs)
-	list := &ui.List{ID: "maps", Rect: ui.Zero(), Rows: nil, Selected: ""}
-	for number, option := range maps {
-		detail := "view " + option.Window.Short(shortID)
-		if !option.Shows {
-			detail += ", no anchors"
-		}
-		list.Rows = append(list.Rows, ui.Row{
-			ID: option.Window.String(), Label: strconv.Itoa(number+1) + ". " + index.Name(option.Zone, "zone"),
-			Detail: detail, Indent: 0, Swatch: nil, Heading: false, Marked: option.Shows,
-		})
-		if list.Selected == "" && option.Shows {
-			list.Selected = option.Window.String()
-		}
-	}
-	if list.Selected == "" {
-		list.Selected = list.Rows[0].ID
-	}
-	s.dialog = ui.NewDialog("Pick in which map?", []string{"● marks maps that have anchors."},
-		ui.DialogButton("use", "Pick there"), ui.DialogButton(ui.DialogCancel, "Cancel"))
-	s.dialog.List = list
-	s.dialogKind = dialogChooseMap
-}
-
-func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
-	choice := s.dialog.Update(input, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
-	if choice == "" {
-		return
-	}
-	dialog, kind := s.dialog, s.dialogKind
-	s.dialog, s.dialogKind = nil, dialogNone
-	if choice == ui.DialogCancel || dialog.List == nil {
-		return
-	}
-	chosen, err := ids.Parse(dialog.List.Selected)
-	if err != nil {
-		return
-	}
-	start := protocol.PickStart{Pick: "", What: "", Label: "", Window: ids.ULID{}, Zone: ids.ULID{}, From: ids.ULID{}}
-	if kind == dialogChooseZone {
-		start.Zone = chosen
-	} else {
-		start.Window = chosen
-	}
-	s.startPick(ctx, start)
-}
-
-func (s *State) startPick(ctx *frame.Context, start protocol.PickStart) {
-	s.picks++
-	start.Pick = s.window.String() + "-" + strconv.Itoa(s.picks)
-	start.What = protocol.PickAnchor
-	start.Label = "the location of “" + s.zoneNames(ctx.Docs).Name(s.document, "this text") + "”"
-	s.picking = start.Pick
-	ctx.Requests.PickStart(start, func(result protocol.Result, err error) {
-		if err != nil {
-			s.picking = ""
-			ctx.Frame.Report("")(result, err)
-
-			return
-		}
-		ctx.Frame.Status("Click an anchor in the map. Escape here or there cancels.")
-	})
-}
-
-func (s *State) cancelPick(ctx *frame.Context) {
-	ctx.Requests.PickCancel(protocol.PickCancel{Pick: s.picking, Reason: "cancelled in the text window"})
-	s.picking = ""
-	ctx.Frame.Status("Pick cancelled")
 }
 
 // location describes the document's location for display: the floor and
@@ -399,15 +268,8 @@ func (s *State) location(docs frame.Docs, ref floor.AnchorRef) string {
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout()
 	_, value, _ := strings.Cut(name, ":")
-	if s.dialog != nil {
-		if number, err := strconv.Atoi(strings.TrimPrefix(value, "row")); err == nil && s.dialog.List != nil &&
-			number >= 1 && number <= len(s.dialog.List.Rows) {
-			s.dialog.Locate("", image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
-
-			return s.dialog.List.Locate(s.dialog.List.Rows[number-1].ID)
-		}
-
-		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	if s.picker.Dialog() != nil {
+		return s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	}
 	if strings.HasPrefix(name, "state:") {
 		return image.Pt(0, 0), s.hasState(value, docs)
@@ -433,7 +295,7 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	case "loaded":
 		return loaded
 	case "picking":
-		return s.picking != ""
+		return s.picker.Picking()
 	case "located":
 		return loaded && !document.Location.IsZero()
 	case "saved":
@@ -469,8 +331,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.pickBtn.Draw(screen, s.theme)
 	s.clearBtn.Draw(screen, s.theme)
 	s.drawInspector(screen, document, loaded)
-	if s.dialog != nil {
-		s.dialog.Draw(screen, s.theme)
+	if dialog := s.picker.Dialog(); dialog != nil {
+		dialog.Draw(screen, s.theme)
 	}
 }
 
@@ -487,7 +349,7 @@ func (s *State) drawInspector(screen *ebiten.Image, document textdoc.Document, l
 			strconv.Itoa(strings.Count(document.Body, "\n")+1) + " lines",
 		"ID " + s.document.String(),
 	}
-	if s.picking != "" {
+	if s.picker.Picking() {
 		lines = append(lines, "", "Picking: click an anchor", "in a Map window.")
 	}
 	for index, line := range lines {
