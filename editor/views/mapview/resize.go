@@ -77,8 +77,8 @@ func newSideButtons() []sideButtons {
 	for _, side := range named {
 		sides = append(sides, sideButtons{
 			side: side.id, label: side.label,
-			shrink: &ui.Button{ID: "shrink-" + side.id, Label: "Remove", Rect: ui.Zero(), Disabled: false, Primary: false},
-			grow:   &ui.Button{ID: "grow-" + side.id, Label: "Add", Rect: ui.Zero(), Disabled: false, Primary: false},
+			shrink: ui.NewButton("shrink-"+side.id, "Remove"),
+			grow:   ui.NewButton("grow-"+side.id, "Add"),
 		})
 	}
 

@@ -103,7 +103,8 @@ make latency   # strict-mode command-to-event time over a real socket
 ```
 
 Window tests need a desktop session, so they run only with `make gui-test`
-(`BERAD_GUI_TESTS=1`). `BERAD_SCREENSHOT=path` makes a window save its pixels
+(`BERAD_GUI_TESTS=1`). Windows driven by input scripts open without taking
+focus. `BERAD_SCREENSHOT=path` makes a window save its pixels
 once, for visual checks.
 
 ## Dependencies

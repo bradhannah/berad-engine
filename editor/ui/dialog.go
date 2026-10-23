@@ -16,6 +16,9 @@ const (
 	listRows     = 6
 	buttonWidth  = 110
 	buttonGap    = 8
+	dialogRadius = 10
+	shadowDrop   = 6
+	shadowAlpha  = 0x26
 )
 
 // Dialog is a modal box inside a window: a title, lines of explanation, an
@@ -39,9 +42,7 @@ func NewDialog(title string, lines []string, buttons ...*Button) *Dialog {
 }
 
 // DialogButton returns a button for a dialog.
-func DialogButton(id, label string) *Button {
-	return &Button{ID: id, Label: label, Rect: image.Rect(0, 0, 0, 0), Disabled: false, Primary: false, hover: false}
-}
+func DialogButton(id, label string) *Button { return NewButton(id, label) }
 
 // layout centres the dialog in the window and places its parts.
 func (d *Dialog) layout(window image.Rectangle) {
@@ -109,21 +110,23 @@ func (d *Dialog) Locate(name string, window image.Rectangle) (image.Point, bool)
 	return image.Pt(0, 0), false
 }
 
-// Draw renders the dialog over a shaded window.
+// Draw renders the dialog over a shaded window: a rounded box with an ink
+// outline and a soft shadow.
 func (d *Dialog) Draw(screen *ebiten.Image, theme *Theme) {
 	d.layout(screen.Bounds())
 	FillRect(screen, screen.Bounds(), ColorShade())
-	FillRect(screen, d.rect, ColorBackground())
-	StrokeRect(screen, d.rect, Hairline, ColorMuted())
+	FillRound(screen, d.rect.Add(image.Pt(0, shadowDrop)), dialogRadius, HexAlpha(hexInk, shadowAlpha))
+	FillRound(screen, d.rect, dialogRadius, ColorBackground())
+	StrokeRound(screen, d.rect, dialogRadius, Border, ColorInk())
 	x, y := d.rect.Min.X+Inset, d.rect.Min.Y+Inset
-	theme.DrawText(screen, d.Title, x, y, ColorInk())
+	theme.DrawStrong(screen, d.Title, x, y, ColorInk())
 	y += LineHeight
 	for _, line := range d.Lines {
 		theme.DrawText(screen, line, x, y, ColorMuted())
 		y += LineHeight
 	}
 	if d.List != nil {
-		StrokeRect(screen, d.List.Rect, Hairline, ColorRule())
+		StrokeRound(screen, d.List.Rect.Inset(-Half), Radius, Border, ColorInk())
 		d.List.Draw(screen, theme)
 	}
 	for _, button := range d.Buttons {

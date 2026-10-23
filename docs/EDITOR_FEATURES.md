@@ -21,7 +21,10 @@ under consideration), **open** (undecided).
 - **Agreed:** apply SOLID deliberately so views, layouts and configuration can
   change without large rewrites; avoid reuse infrastructure for hypothetical
   needs.
-- **Agreed:** a plain white look, keeping attention on the content.
+- **Agreed:** a plain white look, keeping attention on the content, in the
+  style of the editor wireframes for every window: IBM Plex Sans and Mono,
+  dark outlines and rounded boxes, small uppercase labels, blue for selection
+  and orange for anything live.
 
 ## Maps and tiles
 

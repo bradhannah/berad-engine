@@ -91,6 +91,34 @@ func TestFieldWrapsAndClicksPlaceTheCaret(t *testing.T) {
 	}
 }
 
+// TestCaretAtAWrapStaysOnItsLine clicks at the start of each wrapped line:
+// where one line ends and the next begins, the caret belongs to the line it
+// is drawn on, so Cmd+Left keeps it there and Cmd+Right goes to that line's
+// end, not the previous line's.
+func TestCaretAtAWrapStaysOnItsLine(t *testing.T) {
+	t.Parallel()
+	text := "one two three four five six seven eight nine ten eleven twelve"
+	field := ui.NewTextField("body", textedit.NewField(text, true, 0), true, theme(t))
+	field.Rect = image.Rect(0, 0, 120, 200)
+	var focus ui.Focus
+	focus.Register(field)
+	for line := 1; line <= 3; line++ {
+		focus.Update(&ui.Input{Cursor: image.Pt(1, 8+line*ui.LineHeight), Pressed: true, Down: true}, nil)
+		start := field.Field.Buffer().Caret()
+		if start == 0 || text[start-1] != ' ' {
+			t.Fatalf("line %d: a click at its left edge should land at a wrapped line's start, got %d", line, start)
+		}
+		focus.Update(frame("Cmd+Left"), nil)
+		if got := field.Field.Buffer().Caret(); got != start {
+			t.Fatalf("line %d: Cmd+Left moved from the line start %d to %d", line, start, got)
+		}
+		focus.Update(frame("Cmd+Right"), nil)
+		if end := field.Field.Buffer().Caret(); end <= start {
+			t.Fatalf("line %d: Cmd+Right went to %d, before the line start %d", line, end, start)
+		}
+	}
+}
+
 // TestSingleLineFieldHoldsStill clicks into a field one button high, whose
 // line of text is taller than the room inside its padding, and checks the
 // text stays put from frame to frame instead of scrolling back and forth.
