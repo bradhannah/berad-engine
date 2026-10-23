@@ -457,7 +457,7 @@ func names(entries []project.Entry) []string {
 // assigns its ID and version.
 func newDocument(format, name string, scope ids.ULID, data json.RawMessage) documentArgs {
 	return documentArgs{project.DocumentArgs{
-		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Data: data,
+		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Data: data, Layout: nil,
 	}}
 }
 

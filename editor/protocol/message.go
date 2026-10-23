@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 3
+const Version = 4
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -93,6 +93,8 @@ type Snapshot struct {
 	Name     string          `json:"name"`
 	Revision uint64          `json:"revision"`
 	Data     json.RawMessage `json:"data"`
+	// Layout is the document's layout, for documents that keep one (D17).
+	Layout json.RawMessage `json:"layout,omitempty"`
 }
 
 // Command asks the orchestrator to apply one edit to one document.
