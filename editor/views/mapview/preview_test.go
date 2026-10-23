@@ -160,6 +160,25 @@ func TestPreviewStartCell(t *testing.T) {
 	}
 }
 
+// Arrow keys before a preview runs say what is needed: P, then a click on the
+// start cell.
+func TestArrowKeysExplainHowToStart(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.keys("Right")
+	if !strings.Contains(f.status(), "press P, then click") {
+		t.Fatalf("no preview yet: %q", f.status())
+	}
+	f.keys("P")
+	f.keys("Up")
+	if !strings.Contains(f.status(), "First click the cell") {
+		t.Fatalf("choosing the start cell: %q", f.status())
+	}
+	if len(f.requests.Previews) != 0 {
+		t.Fatal("arrow keys do not start a preview")
+	}
+}
+
 // D13: every view of the zone shows the player of a preview another window
 // runs, ignoring states older than the one it holds.
 func TestAnotherViewsPreviewIsShown(t *testing.T) {

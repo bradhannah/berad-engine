@@ -32,6 +32,9 @@ const (
 	faceOffset   = 0.5
 	faceRadius   = 0.3
 	cellCentre   = 0.5
+	// startAlpha is how faintly the player shows on the cell under the
+	// cursor while the author chooses where the player starts.
+	startAlpha = 0x80
 	// previewLines is the height of the preview's part of the inspector.
 	previewLines = 4
 )
@@ -124,6 +127,27 @@ func (s *State) updateChoosing(input *ui.Input, ctx *frame.Context, floorData *f
 		s.subscribeFloors(ctx)
 		ctx.Frame.Status("Preview running. Arrow keys walk; P stops.")
 	})
+}
+
+// arrowHint explains what the arrow keys need when no preview is running in
+// this window.
+func (s *State) arrowHint(input *ui.Input, ctx *frame.Context) {
+	if s.focus.Current() != nil {
+		return
+	}
+	pressed := false
+	for key := range arrows() {
+		pressed = pressed || input.Has(key, ui.Plain())
+	}
+	switch {
+	case !pressed:
+	case s.choosing || s.starting:
+		ctx.Frame.Status("First click the cell where the player starts; then the arrow keys walk.")
+	case s.remote != nil:
+		ctx.Frame.Status("The preview is running in another view of this zone; walk there.")
+	default:
+		ctx.Frame.Status("To walk, press P, then click the cell where the player starts.")
+	}
 }
 
 // subscribeFloors subscribes to every floor of the zone, so the player can
@@ -283,19 +307,35 @@ func (s *State) drawPlayer(area *ebiten.Image, grid image.Rectangle) {
 	if !ok || player.Floor != s.floor {
 		return
 	}
+	s.drawDisc(area, grid, player.X, player.Y, player.Face, fullAlpha)
+}
+
+// drawStartCell shows the player faintly on the cell under the cursor while
+// the author chooses where the player starts, on cells where they can stand.
+func (s *State) drawStartCell(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle) {
+	shown := play.Levels{{ID: s.floor, Floor: floorData}}
+	if !s.choosing || !s.hovering || !play.CanStand(shown, s.floor, s.hover) {
+		return
+	}
+	s.drawDisc(area, grid, float64(s.hover.X), float64(s.hover.Y), [2]int{0, 1}, startAlpha)
+}
+
+// drawDisc draws the player at a position in cells: a disc with a dot towards
+// where they face.
+func (s *State) drawDisc(area *ebiten.Image, grid image.Rectangle, x, y float64, face [2]int, alpha uint8) {
 	size := float64(s.camera.cellSize())
 	origin := grid.Min.Add(s.camera.offset)
-	centreX := float64(origin.X) + (player.X+cellCentre)*size
-	centreY := float64(origin.Y) + (player.Y+cellCentre)*size
+	centreX := float64(origin.X) + (x+cellCentre)*size
+	centreY := float64(origin.Y) + (y+cellCentre)*size
 	radius := size * playerRadius
-	vector.FillCircle(area, float32(centreX), float32(centreY), float32(radius), ui.Hex(hexPlayer), true)
-	vector.StrokeCircle(area, float32(centreX), float32(centreY), float32(radius), ui.Outline, ui.Hex(hexWhite), true)
-	faceX, faceY := float64(player.Face[0]), float64(player.Face[1])
+	white := ui.HexAlpha(hexWhite, alpha)
+	vector.FillCircle(area, float32(centreX), float32(centreY), float32(radius), ui.HexAlpha(hexPlayer, alpha), true)
+	vector.StrokeCircle(area, float32(centreX), float32(centreY), float32(radius), ui.Outline, white, true)
+	faceX, faceY := float64(face[0]), float64(face[1])
 	if length := math.Hypot(faceX, faceY); length > 0 {
 		faceX, faceY = faceX/length*radius*faceOffset, faceY/length*radius*faceOffset
 	}
-	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius),
-		ui.Hex(hexWhite), true)
+	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), white, true)
 }
 
 // drawPreviewInspector describes the preview above the keys.

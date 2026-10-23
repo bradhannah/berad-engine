@@ -476,6 +476,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updatePanels(input, ctx)
 	if s.preview != nil {
 		s.stepPreview(input, ctx)
+	} else {
+		s.arrowHint(input, ctx)
 	}
 	if s.floor.IsZero() {
 		return

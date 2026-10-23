@@ -90,6 +90,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawAnchors(area, floorDoc.Floor, grid)
 		s.drawSelection(area, grid)
 		s.drawPlayer(area, grid)
+		s.drawStartCell(area, floorDoc.Floor, grid)
 	})
 	if !loaded {
 		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())

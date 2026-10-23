@@ -87,6 +87,12 @@ Chosen while building, for its author to check:
   unchanged afterwards (revision 0). Screenshots of all three were checked by
   eye.
 
+- **First try by its author:** walking worked, but nothing showed that a
+  click on the start cell was needed after `P`, so the arrow keys seemed to do
+  nothing. Now, while the author chooses, the player shows faintly on the cell
+  under the cursor wherever they can stand, and arrow keys pressed before a
+  preview runs say what to do in the status bar.
+
 ## Not built yet
 
 From D15: keeping preview state until Reset (there is nothing to keep yet:
