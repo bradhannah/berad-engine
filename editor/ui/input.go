@@ -41,6 +41,7 @@ const (
 	KeyJ         Key = "J"
 	KeyK         Key = "K"
 	KeyN         Key = "N"
+	KeyP         Key = "P"
 	KeyV         Key = "V"
 	KeyW         Key = "W"
 	KeyX         Key = "X"
@@ -122,6 +123,9 @@ type Input struct {
 	// Held are the modifiers held now; Space reports the space bar held.
 	Held  Mods
 	Space bool
+	// Keys are the keys held down now, for actions that last as long as a
+	// key is held, such as walking in a preview.
+	Keys []Key
 	// Text is text typed this frame through the input method.
 	Text string
 	// Replace is an input method commit that replaces text near the caret.
@@ -135,8 +139,14 @@ type Input struct {
 func NewInput(cursor image.Point) Input {
 	return Input{
 		Cursor: cursor, Down: false, Pressed: false, Released: false, DoubleClick: false, PanDown: false,
-		WheelX: 0, WheelY: 0, Presses: nil, Held: Plain(), Space: false, Text: "", Replace: nil, Composition: "",
+		WheelX: 0, WheelY: 0, Presses: nil, Held: Plain(), Space: false, Keys: nil, Text: "", Replace: nil,
+		Composition: "",
 	}
+}
+
+// IsDown reports whether a key is held down now.
+func (input *Input) IsDown(key Key) bool {
+	return slices.Contains(input.Keys, key)
 }
 
 // Has reports whether a key was pressed this frame with exactly the given
@@ -171,6 +181,7 @@ func (input *Input) ClearPointer() {
 func (input *Input) ClearAll() {
 	input.ClearPointer()
 	input.Presses = nil
+	input.Keys = nil
 	input.Text = ""
 	input.Replace = nil
 	input.WheelX, input.WheelY = 0, 0

@@ -40,7 +40,7 @@ const (
 )
 
 // The sample building, in cells from the zone origin, which sits in the
-// middle of its room: its walls, door and a desk inside.
+// middle of its room: its walls, door, stairs and a desk inside.
 const (
 	buildingLeft   = -6
 	buildingTop    = -4
@@ -50,6 +50,8 @@ const (
 	deskCol        = -3
 	deskRow        = -1
 	mediumOffset   = 4
+	stairsCol      = 4
+	stairsRow      = -2
 )
 
 // ErrNoDocuments reports a project with nothing to edit.
@@ -311,8 +313,9 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 }
 
 // sampleFloor is one floor of the sample building: ground everywhere, walls of
-// one family around the building, plain floor inside. The ground floor has a
-// door, two pickups and an anchor at the desk.
+// one family around the building, plain floor inside and stairs joining the
+// two floors. The ground floor has a door, two pickups and an anchor at the
+// desk.
 func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tilefloor.Document, error) {
 	document, err := tilefloor.NewDocumentAt(floor.Centered(sampleWidth, sampleTall), outside)
 	if err != nil {
@@ -332,7 +335,8 @@ func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tile
 }
 
 // sampleBuilding puts plain floor inside the building and walls around it,
-// with a door on the ground floor.
+// with a door on the ground floor and stairs up from it to the same cell of
+// the floor above.
 func sampleBuilding(floorData *floor.Floor, family string, groundFloor bool) error {
 	for col := buildingLeft; col <= buildingRight; col++ {
 		for row := buildingTop; row <= buildingBottom; row++ {
@@ -351,6 +355,13 @@ func sampleBuilding(floorData *floor.Floor, family string, groundFloor bool) err
 				return fmt.Errorf("sample floor: %w", err)
 			}
 		}
+	}
+	stairs := "stairs.down"
+	if groundFloor {
+		stairs = "stairs.up"
+	}
+	if _, err := floorData.SetTop(stairsCol, stairsRow, stairs); err != nil {
+		return fmt.Errorf("sample floor: %w", err)
 	}
 
 	return nil

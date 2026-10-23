@@ -28,7 +28,7 @@ under consideration), **open** (undecided).
 - **Agreed:** a visual map editor.
 - **Agreed:** **stand-in tiles** let an author lay out a map before its art
   exists. Stand-ins are typed (for example ground, generic wall, generic door,
-  small or medium pickup) so their role is recognisable. Default behaviour and
+  stairs up and down, small or medium pickup) so their role is recognisable. Default behaviour and
   how stand-ins are replaced are open.
 - **Agreed:** a tile definition editor, separate as a function from drawing art.
 - **Agreed:** **wall families** (meta-tiles): the author picks a family such as
@@ -44,7 +44,12 @@ under consideration), **open** (undecided).
 - **Agreed:** walls **occupy whole tiles** (a wall is one tile thick and a
   doorway is a tile), not tile edges.
 - **Agreed:** a cell has a **ground** tile and at most **one thing on top** (a
-  wall, a door or a pickup stand-in). Objects and placements come later.
+  wall, a door, stairs or a pickup stand-in). Objects and placements come
+  later.
+- **Agreed:** **stairs** are stand-ins, up or down. Walking onto them takes the
+  player to the same cell one floor up or down.
+- **Agreed:** doors are simply passable for now; opening and closing come
+  later.
 - **Agreed:** stand-ins are **built in** for now; editable definitions arrive
   with the definition editor.
 - **Agreed:** a Map window opens a **zone** and shows one floor at a time, with
@@ -208,6 +213,10 @@ What the engine provides to games, as far as decided:
   code. Workflows are the designer-authored layer above the engine; the engine
   provides the building blocks. The balance between engine logic and scripting is
   deliberate, and no scripting language is chosen.
+- **Agreed:** the player walks one cell at a time: a tap moves exactly one cell,
+  holding keeps walking, and the player slides smoothly between cells, in eight
+  directions, never squeezing diagonally between two cells that block (the
+  engine's `play` package; see [the second build](SECOND_BUILD.md)).
 - **Agreed:** uniform pixel scaling is guaranteed (no stretching), and layout
   supports several popular aspect ratios rather than one fixed layout. Text uses
   TTF fonts.

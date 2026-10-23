@@ -73,6 +73,10 @@ type Requests struct {
 	PickStarts  []protocol.PickStart
 	PickAnswers []protocol.PickAnswer
 	PickCancels []protocol.PickCancel
+	// Previews are preview starts waiting for the test to answer.
+	Previews      []func(protocol.Result, error)
+	PreviewStates []protocol.PreviewState
+	PreviewStops  []protocol.PreviewStop
 }
 
 // Command records a command.
@@ -125,6 +129,21 @@ func (r *Requests) PickAnswer(answer protocol.PickAnswer) {
 // PickCancel records a pick cancellation.
 func (r *Requests) PickCancel(cancel protocol.PickCancel) {
 	r.PickCancels = append(r.PickCancels, cancel)
+}
+
+// PreviewStart records a preview start; the test answers it.
+func (r *Requests) PreviewStart(_ ids.ULID, done func(protocol.Result, error)) {
+	r.Previews = append(r.Previews, done)
+}
+
+// PreviewState records a preview state.
+func (r *Requests) PreviewState(state protocol.PreviewState) {
+	r.PreviewStates = append(r.PreviewStates, state)
+}
+
+// PreviewStop records the end of a preview.
+func (r *Requests) PreviewStop(stop protocol.PreviewStop) {
+	r.PreviewStops = append(r.PreviewStops, stop)
 }
 
 // Of returns the commands of one edit kind.

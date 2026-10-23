@@ -27,6 +27,8 @@ const (
 	CategoryDoor         Category = "door"
 	CategoryPickupSmall  Category = "pickup-small"
 	CategoryPickupMedium Category = "pickup-medium"
+	CategoryStairsUp     Category = "stairs-up"
+	CategoryStairsDown   Category = "stairs-down"
 )
 
 // Definition describes one kind of tile. For walls, each definition is a wall
@@ -70,6 +72,8 @@ const (
 	colorDoor     = 0xc58f3d
 	colorPickupS  = 0xd9a400
 	colorPickupM  = 0x3f8f8a
+	colorStairsUp = 0x8e6cc9
+	colorStairsDn = 0x55468f
 	colorUnknown  = 0xc9cbc5
 	colorNoGround = 0xffffff
 )
@@ -90,6 +94,8 @@ func StandIns() []Definition {
 			ID: "door", Name: "Door", Layer: LayerTop, Category: CategoryDoor, Color: colorDoor,
 			Passable: true, BlocksSight: true, Gettable: false,
 		},
+		stairs("stairs.up", "Stairs up", CategoryStairsUp, colorStairsUp),
+		stairs("stairs.down", "Stairs down", CategoryStairsDown, colorStairsDn),
 		pickup("pickup.small", "Small pickup", CategoryPickupSmall, colorPickupS),
 		pickup("pickup.medium", "Medium pickup", CategoryPickupMedium, colorPickupM),
 	}
@@ -119,6 +125,30 @@ func ColorOf(id string) uint32 {
 	}
 
 	return colorUnknown
+}
+
+// Passable reports whether the player can stand on a tile. Unassigned ground
+// and IDs that no definition has never block.
+func Passable(id string) bool {
+	definition, ok := Lookup(id)
+
+	return !ok || definition.Passable
+}
+
+// Climb reports where stairs on a tile lead: 1 for the floor above, -1 for
+// the floor below and 0 for a tile that is not stairs.
+func Climb(id string) int {
+	definition, _ := Lookup(id)
+	switch definition.Category {
+	case CategoryStairsUp:
+		return 1
+	case CategoryStairsDown:
+		return -1
+	case CategoryGround, CategoryWall, CategoryDoor, CategoryPickupSmall, CategoryPickupMedium:
+		return 0
+	default:
+		return 0
+	}
 }
 
 // WallFamilies returns the wall definitions.
@@ -158,6 +188,13 @@ func wall(id, name string, color uint32) Definition {
 	return Definition{
 		ID: id, Name: name, Layer: LayerTop, Category: CategoryWall, Color: color,
 		Passable: false, BlocksSight: true, Gettable: false,
+	}
+}
+
+func stairs(id, name string, category Category, color uint32) Definition {
+	return Definition{
+		ID: id, Name: name, Layer: LayerTop, Category: category, Color: color,
+		Passable: true, BlocksSight: false, Gettable: false,
 	}
 }
 

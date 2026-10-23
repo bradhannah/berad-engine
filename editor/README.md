@@ -20,5 +20,5 @@ It uses the engine module; games never use this module.
 | `plugins/textdoc` | A placeholder text document for proving text editing and picks |
 | `ui`, `ui/textedit` | Widgets in the plain white look; the text editing core |
 | `views/frame` | What every window shares: requests, status bar, inspector |
-| `views/browser`, `views/mapview`, `views/textview` | The three windows, testable without a screen |
+| `views/browser`, `views/mapview`, `views/textview` | The three windows, testable without a screen; the Map window also runs previews |
 | `window` | Ebitengine host: input and input method, requests, test scripts |

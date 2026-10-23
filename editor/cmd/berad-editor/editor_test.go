@@ -123,6 +123,7 @@ type step struct {
 	Released   bool            `json:"released,omitempty"`
 	Double     bool            `json:"double,omitempty"`
 	Keys       []string        `json:"keys,omitempty"`
+	Hold       []string        `json:"hold,omitempty"`
 	Text       string          `json:"text,omitempty"`
 	Replace    *ui.Replacement `json:"replace,omitempty"`
 	Expect     *expectation    `json:"expect,omitempty"`
@@ -138,6 +139,20 @@ func wait(frames int) step { return step{Repeat: frames} }
 func keys(names ...string) step { return step{Repeat: 2, Keys: names} }
 
 func typed(text string) step { return step{Repeat: 2, Text: text} }
+
+// walk holds an arrow key for one frame: in a preview, a tap moves the player
+// exactly one cell.
+func walk(key string) step { return step{Repeat: 1, Hold: []string{key}} }
+
+// shotPath is where a test saves a screenshot: BERAD_SHOT_DIR when set, so
+// they can be looked at afterwards, or else a temporary folder.
+func shotPath(t *testing.T, name string) string {
+	t.Helper()
+	if dir := os.Getenv("BERAD_SHOT_DIR"); dir != "" {
+		return filepath.Join(dir, name)
+	}
+	return filepath.Join(t.TempDir(), name)
+}
 
 func quit() step { return keys("Cmd+W") }
 
@@ -400,6 +415,40 @@ func TestViewsShareUndo(t *testing.T) {
 		if got := cellOf(t, ground, tilefloor.LayerGround, col, 9); got != "grass" {
 			t.Fatalf("cell %d = %q; the second view should have undone the first view's stroke", col, got)
 		}
+	}
+}
+
+// TestPreviewWalksAndClimbs previews the sample zone (D15): P and a click
+// start the player inside the building, arrow keys walk them onto the stairs
+// and up to the same cell of the upper floor, and a second view of the zone
+// shows the player as they walk. The preview changes nothing in the project.
+func TestPreviewWalksAndClimbs(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	walking, upstairs, seen := shotPath(t, "preview.png"), shotPath(t, "preview-upstairs.png"), shotPath(t, "preview-other-view.png")
+	first := script(
+		expect("state:loaded", 600), wait(5), keys("Cmd+N"), wait(120),
+		keys("P"), click("cell:2,-2"), expect("state:previewing", 300),
+		walk("Right"), expect("state:player:3,-2", 120), step{Repeat: 2, Screenshot: walking}, wait(90),
+		walk("Right"), expect("state:floor:2", 120), expect("state:player:4,-2", 120),
+		step{Repeat: 2, Screenshot: upstairs}, wait(60), keys("P"), wait(60), quit(),
+	)
+	second := script(
+		expect("state:loaded", 600), expect("state:remote-player:3,-2", 900),
+		step{Repeat: 2, Screenshot: seen}, expect("state:remote-player:4,-2", 600), wait(30), quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
+
+	ground, envelope := readFloor(t, project, "ground-floor")
+	if cellOf(t, ground, tilefloor.LayerTop, 4, -2) != "stairs.up" || envelope.Revision != 0 {
+		t.Fatalf("the preview must not change the project: revision %d", envelope.Revision)
+	}
+	for _, shot := range []string{walking, upstairs, seen} {
+		if _, err := os.Stat(shot); err != nil {
+			t.Fatalf("missing screenshot: %v", err)
+		}
+		t.Logf("screenshot: %s", shot)
 	}
 }
 

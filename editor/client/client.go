@@ -66,6 +66,12 @@ type Update struct {
 	PickAnswer *protocol.PickAnswer
 	// PickCancel ends a pick this window asked for or was answering.
 	PickCancel *protocol.PickCancel
+	// PreviewStart reports a preview another window started in this
+	// window's zone; PreviewState is its latest state and PreviewStop its
+	// end.
+	PreviewStart *protocol.PreviewStart
+	PreviewState *protocol.PreviewState
+	PreviewStop  *protocol.PreviewStop
 }
 
 // Client is one window's connection.
@@ -317,6 +323,29 @@ func (c *Client) PickAnswer(answer protocol.PickAnswer) error {
 // PickCancel ends a pick from either side.
 func (c *Client) PickCancel(cancel protocol.PickCancel) error {
 	return c.notify(protocol.KindPickCancel, cancel)
+}
+
+// PreviewStart starts a preview of a zone (D15). The result's Created is the
+// run's ID.
+func (c *Client) PreviewStart(ctx context.Context, zone ids.ULID) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindPreviewStart, protocol.PreviewStart{
+		Zone: zone, Run: ids.ULID{}, Window: ids.ULID{},
+	})
+	if err != nil {
+		return protocol.Result{}, err
+	}
+
+	return resultOf(reply)
+}
+
+// PreviewState sends the latest state of this window's preview (D7).
+func (c *Client) PreviewState(state protocol.PreviewState) error {
+	return c.notify(protocol.KindPreviewState, state)
+}
+
+// PreviewStop ends this window's preview.
+func (c *Client) PreviewStop(stop protocol.PreviewStop) error {
+	return c.notify(protocol.KindPreviewStop, stop)
 }
 
 // notify sends a message that expects no reply.

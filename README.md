@@ -2,9 +2,10 @@
 
 A Go/Ebitengine engine and shared editor for top-down tile RPGs.
 
-**Experimental and early.** The first build exists: the editor's orchestrator,
-its protocol, and a Map window that paints a tile floor. There are no game
-features, no game runtime and no stable API yet.
+**Experimental and early.** The editor has an orchestrator, a project browser,
+Map and Text windows, and a preview that walks a player through a zone. The
+engine has floors, zones, stand-in tiles and walking. There are no game
+features beyond that, and no stable API yet.
 
 ## Layout
 
@@ -37,8 +38,8 @@ The project browser and a Map window open on a sample zone with two floors.
 - **Project browser:** create zones, floors and text documents; rename in the
   inspector (Enter or the Rename button saves); delete with a where-used check;
   reorder floors; double-click or Enter opens.
-- **Map window:** tools on the left (`G` ground, `W` walls, `O` doors and
-  pickups, `E` erase, `A` anchors, `S` select walls, `R` resize floor), `1`-`9`
+- **Map window:** tools on the left (`G` ground, `W` walls, `O` doors, stairs
+  and pickups, `E` erase, `A` anchors, `S` select walls, `R` resize floor), `1`-`9`
   pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
   along its edges; every floor of the zone shares it. Resize floor drags an edge
   or corner of the floor, or adds and removes rows and columns from buttons.
@@ -46,6 +47,11 @@ The project browser and a Map window open on a sample zone with two floors.
   its walls, or drag an area, then pick a family to change them all.
   `PageUp` / `PageDown` change floor; the floor below shows faintly (`F`).
   Scroll pans, `Cmd`+scroll or `Cmd+=` / `Cmd+-` zoom, `Space`+drag pans.
+- **Preview:** in a Map window press `P` (or the Preview button) and click a
+  cell to start the player there. The arrow keys walk, one cell per tap, and
+  two together walk diagonally; walking onto stairs changes floor. You can keep
+  editing while you walk, other views of the zone show the player, and `P`
+  stops. A preview never changes the project.
 - **Text window:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
   Escape reverts; "Pick on map" chooses an anchor in a Map window.
 
@@ -102,9 +108,10 @@ once, for visual checks.
 
 ## Dependencies
 
-The editor uses Ebitengine v2.10.5. ebitenui v0.7.3 is the chosen widget
-library and is added when the first window needs it. The two modules are joined
-by `go.work` for development.
+The editor uses Ebitengine v2.10.5 and berad-sdk's berad-text. Its widgets are
+its own (`editor/ui`): ebitenui was not used, because its text input is
+single-line and has no input method support. The two modules are joined by
+`go.work` for development.
 
 ## Documentation
 

@@ -42,6 +42,10 @@ const (
 	// quieter than the origin cell's outline.
 	hexOrigin = 0xc2410c
 	axisAlpha = 0x99
+	// A stairs chevron spans a third of the cell's width and a sixth of its
+	// height either side of the centre.
+	chevronWidth  = 3
+	chevronHeight = 6
 )
 
 // Draw renders the window.
@@ -85,6 +89,8 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
 		s.drawSelection(area, grid)
+		s.drawPlayer(area, grid)
+		s.drawStartCell(area, floorDoc.Floor, grid)
 	})
 	if !loaded {
 		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())
@@ -200,13 +206,44 @@ func (s *State) drawTop(
 		if definition.Category == tiles.CategoryDoor && size >= minGridSize {
 			ui.StrokeRect(area, center, ui.Hairline, ui.HexAlpha(0, alpha))
 		}
-	case known && definition.Category == tiles.CategoryPickupSmall:
-		ui.FillRect(area, rect.Inset(size*smallPickup/eighths), fill)
-	case known && definition.Category == tiles.CategoryPickupMedium:
-		ui.FillRect(area, rect.Inset(size*mediumPickup/eighths), fill)
+	case known && tiles.Climb(top) != 0:
+		s.drawStairs(area, rect.Inset(size*otherObject/eighths), fill, tiles.Climb(top) > 0, alpha)
 	default:
-		ui.FillRect(area, rect.Inset(size*otherObject/eighths), fill)
+		ui.FillRect(area, rect.Inset(size*objectInset(definition.Category)/eighths), fill)
 	}
+}
+
+// objectInset is how far, in eighths of a cell, a tile on top is drawn inside
+// its cell: pickups smaller, so their size is recognisable.
+func objectInset(category tiles.Category) int {
+	switch category {
+	case tiles.CategoryPickupSmall:
+		return smallPickup
+	case tiles.CategoryPickupMedium:
+		return mediumPickup
+	case tiles.CategoryGround, tiles.CategoryWall, tiles.CategoryDoor, tiles.CategoryStairsUp,
+		tiles.CategoryStairsDown:
+		return otherObject
+	default:
+		return otherObject
+	}
+}
+
+// drawStairs draws stairs as a block with a chevron pointing up or down.
+func (s *State) drawStairs(area *ebiten.Image, rect image.Rectangle, fill color.Color, upwards bool, alpha uint8) {
+	ui.FillRect(area, rect, fill)
+	if rect.Dx() < minGridSize {
+		return
+	}
+	centre := ui.Center(rect)
+	width, height := rect.Dx()/chevronWidth, rect.Dy()/chevronHeight
+	tip, foot := centre.Y-height, centre.Y+height
+	if !upwards {
+		tip, foot = foot, tip
+	}
+	ink := ui.HexAlpha(hexWhite, alpha)
+	ui.Line(area, image.Pt(centre.X-width, foot), image.Pt(centre.X, tip), ui.Outline, ink)
+	ui.Line(area, image.Pt(centre.X, tip), image.Pt(centre.X+width, foot), ui.Outline, ink)
 }
 
 // drawAnchors marks each anchor; while picking, every anchor is highlighted.
@@ -273,6 +310,7 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	heading("FLOORS (TOP FIRST)", s.floorList)
 	s.floorList.Draw(screen, s.theme)
 	s.below.Draw(screen, s.theme)
+	s.previewBn.Draw(screen, s.theme)
 	_ = docs
 }
 
@@ -328,7 +366,9 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	if !loaded {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
-	s.drawHelp(screen, textX, panel.Max.Y-7*ui.LineHeight)
+	helpTop := panel.Max.Y - len(helpLines())*ui.LineHeight
+	s.drawPreviewInspector(screen, docs, textX, helpTop-previewLines*ui.LineHeight)
+	s.drawHelp(screen, textX, helpTop)
 }
 
 func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
@@ -412,17 +452,21 @@ func yesNo(value bool) string {
 	return "no"
 }
 
-func (s *State) drawHelp(screen *ebiten.Image, left, top int) {
-	lines := []string{
+func helpLines() []string {
+	return []string{
 		"KEYS",
 		"G W O E A S R: tools   1-9: tile",
 		"PageUp/PageDown: floor   F: floor below",
 		"Scroll: pan   Cmd+scroll or Cmd+=/-: zoom",
 		"Space+drag: pan   Cmd+0: reset view",
+		"P: preview   Arrow keys: walk",
 		"Cmd+Z / Cmd+Shift+Z: undo / redo",
 		"Cmd+N: new view   Cmd+W: close",
 	}
-	for index, text := range lines {
+}
+
+func (s *State) drawHelp(screen *ebiten.Image, left, top int) {
+	for index, text := range helpLines() {
 		ink := ui.ColorInk()
 		if index == 0 {
 			ink = ui.ColorMuted()
