@@ -20,9 +20,9 @@ to the same strict checks as [the first build](FIRST_BUILD.md).
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Walking | Stairs stand-ins; the engine's `play` package with the movement rules | A run repeats exactly; every rule tested | Built |
-| 2. Live state | Protocol version 3: preview start, state and stop through the orchestrator | One preview at a time; the zone's other views see the player; a closing window ends its preview | Built |
-| 3. Preview in the Map window | `P` and a start cell; arrow keys walk; the view follows and changes floor on stairs; other views draw the player | Walking judged by its author | Built, awaiting that judgement |
+| 1. Walking | Stairs stand-ins; the engine's `play` package with the movement rules | A run repeats exactly; every rule tested | Done (PR #6) |
+| 2. Live state | Protocol version 3: preview start, state and stop through the orchestrator | One preview at a time; the zone's other views see the player; a closing window ends its preview | Done (PR #6) |
+| 3. Preview in the Map window | `P` and a start cell; arrow keys walk; the view follows and changes floor on stairs; other views draw the player | Walking judged by its author | Done (PR #6) |
 
 Later builds of the milestone (placing NPCs with basic logic and schedule
 loops, conversations) are not planned yet.
@@ -91,7 +91,8 @@ Chosen while building, for its author to check:
   click on the start cell was needed after `P`, so the arrow keys seemed to do
   nothing. Now, while the author chooses, the player shows faintly on the cell
   under the cursor wherever they can stand, and arrow keys pressed before a
-  preview runs say what to do in the status bar.
+  preview runs say what to do in the status bar. Its author then judged
+  walking and the cues good.
 
 ## Not built yet
 
