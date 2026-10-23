@@ -9,11 +9,14 @@ import (
 // action is one applied edit inside an undo step.
 type action struct {
 	document ids.ULID
+	// edit applies forward; backEdit applies back, or edit when empty.
 	edit     string
+	backEdit string
 	// forward re-applies the action; back reverts it.
 	forward json.RawMessage
 	back    json.RawMessage
 	touched []string
+	covers  []ids.ULID
 	seq     uint64
 }
 
@@ -35,16 +38,19 @@ type lastWriter struct {
 }
 
 // history keeps one undo list per undo group and remembers who last changed
-// each item, so an undo never silently overwrites a later change from another
-// window.
+// each item and each document, so an undo never silently overwrites a later
+// change from another window.
 type history struct {
-	limit   int
-	groups  map[string]*undoList
-	writers map[string]lastWriter
+	limit      int
+	groups     map[string]*undoList
+	writers    map[string]lastWriter
+	docWriters map[ids.ULID]lastWriter
 }
 
 func newHistory(limit int) *history {
-	return &history{limit: limit, groups: map[string]*undoList{}, writers: map[string]lastWriter{}}
+	return &history{
+		limit: limit, groups: map[string]*undoList{}, writers: map[string]lastWriter{}, docWriters: map[ids.ULID]lastWriter{},
+	}
 }
 
 func (h *history) join(group string) {
@@ -92,14 +98,25 @@ func (h *history) noteWrite(group string, document ids.ULID, touched []string, s
 	for _, item := range touched {
 		h.writers[itemKey(document, item)] = lastWriter{seq: seq, group: group}
 	}
+	h.docWriters[document] = lastWriter{seq: seq, group: group}
 }
 
-// clash reports whether another group changed any item in the step after it.
+// clash reports whether another group changed any item in the step after it,
+// or any part of a document the step created or removed.
 func (h *history) clash(group string, candidate step) bool {
+	later := func(writer lastWriter, ok bool, seq uint64) bool {
+		return ok && writer.group != group && writer.seq > seq
+	}
 	for _, applied := range candidate.actions {
 		for _, item := range applied.touched {
 			writer, ok := h.writers[itemKey(applied.document, item)]
-			if ok && writer.group != group && writer.seq > applied.seq {
+			if later(writer, ok, applied.seq) {
+				return true
+			}
+		}
+		for _, covered := range applied.covers {
+			writer, ok := h.docWriters[covered]
+			if later(writer, ok, applied.seq) {
 				return true
 			}
 		}

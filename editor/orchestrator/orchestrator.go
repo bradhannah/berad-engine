@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bradhannah/berad-engine/editor/model"
+	projectindex "github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -87,9 +88,13 @@ type Orchestrator struct {
 	subscribed map[ids.ULID]map[ids.ULID]*window
 	recent     map[ids.ULID]*ring
 	children   map[ids.ULID]*child
-	seq        uint64
-	stopping   bool
-	quit       bool
+	picks      *picks
+	// removed holds files of deleted or renamed documents, moved to the
+	// backups at the next save.
+	removed  map[string]bool
+	seq      uint64
+	stopping bool
+	quit     bool
 
 	inbound chan inbound
 	joins   chan *window
@@ -105,6 +110,9 @@ func New(ctx context.Context, cfg Config) (*Orchestrator, error) {
 	cfg, err := cfg.withDefaults()
 	if err != nil {
 		return nil, err
+	}
+	if _, ok := cfg.Registry.Edit(projectindex.CreateEdit); !ok {
+		return nil, fmt.Errorf("%w: %w", ErrConfig, ErrNoProjectPlugin)
 	}
 	opened, err := openProject(cfg.ProjectDir, cfg.Logger)
 	if err != nil {
@@ -133,6 +141,8 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		subscribed: map[ids.ULID]map[ids.ULID]*window{},
 		recent:     map[ids.ULID]*ring{},
 		children:   map[ids.ULID]*child{},
+		picks:      newPicks(),
+		removed:    map[string]bool{},
 		seq:        0,
 		stopping:   false,
 		quit:       false,
@@ -190,7 +200,12 @@ func (o *Orchestrator) load() error {
 		}
 	}
 
-	return o.replay()
+	if err := o.replay(); err != nil {
+		return err
+	}
+	o.buildIndex()
+
+	return nil
 }
 
 // replay applies journal entries newer than the saved documents.
@@ -201,6 +216,13 @@ func (o *Orchestrator) replay() error {
 	}
 	for _, entry := range entries {
 		o.seq = max(o.seq, entry.Seq)
+		if isIndex(entry.Document) {
+			if err := o.replayLifecycle(entry); err != nil {
+				return err
+			}
+
+			continue
+		}
 		target, found := o.docs[entry.Document]
 		if !found {
 			o.cfg.Logger.Warn("journal entry for a missing document", "document", entry.Document)
@@ -258,8 +280,10 @@ func (o *Orchestrator) Documents() ([]DocumentInfo, error) {
 		return nil, ErrRunning
 	}
 	infos := make([]DocumentInfo, 0, len(o.docs))
-	for _, entry := range o.docs {
-		infos = append(infos, entry.info)
+	for id, entry := range o.docs {
+		if !isIndex(id) {
+			infos = append(infos, entry.info)
+		}
 	}
 	slices.SortFunc(infos, func(a, b DocumentInfo) int { return strings.Compare(a.Name, b.Name) })
 
@@ -290,8 +314,20 @@ func (o *Orchestrator) CreateDocument(name string, document model.Document) (ids
 		return ids.ULID{}, err
 	}
 	o.docs[documentID] = entry
+	o.buildIndex()
 
 	return documentID, nil
+}
+
+// NewID returns a new permanent ID from the orchestrator's generator (D4),
+// for content created before Run such as a sample project's anchors.
+func (o *Orchestrator) NewID() (ids.ULID, error) {
+	id, err := o.ids.New()
+	if err != nil {
+		return ids.ULID{}, fmt.Errorf("new id: %w", err)
+	}
+
+	return id, nil
 }
 
 // Close releases an orchestrator that was never run, saving any changes. An
@@ -378,16 +414,34 @@ func (o *Orchestrator) closeResources() error {
 	return errors.Join(errs...)
 }
 
-// flush saves every changed document to its file, then empties the journal.
+// flush saves every changed document to its file, moves the files of deleted
+// and renamed documents to the backups, then empties the journal. New files
+// are written before old ones move, so a crash in between leaves two copies,
+// which loading resolves, rather than none.
 func (o *Orchestrator) flush() error {
 	var errs []error
+	live := map[string]bool{}
 	for _, entry := range o.docs {
-		if !entry.dirty {
+		live[entry.info.Path] = true
+		if !entry.dirty || entry.info.Path == "" {
 			continue
 		}
 		if err := o.save(entry); err != nil {
 			errs = append(errs, err)
 		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	for _, path := range slices.Sorted(maps.Keys(o.removed)) {
+		if !live[path] {
+			if err := o.project.retire(path, o.cfg.Clock()); err != nil {
+				errs = append(errs, err)
+
+				continue
+			}
+		}
+		delete(o.removed, path)
 	}
 	if len(errs) > 0 {
 		return errors.Join(errs...)

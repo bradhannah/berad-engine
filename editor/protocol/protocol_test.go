@@ -19,18 +19,25 @@ var testID = ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
 func everyMessage(t *testing.T) []protocol.Message {
 	t.Helper()
 	payloads := map[protocol.Kind]any{
-		protocol.KindHello:     protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
-		protocol.KindWelcome:   protocol.Welcome{Window: testID},
-		protocol.KindSubscribe: protocol.Subscribe{Document: testID},
-		protocol.KindSnapshot:  protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
-		protocol.KindCommand:   protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
-		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4},
-		protocol.KindEvent:     protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
-		protocol.KindSession:   protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
-		protocol.KindOpen:      protocol.Open{View: "map", Target: testID},
-		protocol.KindShutdown:  protocol.Shutdown{Reason: "bye"},
-		protocol.KindUndo:      nil,
-		protocol.KindRedo:      nil,
+		protocol.KindHello:      protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
+		protocol.KindWelcome:    protocol.Welcome{Window: testID},
+		protocol.KindSubscribe:  protocol.Subscribe{Document: testID},
+		protocol.KindSnapshot:   protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
+		protocol.KindCommand:    protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
+		protocol.KindResult:     protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID},
+		protocol.KindEvent:      protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
+		protocol.KindSession:    protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
+		protocol.KindOpen:       protocol.Open{View: "map", Target: testID, NewView: true},
+		protocol.KindShutdown:   protocol.Shutdown{Reason: "bye"},
+		protocol.KindUndo:       nil,
+		protocol.KindRedo:       nil,
+		protocol.KindQuery:      protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
+		protocol.KindAnswer:     protocol.Answer{Uses: []protocol.Use{{Document: testID, Name: "n", Format: "f", Label: "l"}}},
+		protocol.KindAttention:  nil,
+		protocol.KindPickAsk:    protocol.PickAsk{What: protocol.PickAnchor, Maps: []protocol.PickMap{{Window: testID, Zone: testID, Shows: true}}},
+		protocol.KindPickStart:  protocol.PickStart{Pick: "p", What: protocol.PickAnchor, Label: "l", Window: testID, Zone: testID, From: testID},
+		protocol.KindPickAnswer: protocol.PickAnswer{Pick: "p", Floor: testID, Item: "i"},
+		protocol.KindPickCancel: protocol.PickCancel{Pick: "p", Reason: "r"},
 	}
 	messages := make([]protocol.Message, 0, len(payloads))
 	for kind, payload := range payloads {
@@ -60,6 +67,63 @@ func TestCodecRoundTripsEveryMessage(t *testing.T) {
 				t.Fatalf("%s %s: %+v != %+v", codec.Name(), message.Kind, decoded, message)
 			}
 		}
+	}
+}
+
+// TestPayloadsRoundTrip checks that every payload type decodes back to the
+// value that was encoded, so no field is lost on the wire.
+func TestPayloadsRoundTrip(t *testing.T) {
+	t.Parallel()
+	for _, message := range everyMessage(t) {
+		if len(message.Payload) == 0 {
+			continue
+		}
+		var check func() (any, any, error)
+		switch message.Kind {
+		case protocol.KindResult:
+			check = roundTrip[protocol.Result](message)
+		case protocol.KindOpen:
+			check = roundTrip[protocol.Open](message)
+		case protocol.KindQuery:
+			check = roundTrip[protocol.Query](message)
+		case protocol.KindAnswer:
+			check = roundTrip[protocol.Answer](message)
+		case protocol.KindPickAsk:
+			check = roundTrip[protocol.PickAsk](message)
+		case protocol.KindPickStart:
+			check = roundTrip[protocol.PickStart](message)
+		case protocol.KindPickAnswer:
+			check = roundTrip[protocol.PickAnswer](message)
+		case protocol.KindPickCancel:
+			check = roundTrip[protocol.PickCancel](message)
+		case protocol.KindHello:
+			check = roundTrip[protocol.Hello](message)
+		case protocol.KindEvent:
+			check = roundTrip[protocol.Event](message)
+		default:
+			continue
+		}
+		decoded, again, err := check()
+		if err != nil || !reflect.DeepEqual(decoded, again) {
+			t.Fatalf("%s: %+v != %+v (%v)", message.Kind, decoded, again, err)
+		}
+	}
+}
+
+// roundTrip decodes the payload of a message, encodes the result again and
+// decodes that, so the two decoded values must match.
+func roundTrip[T any](message protocol.Message) func() (any, any, error) {
+	return func() (any, any, error) {
+		first, err := protocol.DecodePayload[T](message)
+		if err != nil {
+			return nil, nil, err
+		}
+		encoded, err := protocol.NewMessage(message.Kind, message.Request, first)
+		if err != nil {
+			return nil, nil, err
+		}
+		second, err := protocol.DecodePayload[T](encoded)
+		return first, second, err
 	}
 }
 

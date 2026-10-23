@@ -20,6 +20,7 @@ const (
 	stateDir     = ".berad"
 	journalPath  = ".berad/journal.log"
 	backupDir    = ".berad/backups"
+	removedDir   = ".berad/backups/removed"
 	logDir       = ".berad/logs"
 	lockPath     = ".berad/orchestrator.lock"
 	dirPerm      = 0o750
@@ -28,9 +29,6 @@ const (
 	tempSuffix   = ".tmp"
 	stampLayout  = "20060102T150405"
 )
-
-// ErrDuplicateID reports two files holding the same document ID.
-var ErrDuplicateID = errors.New("two files hold the same document ID")
 
 // project reads and writes a project folder through an os.Root, so no path can
 // escape it.
@@ -51,7 +49,7 @@ func openProject(dir string, logger *slog.Logger) (*project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open project %s: %w", dir, err)
 	}
-	for _, sub := range []string{stateDir, backupDir, logDir} {
+	for _, sub := range []string{stateDir, backupDir, removedDir, logDir} {
 		if err := root.MkdirAll(sub, dirPerm); err != nil {
 			return nil, fmt.Errorf("create %s: %w", sub, err)
 		}
@@ -70,10 +68,11 @@ func (p *project) close() error {
 
 // loadDocuments reads every document envelope in the project, skipping the
 // state folder and hidden folders. Old documents are backed up, then upgraded
-// in memory; the caller saves the upgraded form.
+// in memory; the caller saves the upgraded form. Two files holding the same
+// document (left by a crash during a rename) resolve to the newer one.
 func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]storedDocument, error) {
 	var documents []storedDocument
-	seen := map[ids.ULID]string{}
+	seen := map[ids.ULID]int{}
 	walk := func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -92,10 +91,14 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 		if err != nil || !ok {
 			return err
 		}
-		if other, duplicate := seen[document.envelope.ID]; duplicate {
-			return fmt.Errorf("%w: %s and %s", ErrDuplicateID, other, path)
+		if index, duplicate := seen[document.envelope.ID]; duplicate {
+			kept, retired := p.newer(documents[index], document)
+			documents[index] = kept
+			p.logger.Warn("two files hold one document; keeping the newer", "kept", kept.path, "moved", retired.path)
+
+			return p.retire(retired.path, now)
 		}
-		seen[document.envelope.ID] = path
+		seen[document.envelope.ID] = len(documents)
 		documents = append(documents, document)
 
 		return nil
@@ -134,6 +137,41 @@ func (p *project) loadOne(formats *content.Registry, path string, now time.Time)
 	}
 
 	return storedDocument{path: path, envelope: upgraded, fromVersion: envelope.Version}, true, nil
+}
+
+// newer returns the copy of a document to keep and the one to retire: the
+// higher revision, or the more recently written file.
+func (p *project) newer(first, second storedDocument) (storedDocument, storedDocument) {
+	if first.envelope.Revision != second.envelope.Revision {
+		if first.envelope.Revision > second.envelope.Revision {
+			return first, second
+		}
+
+		return second, first
+	}
+	firstInfo, firstErr := p.root.Stat(first.path)
+	secondInfo, secondErr := p.root.Stat(second.path)
+	if firstErr == nil && secondErr == nil && secondInfo.ModTime().After(firstInfo.ModTime()) {
+		return second, first
+	}
+
+	return first, second
+}
+
+// retire moves a file that no longer holds a live document into the backups,
+// rather than deleting it.
+func (p *project) retire(path string, now time.Time) error {
+	name := strings.NewReplacer("/", "_", "\\", "_").Replace(path)
+	target := filepath.Join(removedDir, name+"."+now.UTC().Format(stampLayout)+".bak")
+	if err := p.root.Rename(path, target); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+
+		return fmt.Errorf("move %s to the backups: %w", path, err)
+	}
+
+	return nil
 }
 
 // writeDocument saves an envelope by writing a temporary file, syncing it and

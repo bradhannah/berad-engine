@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 1
+const Version = 2
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -37,6 +37,18 @@ const (
 	KindSession   Kind = "session"
 	KindOpen      Kind = "open"
 	KindShutdown  Kind = "shutdown"
+	// KindQuery asks the orchestrator a question about the whole project;
+	// KindAnswer replies.
+	KindQuery  Kind = "query"
+	KindAnswer Kind = "answer"
+	// KindAttention asks a window to draw attention to itself, for example
+	// when something already open in it is opened again.
+	KindAttention Kind = "attention"
+	// The four pick-on-map messages (D13).
+	KindPickAsk    Kind = "pick-ask"
+	KindPickStart  Kind = "pick-start"
+	KindPickAnswer Kind = "pick-answer"
+	KindPickCancel Kind = "pick-cancel"
 )
 
 // Message is one framed protocol message.
@@ -88,11 +100,14 @@ type Command struct {
 	Args    json.RawMessage `json:"args"`
 }
 
-// Result answers a Command, Undo, Redo, Subscribe or Open request.
+// Result answers a Command, Undo, Redo, Subscribe, Open or PickStart request.
 type Result struct {
 	OK       bool   `json:"ok"`
 	Reason   string `json:"reason,omitempty"`
 	Revision uint64 `json:"revision,omitempty"`
+	// Created is the ID the orchestrator assigned to something the command
+	// created, such as a document or an anchor.
+	Created ids.ULID `json:"created,omitzero"`
 }
 
 // Event reports an applied edit. Windows apply the same edit with the same
@@ -128,10 +143,81 @@ type Notice struct {
 	Report string   `json:"report,omitempty"`
 }
 
-// Open asks the orchestrator to open a window.
+// Open asks the orchestrator to open a window. Opening a view and target that
+// is already open draws attention to that window instead, unless NewView asks
+// for another view of it.
 type Open struct {
-	View   string   `json:"view"`
-	Target ids.ULID `json:"target"`
+	View    string   `json:"view"`
+	Target  ids.ULID `json:"target"`
+	NewView bool     `json:"newView,omitempty"`
+}
+
+// QuestionWhereUsed asks which documents refer to a document, or to one item
+// inside it.
+const QuestionWhereUsed = "where-used"
+
+// Query asks a question that needs the whole project.
+type Query struct {
+	Question string   `json:"question"`
+	Document ids.ULID `json:"document"`
+	Item     string   `json:"item,omitempty"`
+}
+
+// Use is one place that refers to the thing asked about.
+type Use struct {
+	Document ids.ULID `json:"document"`
+	Name     string   `json:"name"`
+	Format   string   `json:"format"`
+	Label    string   `json:"label"`
+}
+
+// Answer replies to a Query.
+type Answer struct {
+	Uses []Use `json:"uses"`
+}
+
+// PickAnchor is what a pick of an anchor asks for.
+const PickAnchor = "anchor"
+
+// PickMap describes an open Map window a pick could use.
+type PickMap struct {
+	Window ids.ULID `json:"window"`
+	Zone   ids.ULID `json:"zone"`
+	// Shows is true when the map holds something that can be picked.
+	Shows bool `json:"shows"`
+}
+
+// PickAsk asks which open maps a pick could use. The orchestrator replies
+// with the same kind, Maps filled in.
+type PickAsk struct {
+	What string    `json:"what"`
+	Maps []PickMap `json:"maps,omitempty"`
+}
+
+// PickStart starts a pick. The requesting window names an open Map window, or
+// a zone for the orchestrator to open one on. The orchestrator forwards it to
+// the Map window with From set.
+type PickStart struct {
+	Pick   string   `json:"pick"`
+	What   string   `json:"what"`
+	Label  string   `json:"label"`
+	Window ids.ULID `json:"window,omitzero"`
+	Zone   ids.ULID `json:"zone,omitzero"`
+	From   ids.ULID `json:"from,omitzero"`
+}
+
+// PickAnswer reports what was picked; the requesting window then makes an
+// ordinary edit.
+type PickAnswer struct {
+	Pick  string   `json:"pick"`
+	Floor ids.ULID `json:"floor"`
+	Item  string   `json:"item"`
+}
+
+// PickCancel ends a pick without an answer, from either side.
+type PickCancel struct {
+	Pick   string `json:"pick"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Shutdown tells a window to clean up and close.

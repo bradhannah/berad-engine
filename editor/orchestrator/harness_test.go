@@ -14,7 +14,10 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -30,7 +33,7 @@ func TestMain(m *testing.M) {
 
 func newRegistry(t testing.TB) *plugin.Registry {
 	t.Helper()
-	registry, err := plugin.NewRegistry(tilefloor.Plugin())
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +166,7 @@ func paint(t testing.TB, c *client.Client, floor ids.ULID, col, row int, tile, g
 	defer cancel()
 	return c.Command(ctx, protocol.Command{
 		Document: floor, Edit: tilefloor.PaintEdit, Gesture: gesture,
-		Args: paintArgs(t, tilefloor.Cell{Col: col, Row: row, Tile: tile}),
+		Args: paintArgs(t, tilefloor.Cell{Col: col, Row: row, Layer: tilefloor.LayerGround, Tile: tile}),
 	})
 }
 
@@ -181,7 +184,7 @@ func tileAt(t testing.TB, c *client.Client, floor ids.ULID, col, row int) string
 	var tile string
 	ok := c.View(floor, func(document client.Document) {
 		var err error
-		tile, err = document.Model.(*tilefloor.Document).Floor.At(col, row)
+		tile, err = document.Model.(*tilefloor.Document).Floor.Ground(col, row)
 		if err != nil {
 			t.Error(err)
 		}

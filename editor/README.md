@@ -14,6 +14,11 @@ It uses the engine module; games never use this module.
 | `client` | The window side of the protocol |
 | `model` | Document and edit-kind seams, and the shared undo contract |
 | `plugin` | The explicit plug-in registry |
-| `plugins/tilefloor` | The tile floor document and paint edit |
-| `views/mapview` | Map window behaviour, testable without a screen |
-| `window` | Ebitengine windows: input, drawing, test scripts |
+| `plugins/project` | The project index and the create, rename and delete edits |
+| `plugins/tilefloor` | Floors: paint either layer; resize on any side; add, change and remove anchors |
+| `plugins/zone` | Zones and the edits that add, remove and reorder floors |
+| `plugins/textdoc` | A placeholder text document for proving text editing and picks |
+| `ui`, `ui/textedit` | Widgets in the plain white look; the text editing core |
+| `views/frame` | What every window shares: requests, status bar, inspector |
+| `views/browser`, `views/mapview`, `views/textview` | The three windows, testable without a screen |
+| `window` | Ebitengine host: input and input method, requests, test scripts |

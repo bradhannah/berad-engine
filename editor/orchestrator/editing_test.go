@@ -268,7 +268,7 @@ func TestOpenWithoutLauncherIsRefused(t *testing.T) {
 	view := h.dial(t, "")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := view.Open(ctx, "map", h.floor); !errors.Is(err, client.ErrRejected) {
+	if _, err := view.Open(ctx, "map", h.floor, true); !errors.Is(err, client.ErrRejected) {
 		t.Fatalf("err = %v", err)
 	}
 }

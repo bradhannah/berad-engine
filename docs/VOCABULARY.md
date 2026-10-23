@@ -13,6 +13,8 @@ interface, and do not introduce synonyms.
 | **Area** | An authored, named region, defined only when something needs to refer to it ("wander in area X"). Areas can be indoors or outdoors, may overlap, and can sit inside other areas. A kind (for example building or room) may add detail. |
 | **Anchor** | A single named point that other content refers to, such as a destination or a place to stand. |
 | **Tile** | One grid cell. |
+| **Zone origin** | Cell 0,0, the fixed point every floor of a zone is positioned from. Columns count to the right and rows downwards; cells left of or above it have negative numbers. |
+| **Floor bounds** | The rectangle of cells a floor covers, around the zone origin. Resizing a floor changes its bounds. |
 | **Placement** | An object or NPC put on a map. One definition can have many placements. |
 
 Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
@@ -47,3 +49,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Command** / **Event** | A request to change project data / the notice that it changed |
 | **Edit** | One kind of change, implemented by a plug-in, that knows how to undo itself |
 | **Project data** / **Session state** | Saved, undoable content / live, unsaved, never-undone state |
+| **Project index** | The orchestrator's list of every document; creating, renaming and deleting documents are edits on it |
+| **Stand-in** | A typed placeholder tile (ground, wall, door, pickup) used until real art exists |
+| **Wall family** | A kind of wall (for example "old brick"); art for a family supplies one variant per neighbour arrangement |
+| **Ground** / **on top** | The two layers of a cell: its ground tile, and at most one tile sitting on it |
+| **Draft** | A text field's unsaved text; Enter saves it as an ordinary edit |
+| **Pick** | Choosing something in a Map window for another window, through the orchestrator |

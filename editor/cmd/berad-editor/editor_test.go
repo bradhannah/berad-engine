@@ -3,6 +3,7 @@ package main_test
 import (
 	"context"
 	"encoding/json"
+	"image"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,8 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/engine/content"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+)
+
+// The sample building's walls (see createSample), in cells from the zone
+// origin in the middle of its room.
+const (
+	left, top, right, bottom, door = -6, -4, 6, 4, 0
 )
 
 // buildEditor compiles berad-editor once per test into a temporary folder.
@@ -25,11 +36,11 @@ func buildEditor(t *testing.T) string {
 	return binary
 }
 
-func floorTiles(t *testing.T, project string) func(col, row int) string {
+func readEnvelope(t *testing.T, project, pattern string) content.Envelope {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(project, "tilefloors", "*.json"))
+	matches, err := filepath.Glob(filepath.Join(project, pattern))
 	if err != nil || len(matches) != 1 {
-		t.Fatalf("floor files %v %v", matches, err)
+		t.Fatalf("files matching %s: %v %v", pattern, matches, err)
 	}
 	raw, err := os.ReadFile(matches[0])
 	if err != nil {
@@ -39,18 +50,44 @@ func floorTiles(t *testing.T, project string) func(col, row int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return envelope
+}
+
+func readFloor(t *testing.T, project, name string) (*floor.Floor, content.Envelope) {
+	t.Helper()
+	envelope := readEnvelope(t, project, "tilefloors/"+name+"--*.json")
 	document, err := tilefloor.Decode(envelope.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	floor := document.(*tilefloor.Document).Floor
-	return func(col, row int) string {
-		tile, err := floor.At(col, row)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return tile
+	return document.(*tilefloor.Document).Floor, envelope
+}
+
+func cellOf(t *testing.T, fl *floor.Floor, layer string, col, row int) string {
+	t.Helper()
+	read := fl.Ground
+	if layer == tilefloor.LayerTop {
+		read = fl.Top
 	}
+	tile, err := read(col, row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tile
+}
+
+// buildingWalls returns the wall cells of the sample building, door excluded.
+func buildingWalls() [][2]int {
+	var cells [][2]int
+	for col := left; col <= right; col++ {
+		for row := top; row <= bottom; row++ {
+			edge := col == left || col == right || row == top || row == bottom
+			if edge && !(row == bottom && col == door) {
+				cells = append(cells, [2]int{col, row})
+			}
+		}
+	}
+	return cells
 }
 
 // TestHeadlessOpenCreatesAndSavesSample runs the real program without a window.
@@ -61,37 +98,83 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("open: %v\n%s", err, output)
 	}
-	tile := floorTiles(t, project)
-	if tile(6, 5) != "wall" || tile(0, 0) != "grass" {
-		t.Fatal("sample floor not saved")
+	ground, envelope := readFloor(t, project, "ground-floor")
+	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, -16, -12) != "grass" ||
+		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 1 {
+		t.Fatal("sample ground floor not saved")
 	}
+	if ground.Bounds() != floor.Centered(32, 24) || envelope.Version != floor.FormatVersion {
+		t.Fatalf("sample floor bounds %v, version %d", ground.Bounds(), envelope.Version)
+	}
+	zoneEnvelope := readEnvelope(t, project, "zones/sample-zone--*.json")
+	zoneDoc, err := zoneplugin.Decode(zoneEnvelope.Data)
+	if err != nil || len(zoneDoc.(*zoneplugin.Document).Zone.Floors()) != 2 || zoneDoc.(*zoneplugin.Document).Zone.Floors()[0] != envelope.ID {
+		t.Fatalf("sample zone: %v", err)
+	}
+	readEnvelope(t, project, "texts/notes--*.json")
 }
 
+// step is one input-script step (see window/script.go).
 type step struct {
-	Repeat   int     `json:"repeat,omitempty"`
-	Cell     *[2]int `json:"cell,omitempty"`
-	Down     bool    `json:"down,omitempty"`
-	Pressed  bool    `json:"pressed,omitempty"`
-	Released bool    `json:"released,omitempty"`
-	Undo     bool    `json:"undo,omitempty"`
-	NewView  bool    `json:"newView,omitempty"`
-	Quit     bool    `json:"quit,omitempty"`
-	Crash    bool    `json:"crash,omitempty"`
-	TileKey  int     `json:"tileKey,omitempty"`
+	Repeat     int             `json:"repeat,omitempty"`
+	At         string          `json:"at,omitempty"`
+	Down       bool            `json:"down,omitempty"`
+	Pressed    bool            `json:"pressed,omitempty"`
+	Released   bool            `json:"released,omitempty"`
+	Double     bool            `json:"double,omitempty"`
+	Keys       []string        `json:"keys,omitempty"`
+	Text       string          `json:"text,omitempty"`
+	Replace    *ui.Replacement `json:"replace,omitempty"`
+	Expect     *expectation    `json:"expect,omitempty"`
+	Screenshot string          `json:"screenshot,omitempty"`
 }
 
-func cell(col, row int) *[2]int { return &[2]int{col, row} }
+type expectation struct {
+	Locate string `json:"locate"`
+}
 
 func wait(frames int) step { return step{Repeat: frames} }
 
-// stroke presses on the first cell, drags through the rest and releases.
-func stroke(tileKey int, cells ...[2]int) []step {
-	steps := []step{{Repeat: 2, TileKey: tileKey}}
-	for index, position := range cells {
-		steps = append(steps, step{Repeat: 3, Cell: cell(position[0], position[1]), Down: true, Pressed: index == 0})
+func keys(names ...string) step { return step{Repeat: 2, Keys: names} }
+
+func typed(text string) step { return step{Repeat: 2, Text: text} }
+
+func quit() step { return keys("Cmd+W") }
+
+// expect waits up to frames for a named part of the window to exist.
+func expect(locate string, frames int) step {
+	return step{Repeat: frames, Expect: &expectation{Locate: locate}}
+}
+
+// click presses and releases the main button on a named part of the window.
+func click(at string) []step {
+	return []step{{Repeat: 2, At: at, Down: true, Pressed: true}, {Repeat: 2, At: at, Released: true}}
+}
+
+func doubleClick(at string) []step {
+	return append(click(at), step{Repeat: 2, At: at, Down: true, Pressed: true, Double: true}, step{Repeat: 2, At: at, Released: true})
+}
+
+// drag presses on the first cell, drags through the rest and releases.
+func drag(cells ...string) []step {
+	steps := []step{}
+	for index, at := range cells {
+		steps = append(steps, step{Repeat: 3, At: at, Down: true, Pressed: index == 0})
 	}
-	last := cells[len(cells)-1]
-	return append(steps, step{Repeat: 2, Cell: cell(last[0], last[1]), Released: true})
+	return append(steps, step{Repeat: 2, At: cells[len(cells)-1], Released: true})
+}
+
+func script(parts ...any) []step {
+	var steps []step
+	for _, part := range parts {
+		switch value := part.(type) {
+		case step:
+			steps = append(steps, value)
+		case []step:
+			steps = append(steps, value...)
+		}
+	}
+	return steps
 }
 
 func writeScript(t *testing.T, name string, steps []step) string {
@@ -114,15 +197,29 @@ func requireGUI(t *testing.T) {
 	}
 }
 
-// runEditor opens the project with scripted windows and waits for the editor
-// to quit by itself once its last window closes.
-func runEditor(t *testing.T, binary, project string, scripts ...string) string {
+// scripts maps each view to the scripts its windows run, in the order the
+// windows open.
+type scripts map[string][][]step
+
+func (s scripts) env(t *testing.T) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	var entries []string
+	for view, list := range s {
+		for index, steps := range list {
+			entries = append(entries, view+"="+writeScript(t, view+string(rune('a'+index))+".json", steps))
+		}
+	}
+	return "BERAD_INPUT_SCRIPT=" + strings.Join(entries, ",")
+}
+
+// runEditor opens the sample project with scripted windows and waits for the
+// editor to quit by itself once its last window closes.
+func runEditor(t *testing.T, binary, project string, windows scripts) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	screenshot := filepath.Join(t.TempDir(), "window.png")
 	cmd := exec.CommandContext(ctx, binary, "open", "--project", project, "--sample")
-	cmd.Env = append(os.Environ(), "BERAD_INPUT_SCRIPT="+strings.Join(scripts, ","), "BERAD_SCREENSHOT="+screenshot)
+	cmd.Env = append(os.Environ(), windows.env(t))
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		t.Fatalf("editor did not quit after its windows closed\n%s", output)
@@ -130,58 +227,178 @@ func runEditor(t *testing.T, binary, project string, scripts ...string) string {
 	if err != nil {
 		t.Fatalf("editor: %v\n%s", err, output)
 	}
-	return screenshot
 }
 
-// TestWindowPaintsAndUndoesAStroke drives a real Map window: a drag paints
-// through the orchestrator, a second stroke is undone in one step, and the
-// result is in the saved file after the window closes.
-func TestWindowPaintsAndUndoesAStroke(t *testing.T) {
+// closeBrowser is a project browser script that waits for the project and
+// closes, leaving the other windows to the test.
+func closeBrowser() []step {
+	return script(expect("row:Notes", 600), quit())
+}
+
+// TestMapPaintsDrawsAndUndoes drives a real Map window: a drag paints the
+// ground through the orchestrator, a drag with the Walls tool draws walls in
+// the chosen family, undo takes the walls back in one step, and the result is
+// in the saved file. Then the Resize tool adds a row on top with its button,
+// drags the bottom edge down two rows, and undo takes the drag back.
+func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	var steps []step
-	steps = append(steps, wait(10))
-	steps = append(steps, stroke(3, [2]int{20, 18}, [2]int{21, 18}, [2]int{22, 18}, [2]int{23, 18})...)
-	steps = append(steps, wait(10))
-	steps = append(steps, stroke(5, [2]int{20, 20}, [2]int{21, 20}, [2]int{22, 20})...)
-	steps = append(steps, wait(10), step{Undo: true, Repeat: 40}, wait(90), step{Quit: true})
-	screenshot := runEditor(t, binary, project, writeScript(t, "window.json", steps))
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
+		keys("W"), keys("3"), drag("cell:4,10", "cell:5,10", "cell:6,10"), wait(10),
+		keys("Cmd+Z"), wait(60),
+		keys("R"), click("ui:grow-top"), expect("state:bounds:-16,-13,32,25", 300), wait(5),
+		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
+		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(60), quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
 
-	tile := floorTiles(t, project)
-	for col := 20; col <= 23; col++ {
-		if tile(col, 18) != "wall" {
-			t.Fatalf("stroke 1 cell %d = %q", col, tile(col, 18))
+	ground, _ := readFloor(t, project, "ground-floor")
+	for col := 4; col <= 7; col++ {
+		if got := cellOf(t, ground, tilefloor.LayerGround, col, 8); got != "road" {
+			t.Fatalf("painted ground cell %d = %q", col, got)
 		}
 	}
-	for col := 20; col <= 22; col++ {
-		if tile(col, 20) != "grass" {
-			t.Fatalf("undone stroke 2 cell %d = %q", col, tile(col, 20))
+	for col := 4; col <= 6; col++ {
+		if got := cellOf(t, ground, tilefloor.LayerTop, col, 10); got != "" {
+			t.Fatalf("undone wall cell %d = %q", col, got)
 		}
 	}
-	if _, err := os.Stat(screenshot); err != nil {
-		t.Fatalf("no screenshot: %v", err)
+	if ground.Bounds() != image.Rect(-16, -13, 16, 12) {
+		t.Fatalf("resized bounds %v", ground.Bounds())
 	}
-	t.Logf("screenshot: %s", screenshot)
+	if got := cellOf(t, ground, tilefloor.LayerGround, 0, -13); got != "grass" {
+		t.Fatalf("the added row has ground %q, want the floor's most common ground", got)
+	}
+}
+
+// TestWallFamiliesForARoomAndARun selects a room by double-clicking inside it
+// and changes its walls' family in one go; then, on the upper floor, selects
+// a connected run of walls by clicking one and changes that run.
+func TestWallFamiliesForARoomAndARun(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := filepath.Join(t.TempDir(), "upper.png")
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		keys("S"), doubleClick("cell:0,0"), wait(5), click("tile:wall.c"), wait(20),
+		keys("PageUp"), expect("state:floor:2", 300), expect("state:loaded", 300), wait(10),
+		click("cell:-6,-4"), wait(5), click("tile:wall"), wait(20),
+		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
+
+	ground, _ := readFloor(t, project, "ground-floor")
+	upper, _ := readFloor(t, project, "upper-floor")
+	for _, cell := range buildingWalls() {
+		if got := cellOf(t, ground, tilefloor.LayerTop, cell[0], cell[1]); got != "wall.c" {
+			t.Fatalf("room wall %v = %q, want the new family", cell, got)
+		}
+	}
+	if got := cellOf(t, ground, tilefloor.LayerTop, door, bottom); got != "door" {
+		t.Fatalf("the door became %q", got)
+	}
+	for _, cell := range buildingWalls() {
+		if got := cellOf(t, upper, tilefloor.LayerTop, cell[0], cell[1]); got != "wall" {
+			t.Fatalf("upper run wall %v = %q", cell, got)
+		}
+	}
+	if _, err := os.Stat(shot); err != nil {
+		t.Fatalf("no screenshot of the upper floor: %v", err)
+	}
+	t.Logf("upper floor with the floor below: %s", shot)
+}
+
+// TestAnchorTextAndPickOnMap adds and names an anchor in the Map window, opens
+// the text document from the project browser, writes in it (a new line with
+// Cmd+Enter, an accent the way press-and-hold sends it, Enter to save), then
+// picks the anchor as its location through the orchestrator.
+func TestAnchorTextAndPickOnMap(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		keys("A"), click("cell:4,6"), wait(30), typed("Well"), keys("Enter"), wait(20),
+		expect("state:picking", 1800), wait(5), click("cell:4,6"), wait(40), quit(),
+	)
+	browserScript := script(
+		expect("row:Notes", 600), click("row:Notes"), keys("Enter"), wait(30), quit(),
+	)
+	textScript := script(
+		expect("state:loaded", 600), wait(5),
+		click("ui:body"), keys("Cmd+Down"), keys("Cmd+Enter"),
+		typed("caf"), typed("e"), step{Repeat: 2, Replace: &ui.Replacement{Before: 1, After: 0, Text: "é", Caret: 2}},
+		typed(" ok"), keys("Enter"), expect("state:saved", 300), wait(120),
+		click("ui:pick"), expect("state:located", 1800), wait(10), quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "text": {textScript}})
+
+	ground, groundEnvelope := readFloor(t, project, "ground-floor")
+	well, found := ground.AnchorAt(4, 6)
+	if !found || well.Name != "Well" {
+		t.Fatalf("anchor %+v %v", well, found)
+	}
+	envelope := readEnvelope(t, project, "texts/notes--*.json")
+	decoded, err := textdoc.Decode(envelope.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := decoded.(*textdoc.Document)
+	if !strings.HasSuffix(notes.Body, "\ncafé ok") {
+		t.Fatalf("body %q", notes.Body)
+	}
+	if notes.Location.Floor != groundEnvelope.ID || notes.Location.Anchor != well.ID {
+		t.Fatalf("location %+v, want the Well anchor", notes.Location)
+	}
+}
+
+// TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
+// inspector by typing a name and clicking Rename, deletes the text document
+// after confirming, and undoes the deletion.
+func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		click("ui:new-zone"), expect("row:Zone 1", 300), click("row:Zone 1"),
+		click("ui:name"), keys("Cmd+A"), typed("Harbour"), click("ui:rename"), expect("row:Harbour", 300),
+		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
+		keys("Cmd+Z"), expect("row:Notes", 300), wait(10), quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	harbour := readEnvelope(t, project, "zones/harbour--*.json")
+	zoneDoc, err := zoneplugin.Decode(harbour.Data)
+	if err != nil || len(zoneDoc.(*zoneplugin.Document).Zone.Floors()) != 1 {
+		t.Fatalf("new zone %v", err)
+	}
+	readFloor(t, project, "floor-1")
+	readEnvelope(t, project, "texts/notes--*.json")
 }
 
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes
-// the first view's stroke, because views of one map share one undo list.
+// the first view's stroke, because views of one zone share one undo list.
 func TestViewsShareUndo(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	var first []step
-	first = append(first, wait(10))
-	first = append(first, stroke(4, [2]int{2, 20}, [2]int{3, 20}, [2]int{4, 20})...)
-	first = append(first, wait(10), step{NewView: true}, wait(300), step{Quit: true})
-	second := []step{wait(30), {Undo: true, Repeat: 30}, wait(30), {Quit: true}}
-	runEditor(t, binary, project, writeScript(t, "first.json", first), writeScript(t, "second.json", second))
+	first := script(
+		expect("state:loaded", 600), wait(5), keys("4"), drag("cell:2,9", "cell:3,9", "cell:4,9"),
+		wait(10), keys("Cmd+N"), wait(300), quit(),
+	)
+	second := script(expect("state:loaded", 600), wait(20), keys("Cmd+Z"), wait(30), quit())
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
 
-	tile := floorTiles(t, project)
+	ground, _ := readFloor(t, project, "ground-floor")
 	for col := 2; col <= 4; col++ {
-		if tile(col, 20) != "grass" {
-			t.Fatalf("cell %d = %q; the second view should have undone the first view's stroke", col, tile(col, 20))
+		if got := cellOf(t, ground, tilefloor.LayerGround, col, 9); got != "grass" {
+			t.Fatalf("cell %d = %q; the second view should have undone the first view's stroke", col, got)
 		}
 	}
 }
@@ -193,10 +410,8 @@ func TestWindowsCloseWhenOrchestratorIsKilled(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	first := []step{wait(10), {NewView: true}, wait(3600)}
-	second := []step{wait(3600)}
 	cmd := exec.Command(binary, "open", "--project", project, "--sample")
-	cmd.Env = append(os.Environ(), "BERAD_INPUT_SCRIPT="+writeScript(t, "first.json", first)+","+writeScript(t, "second.json", second))
+	cmd.Env = append(os.Environ(), scripts{"map": {{wait(3600)}}, "browser": {{wait(3600)}}}.env(t))
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -233,9 +448,9 @@ func TestCrashedWindowLeavesAReport(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	first := []step{wait(10), {NewView: true}, wait(240), {Quit: true}}
-	second := []step{wait(30), {Crash: true}}
-	runEditor(t, binary, project, writeScript(t, "first.json", first), writeScript(t, "second.json", second))
+	first := script(expect("state:loaded", 600), keys("Cmd+N"), wait(240), quit())
+	second := script(wait(30), keys("Cmd+Shift+K"))
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
 
 	reports, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*-crash.json"))
 	if err != nil || len(reports) != 1 {

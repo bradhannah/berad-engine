@@ -58,6 +58,14 @@ type Update struct {
 	Session *protocol.Session
 	// Shutdown asks the window to clean up and close.
 	Shutdown *protocol.Shutdown
+	// Attention asks the window to draw attention to itself.
+	Attention bool
+	// PickStart asks this Map window to answer a pick.
+	PickStart *protocol.PickStart
+	// PickAnswer answers a pick this window asked for.
+	PickAnswer *protocol.PickAnswer
+	// PickCancel ends a pick this window asked for or was answering.
+	PickCancel *protocol.PickCancel
 }
 
 // Client is one window's connection.
@@ -244,9 +252,10 @@ func (c *Client) Redo(ctx context.Context) (protocol.Result, error) {
 	return resultOf(reply)
 }
 
-// Open asks the orchestrator to open another window.
-func (c *Client) Open(ctx context.Context, view string, target ids.ULID) (protocol.Result, error) {
-	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target})
+// Open asks the orchestrator to open a window, or to draw attention to the
+// window already showing that view and target unless newView is set.
+func (c *Client) Open(ctx context.Context, view string, target ids.ULID, newView bool) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target, NewView: newView})
 	if err != nil {
 		return protocol.Result{}, err
 	}
@@ -254,17 +263,78 @@ func (c *Client) Open(ctx context.Context, view string, target ids.ULID) (protoc
 	return resultOf(reply)
 }
 
-// Publish shares a session-state value with the other windows.
-func (c *Client) Publish(topic string, value []byte) error {
-	message, err := protocol.NewMessage(protocol.KindSession, 0, protocol.Session{Topic: topic, Value: value})
+// WhereUsed asks which documents refer to a document, or to one item in it.
+func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) ([]protocol.Use, error) {
+	reply, err := c.request(ctx, protocol.KindQuery, protocol.Query{
+		Question: protocol.QuestionWhereUsed, Document: document, Item: item,
+	})
 	if err != nil {
-		return fmt.Errorf("publish %s: %w", topic, err)
+		return nil, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return nil, rejected(reply)
+	}
+	answer, err := protocol.DecodePayload[protocol.Answer](reply)
+	if err != nil {
+		return nil, err
+	}
+
+	return answer.Uses, nil
+}
+
+// PickAsk asks which open Map windows a pick could use.
+func (c *Client) PickAsk(ctx context.Context, what string) ([]protocol.PickMap, error) {
+	reply, err := c.request(ctx, protocol.KindPickAsk, protocol.PickAsk{What: what, Maps: nil})
+	if err != nil {
+		return nil, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return nil, rejected(reply)
+	}
+	ask, err := protocol.DecodePayload[protocol.PickAsk](reply)
+	if err != nil {
+		return nil, err
+	}
+
+	return ask.Maps, nil
+}
+
+// PickStart starts a pick in a Map window, or on a zone in a new one.
+func (c *Client) PickStart(ctx context.Context, start protocol.PickStart) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindPickStart, start)
+	if err != nil {
+		return protocol.Result{}, err
+	}
+
+	return resultOf(reply)
+}
+
+// PickAnswer answers the pick this Map window is showing.
+func (c *Client) PickAnswer(answer protocol.PickAnswer) error {
+	return c.notify(protocol.KindPickAnswer, answer)
+}
+
+// PickCancel ends a pick from either side.
+func (c *Client) PickCancel(cancel protocol.PickCancel) error {
+	return c.notify(protocol.KindPickCancel, cancel)
+}
+
+// notify sends a message that expects no reply.
+func (c *Client) notify(kind protocol.Kind, payload any) error {
+	message, err := protocol.NewMessage(kind, 0, payload)
+	if err != nil {
+		return fmt.Errorf("%s: %w", kind, err)
 	}
 	if err := c.conn.Send(message); err != nil {
-		return fmt.Errorf("publish %s: %w", topic, err)
+		return fmt.Errorf("%s: %w", kind, err)
 	}
 
 	return nil
+}
+
+// Publish shares a session-state value with the other windows.
+func (c *Client) Publish(topic string, value []byte) error {
+	return c.notify(protocol.KindSession, protocol.Session{Topic: topic, Value: value})
 }
 
 func (c *Client) request(ctx context.Context, kind protocol.Kind, payload any) (protocol.Message, error) {

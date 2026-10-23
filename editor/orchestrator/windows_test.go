@@ -25,7 +25,7 @@ func openWindow(t *testing.T, view *client.Client, h *harness) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := view.Open(ctx, "map", h.floor); err != nil {
+	if _, err := view.Open(ctx, "map", h.floor, true); err != nil {
 		t.Fatal(err)
 	}
 }
