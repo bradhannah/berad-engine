@@ -91,6 +91,28 @@ func TestFieldWrapsAndClicksPlaceTheCaret(t *testing.T) {
 	}
 }
 
+// TestSingleLineFieldHoldsStill clicks into a field one button high, whose
+// line of text is taller than the room inside its padding, and checks the
+// text stays put from frame to frame instead of scrolling back and forth.
+func TestSingleLineFieldHoldsStill(t *testing.T) {
+	t.Parallel()
+	field := ui.NewTextField("name", textedit.NewField("Harbour", false, 0), false, theme(t))
+	field.Rect = image.Rect(10, 10, 210, 10+ui.ButtonH)
+	var focus ui.Focus
+	focus.Register(field)
+	focus.Update(&ui.Input{Cursor: image.Pt(50, 20), Pressed: true, Down: true}, nil)
+	first, _, _ := field.Session()
+	for range 3 {
+		focus.Update(frame(), nil)
+		if caret, _, _ := field.Session(); caret != first {
+			t.Fatalf("the caret moved from %v to %v with no input", first, caret)
+		}
+	}
+	if first.Min.Y < field.Rect.Min.Y || first.Max.Y > field.Rect.Max.Y {
+		t.Fatalf("caret %v outside the field %v", first, field.Rect)
+	}
+}
+
 func TestDialogKeys(t *testing.T) {
 	t.Parallel()
 	dialog := ui.NewDialog("Delete?", []string{"It is used in 2 places."},

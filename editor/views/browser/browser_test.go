@@ -12,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/browser"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -166,5 +167,33 @@ func TestRenameInTheInspector(t *testing.T) {
 	var args project.RenameArgs
 	if err := renames[0].Decode(&args); err != nil || args.ID != textID || args.Name != "Ideas" {
 		t.Fatalf("rename %+v %v", args, err)
+	}
+}
+
+// TestRenameButtonSavesTheTypedName types a new name into the field, then
+// clicks Rename instead of pressing Enter: the button saves the name.
+func TestRenameButtonSavesTheTypedName(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("row:Notes", false)
+	f.click("ui:name", false)
+	selectAll := ui.NewInput(image.Pt(0, 0))
+	selectAll.Presses = []ui.Press{ui.ParsePress("Cmd+A")}
+	f.state.Update(&selectAll, f.ctx)
+	typed := ui.NewInput(image.Pt(0, 0))
+	typed.Text = "Ideas"
+	f.state.Update(&typed, f.ctx)
+	f.click("ui:rename", false)
+	renames := f.requests.Of(project.RenameEdit)
+	if len(renames) != 1 {
+		t.Fatalf("renames %d", len(renames))
+	}
+	var args project.RenameArgs
+	if err := renames[0].Decode(&args); err != nil || args.Name != "Ideas" {
+		t.Fatalf("rename %+v %v", args, err)
+	}
+	renames[0].Succeed(ids.ULID{})
+	if message, _ := f.ctx.Frame.Message(); message != "Renamed to “Ideas”" {
+		t.Fatalf("status %q", message)
 	}
 }

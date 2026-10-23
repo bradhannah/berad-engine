@@ -341,10 +341,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 	case s.down.Update(input):
 		s.moveFloor(ctx, -1)
 	case s.rename.Update(input):
-		s.focus.Set(s.name)
-		if buffer := s.name.Field.Buffer(); buffer != nil {
-			buffer.SelectAll()
-		}
+		s.renameSelected(ctx)
 	case s.remove.Update(input):
 		s.deleteSelected(ctx)
 	}
@@ -370,6 +367,21 @@ func (s *State) syncName(docs frame.Docs) {
 	s.name.Field.SetSaved(entry.Name)
 }
 
+// renameSelected saves a name typed into the name field, as Enter does. With
+// nothing typed yet, it selects the name so typing replaces it.
+func (s *State) renameSelected(ctx *frame.Context) {
+	if s.name.Field.Dirty() {
+		s.commitName(ctx)
+
+		return
+	}
+	s.focus.Set(s.name)
+	if buffer := s.name.Field.Buffer(); buffer != nil {
+		buffer.SelectAll()
+	}
+	ctx.Frame.Status("Type a new name, then press Enter or click Rename")
+}
+
 func (s *State) commitName(ctx *frame.Context) {
 	name, changed := s.name.Field.Commit()
 	if !changed {
@@ -377,9 +389,13 @@ func (s *State) commitName(ctx *frame.Context) {
 
 		return
 	}
-	rename := project.RenameArgs{ID: s.named, Name: strings.TrimSpace(name)}
+	name = strings.TrimSpace(name)
+	rename := project.RenameArgs{ID: s.named, Name: name}
 	s.command(ctx, project.IndexID(), project.RenameEdit, "", rename,
-		func(protocol.Result, error) { s.focus.Set(nil) },
+		func(protocol.Result, error) {
+			s.focus.Set(nil)
+			ctx.Frame.Status("Renamed to “" + name + "”")
+		},
 		func() { s.name.Field.Failed() })
 }
 

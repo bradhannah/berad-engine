@@ -201,9 +201,26 @@ func (w *TextField) layoutOf(value string) *berad.Layout {
 	return layout
 }
 
-// origin is where the text's top-left corner sits on screen.
+// origin is where the text's top-left corner sits on screen. A single-line
+// field centres its line in its height and never scrolls up or down.
 func (w *TextField) origin() image.Point {
-	return image.Pt(w.Rect.Min.X+fieldPad-w.scroll.X, w.Rect.Min.Y+fieldPad-w.scroll.Y)
+	top := w.Rect.Min.Y + fieldPad - w.scroll.Y
+	if !w.Multiline {
+		top = w.Rect.Min.Y + (w.Rect.Dy()-w.lineHeight())/Half
+	}
+
+	return image.Pt(w.Rect.Min.X+fieldPad-w.scroll.X, top)
+}
+
+// lineHeight returns the height of one line of the field's text.
+func (w *TextField) lineHeight() int {
+	layout := w.layout()
+	if layout == nil || len(layout.Lines()) == 0 {
+		return LineHeight
+	}
+	bounds := layout.Lines()[0].Bounds
+
+	return int(math.Ceil(bounds.Max.Y - bounds.Min.Y))
 }
 
 func (w *TextField) caretRect() image.Rectangle {
@@ -226,20 +243,24 @@ func (w *TextField) caretRect() image.Rectangle {
 func (w *TextField) keepCaretVisible() {
 	inner := w.Rect.Inset(fieldPad)
 	caret := w.caretRect()
-	switch {
-	case caret.Min.X < inner.Min.X:
-		w.scroll.X -= inner.Min.X - caret.Min.X
-	case caret.Max.X > inner.Max.X:
-		w.scroll.X += caret.Max.X - inner.Max.X
+	w.scroll.X = max(w.scroll.X+scrollToShow(caret.Min.X, caret.Max.X, inner.Min.X, inner.Max.X), 0)
+	if w.Multiline {
+		w.scroll.Y = max(w.scroll.Y+scrollToShow(caret.Min.Y, caret.Max.Y, inner.Min.Y, inner.Max.Y), 0)
 	}
+}
+
+// scrollToShow returns how far to scroll so the span low..high shows inside
+// from..to. A span longer than the room keeps its start in view, so scrolling
+// settles instead of alternating between the two ends every frame.
+func scrollToShow(low, high, from, to int) int {
 	switch {
-	case caret.Min.Y < inner.Min.Y:
-		w.scroll.Y -= inner.Min.Y - caret.Min.Y
-	case caret.Max.Y > inner.Max.Y:
-		w.scroll.Y += caret.Max.Y - inner.Max.Y
+	case low < from:
+		return low - from
+	case high > to:
+		return min(high-to, low-from)
+	default:
+		return 0
 	}
-	w.scroll.X = max(w.scroll.X, 0)
-	w.scroll.Y = max(w.scroll.Y, 0)
 }
 
 // hit returns the text offset nearest a screen point.
@@ -361,7 +382,7 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 	}
 	value := w.Field.Value()
 	if value == "" && !w.focused && w.composition == "" {
-		w.theme.DrawText(area, w.Placeholder, w.Rect.Min.X+fieldPad, w.Rect.Min.Y+fieldPad, ColorSubdued())
+		w.theme.DrawText(area, w.Placeholder, w.Rect.Min.X+fieldPad, w.origin().Y, ColorSubdued())
 	}
 	w.drawText(area, value)
 	if w.Field.Dirty() {
