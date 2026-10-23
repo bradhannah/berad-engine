@@ -25,6 +25,23 @@ when a consuming game needs it, not in anticipation of hypothetical needs.
 Each game keeps its own content, settings and unique game modes (such as intros)
 in its own repository.
 
+## Checks
+
+Both modules follow berad-sdk's strict Go policy: the same lint configuration
+(`.golangci.yml`) and pinned tools (golangci-lint 2.12.2, goimports from
+golang.org/x/tools v0.37.0), with zero findings and no baseline.
+
+```sh
+make tools   # install the pinned tools into .cache/tools (needs network)
+make check   # formatting, lint, go vet and race tests for both modules
+make format  # apply formatting
+```
+
+## Dependencies
+
+Ebitengine v2.10.5 and ebitenui v0.7.3 are the chosen versions. They are added
+to a module when its first code uses them.
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) before working in this repository.
