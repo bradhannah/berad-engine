@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -25,6 +26,7 @@ func (o *Orchestrator) join(joined *window) {
 	for topic, value := range o.session {
 		o.send(joined, mustMessage(protocol.KindSession, 0, protocol.Session{Topic: topic, Value: value}))
 	}
+	o.pickJoined(joined)
 }
 
 // leave forgets a window. Its undo list ends unless another view shares it.
@@ -38,6 +40,7 @@ func (o *Orchestrator) leave(left *window) {
 	}
 	o.history.leave(left.group)
 	close(left.out)
+	o.endPicksWith(left.id)
 }
 
 func (o *Orchestrator) handle(message inbound) {
@@ -59,8 +62,18 @@ func (o *Orchestrator) handle(message inbound) {
 		o.sessionUpdate(message.from, message.message)
 	case protocol.KindOpen:
 		o.openWindow(message.from, message.message)
+	case protocol.KindQuery:
+		o.query(message.from, message.message)
+	case protocol.KindPickAsk:
+		o.pickAsk(message.from, message.message)
+	case protocol.KindPickStart:
+		o.pickStart(message.from, message.message)
+	case protocol.KindPickAnswer:
+		o.pickAnswer(message.from, message.message)
+	case protocol.KindPickCancel:
+		o.pickCancel(message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
-		protocol.KindEvent, protocol.KindShutdown:
+		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention:
 		o.reply(message.from, request, reasonUnexpected, 0)
 	default:
 		o.reply(message.from, request, reasonUnexpected, 0)
@@ -108,32 +121,45 @@ func (o *Orchestrator) command(from *window, message protocol.Message) {
 
 		return
 	}
-	applied, revision, err := o.applyEdit(from, command.Document, command.Edit, command.Args, message.Request)
+	applied, err := o.applyEdit(from, command.Document, command.Edit, command.Args, message.Request)
 	if err != nil {
 		o.reply(from, message.Request, err.Error(), 0)
 
 		return
 	}
-	o.history.record(from.group, command.Gesture, applied)
-	o.reply(from, message.Request, "", revision)
+	o.history.record(from.group, command.Gesture, applied.action)
+	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
+		OK: true, Reason: "", Revision: applied.revision, Created: applied.created,
+	}))
 }
 
-// applyEdit applies, journals and broadcasts one edit. If the journal cannot
-// record it, the edit is reverted and reported as not saved.
+// appliedEdit is the outcome of applyEdit.
+type appliedEdit struct {
+	action   action
+	revision uint64
+	created  ids.ULID
+}
+
+// applyEdit prepares, applies, journals and broadcasts one edit. If the
+// journal cannot record it, the edit is reverted and reported as not saved.
 func (o *Orchestrator) applyEdit(
 	origin *window, documentID ids.ULID, editName string, args json.RawMessage, request uint64,
-) (action, uint64, error) {
+) (appliedEdit, error) {
 	entry, ok := o.docs[documentID]
 	if !ok {
-		return action{}, 0, fmt.Errorf("%w: %s", ErrUnknownDocument, documentID)
+		return appliedEdit{}, fmt.Errorf("%w: %s", ErrUnknownDocument, documentID)
 	}
 	kind, ok := o.cfg.Registry.Edit(editName)
 	if !ok {
-		return action{}, 0, fmt.Errorf("%w: %s", ErrUnknownEdit, editName)
+		return appliedEdit{}, fmt.Errorf("%w: %s", ErrUnknownEdit, editName)
+	}
+	args, created, err := o.prepare(entry, kind, args)
+	if err != nil {
+		return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)
 	}
 	applied, err := kind.Apply(entry.document, args)
 	if err != nil {
-		return action{}, 0, fmt.Errorf("%s refused: %w", editName, err)
+		return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)
 	}
 	o.seq++
 	revision := entry.info.Revision + 1
@@ -141,22 +167,72 @@ func (o *Orchestrator) applyEdit(
 		Version: journalVersion, Seq: o.seq, Document: documentID, Revision: revision, Edit: editName, Args: args,
 	})
 	if journalErr != nil {
-		if _, revertErr := kind.Apply(entry.document, applied.Inverse); revertErr != nil {
-			o.cfg.Logger.Error("could not revert an unsaved edit", "document", documentID, "error", revertErr)
-		}
+		o.revert(entry, kind, applied)
 
-		return action{}, 0, fmt.Errorf("%w: %w", ErrNotSaved, journalErr)
+		return appliedEdit{}, fmt.Errorf("%w: %w", ErrNotSaved, journalErr)
+	}
+	if isIndex(documentID) {
+		if err := o.applyLifecycle(editName, args, true); err != nil {
+			o.cfg.Logger.Error("journaled project change could not be carried out", "edit", editName, "error", err)
+		}
 	}
 	entry.info.Revision = revision
-	entry.dirty = true
+	entry.dirty = entry.info.Path != ""
 	o.history.noteWrite(origin.group, documentID, applied.Touched, o.seq)
 	o.broadcast(documentID, protocol.Event{
 		Document: documentID, Revision: revision, Edit: editName, Args: args, Origin: origin.id, Request: request,
 	})
 
-	return action{
-		document: documentID, edit: editName, forward: args, back: applied.Inverse, touched: applied.Touched, seq: o.seq,
-	}, revision, nil
+	return appliedEdit{
+		action: action{
+			document: documentID, edit: editName, backEdit: applied.InverseEdit, forward: args, back: applied.Inverse,
+			touched: applied.Touched, covers: applied.Covers, seq: o.seq,
+		},
+		revision: revision,
+		created:  created,
+	}, nil
+}
+
+// prepare completes an edit's arguments before it is applied: project index
+// edits by the orchestrator itself, other edits by their kind (D4).
+func (o *Orchestrator) prepare(
+	entry *documentEntry, kind model.EditKind, args json.RawMessage,
+) (json.RawMessage, ids.ULID, error) {
+	if isIndex(entry.info.ID) {
+		return o.prepareLifecycle(kind.Name(), args)
+	}
+	preparer, ok := kind.(model.Preparer)
+	if !ok {
+		return args, ids.ULID{}, nil
+	}
+	var created ids.ULID
+	prepared, err := preparer.Prepare(entry.document, args, func() (ids.ULID, error) {
+		assigned, err := o.ids.New()
+		if err != nil {
+			return ids.ULID{}, fmt.Errorf("new id: %w", err)
+		}
+		created = assigned
+
+		return assigned, nil
+	})
+	if err != nil {
+		return nil, ids.ULID{}, fmt.Errorf("prepare: %w", err)
+	}
+
+	return prepared, created, nil
+}
+
+// revert undoes an applied edit that could not be journaled.
+func (o *Orchestrator) revert(entry *documentEntry, kind model.EditKind, applied model.Applied) {
+	inverse := kind
+	if applied.InverseEdit != "" {
+		if found, ok := o.cfg.Registry.Edit(applied.InverseEdit); ok {
+			inverse = found
+		}
+	}
+	if _, err := inverse.Apply(entry.document, applied.Inverse); err != nil {
+		o.cfg.Logger.Error("could not revert an unsaved edit", "document", entry.info.ID, "error", err)
+	}
 }
 
 // undo reverts the window's latest step unless another window has changed any
@@ -178,14 +254,14 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 	var revision uint64
 	for index := len(candidate.actions) - 1; index >= 0; index-- {
 		reverted := candidate.actions[index]
-		applied, rev, err := o.applyEdit(from, reverted.document, reverted.edit, reverted.back, 0)
+		applied, err := o.applyEdit(from, reverted.document, reverted.inverseEdit(), reverted.back, 0)
 		if err != nil {
 			o.reply(from, request, err.Error(), 0)
 
 			return
 		}
-		revision = rev
-		redone.actions[index] = invert(applied)
+		revision = applied.revision
+		redone.actions[index] = invert(applied.action)
 	}
 	o.history.pushRedo(from.group, redone)
 	o.reply(from, request, "", revision)
@@ -207,14 +283,14 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 	again := step{gesture: candidate.gesture, actions: make([]action, 0, len(candidate.actions))}
 	var revision uint64
 	for _, reapplied := range candidate.actions {
-		applied, rev, err := o.applyEdit(from, reapplied.document, reapplied.edit, reapplied.forward, 0)
+		applied, err := o.applyEdit(from, reapplied.document, reapplied.edit, reapplied.forward, 0)
 		if err != nil {
 			o.reply(from, request, err.Error(), 0)
 
 			return
 		}
-		revision = rev
-		again.actions = append(again.actions, applied)
+		revision = applied.revision
+		again.actions = append(again.actions, applied.action)
 	}
 	o.history.pushUndo(from.group, again)
 	o.reply(from, request, "", revision)
@@ -223,8 +299,18 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 // invert turns the result of applying an undo into the action that redoes it.
 func invert(applied action) action {
 	applied.forward, applied.back = applied.back, applied.forward
+	applied.edit, applied.backEdit = applied.inverseEdit(), applied.edit
 
 	return applied
+}
+
+// inverseEdit names the edit kind that applies an action's back arguments.
+func (a action) inverseEdit() string {
+	if a.backEdit != "" {
+		return a.backEdit
+	}
+
+	return a.edit
 }
 
 func (o *Orchestrator) sessionUpdate(from *window, message protocol.Message) {
@@ -263,6 +349,16 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 
 		return
 	}
+	if !request.NewView {
+		for _, open := range o.windows {
+			if open.hello.View == request.View && open.hello.Target == request.Target {
+				o.send(open, mustMessage(protocol.KindAttention, 0, nil))
+				o.reply(from, message.Request, "", 0)
+
+				return
+			}
+		}
+	}
 	if _, err := o.launch(request.View, request.Target); err != nil {
 		o.reply(from, message.Request, err.Error(), 0)
 
@@ -273,7 +369,7 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 
 // reply answers a request; an empty reason means success.
 func (o *Orchestrator) reply(target *window, request uint64, reason string, revision uint64) {
-	result := protocol.Result{OK: reason == "", Reason: reason, Revision: revision}
+	result := protocol.Result{OK: reason == "", Reason: reason, Revision: revision, Created: ids.ULID{}}
 	o.send(target, mustMessage(protocol.KindResult, request, result))
 }
 

@@ -41,12 +41,58 @@ func (c *Client) dispatch(message protocol.Message) {
 			update.Shutdown = &shutdown
 			c.emit(update)
 		}
+	case protocol.KindAnswer:
+		c.deliver(message)
+	case protocol.KindAttention:
+		update := newUpdate()
+		update.Attention = true
+		c.emit(update)
+	case protocol.KindPickAsk, protocol.KindPickStart, protocol.KindPickAnswer, protocol.KindPickCancel:
+		c.dispatchPick(message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
-		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen:
+		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery:
 		return
 	default:
 		return
 	}
+}
+
+// dispatchPick delivers pick-on-map messages: a reply to PickAsk, or a pick
+// starting, answered or cancelled.
+func (c *Client) dispatchPick(message protocol.Message) {
+	update := newUpdate()
+	switch message.Kind {
+	case protocol.KindPickAsk:
+		c.deliver(message)
+
+		return
+	case protocol.KindPickStart:
+		start, err := protocol.DecodePayload[protocol.PickStart](message)
+		if err != nil {
+			return
+		}
+		update.PickStart = &start
+	case protocol.KindPickAnswer:
+		answer, err := protocol.DecodePayload[protocol.PickAnswer](message)
+		if err != nil {
+			return
+		}
+		update.PickAnswer = &answer
+	case protocol.KindPickCancel:
+		cancel, err := protocol.DecodePayload[protocol.PickCancel](message)
+		if err != nil {
+			return
+		}
+		update.PickCancel = &cancel
+	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
+		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
+		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
+		protocol.KindAnswer, protocol.KindAttention:
+		return
+	default:
+		return
+	}
+	c.emit(update)
 }
 
 // onSnapshot installs a document before the reply is delivered, so events
@@ -206,5 +252,8 @@ func (c *Client) emit(update Update) {
 }
 
 func newUpdate() Update {
-	return Update{Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Session: nil, Shutdown: nil}
+	return Update{
+		Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Session: nil, Shutdown: nil,
+		Attention: false, PickStart: nil, PickAnswer: nil, PickCancel: nil,
+	}
 }

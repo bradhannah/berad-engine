@@ -11,6 +11,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -87,7 +88,7 @@ func snapshot(t *testing.T, revision uint64, tile string) protocol.Snapshot {
 
 func paintEvent(t *testing.T, revision uint64, tile string) protocol.Event {
 	t.Helper()
-	args, err := json.Marshal(tilefloor.PaintArgs{Cells: []tilefloor.Cell{{Col: 0, Row: 0, Tile: tile}}})
+	args, err := json.Marshal(tilefloor.PaintArgs{Cells: []tilefloor.Cell{{Col: 0, Row: 0, Layer: tilefloor.LayerGround, Tile: tile}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +100,7 @@ func paintEvent(t *testing.T, revision uint64, tile string) protocol.Event {
 func TestMissedRevisionTriggersResubscribe(t *testing.T) {
 	t.Parallel()
 	fake := newFake(t)
-	registry, err := plugin.NewRegistry(tilefloor.Plugin())
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestMissedRevisionTriggersResubscribe(t *testing.T) {
 		var tile string
 		view.View(floorID, func(document client.Document) {
 			revision = document.Revision
-			tile, _ = document.Model.(*tilefloor.Document).Floor.At(1, 1)
+			tile, _ = document.Model.(*tilefloor.Document).Floor.Ground(1, 1)
 		})
 		if revision == 4 && tile == "sand" {
 			return

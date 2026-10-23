@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,10 +16,12 @@ import (
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
 func readFloorFile(t *testing.T, dir string) content.Envelope {
@@ -48,7 +51,7 @@ func TestDocumentFileIsReadableAndNamed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "\"format\": \"tilefloor\"") || !strings.Contains(string(raw), "\"version\": 1") {
+	if !strings.Contains(string(raw), "\"format\": \"tilefloor\"") || !strings.Contains(string(raw), fmt.Sprintf("\"version\": %d", floor.FormatVersion)) {
 		t.Fatalf("file is not a readable, versioned envelope:\n%.200s", raw)
 	}
 }
@@ -73,7 +76,7 @@ func TestStopSavesFilesAndEmptiesJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := floor.(*tilefloor.Document).Floor.At(7, 7); got != "wall" {
+	if got, _ := floor.(*tilefloor.Document).Floor.Ground(7, 7); got != "wall" {
 		t.Fatalf("saved tile %q", got)
 	}
 	journal, err := os.ReadFile(filepath.Join(dir, ".berad", "journal.log"))
@@ -137,7 +140,7 @@ func TestTornJournalLineIsIgnored(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	floor := createProject(t, dir)
-	args := paintArgs(t, tilefloor.Cell{Col: 0, Row: 0, Tile: "wall"})
+	args := paintArgs(t, tilefloor.Cell{Col: 0, Row: 0, Layer: tilefloor.LayerGround, Tile: "wall"})
 	entry := map[string]any{"v": 1, "seq": 1, "document": floor, "revision": 1, "edit": tilefloor.PaintEdit, "args": json.RawMessage(args)}
 	line, err := json.Marshal(entry)
 	if err != nil {
@@ -159,7 +162,7 @@ func TestJournalGapRefusesToOpen(t *testing.T) {
 	dir := t.TempDir()
 	floor := createProject(t, dir)
 	entry := map[string]any{"v": 1, "seq": 1, "document": floor, "revision": 5, "edit": tilefloor.PaintEdit,
-		"args": json.RawMessage(paintArgs(t, tilefloor.Cell{Col: 0, Row: 0, Tile: "wall"}))}
+		"args": json.RawMessage(paintArgs(t, tilefloor.Cell{Col: 0, Row: 0, Layer: tilefloor.LayerGround, Tile: "wall"}))}
 	line, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatal(err)
@@ -173,15 +176,18 @@ func TestJournalGapRefusesToOpen(t *testing.T) {
 	}
 }
 
-// versionTwoPlugin re-registers the tile floor format at version 2 with an
-// upgrade step, standing in for a future format change.
-func versionTwoPlugin() plugin.Plugin {
+// nextVersionPlugin re-registers the tile floor format one version ahead with
+// an upgrade step, standing in for a future format change.
+func nextVersionPlugin() plugin.Plugin {
 	base := tilefloor.Plugin()
 	documentType := base.Documents[0]
-	documentType.Format.Current = 2
-	documentType.Format.Migrations = map[int]content.Migration{
-		1: func(data json.RawMessage) (json.RawMessage, error) { return data, nil },
+	migrations := map[int]content.Migration{}
+	for version, step := range documentType.Format.Migrations {
+		migrations[version] = step
 	}
+	migrations[floor.FormatVersion] = func(data json.RawMessage) (json.RawMessage, error) { return data, nil }
+	documentType.Format.Current = floor.FormatVersion + 1
+	documentType.Format.Migrations = migrations
 	base.Documents = []model.DocumentType{documentType}
 	return base
 }
@@ -191,7 +197,7 @@ func TestOldFileIsBackedUpAndUpgraded(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	registry, err := plugin.NewRegistry(versionTwoPlugin())
+	registry, err := plugin.NewRegistry(project.Plugin(), nextVersionPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,10 +205,11 @@ func TestOldFileIsBackedUpAndUpgraded(t *testing.T) {
 	if err := h.stop(); err != nil {
 		t.Fatal(err)
 	}
-	if envelope := readFloorFile(t, dir); envelope.Version != 2 {
+	if envelope := readFloorFile(t, dir); envelope.Version != floor.FormatVersion+1 {
 		t.Fatalf("saved version %d", envelope.Version)
 	}
-	backups, err := filepath.Glob(filepath.Join(dir, ".berad", "backups", "*.v1.*.bak"))
+	pattern := fmt.Sprintf("*.v%d.*.bak", floor.FormatVersion)
+	backups, err := filepath.Glob(filepath.Join(dir, ".berad", "backups", pattern))
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("backups %v %v", backups, err)
 	}
@@ -210,8 +217,56 @@ func TestOldFileIsBackedUpAndUpgraded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if envelope, err := content.Decode(original); err != nil || envelope.Version != 1 {
+	if envelope, err := content.Decode(original); err != nil || envelope.Version != floor.FormatVersion {
 		t.Fatalf("backup is not the original: %v %v", envelope.Version, err)
+	}
+}
+
+// The first real format upgrade: a version 1 floor file opens as version 2,
+// with walls moved to the top layer, and the original is kept as a backup.
+func TestVersionOneFloorIsUpgraded(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	id := createProject(t, dir)
+	matches, err := filepath.Glob(filepath.Join(dir, "tilefloors", "*.json"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("floor files %v %v", matches, err)
+	}
+	tiles := make([]string, 16*16)
+	for index := range tiles {
+		tiles[index] = "grass"
+	}
+	tiles[0] = "wall"
+	data, err := json.Marshal(map[string]any{"width": 16, "height": 16, "tiles": tiles})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := content.Encode(content.Envelope{
+		Format: floor.FormatName, Version: 1, ID: id, Name: "Floor 1", Revision: 2, Data: data,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(matches[0], old, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := start(t, dir, nil)
+	if err := h.stop(); err != nil {
+		t.Fatal(err)
+	}
+	envelope := readFloorFile(t, dir)
+	upgraded, err := floor.Decode(envelope.Data)
+	if err != nil || envelope.Version != 2 || envelope.Revision != 2 {
+		t.Fatalf("upgraded file: version %d revision %d %v", envelope.Version, envelope.Revision, err)
+	}
+	ground, _ := upgraded.Ground(0, 0) //nolint:errcheck // On the floor.
+	top, _ := upgraded.Top(0, 0)       //nolint:errcheck // On the floor.
+	if ground != "floor" || top != "wall" {
+		t.Fatalf("wall cell became %q under %q", ground, top)
+	}
+	backups, err := filepath.Glob(filepath.Join(dir, ".berad", "backups", "*.v1.*.bak"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("backups %v %v", backups, err)
 	}
 }
 

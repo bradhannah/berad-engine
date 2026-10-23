@@ -12,7 +12,10 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -27,6 +30,9 @@ const (
 	roleOrchestrator = "orchestrator"
 	roleCrashWindow  = "crash-window"
 	roleIdleWindow   = "idle-window"
+	rolePickWindow   = "pick-window"
+	envPickFloor     = "BERAD_TEST_PICK_FLOOR"
+	envPickItem      = "BERAD_TEST_PICK_ITEM"
 )
 
 func runChildRole(role string) int {
@@ -38,6 +44,8 @@ func runChildRole(role string) int {
 		err = childWindow(true)
 	case roleIdleWindow:
 		err = childWindow(false)
+	case rolePickWindow:
+		err = childPickWindow()
 	default:
 		err = fmt.Errorf("unknown role %q", role)
 	}
@@ -51,7 +59,7 @@ func runChildRole(role string) int {
 // childOrchestrator runs until killed, never flushing, so only the journal
 // holds its edits.
 func childOrchestrator() error {
-	registry, err := plugin.NewRegistry(tilefloor.Plugin())
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin())
 	if err != nil {
 		return err
 	}
@@ -107,7 +115,7 @@ func childWindow(crash bool) error {
 	if err != nil {
 		return err
 	}
-	registry, err := plugin.NewRegistry(tilefloor.Plugin())
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin())
 	if err != nil {
 		return err
 	}
@@ -132,4 +140,41 @@ func childWindow(crash bool) error {
 	}
 	marker := filepath.Join(os.Getenv(envMarkerDir), args.window.String()+".clean")
 	return os.WriteFile(marker, []byte("closed cleanly\n"), 0o600)
+}
+
+// childPickWindow is a Map window that answers the first pick it is given
+// with the floor and item from its environment, then waits for shutdown.
+func childPickWindow() error {
+	args, err := parseWindowArgs(os.Args[1:])
+	if err != nil {
+		return err
+	}
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin())
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	connection, err := client.Dial(ctx, args.socket, protocol.Hello{
+		Build: args.build, Window: args.window, View: args.view, Target: args.target,
+	}, registry)
+	if err != nil {
+		return err
+	}
+	floor, err := ids.Parse(os.Getenv(envPickFloor))
+	if err != nil {
+		return err
+	}
+	for update := range connection.Updates() {
+		if update.Shutdown != nil {
+			return nil
+		}
+		if update.PickStart != nil {
+			answer := protocol.PickAnswer{Pick: update.PickStart.Pick, Floor: floor, Item: os.Getenv(envPickItem)}
+			if err := connection.PickAnswer(answer); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
