@@ -29,9 +29,22 @@ func NewDocs() *Docs {
 	return &Docs{docs: map[ids.ULID]*client.Document{}, viewing: false}
 }
 
-// Put adds or replaces a document.
+// Put adds or replaces a document; a replaced document's revision goes up,
+// as it would after an edit.
 func (d *Docs) Put(id ids.ULID, name string, document model.Document) {
-	d.docs[id] = &client.Document{ID: id, Name: name, Format: document.Format(), Revision: 0, Model: document}
+	revision := uint64(0)
+	if previous, exists := d.docs[id]; exists {
+		revision = previous.Revision + 1
+	}
+	d.docs[id] = &client.Document{ID: id, Name: name, Format: document.Format(), Revision: revision, Model: document}
+}
+
+// Touch raises a document's revision, as an edit applied to it in place
+// does.
+func (d *Docs) Touch(id ids.ULID) {
+	if found, exists := d.docs[id]; exists {
+		found.Revision++
+	}
 }
 
 // View calls visit with a document, as a window's client does. Like the

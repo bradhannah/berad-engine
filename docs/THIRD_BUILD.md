@@ -68,6 +68,26 @@ Settled by its author after step 3, for testing behaviour before step 4:
   something is in the way, the NPC **stops there and carries on** with the
   next node.
 
+Settled by its author for the Workflow window's lines:
+
+- Each line turns in its **own lane**, and auto-arrange is **tidy**: it
+  leaves loops out of the columns, puts a node after its longest way in,
+  orders each column to cut crossings and lines nodes up with the outputs
+  they come from.
+- The selected node's lines are **lit blue**, as is the line under the
+  pointer. **Loops are dashed**, and a time switch's "otherwise" line is
+  grey; in step 4 the line an NPC just took will flash orange.
+- Lines keep their **arrowhead** at the entry dot and get a **chevron**
+  along each long stretch.
+- A line can be **selected and deleted**, and a node dropped from the
+  palette **onto a line** goes into it. Nodes with a problem get a **mark**.
+- **Moving lines by hand** is decided later. If it comes, a line moved by
+  hand keeps its shape between its ends when a node moves, and auto-arrange
+  resets it, with undo bringing it back.
+- **Later:** zoom with fit and a minimap, node titles and frames that only
+  group nodes, and search. The step 4 runner guards against loops that never
+  wait.
+
 Open:
 
 - How fast game time runs in the finished game has not been discussed. The
@@ -170,6 +190,28 @@ Open:
   a window left without a script in a real-window test opened like a normal
   window, able to take the keyboard; every window opened while scripts drive
   the editor now opens without taking focus.
+
+- **Lines** (settled after step 3): lines are routed from the links and
+  node positions, never saved. Lines leaving one column each turn in their
+  own lane, ordered so they cross only where they must; lines going back run
+  under the nodes between their ends, shorter ones inside longer ones, and
+  rise in their own lanes. Auto-arrange finds loops with a walk from the
+  start, gives each node its longest distance from the start as its column,
+  orders columns by where their lines come from over five sweeps, lines each
+  node up with the output it comes from, and widens gaps for their lanes; it
+  breaks ties by node, so it always gives the same layout. The selected
+  node's lines and the line under the pointer are blue; loops are dashed; a
+  time switch's "otherwise" line is grey; long stretches have a chevron.
+  Clicking a line selects it, and Delete or Backspace, or Delete line in the
+  inspector, removes it. Dropping a node from the palette onto a line puts
+  it between the line's ends, as one undo step. A Go to with no destination
+  or a broken one, a container with no first step, and a node nothing links
+  into get a warning mark; pointing at it says what is wrong, and so does
+  the inspector. The window now lays the workflow out only when it changes,
+  not every frame.
+- Found while building: the test stand-in for a window's documents never
+  raised a document's revision, which the window now relies on, so it does
+  when a document changes, as the orchestrator does.
 
 ## Not in this build
 

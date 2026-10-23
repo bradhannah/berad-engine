@@ -2,8 +2,9 @@
 // nodes and their connections on a dotted canvas, a palette of node kinds on
 // the left, and an inspector on the right built from the selected node's
 // declared parameters (D13). Click a palette entry to add a node after the
-// selected one, or drag it onto the canvas; drag from an output's port to a
-// node to connect them; drag a node to move it.
+// selected one, or drag it onto the canvas or onto a line; drag from an
+// output's port to a node to connect them; drag a node to move it; click a
+// line to select it.
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -12,6 +13,7 @@ package workflowview
 import (
 	"encoding/json"
 	"image"
+	"slices"
 	"strconv"
 
 	"github.com/bradhannah/berad-engine/editor/client"
@@ -85,10 +87,30 @@ type State struct {
 	subs     map[ids.ULID]bool
 	workflow *flow.Workflow
 	shapes   map[ids.ULID]shape
-	offset   image.Point
-	selected ids.ULID
-	cursor   image.Point
-	gestures int
+	routes   map[routeKey][]image.Point
+	loops    map[routeKey]bool
+	problems map[ids.ULID]string
+	// laidOut is the workflow revision the shapes, routes and loops were
+	// worked out for, and problemKey what the problems were found from;
+	// layouts counts layouts, for tests.
+	laidOut    uint64
+	hasLayout  bool
+	layouts    int
+	problemKey string
+	// watchFloors asks for every Go to's destination floor to be loaded
+	// after a new layout, so broken destinations can be found.
+	watchFloors bool
+	offset      image.Point
+	selected    ids.ULID
+	cursor      image.Point
+	gestures    int
+	// hoverLink is the line under the pointer, selectedLink the selected
+	// line and hoverMark the node whose problem mark is under the pointer.
+	hoverLink    routeKey
+	selectedLink routeKey
+	hoverMark    ids.ULID
+	// dropOn is the line a node dragged from the palette would go into.
+	dropOn routeKey
 
 	drag    *nodeDrag
 	link    *linkDrag
@@ -97,22 +119,26 @@ type State struct {
 	panning bool
 	lastPan image.Point
 
-	palette []paletteEntry
-	arrange *ui.Button
-	form    *form
-	focus   ui.Focus
-	picker  *picker.Picker
+	palette    []paletteEntry
+	arrange    *ui.Button
+	deleteLine *ui.Button
+	form       *form
+	focus      ui.Focus
+	picker     *picker.Picker
 }
 
 // New returns the Workflow window for a workflow.
 func New(window, document ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		workflow: nil, shapes: map[ids.ULID]shape{}, offset: image.Pt(0, 0), selected: ids.ULID{},
-		cursor: image.Pt(0, 0), gestures: 0,
+		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
+		problems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false, layouts: 0, problemKey: "", watchFloors: false,
+		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
+		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{}, dropOn: noRoute(),
 		drag: nil, link: nil, adding: nil, resize: nil, panning: false, lastPan: image.Pt(0, 0),
-		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), form: nil, focus: ui.Focus{},
-		picker: picker.New(window),
+		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
+		deleteLine: ui.NewButton("delete-line", "Delete line"),
+		form:       nil, focus: ui.Focus{}, picker: picker.New(window),
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -168,22 +194,40 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	s.picker.Changed(update, ctx)
 }
 
-// load copies this frame's workflow and lays it out.
+// load copies the workflow and lays it out, its nodes, lines and loops, when
+// it has changed since the last layout, and finds its problems when it or
+// anything they depend on has changed.
 func (s *State) load(docs frame.Docs) {
-	s.workflow = nil
+	revision, found := uint64(0), false
 	docs.View(s.document, func(document client.Document) {
-		if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
+		workflowDoc, ok := document.Model.(*workflowplugin.Document)
+		if !ok {
+			return
+		}
+		found, revision = true, document.Revision
+		if !s.hasLayout || revision != s.laidOut {
 			s.workflow = workflowDoc.Workflow.Clone()
 		}
 	})
-	if s.workflow == nil {
-		s.shapes = map[ids.ULID]shape{}
+	if !found {
+		s.workflow, s.hasLayout = nil, false
+		s.shapes, s.routes, s.loops = map[ids.ULID]shape{}, map[routeKey][]image.Point{}, map[routeKey]bool{}
+		s.problems = map[ids.ULID]string{}
 
 		return
 	}
-	s.shapes = shapes(s.workflow, s.noteHeight)
+	if !s.hasLayout || revision != s.laidOut {
+		s.shapes = shapes(s.workflow, s.noteHeight)
+		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
+		s.laidOut, s.hasLayout, s.watchFloors = revision, true, true
+		s.layouts++
+	}
+	s.refreshProblems(docs)
 	if _, ok := s.workflow.Node(s.selected); !ok {
 		s.selected = ids.ULID{}
+	}
+	if _, ok := s.targetOf(s.selectedLink); !ok {
+		s.selectedLink = noRoute()
 	}
 }
 
@@ -218,6 +262,12 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		top += paletteItem + paletteGap
 	}
 	s.layoutForm(docs)
+	s.deleteLine.Rect = ui.Zero()
+	if s.lineSelected() {
+		panel := frame.Inspector(s.size)
+		bottom := panel.Max.Y - ui.Inset
+		s.deleteLine.Rect = image.Rect(panel.Min.X+ui.Inset, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
+	}
 }
 
 // Update handles one frame of input.
@@ -242,6 +292,15 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.workflow == nil {
 		return
 	}
+	if s.watchFloors {
+		s.watchFloors = false
+		for _, floorID := range s.destinationFloors() {
+			s.subscribe(floorID, ctx)
+		}
+	}
+	if s.lineSelected() && s.deleteLine.Update(input) {
+		s.removeLine(ctx)
+	}
 	s.updateForm(input, ctx)
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
@@ -257,17 +316,43 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
 		s.picker.Cancel(ctx, "cancelled in the workflow window")
 	case input.Consume(ui.KeyEscape, plain):
-		s.selected, s.link, s.adding = ids.ULID{}, nil, nil
+		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
-		s.removeSelected(ctx)
+		if s.lineSelected() {
+			s.removeLine(ctx)
+		} else {
+			s.removeSelected(ctx)
+		}
 	}
+}
+
+// lineSelected reports whether a line is selected.
+func (s *State) lineSelected() bool {
+	_, ok := s.targetOf(s.selectedLink)
+
+	return ok
+}
+
+// removeLine takes the selected line away; undo puts it back.
+func (s *State) removeLine(ctx *frame.Context) {
+	from, ok := s.workflow.Node(s.selectedLink.from)
+	if !ok {
+		return
+	}
+	output := s.selectedLink.output
+	s.selectedLink = noRoute()
+	s.replace(ctx, from.WithLink(output, ids.ULID{}), "Line removed. Undo puts it back.")
 }
 
 // updatePalette adds a node when a palette entry is clicked, or dragged onto
 // the canvas and dropped.
 func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
+	s.dropOn = noRoute()
 	if s.adding != nil {
 		s.adding.at = input.Cursor
+		if s.adding.kind != flow.KindNote && input.Cursor.In(s.Canvas()) {
+			s.dropOn, _ = s.linkAt(s.toCanvas(input.Cursor))
+		}
 		if !input.Released && input.Down {
 			return
 		}
@@ -277,7 +362,12 @@ func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
 		dragged := max(abs(moved.X), abs(moved.Y)) > dragStart
 		switch {
 		case dragged && adding.at.In(s.Canvas()):
-			s.addAt(ctx, adding.kind, s.toCanvas(adding.at))
+			point := s.toCanvas(adding.at)
+			if key, onLine := s.linkAt(point); onLine && adding.kind != flow.KindNote {
+				s.insertOnLine(ctx, adding.kind, point, key)
+			} else {
+				s.addAt(ctx, adding.kind, point)
+			}
 		case !dragged:
 			s.addAfterSelected(ctx, adding.kind)
 		}
@@ -305,6 +395,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	point := s.toCanvas(input.Cursor)
+	s.updateHover(ctx, input.Cursor.In(canvas), point)
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
@@ -354,11 +445,14 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	}
 	hit, ok := s.nodeAt(point)
 	if !ok {
-		s.selected = ids.ULID{}
+		s.selected, s.selectedLink = ids.ULID{}, noRoute()
+		if key, onLine := s.linkAt(point); onLine {
+			s.selectedLink = key
+		}
 
 		return
 	}
-	s.selected = hit
+	s.selected, s.selectedLink = hit, noRoute()
 	s.drag = &nodeDrag{id: hit, grab: point.Sub(s.shapes[hit].rect.Min), gesture: s.gesture(), last: point}
 }
 
@@ -574,6 +668,103 @@ func (s *State) addAt(ctx *frame.Context, kind string, point image.Point) {
 	s.add(ctx, kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)), parent, nil)
 }
 
+// newBox is a new node's box at a place; containers and notes start at
+// their usual size.
+func newBox(kind string, place image.Point) flow.Box {
+	box := flow.Box{X: place.X, Y: place.Y, W: 0, H: 0}
+	switch kind {
+	case flow.KindContainer:
+		box.W, box.H = containerWidth, containerHeight
+	case flow.KindNote:
+		box.W = noteWidth
+	}
+
+	return box
+}
+
+// insertOnLine adds a node into a line where it is dropped: the line's
+// output leads to the new node, and the new node's first output, or a
+// container's exit, to where the line led, all as one undo step.
+func (s *State) insertOnLine(ctx *frame.Context, kind string, point image.Point, key routeKey) {
+	from, fromOK := s.workflow.Node(key.from)
+	target, linked := s.targetOf(key)
+	targetNode, targetOK := s.workflow.Node(target)
+	if !fromOK || !linked || !targetOK {
+		s.addAt(ctx, kind, point)
+
+		return
+	}
+	if kind == flow.KindContainer && !targetNode.Parent.IsZero() {
+		ctx.Frame.Status("A container cannot go inside another container")
+
+		return
+	}
+	node, err := flow.NewNode(kind)
+	if err != nil {
+		ctx.Frame.Status(err.Error())
+
+		return
+	}
+	node.Parent = targetNode.Parent
+	if output, carries := continuation(node); carries {
+		node = node.WithLink(output, target)
+	}
+	gesture := s.gesture()
+	box := newBox(kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)))
+	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
+	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {
+		s.selected, s.selectedLink = result.Created, noRoute()
+		if current, found := s.currentNode(ctx.Docs, from.ID); found {
+			s.command(ctx, workflowplugin.ReplaceEdit, gesture,
+				workflowplugin.ReplaceArgs{Node: current.WithLink(key.output, result.Created)}, func(protocol.Result) {
+					ctx.Frame.Status("Added into the line. Undo takes it out.")
+				})
+		}
+	})
+}
+
+// continuation is the output a node inserted into a line carries on by: a
+// container's exit, or a node's first output.
+func continuation(node flow.Node) (string, bool) {
+	if node.Kind == flow.KindContainer {
+		return flow.OutputExit, true
+	}
+	outputs := flow.Outputs(node)
+	if len(outputs) == 0 {
+		return "", false
+	}
+
+	return outputs[0].Name, true
+}
+
+// updateHover follows the line and the problem mark under the pointer, and
+// says what the problem is when the pointer comes onto a mark.
+func (s *State) updateHover(ctx *frame.Context, onCanvas bool, point image.Point) {
+	s.hoverLink = noRoute()
+	mark := ids.ULID{}
+	if onCanvas && s.drag == nil && s.resize == nil {
+		s.hoverLink, _ = s.linkAt(point)
+		mark = s.markAt(point)
+	}
+	if mark != s.hoverMark && !mark.IsZero() {
+		ctx.Frame.Status(s.problems[mark])
+	}
+	s.hoverMark = mark
+}
+
+// destinationFloors lists the floors the workflow's Go to nodes lead to.
+func (s *State) destinationFloors() []ids.ULID {
+	var floors []ids.ULID
+	for _, node := range s.workflow.Nodes() {
+		if destination, err := node.Anchor("destination"); err == nil && !destination.Floor.IsZero() &&
+			!slices.Contains(floors, destination.Floor) {
+			floors = append(floors, destination.Floor)
+		}
+	}
+
+	return floors
+}
+
 // add sends the edit that adds a node, then selects it and, given a link,
 // connects it, all as one undo step.
 func (s *State) add(ctx *frame.Context, kind string, place image.Point, parent ids.ULID, link *flow.Link) {
@@ -584,17 +775,11 @@ func (s *State) add(ctx *frame.Context, kind string, place image.Point, parent i
 		return
 	}
 	node.Parent = parent
-	box := flow.Box{X: place.X, Y: place.Y, W: 0, H: 0}
-	switch kind {
-	case flow.KindContainer:
-		box.W, box.H = containerWidth, containerHeight
-	case flow.KindNote:
-		box.W = noteWidth
-	}
+	box := newBox(kind, place)
 	gesture := s.gesture()
 	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
 	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {
-		s.selected = result.Created
+		s.selected, s.selectedLink = result.Created, noRoute()
 		if link == nil {
 			return
 		}

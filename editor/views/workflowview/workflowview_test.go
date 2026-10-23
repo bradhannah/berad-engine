@@ -134,6 +134,7 @@ func (f *fixture) carryOut(command frametest.Command) {
 			created = ids.ULID{1}
 		}
 	})
+	f.docs.Touch(workflowID)
 	if created != (ids.ULID{1}) {
 		command.Succeed(created)
 	}
@@ -457,4 +458,101 @@ func TestRandomWalk(t *testing.T) {
 		t.Fatalf("+ option adds an equal option: %+v", options)
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestLinesCanBeSelectedAndDeleted lights a node's lines while it is
+// selected, selects a line by clicking it and removes it with Backspace.
+func TestLinesCanBeSelectedAndDeleted(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	if !f.has("lit:start:1:next") {
+		t.Fatal("the selected node's lines are lit")
+	}
+	f.click("line:start:1:next")
+	if !f.has("line-selected") || !f.has("lit:start:1:next") {
+		t.Fatal("clicking a line selects it")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.keys("Backspace")
+	if len(f.nth(flow.KindStart, 1).Next) != 0 || f.has("line-selected") || !strings.Contains(f.status(), "Line removed") {
+		t.Fatalf("Backspace removes the selected line: %+v %q", f.nth(flow.KindStart, 1).Next, f.status())
+	}
+	if len(f.nth(flow.KindWait, 1).Next) != 0 {
+		t.Fatal("only the selected line goes")
+	}
+}
+
+// TestDroppingOnALineInsertsTheNode drags a Wait from the palette onto the
+// line from the start to a Move: the Wait goes between them, as one gesture.
+func TestDroppingOnALineInsertsTheNode(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindMove)
+	before := len(f.requests.Commands)
+	f.drag(f.at("palette:"+flow.KindWait), f.at("line:start:1:next"))
+	start, wait, move := f.nth(flow.KindStart, 1), f.nth(flow.KindWait, 1), f.nth(flow.KindMove, 1)
+	if start.Next[flow.OutputNext] != wait.ID || wait.Next[flow.OutputNext] != move.ID {
+		t.Fatalf("start → wait → move expected: %+v", f.workflow().Nodes())
+	}
+	added := f.requests.Commands[before:]
+	if len(added) != 2 || added[0].Command.Gesture == "" || added[0].Command.Gesture != added[1].Command.Gesture {
+		t.Fatalf("one gesture, two commands: %+v", added)
+	}
+}
+
+// TestProblemMarks marks a Go to with no destination and clears the mark
+// once it has one; a node nothing links to is marked too, and so is a
+// destination whose anchor was deleted.
+func TestProblemMarks(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindGoTo)
+	if !f.has("problem:go-to:1") || !f.has("problems:1") {
+		t.Fatal("a Go to with no destination is marked")
+	}
+	f.click("ui:pick")
+	f.requests.PickAsks[0]([]protocol.PickMap{{Window: frametest.ID(50), Zone: frametest.ID(51), Shows: true}}, nil)
+	pick := f.requests.PickStarts[0]
+	f.state.Changed(client.Update{PickAnswer: &protocol.PickAnswer{Pick: pick.Pick, Floor: floorID, Item: deskID.String()}}, f.ctx)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("problems:0") {
+		t.Fatal("a destination clears the mark")
+	}
+	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:500,500"))
+	if !f.has("problem:wait:1") {
+		t.Fatal("a node nothing links to is marked")
+	}
+	office, err := tilefloor.NewDocument(10, 10, "floor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(floorID, "Office", office)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("problem:go-to:1") {
+		t.Fatal("a deleted destination anchor is marked")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestLayoutIsNotRedoneWhenIdle lays the workflow out only when it changes.
+func TestLayoutIsNotRedoneWhenIdle(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	laidOut := f.state.LayoutCount()
+	for range 5 {
+		f.frame(ui.NewInput(image.Pt(0, 0)))
+	}
+	if f.state.LayoutCount() != laidOut {
+		t.Fatalf("laid out %d times while idle", f.state.LayoutCount()-laidOut)
+	}
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if f.state.LayoutCount() == laidOut {
+		t.Fatal("a change lays the workflow out again")
+	}
 }

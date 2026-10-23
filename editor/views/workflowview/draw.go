@@ -139,9 +139,7 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 			s.drawContainer(area, s.shapes[nodeID])
 		}
 	}
-	for _, nodeID := range order {
-		s.drawLinks(area, s.shapes[nodeID])
-	}
+	s.drawLines(area)
 	for _, nodeID := range order {
 		if s.shapes[nodeID].node.Kind != flow.KindContainer {
 			s.drawNode(area, s.shapes[nodeID], docs)
@@ -166,41 +164,6 @@ func (s *State) screenRect(rect image.Rectangle) image.Rectangle {
 	return rect.Add(s.Canvas().Min).Add(s.offset)
 }
 
-// drawLinks draws a node's connections: square-cornered lines from each
-// connected output to the node it leads to, with an arrowhead.
-func (s *State) drawLinks(area *ebiten.Image, from shape) {
-	for _, out := range from.ports {
-		to, linked := from.node.Next[out.output.Name]
-		target, ok := s.shapes[to]
-		if !linked || !ok {
-			continue
-		}
-		end, entered := target.entryOf(from.node.ID, out.output.Name)
-		if !entered {
-			end = image.Pt(target.rect.Min.X, target.rect.Min.Y+entryTop)
-		}
-		end.X -= portRadius
-		var corners []image.Point
-		if out.output.Name == flow.OutputInside {
-			corners = []image.Point{out.at, {X: out.at.X, Y: end.Y}, end}
-		} else {
-			corners = route(out.at, end, target.rect, from.rect)
-		}
-		for index := 1; index < len(corners); index++ {
-			ui.Line(area, s.toScreen(corners[index-1]), s.toScreen(corners[index]), lineWidth, ui.ColorInk())
-		}
-		tip := s.toScreen(corners[len(corners)-1])
-		var arrow vector.Path
-		arrow.MoveTo(float32(tip.X), float32(tip.Y))
-		arrow.LineTo(float32(tip.X-arrowSize*ui.Half), float32(tip.Y-arrowSize))
-		arrow.LineTo(float32(tip.X-arrowSize*ui.Half), float32(tip.Y+arrowSize))
-		arrow.Close()
-		fill := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
-		fill.ColorScale.ScaleWithColor(ui.ColorInk())
-		vector.FillPath(area, &arrow, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, fill)
-	}
-}
-
 // drawEntries draws a node's entry dots: filled for each link coming in, and
 // the hollow spare for the next one, washed blue while a link being drawn is
 // over a node that can take it.
@@ -210,7 +173,11 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 	}
 	for _, in := range drawn.entries {
 		centre := s.toScreen(in.at)
-		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.ColorInk(), true)
+		fill := ui.ColorInk()
+		if s.lineLit(routeKey{from: in.from, output: in.output}) {
+			fill = ui.ColorSelect()
+		}
+		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 	}
 	centre := s.toScreen(drawn.spare)
 	fill, ring := ui.ColorBackground(), ui.ColorInk()
@@ -227,12 +194,15 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 	for _, out := range from.ports {
 		centre := s.toScreen(out.at)
 		_, linked := from.node.Next[out.output.Name]
-		fill := ui.ColorBackground()
-		if linked {
+		fill, ring := ui.ColorBackground(), ui.ColorInk()
+		switch {
+		case linked && s.lineLit(routeKey{from: from.node.ID, output: out.output.Name}):
+			fill, ring = ui.ColorSelect(), ui.ColorSelect()
+		case linked:
 			fill = ui.ColorInk()
 		}
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
-		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ui.ColorInk(), true)
+		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
 		if linked || out.output.Name == flow.OutputInside {
 			continue
 		}
@@ -288,6 +258,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		clipped := s.clip(title, drawn.rect.Dx()-ui.Half*textPad)
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}
+	s.drawMark(area, drawn)
 }
 
 // drawOutputRows lists a time switch's times or a random choice's options,
@@ -413,9 +384,14 @@ func (s *State) drawContainer(area *ebiten.Image, drawn shape) {
 	s.theme.DrawStrong(area, textParam(drawn.node, "name"), nameX, textY, ui.ColorInk())
 	if bound, err := drawn.node.TimeRange("bound"); err == nil {
 		times := flow.FormatRange(bound) + " → exit"
-		s.theme.DrawMono(area, times, head.Max.X-textPad-s.theme.MonoWidth(times)-portRadius,
-			head.Min.Y+(containerHead-ui.MonoSize)/ui.Half-1, ui.ColorInk())
+		right := head.Max.X - textPad - portRadius
+		if _, problem := s.problems[drawn.node.ID]; problem {
+			right -= markInset + ui.Half*markRadius
+		}
+		s.theme.DrawMono(area, times, right-s.theme.MonoWidth(times), head.Min.Y+(containerHead-ui.MonoSize)/ui.Half-1,
+			ui.ColorInk())
 	}
+	s.drawMark(area, drawn)
 	corner := rect.Max
 	for step := 0; step < resizeGrab; step += gripStep {
 		ui.Line(area, image.Pt(corner.X-resizeGrab+step, corner.Y-gripInset),
@@ -429,8 +405,13 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	panel := frame.Inspector(s.size)
 	left, top := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset
-	node, ok := s.selectedNode()
-	if !ok || s.form == nil {
+	node, nodeSelected := s.selectedNode()
+	if s.lineSelected() {
+		s.drawLineInspector(screen, docs, left, top)
+
+		return
+	}
+	if !nodeSelected || s.form == nil {
 		s.theme.Heading(screen, "Inspector", left, top)
 		lines := []string{
 			"Select a node to change it, or", "add one from the palette: click", "to add after the selected node,",
@@ -461,6 +442,84 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	for index, line := range hint {
 		s.theme.DrawText(screen, line, left, bottom-(len(hint)-index)*ui.LineHeight, ui.ColorMuted())
 	}
+	if problem, has := s.problems[node.ID]; has {
+		lines := s.wrap(problem, panel.Dx()-ui.Half*ui.Inset)
+		above := bottom - (len(hint)+len(lines))*ui.LineHeight - ui.Gap
+		for index, line := range lines {
+			s.theme.DrawText(screen, line, left, above+index*ui.LineHeight, ui.ColorWarn())
+		}
+	}
+}
+
+// hasLineState answers the states about lines and problems, and whether the
+// state is one of them.
+func (s *State) hasLineState(state string) (bool, bool) {
+	switch {
+	case state == "line-selected":
+		return s.lineSelected(), true
+	case strings.HasPrefix(state, "lit:"):
+		where := strings.Split(strings.TrimPrefix(state, "lit:"), ":")
+		if len(where) != portParts {
+			return false, true
+		}
+		drawn, ok := s.nthNode(where[0] + ":" + where[1])
+
+		return ok && s.lineLit(routeKey{from: drawn.node.ID, output: where[2]}), true
+	case strings.HasPrefix(state, "problems:"):
+		return strconv.Itoa(len(s.problems)) == strings.TrimPrefix(state, "problems:"), true
+	case strings.HasPrefix(state, "problem:"):
+		drawn, ok := s.nthNode(strings.TrimPrefix(state, "problem:"))
+		_, problem := s.problems[drawn.node.ID]
+
+		return ok && problem, true
+	default:
+		return false, false
+	}
+}
+
+// drawLineInspector describes the selected line: the node and output it
+// leaves from and the node it leads to.
+func (s *State) drawLineInspector(screen *ebiten.Image, docs frame.Docs, left, top int) {
+	s.theme.Heading(screen, "Selected line", left, top)
+	s.theme.DrawTitle(screen, "Line", left, top+ui.LineHeight, ui.ColorInk())
+	from, _ := s.workflow.Node(s.selectedLink.from)
+	to, _ := s.targetOf(s.selectedLink)
+	target, _ := s.workflow.Node(to)
+	output := s.selectedLink.output
+	for _, declared := range flow.Outputs(from) {
+		if declared.Name == output {
+			output = declared.Label
+		}
+	}
+	textTop := panelTextTop(top)
+	s.theme.DrawStrong(screen, "From", left, textTop, ui.ColorInk())
+	s.theme.DrawText(screen, s.nodeLabel(from, docs)+" · "+output, left, textTop+ui.LineHeight, ui.ColorInk())
+	s.theme.DrawStrong(screen, "To", left, textTop+ui.Half*ui.LineHeight+fieldSpace, ui.ColorInk())
+	s.theme.DrawText(screen, s.nodeLabel(target, docs), left, textTop+3*ui.LineHeight+fieldSpace, ui.ColorInk())
+	if s.loops[s.selectedLink] {
+		s.theme.DrawText(screen, "It loops back, so it is dashed.", left, textTop+4*ui.LineHeight+ui.Half*fieldSpace,
+			ui.ColorMuted())
+	}
+	s.deleteLine.Draw(screen, s.theme)
+	panel := frame.Inspector(s.size)
+	hint := s.wrap("Delete or Backspace removes it. Undo puts it back.", panel.Dx()-ui.Half*ui.Inset)
+	bottom := s.deleteLine.Rect.Min.Y - ui.Gap
+	for index, line := range hint {
+		s.theme.DrawText(screen, line, left, bottom-(len(hint)-index)*ui.LineHeight, ui.ColorMuted())
+	}
+}
+
+// panelTextTop is where the inspector's text starts below its title.
+func panelTextTop(top int) int { return top + ui.LineHeight + ui.TitleSize + ui.Inset }
+
+// nodeLabel names a node in a few words: its kind and its summary.
+func (s *State) nodeLabel(node flow.Node, docs frame.Docs) string {
+	kind, _ := flow.KindOf(node.Kind)
+	if summary := s.summary(node, docs); summary != "" {
+		return kind.Label + " · " + summary
+	}
+
+	return kind.Label
 }
 
 func (s *State) titleWidth(value string) int {
@@ -672,14 +731,7 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 			return drawn.rect.Min.Add(image.Pt(textPad*ui.Half, textPad*ui.Half)), true
 		}
 	case "port":
-		where := strings.Split(value, ":")
-		if len(where) == portParts {
-			if drawn, ok := s.nthNode(where[0] + ":" + where[1]); ok {
-				if out, found := drawn.portOf(where[2]); found {
-					return out.at, true
-				}
-			}
-		}
+		return s.locatePort(value)
 	case "entry":
 		if drawn, ok := s.nthNode(value); ok && takesEntries(drawn.node.Kind) {
 			return drawn.spare, true
@@ -688,6 +740,8 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 		if drawn, ok := s.nthNode(value); ok && !drawn.addOption.Empty() {
 			return ui.Center(drawn.addOption), true
 		}
+	case "line":
+		return s.locateLine(value)
 	case "canvas":
 		var x, y int
 		if _, err := fmt.Sscanf(value, "%d,%d", &x, &y); err == nil {
@@ -696,6 +750,21 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locatePort finds the port of "<kind>:<n>:<output>".
+func (s *State) locatePort(value string) (image.Point, bool) {
+	where := strings.Split(value, ":")
+	if len(where) != portParts {
+		return image.Pt(0, 0), false
+	}
+	drawn, ok := s.nthNode(where[0] + ":" + where[1])
+	if !ok {
+		return image.Pt(0, 0), false
+	}
+	out, found := drawn.portOf(where[2])
+
+	return out.at, found
 }
 
 // nthNode finds "<kind>:<n>", the nth node of a kind in creation order.
@@ -759,9 +828,15 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 // hasState answers input scripts waiting for the window: "loaded", "nodes:N"
 // when the workflow holds N nodes, "selected:<kind>" when a node of that kind
 // is selected, "picking" while a pick is in progress, "destination" once
-// the selected Go to has one, and "entries:<kind>:<n>=C" when C links come
-// into the nth node of a kind.
+// the selected Go to has one, "entries:<kind>:<n>=C" when C links come into
+// the nth node of a kind, "line-selected" while a line is selected,
+// "lit:<kind>:<n>:<output>" while that line is drawn blue,
+// "problems:N" when N nodes have problems and "problem:<kind>:<n>" when the
+// nth node of a kind has one.
 func (s *State) hasState(state string) bool {
+	if found, handled := s.hasLineState(state); handled {
+		return found
+	}
 	switch {
 	case strings.HasPrefix(state, "entries:"):
 		which, count, _ := strings.Cut(strings.TrimPrefix(state, "entries:"), "=")

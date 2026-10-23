@@ -527,7 +527,8 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 // TestWorkflowRandomWalk builds the test routine "move up or down at
 // random, wait two seconds, repeat" in a real Workflow window: a random
 // choice with two named options, a Move each way, and one Wait that both
-// Moves lead into, with an entry dot for each.
+// Moves lead into, with an entry dot for each, then a line from the Wait
+// back to the random choice, drawn dashed as a loop, and auto-arranges it.
 func TestWorkflowRandomWalk(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -548,9 +549,9 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		click("node:move:1"), wait(5), click("palette:wait"), wait(10),
 		retype("param-duration", "2"), click("ui:duration-seconds"), wait(10),
 		drag("port:move:2:next", "entry:wait:1"), expect("state:entries:wait:1=2", 300), wait(10),
-		click("node:random:1"), click("ui:arrange"), wait(20),
-		step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{8, 0}}, wait(10),
-		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
+		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{7, 0}}, wait(10),
+		drag("port:wait:1:next", "node:random:1"), expect("state:entries:random:1=2", 300), wait(10),
+		click("node:random:1"), wait(10), step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}, "workflow": {workflowScript}})
@@ -573,6 +574,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 	if len(options) != 2 || options[0].Label != "up" || options[1].Label != "down" ||
 		random[0].Next[options[0].Port] != moves[0].ID || random[0].Next[options[1].Port] != moves[1].ID ||
 		moves[0].Next[flow.OutputNext] != waits[0].ID || moves[1].Next[flow.OutputNext] != waits[0].ID ||
+		waits[0].Next[flow.OutputNext] != random[0].ID ||
 		direction != flow.DirectionDown || duration.Amount != 2 || duration.Unit != flow.UnitSeconds {
 		t.Fatalf("the routine was saved as %+v", byKind)
 	}
