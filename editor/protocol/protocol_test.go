@@ -19,25 +19,30 @@ var testID = ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
 func everyMessage(t *testing.T) []protocol.Message {
 	t.Helper()
 	payloads := map[protocol.Kind]any{
-		protocol.KindHello:      protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
-		protocol.KindWelcome:    protocol.Welcome{Window: testID},
-		protocol.KindSubscribe:  protocol.Subscribe{Document: testID},
-		protocol.KindSnapshot:   protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
-		protocol.KindCommand:    protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
-		protocol.KindResult:     protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID},
-		protocol.KindEvent:      protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
-		protocol.KindSession:    protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
-		protocol.KindOpen:       protocol.Open{View: "map", Target: testID, NewView: true},
-		protocol.KindShutdown:   protocol.Shutdown{Reason: "bye"},
-		protocol.KindUndo:       nil,
-		protocol.KindRedo:       nil,
-		protocol.KindQuery:      protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
-		protocol.KindAnswer:     protocol.Answer{Uses: []protocol.Use{{Document: testID, Name: "n", Format: "f", Label: "l"}}},
-		protocol.KindAttention:  nil,
-		protocol.KindPickAsk:    protocol.PickAsk{What: protocol.PickAnchor, Maps: []protocol.PickMap{{Window: testID, Zone: testID, Shows: true}}},
-		protocol.KindPickStart:  protocol.PickStart{Pick: "p", What: protocol.PickAnchor, Label: "l", Window: testID, Zone: testID, From: testID},
-		protocol.KindPickAnswer: protocol.PickAnswer{Pick: "p", Floor: testID, Item: "i"},
-		protocol.KindPickCancel: protocol.PickCancel{Pick: "p", Reason: "r"},
+		protocol.KindHello:        protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
+		protocol.KindWelcome:      protocol.Welcome{Window: testID},
+		protocol.KindSubscribe:    protocol.Subscribe{Document: testID},
+		protocol.KindSnapshot:     protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
+		protocol.KindCommand:      protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
+		protocol.KindResult:       protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID},
+		protocol.KindEvent:        protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
+		protocol.KindSession:      protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
+		protocol.KindOpen:         protocol.Open{View: "map", Target: testID, NewView: true},
+		protocol.KindShutdown:     protocol.Shutdown{Reason: "bye"},
+		protocol.KindUndo:         nil,
+		protocol.KindRedo:         nil,
+		protocol.KindQuery:        protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
+		protocol.KindAnswer:       protocol.Answer{Uses: []protocol.Use{{Document: testID, Name: "n", Format: "f", Label: "l"}}},
+		protocol.KindAttention:    nil,
+		protocol.KindPickAsk:      protocol.PickAsk{What: protocol.PickAnchor, Maps: []protocol.PickMap{{Window: testID, Zone: testID, Shows: true}}},
+		protocol.KindPickStart:    protocol.PickStart{Pick: "p", What: protocol.PickAnchor, Label: "l", Window: testID, Zone: testID, From: testID},
+		protocol.KindPickAnswer:   protocol.PickAnswer{Pick: "p", Floor: testID, Item: "i"},
+		protocol.KindPickCancel:   protocol.PickCancel{Pick: "p", Reason: "r"},
+		protocol.KindPreviewStart: protocol.PreviewStart{Zone: testID, Run: testID, Window: testID},
+		protocol.KindPreviewState: protocol.PreviewState{Run: testID, Tick: 12, Entities: []protocol.PreviewEntity{
+			{ID: protocol.EntityPlayer, Floor: testID, X: 1.5, Y: -2, Face: [2]int{1, -1}},
+		}},
+		protocol.KindPreviewStop: protocol.PreviewStop{Run: testID, Reason: "r"},
 	}
 	messages := make([]protocol.Message, 0, len(payloads))
 	for kind, payload := range payloads {
@@ -96,6 +101,12 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.PickAnswer](message)
 		case protocol.KindPickCancel:
 			check = roundTrip[protocol.PickCancel](message)
+		case protocol.KindPreviewStart:
+			check = roundTrip[protocol.PreviewStart](message)
+		case protocol.KindPreviewState:
+			check = roundTrip[protocol.PreviewState](message)
+		case protocol.KindPreviewStop:
+			check = roundTrip[protocol.PreviewStop](message)
 		case protocol.KindHello:
 			check = roundTrip[protocol.Hello](message)
 		case protocol.KindEvent:

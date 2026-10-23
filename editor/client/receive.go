@@ -49,6 +49,8 @@ func (c *Client) dispatch(message protocol.Message) {
 		c.emit(update)
 	case protocol.KindPickAsk, protocol.KindPickStart, protocol.KindPickAnswer, protocol.KindPickCancel:
 		c.dispatchPick(message)
+	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop:
+		c.dispatchPreview(message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery:
 		return
@@ -87,12 +89,45 @@ func (c *Client) dispatchPick(message protocol.Message) {
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
 		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
-		protocol.KindAnswer, protocol.KindAttention:
+		protocol.KindAnswer, protocol.KindAttention, protocol.KindPreviewStart, protocol.KindPreviewState,
+		protocol.KindPreviewStop:
 		return
 	default:
 		return
 	}
 	c.emit(update)
+}
+
+// dispatchPreview delivers a preview another window runs in this window's
+// zone: its start, its latest state and its end.
+func (c *Client) dispatchPreview(message protocol.Message) {
+	update := newUpdate()
+	var err error
+	switch message.Kind {
+	case protocol.KindPreviewStart:
+		var start protocol.PreviewStart
+		start, err = protocol.DecodePayload[protocol.PreviewStart](message)
+		update.PreviewStart = &start
+	case protocol.KindPreviewState:
+		var state protocol.PreviewState
+		state, err = protocol.DecodePayload[protocol.PreviewState](message)
+		update.PreviewState = &state
+	case protocol.KindPreviewStop:
+		var stop protocol.PreviewStop
+		stop, err = protocol.DecodePayload[protocol.PreviewStop](message)
+		update.PreviewStop = &stop
+	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
+		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
+		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
+		protocol.KindAnswer, protocol.KindAttention, protocol.KindPickAsk, protocol.KindPickStart,
+		protocol.KindPickAnswer, protocol.KindPickCancel:
+		return
+	default:
+		return
+	}
+	if err == nil {
+		c.emit(update)
+	}
 }
 
 // onSnapshot installs a document before the reply is delivered, so events
@@ -255,5 +290,6 @@ func newUpdate() Update {
 	return Update{
 		Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Session: nil, Shutdown: nil,
 		Attention: false, PickStart: nil, PickAnswer: nil, PickCancel: nil,
+		PreviewStart: nil, PreviewState: nil, PreviewStop: nil,
 	}
 }

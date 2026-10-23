@@ -27,6 +27,7 @@ func (o *Orchestrator) join(joined *window) {
 		o.send(joined, mustMessage(protocol.KindSession, 0, protocol.Session{Topic: topic, Value: value}))
 	}
 	o.pickJoined(joined)
+	o.previewJoined(joined)
 }
 
 // leave forgets a window. Its undo list ends unless another view shares it.
@@ -41,6 +42,7 @@ func (o *Orchestrator) leave(left *window) {
 	o.history.leave(left.group)
 	close(left.out)
 	o.endPicksWith(left.id)
+	o.previewLeft(left.id)
 }
 
 func (o *Orchestrator) handle(message inbound) {
@@ -64,14 +66,10 @@ func (o *Orchestrator) handle(message inbound) {
 		o.openWindow(message.from, message.message)
 	case protocol.KindQuery:
 		o.query(message.from, message.message)
-	case protocol.KindPickAsk:
-		o.pickAsk(message.from, message.message)
-	case protocol.KindPickStart:
-		o.pickStart(message.from, message.message)
-	case protocol.KindPickAnswer:
-		o.pickAnswer(message.from, message.message)
-	case protocol.KindPickCancel:
-		o.pickCancel(message.from, message.message)
+	case protocol.KindPickAsk, protocol.KindPickStart, protocol.KindPickAnswer, protocol.KindPickCancel:
+		o.handlePick(message.from, message.message)
+	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop:
+		o.handlePreview(message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention:
 		o.reply(message.from, request, reasonUnexpected, 0)
@@ -397,7 +395,9 @@ func (o *Orchestrator) send(target *window, message protocol.Message) {
 
 func (o *Orchestrator) record(target *window, direction string, message protocol.Message) {
 	item := Recorded{At: o.cfg.Clock().UTC(), Window: target.id, Direction: direction, Message: message}
-	if recent, ok := o.recent[target.id]; ok {
+	// The preview stream would crowd everything else out of a crash report,
+	// so only the wire tap keeps it.
+	if recent, ok := o.recent[target.id]; ok && message.Kind != protocol.KindPreviewState {
 		recent.add(item)
 	}
 	if o.cfg.Tap != nil {

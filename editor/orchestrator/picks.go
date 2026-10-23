@@ -41,6 +41,30 @@ func newPicks() *picks {
 	return &picks{active: map[string]*pick{}, waiting: map[ids.ULID]protocol.PickStart{}}
 }
 
+// handlePick routes one of the four pick messages.
+func (o *Orchestrator) handlePick(from *window, message protocol.Message) {
+	o.route(from, message, map[protocol.Kind]handler{
+		protocol.KindPickAsk:    o.pickAsk,
+		protocol.KindPickStart:  o.pickStart,
+		protocol.KindPickAnswer: o.pickAnswer,
+		protocol.KindPickCancel: o.pickCancel,
+	})
+}
+
+// handler handles one kind of message from a window.
+type handler func(*window, protocol.Message)
+
+// route hands a message to the handler for its kind.
+func (o *Orchestrator) route(from *window, message protocol.Message, handlers map[protocol.Kind]handler) {
+	handle, ok := handlers[message.Kind]
+	if !ok {
+		o.reply(from, message.Request, reasonUnexpected, 0)
+
+		return
+	}
+	handle(from, message)
+}
+
 // pickAsk replies with the open Map windows and whether each shows something
 // that can be picked.
 func (o *Orchestrator) pickAsk(from *window, message protocol.Message) {

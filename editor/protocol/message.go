@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 2
+const Version = 3
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -49,6 +49,11 @@ const (
 	KindPickStart  Kind = "pick-start"
 	KindPickAnswer Kind = "pick-answer"
 	KindPickCancel Kind = "pick-cancel"
+	// The three preview messages (D7, D15): a Map window starts a preview,
+	// streams its live state through the orchestrator, and stops it.
+	KindPreviewStart Kind = "preview-start"
+	KindPreviewState Kind = "preview-state"
+	KindPreviewStop  Kind = "preview-stop"
 )
 
 // Message is one framed protocol message.
@@ -100,7 +105,8 @@ type Command struct {
 	Args    json.RawMessage `json:"args"`
 }
 
-// Result answers a Command, Undo, Redo, Subscribe, Open or PickStart request.
+// Result answers a Command, Undo, Redo, Subscribe, Open, PickStart or
+// PreviewStart request.
 type Result struct {
 	OK       bool   `json:"ok"`
 	Reason   string `json:"reason,omitempty"`
@@ -218,6 +224,47 @@ type PickAnswer struct {
 type PickCancel struct {
 	Pick   string `json:"pick"`
 	Reason string `json:"reason,omitempty"`
+}
+
+// PreviewStart asks to start a preview of a zone (D15); one preview runs at
+// a time. The orchestrator answers with a Result whose Created is the new
+// run's ID, then tells the zone's other Map windows with this kind, Run and
+// Window filled in.
+type PreviewStart struct {
+	Zone   ids.ULID `json:"zone"`
+	Run    ids.ULID `json:"run,omitzero"`
+	Window ids.ULID `json:"window,omitzero"`
+}
+
+// EntityPlayer is the player's ID among a preview's entities.
+const EntityPlayer = "player"
+
+// PreviewEntity is one live entity of a preview: where it is, in cells,
+// part-way between two cells while it moves.
+type PreviewEntity struct {
+	ID    string   `json:"id"`
+	Floor ids.ULID `json:"floor"`
+	X     float64  `json:"x"`
+	Y     float64  `json:"y"`
+	// Face is the direction the entity faces, one cell.
+	Face [2]int `json:"face"`
+}
+
+// PreviewState is a preview's latest live state, sent at a limited rate; the
+// latest value wins (D7). Tick orders the states of one run, so a receiver
+// discards a state older than the one it holds.
+type PreviewState struct {
+	Run      ids.ULID        `json:"run"`
+	Tick     uint64          `json:"tick"`
+	Entities []PreviewEntity `json:"entities"`
+}
+
+// PreviewStop ends a preview. The window running it sends it; the
+// orchestrator tells the zone's other Map windows, and sends it itself when
+// that window closes.
+type PreviewStop struct {
+	Run    ids.ULID `json:"run"`
+	Reason string   `json:"reason,omitempty"`
 }
 
 // Shutdown tells a window to clean up and close.

@@ -45,10 +45,25 @@ type Requests interface {
 	Subscribe(document ids.ULID, done func(error))
 	Open(view string, target ids.ULID, newView bool)
 	WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error))
+	Picks
+	Previews
+}
+
+// Picks are the requests for pick on map (D13).
+type Picks interface {
 	PickAsk(what string, done func([]protocol.PickMap, error))
 	PickStart(start protocol.PickStart, done func(protocol.Result, error))
 	PickAnswer(answer protocol.PickAnswer)
 	PickCancel(cancel protocol.PickCancel)
+}
+
+// Previews are the requests for a preview (D7, D15). PreviewStart starts one
+// for a zone, and the result's Created is the run's ID; PreviewState sends
+// its latest state and PreviewStop ends it.
+type Previews interface {
+	PreviewStart(zone ids.ULID, done func(protocol.Result, error))
+	PreviewState(state protocol.PreviewState)
+	PreviewStop(stop protocol.PreviewStop)
 }
 
 // Context is what a view's Update receives each frame.
@@ -70,7 +85,7 @@ type View interface {
 	// Update handles a frame of input and makes requests.
 	Update(input *ui.Input, ctx *Context)
 	// Changed tells the view that the orchestrator sent something: an event,
-	// a snapshot or a pick message.
+	// a snapshot, a pick message or another window's preview.
 	Changed(update client.Update, ctx *Context)
 	// Draw renders the view.
 	Draw(screen *ebiten.Image, docs Docs)

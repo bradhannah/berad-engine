@@ -136,6 +136,9 @@ func (r *inputReader) read(focused *ui.TextField) ui.Input {
 		if duration == 1 || (duration >= repeatDelay && (duration-repeatDelay)%repeatInterval == 0) {
 			input.Presses = append(input.Presses, ui.Press{Key: name, Mods: input.Held})
 		}
+		if duration > 0 {
+			input.Keys = append(input.Keys, name)
+		}
 	}
 	r.runInputMethod(&input, focused)
 

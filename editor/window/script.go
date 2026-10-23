@@ -23,7 +23,7 @@ const scriptEnv = "BERAD_INPUT_SCRIPT"
 // until a step names one, the cursor stays where it was. Keys are pressed on
 // the first frame, written as "Cmd+Shift+Z". Text and Replace stand in for
 // the input method: Replace is what pressing and holding a key for an accent
-// produces.
+// produces. Hold names keys held down for every frame of the step.
 type scriptStep struct {
 	Repeat   int              `json:"repeat"`
 	At       string           `json:"at"`
@@ -32,6 +32,7 @@ type scriptStep struct {
 	Released bool             `json:"released"`
 	Double   bool             `json:"double"`
 	Keys     []string         `json:"keys"`
+	Hold     []string         `json:"hold"`
 	Text     string           `json:"text"`
 	Replace  *ui.Replacement  `json:"replace"`
 	Wheel    *[2]float64      `json:"wheel"`
@@ -118,6 +119,9 @@ func (s *inputScript) next(view frame.View, docs frame.Docs) ui.Input {
 	input.DoubleClick = step.Double && first
 	input.Held = ui.ParsePress(step.Held + "+x").Mods
 	input.Space = step.Space
+	for _, key := range step.Hold {
+		input.Keys = append(input.Keys, ui.Key(key))
+	}
 	if first {
 		for _, key := range step.Keys {
 			input.Presses = append(input.Presses, ui.ParsePress(key))

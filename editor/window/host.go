@@ -316,6 +316,29 @@ func (h *host) PickCancel(cancel protocol.PickCancel) {
 	}
 }
 
+// PreviewStart starts a preview of a zone.
+func (h *host) PreviewStart(zone ids.ULID, done func(protocol.Result, error)) {
+	h.background(func(ctx context.Context) func() {
+		result, err := h.conn.PreviewStart(ctx, zone)
+
+		return func() { reply(done, result, err) }
+	})
+}
+
+// PreviewState sends the preview's latest state.
+func (h *host) PreviewState(state protocol.PreviewState) {
+	if err := h.conn.PreviewState(state); err != nil {
+		h.frame.Status(err.Error())
+	}
+}
+
+// PreviewStop ends the preview.
+func (h *host) PreviewStop(stop protocol.PreviewStop) {
+	if err := h.conn.PreviewStop(stop); err != nil {
+		h.frame.Status(err.Error())
+	}
+}
+
 // Draw renders the view, the status bar and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
 	h.view.Draw(screen, h.conn)

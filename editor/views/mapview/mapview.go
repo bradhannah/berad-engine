@@ -1,8 +1,9 @@
 // Package mapview is the Map window: one zone, shown a floor at a time with
 // the floor below faintly underneath and the zone origin, cell 0,0, marked.
 // Authors paint ground, draw walls with a family and change families for a
-// whole run, room or area, place doors and pickup stand-ins, add and name
-// anchors, resize floors on any side, and answer picks from other windows.
+// whole run, room or area, place doors, stairs and pickup stand-ins, add and
+// name anchors, resize floors on any side, answer picks from other windows,
+// and preview the zone by walking the player through it (D15).
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -69,7 +70,7 @@ func tools() []toolInfo {
 	return []toolInfo{
 		{ToolGround, "Ground", "G", "Drag to paint the ground."},
 		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family."},
-		{ToolObjects, "Doors and pickups", "O", "Drag to place a door or pickup stand-in."},
+		{ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup."},
 		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
 		{ToolAnchor, "Anchors", "A", "Click to add an anchor; drag one to move it."},
 		{ToolSelect, "Select walls", "S", "Click a wall for its run, double-click a room, or drag an area."},
@@ -148,6 +149,13 @@ type State struct {
 	framed   bool
 	resizing *resizeDrag
 	cursor   image.Point
+	// choosing waits for the cell where a preview's player starts; starting
+	// waits for the orchestrator to agree. preview is this window's own
+	// preview, remote another window's preview of the zone.
+	choosing bool
+	starting bool
+	preview  *previewRun
+	remote   *remotePreview
 
 	toolList  *ui.List
 	tileList  *ui.List
@@ -156,6 +164,7 @@ type State struct {
 	nameField *ui.TextField
 	deleteBtn *ui.Button
 	replace   *ui.Button
+	previewBn *ui.Button
 	sides     []sideButtons
 	focus     ui.Focus
 
@@ -174,7 +183,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{},
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
-		cursor:    image.Pt(0, 0),
+		cursor:   image.Pt(0, 0),
+		choosing: false, starting: false, preview: nil, remote: nil,
 		toolList:  &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
 		tileList:  &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
 		floorList: &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
@@ -184,9 +194,10 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace: &ui.Button{
 			ID: "replace-family", Label: "Replace family everywhere…", Rect: ui.Zero(), Disabled: false, Primary: false,
 		},
-		sides:  newSideButtons(),
-		focus:  ui.Focus{},
-		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
+		previewBn: &ui.Button{ID: "preview", Label: "Preview", Rect: ui.Zero(), Disabled: false, Primary: false},
+		sides:     newSideButtons(),
+		focus:     ui.Focus{},
+		dialog:    nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
 	view.focus.Register(view.nameField)
 	for _, info := range tools() {
@@ -242,10 +253,12 @@ func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 // Changed reacts to the orchestrator: the zone's floors, picks.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	switch {
+	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
+		s.previewChanged(update, ctx)
 	case update.PickStart != nil:
 		start := *update.PickStart
 		s.pick = &start
-		s.stroke.active = false
+		s.stroke.active, s.choosing = false, false
 		ctx.Frame.Status("Pick an anchor for " + labelOr(start.Label, "another window") + ". Escape cancels.")
 	case update.PickCancel != nil && s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
 		s.pick = nil
@@ -295,6 +308,9 @@ func (s *State) syncZone(ctx *frame.Context) {
 		s.floor = ids.ULID{}
 
 		return
+	}
+	if s.preview != nil {
+		s.subscribeFloors(ctx)
 	}
 	if indexOf(s.floors, s.floor) < 0 {
 		s.switchFloor(s.floors[0], ctx)
@@ -369,6 +385,16 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.floorList.Rect = image.Rect(0, rowY, PanelWidth, rowY+floorRows*ui.RowHeight)
 	rowY = s.floorList.Rect.Max.Y + panelGap/ui.Half
 	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, PanelWidth-ui.Inset, rowY+ui.RowHeight)
+	rowY = s.below.Rect.Max.Y + panelGap
+	s.previewBn.Rect = image.Rect(ui.Inset, rowY, PanelWidth-ui.Inset, rowY+ui.ButtonH)
+	switch {
+	case s.preview != nil:
+		s.previewBn.Label = "Stop preview (P)"
+	case s.choosing:
+		s.previewBn.Label = "Cancel preview (P)"
+	default:
+		s.previewBn.Label = "Preview (P)"
+	}
 
 	inspector := frame.Inspector(s.size)
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
@@ -448,6 +474,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	frame.CommonKeys(input, ctx)
 	s.updatePanels(input, ctx)
+	if s.preview != nil {
+		s.stepPreview(input, ctx)
+	}
 	if s.floor.IsZero() {
 		return
 	}
@@ -489,6 +518,10 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		})
 	case input.Consume(ui.KeyF, plain):
 		s.below.On = !s.below.On
+	case input.Consume(ui.KeyP, plain):
+		s.togglePreview(ctx)
+	case s.choosing && input.Consume(ui.KeyEscape, plain):
+		s.togglePreview(ctx)
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		if !s.anchor.IsZero() {
 			s.deleteAnchor(ctx)
@@ -563,6 +596,9 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 	if s.replace.Update(input) && len(s.selected) > 0 {
 		s.openReplace(ctx)
 	}
+	if s.previewBn.Update(input) {
+		s.togglePreview(ctx)
+	}
 }
 
 // updateGrid handles panning, zooming and the current tool on the floor.
@@ -577,6 +613,11 @@ func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor
 	}
 	if s.pick != nil {
 		s.updatePick(input, ctx, floorData, cell, onFloor)
+
+		return
+	}
+	if s.choosing {
+		s.updateChoosing(input, ctx, floorData, cell, onFloor)
 
 		return
 	}
@@ -1070,9 +1111,10 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 
 // Locate finds a named part of the window for input scripts: "cell:C,R",
 // "edge:left" (or top, right, bottom) of the floor, "tool:<tool>",
-// "tile:<id>", "floor:<n>" (1 is the bottom floor), "ui:anchor-name",
-// "ui:delete-anchor", "ui:replace-family", "ui:below", "ui:grow-left" and the
-// other side buttons, or a dialog button or list row by ID.
+// "tile:<id>", "floor:<n>" (1 is the bottom floor), "player" for a
+// preview's player, "ui:anchor-name", "ui:delete-anchor",
+// "ui:replace-family", "ui:below", "ui:preview", "ui:grow-left" and the other
+// side buttons, or a dialog button or list row by ID.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
@@ -1105,6 +1147,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.floorList.Locate(s.floors[number-1].String())
 	case "ui":
 		return s.locateWidget(value)
+	case "player":
+		return s.locatePlayer()
 	}
 
 	return image.Pt(0, 0), false
@@ -1112,8 +1156,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 // hasState answers input scripts waiting for the window: "loaded" once the
 // current floor has arrived and is in view, "picking" while answering a pick,
-// "floor:N" when the Nth floor from the bottom is shown, and
-// "bounds:C,R,W,H" when the current floor has those bounds.
+// "floor:N" when the Nth floor from the bottom is shown,
+// "bounds:C,R,W,H" when the current floor has those bounds, "previewing"
+// while this window runs a preview, and "player:C,R" or "remote-player:C,R"
+// when this window's or another window's player stands on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	switch {
 	case state == "loaded":
@@ -1122,6 +1168,12 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
 	case state == "picking":
 		return s.pick != nil
+	case state == "previewing":
+		return s.preview != nil
+	case strings.HasPrefix(state, "player:"):
+		return s.hasPlayer(strings.TrimPrefix(state, "player:"), false)
+	case strings.HasPrefix(state, "remote-player:"):
+		return s.hasPlayer(strings.TrimPrefix(state, "remote-player:"), true)
 	case strings.HasPrefix(state, "floor:"):
 		number, err := strconv.Atoi(strings.TrimPrefix(state, "floor:"))
 
@@ -1144,6 +1196,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return center(s.replace.Rect), true
 	case s.below.ID:
 		return center(s.below.Rect), true
+	case s.previewBn.ID:
+		return center(s.previewBn.Rect), true
 	}
 	for _, side := range s.sides {
 		for _, button := range []*ui.Button{side.grow, side.shrink} {

@@ -89,6 +89,7 @@ type Orchestrator struct {
 	recent     map[ids.ULID]*ring
 	children   map[ids.ULID]*child
 	picks      *picks
+	preview    *preview
 	// removed holds files of deleted or renamed documents, moved to the
 	// backups at the next save.
 	removed  map[string]bool
@@ -142,6 +143,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		recent:     map[ids.ULID]*ring{},
 		children:   map[ids.ULID]*child{},
 		picks:      newPicks(),
+		preview:    nil,
 		removed:    map[string]bool{},
 		seq:        0,
 		stopping:   false,
