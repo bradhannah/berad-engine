@@ -10,7 +10,10 @@ GOIMPORTS_VERSION := v0.37.0
 GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
 GOIMPORTS := $(TOOLS_DIR)/goimports
 
-.PHONY: help tools tools-check format format-check lint vet test check
+EDITOR_BIN := .cache/bin/berad-editor
+DEMO_PROJECT ?= .cache/demo-project
+
+.PHONY: help tools tools-check format format-check lint vet test check editor demo gui-test latency
 
 help:
 	@echo "make tools         install the pinned golangci-lint and goimports (network)"
@@ -20,6 +23,10 @@ help:
 	@echo "make vet           go vet"
 	@echo "make test          tests with the race detector"
 	@echo "make check         all of the above except formatting changes"
+	@echo "make editor        build berad-editor into .cache/bin"
+	@echo "make demo          open a sample project in the editor (DEMO_PROJECT=path to choose)"
+	@echo "make gui-test      run the tests that open real editor windows"
+	@echo "make latency       measure strict-mode command-to-event time"
 
 tools:
 	GOBIN=$(TOOLS_DIR) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
@@ -46,3 +53,15 @@ test:
 	@for m in $(MODULES); do $(GO) -C $$m test -race ./... || exit 1; done
 
 check: format-check lint vet test
+
+editor:
+	$(GO) -C editor build -o ../$(EDITOR_BIN) ./cmd/berad-editor
+
+demo: editor
+	./$(EDITOR_BIN) open --project $(DEMO_PROJECT) --sample
+
+gui-test:
+	BERAD_GUI_TESTS=1 $(GO) -C editor test -count=1 -v ./cmd/berad-editor/
+
+latency:
+	$(GO) -C editor test -count=1 -run StrictModeLatency -v ./orchestrator/

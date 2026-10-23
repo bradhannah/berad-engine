@@ -2,8 +2,9 @@
 
 A Go/Ebitengine engine and shared editor for top-down tile RPGs.
 
-**Experimental, early design stage. There is no implementation yet:** the module
-folders exist, but they contain no code, examples or checks.
+**Experimental and early.** The first build exists: the editor's orchestrator,
+its protocol, and a Map window that paints a tile floor. There are no game
+features, no game runtime and no stable API yet.
 
 ## Layout
 
@@ -25,6 +26,39 @@ when a consuming game needs it, not in anticipation of hypothetical needs.
 Each game keeps its own content, settings and unique game modes (such as intros)
 in its own repository.
 
+## Try it
+
+```sh
+make demo     # build the editor and open a sample project in .cache/demo-project
+```
+
+A Map window opens on a sample floor. Drag to paint; `1`-`6` pick a tile;
+`Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
+opens another view of the same map, and the views update live and share undo;
+`Cmd+W` closes a window. The editor quits when its last window closes. Every
+change is saved automatically; the files are in the project folder.
+
+`Cmd+Shift+K` crashes the current window on purpose, to show the failure
+handling: the other windows show a notice and a crash report appears in the
+project's `.berad/logs`.
+
+## How it fits together
+
+- The **orchestrator** (`editor/orchestrator`) is the only writer of project
+  data. One goroutine owns all state. Windows connect over a Unix socket.
+- **Windows** (`editor/window`, behaviour in `editor/views`) are separate
+  processes of the same program. They send commands and change only when the
+  orchestrator's event arrives (strict updates).
+- The **protocol** (`editor/protocol`) defines every message once as Go types,
+  JSON-encoded behind a codec interface, with revision numbers so a window that
+  misses an event reloads instead of drifting.
+- **Edits** come from plug-ins registered in one explicit list
+  (`editor/plugin`); each edit kind knows how to undo itself and must pass the
+  shared apply-then-undo test (`editor/model`).
+- Every saved file is a **versioned envelope** (`engine/content`), upgraded step
+  by step on load after a backup. Edits are journaled before they are
+  acknowledged and folded into the files, written then renamed.
+
 ## Checks
 
 Both modules follow berad-sdk's strict Go policy: the same lint configuration
@@ -32,15 +66,22 @@ Both modules follow berad-sdk's strict Go policy: the same lint configuration
 golang.org/x/tools v0.37.0), with zero findings and no baseline.
 
 ```sh
-make tools   # install the pinned tools into .cache/tools (needs network)
-make check   # formatting, lint, go vet and race tests for both modules
-make format  # apply formatting
+make tools     # install the pinned tools into .cache/tools (needs network)
+make check     # formatting, lint, go vet and race tests for both modules
+make format    # apply formatting
+make gui-test  # tests that open real editor windows, driven by input scripts
+make latency   # strict-mode command-to-event time over a real socket
 ```
+
+Window tests need a desktop session, so they run only with `make gui-test`
+(`BERAD_GUI_TESTS=1`). `BERAD_SCREENSHOT=path` makes a window save its pixels
+once, for visual checks.
 
 ## Dependencies
 
-Ebitengine v2.10.5 and ebitenui v0.7.3 are the chosen versions. They are added
-to a module when its first code uses them.
+The editor uses Ebitengine v2.10.5. ebitenui v0.7.3 is the chosen widget
+library and is added when the first window needs it. The two modules are joined
+by `go.work` for development.
 
 ## Contributing
 
