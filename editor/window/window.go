@@ -80,7 +80,11 @@ func Run(args Args, registry *plugin.Registry) error {
 	ebiten.SetWindowTitle(game.view.Title(conn))
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	runErr := ebiten.RunGame(game)
+	// A window driven by an input script needs no keyboard, so it opens
+	// without taking focus from whatever the person at the computer is using.
+	var options ebiten.RunGameOptions
+	options.InitUnfocused = game.script != nil
+	runErr := ebiten.RunGameWithOptions(game, &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil
 	}
