@@ -25,7 +25,7 @@ to the same strict checks as [the first build](FIRST_BUILD.md).
 | --- | --- | --- | --- |
 | 1. The wireframe look | IBM Plex Sans and Mono; dark 1.5-pixel outlines and rounded boxes; small uppercase labels; blue for selection, orange for live; the dotted or lined canvas | Every window matches the wireframes' look, judged by its author | Built |
 | 2. Workflows | Workflow documents, logic and layout kept apart (D17); node types declared by a plug-in with typed parameters; the Workflow window: palette, canvas, nodes, connections, containers, notes, an inspector built from the declarations, auto-arrange | A routine can be built, edited and undone in the Workflow window | Built |
-| 3. NPCs | NPC documents with a behaviour workflow; placing NPCs on floors; the inspector for an NPC placement | NPCs can be placed and given workflows | Planned |
+| 3. NPCs | NPC documents with a behaviour workflow; placing NPCs on floors; the inspector for an NPC placement | NPCs can be placed and given workflows | Built |
 | 4. NPCs in the preview | The engine's workflow runner; NPC walking with berad-path; the preview clock; live state in the Map and Workflow windows | NPCs follow a daily routine in the preview, judged by its author | Planned |
 
 Pathfinding comes from a new berad-sdk module, **berad-path**, built from
@@ -108,6 +108,34 @@ Open:
   so there is no separate Hub node yet; new nodes go to the right of the node
   they follow, and notes above it; zoom, the minimap and search shown in the
   wireframe are not built yet.
+
+- **NPCs:** `engine/npc` holds the NPC document: the workflow that is its
+  behaviour and its private notes. Floors (format 4, upgraded from 3) hold
+  NPC placements beside their anchors, each with its own ID, so one NPC can
+  be placed many times. The NPC plug-in's edits (choose the behaviour, change
+  the notes) and the floor's placement edits (add, move, remove) pass the
+  shared undo test, and resizing a floor removes and restores placements the
+  way it does anchors. Where-used finds the floors that place an NPC and the
+  NPCs that follow a workflow.
+- **In the project browser,** New NPC makes one; selecting it shows its
+  behaviour, with Choose… (a list of the project's workflows) and Open, and
+  its notes, saved with Enter. Opening an NPC opens its behaviour.
+- **In the Map window,** the Place NPC tool (N) lists the project's NPCs on
+  the left; clicking a cell places the chosen one, dragging a token moves it,
+  and Delete or Remove takes it off the map. Tokens are dark discs with the
+  NPC's initials and its name beside them; an NPC whose definition was
+  deleted shows as a grey "?". Selecting a token shows the NPC, where it
+  stands, its behaviour and Open behaviour. A resize that takes NPCs off the
+  map says how many.
+- Found while building: a window's documents cannot be read from inside
+  another read without freezing the window, and the test stand-in allowed it,
+  so the first real-window run froze. The stand-in now refuses such reads as
+  the real client would, and the window and browser tests now draw.
+- Chosen while building, for its author to check: placements live in the
+  floor document, like anchors; only one NPC stands on a cell; behaviour and
+  notes are edited in the project browser, while the Map window shows them
+  and opens the behaviour; NPCs do not yet block the player in the preview,
+  which arrives with step 4.
 
 ## Not in this build
 

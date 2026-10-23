@@ -225,14 +225,15 @@ func BoundsOf(rect image.Rectangle) Bounds {
 }
 
 // ResizeArgs changes a floor's bounds, adding or removing rows and columns on
-// any side. Added cells get Ground and nothing on top; then Cells and Anchors,
-// which must lie in added cells, are put back. Undo uses them to restore what
-// a resize removed.
+// any side. Added cells get Ground and nothing on top; then Cells, Anchors and
+// Placements, which must lie in added cells, are put back. Undo uses them to
+// restore what a resize removed.
 type ResizeArgs struct {
-	Bounds  Bounds          `json:"bounds"`
-	Ground  string          `json:"ground"`
-	Cells   []Cell          `json:"cells,omitempty"`
-	Anchors []AddAnchorArgs `json:"anchors,omitempty"`
+	Bounds     Bounds             `json:"bounds"`
+	Ground     string             `json:"ground"`
+	Cells      []Cell             `json:"cells,omitempty"`
+	Anchors    []AddAnchorArgs    `json:"anchors,omitempty"`
+	Placements []AddPlacementArgs `json:"placements,omitempty"`
 }
 
 // Resize is the edit kind that changes a floor's bounds.
@@ -278,6 +279,11 @@ func (Resize) Apply(document model.Document, args json.RawMessage) (model.Applie
 			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 		}
 	}
+	for _, restored := range resize.Placements {
+		if err := working.InsertPlacement(restored.Index, restored.Placement); err != nil {
+			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+		}
+	}
 	inverseArgs, err := encodeArgs(inverse)
 	if err != nil {
 		return model.Applied{}, err
@@ -320,6 +326,11 @@ func checkResize(old, next image.Rectangle, resize ResizeArgs) error {
 			return fmt.Errorf("%w: restored anchor %q is not on a new cell", model.ErrArgs, restored.Anchor.Name)
 		}
 	}
+	for _, restored := range resize.Placements {
+		if !added(restored.Placement.Col, restored.Placement.Row) {
+			return fmt.Errorf("%w: restored placement %s is not on a new cell", model.ErrArgs, restored.Placement.ID)
+		}
+	}
 
 	return nil
 }
@@ -342,7 +353,7 @@ func cellsOutside(from, other image.Rectangle) []image.Point {
 
 // resizeInverse returns the resize that undoes resizing current to next: back
 // to the current bounds, with the most common removed ground as the fill and
-// every other removed tile and anchor restored.
+// every other removed tile, anchor and placement restored.
 func resizeInverse(current *floor.Floor, next image.Rectangle) ResizeArgs {
 	removed := cellsOutside(current.Bounds(), next)
 	counts := map[string]int{}
@@ -374,11 +385,20 @@ func resizeInverse(current *floor.Floor, next image.Rectangle) ResizeArgs {
 		}
 	}
 
-	return ResizeArgs{Bounds: BoundsOf(current.Bounds()), Ground: fill, Cells: cells, Anchors: anchors}
+	var placements []AddPlacementArgs
+	for index, placement := range current.Placements() {
+		if !image.Pt(placement.Col, placement.Row).In(next) {
+			placements = append(placements, AddPlacementArgs{Placement: placement, Index: index})
+		}
+	}
+
+	return ResizeArgs{
+		Bounds: BoundsOf(current.Bounds()), Ground: fill, Cells: cells, Anchors: anchors, Placements: placements,
+	}
 }
 
 // resizeTouched lists what a resize changes: the bounds, both layers of every
-// cell added or removed, and every anchor removed or restored.
+// cell added or removed, and every anchor and placement removed or restored.
 func resizeTouched(old, next image.Rectangle, inverse, resize ResizeArgs) []string {
 	touched := []string{BoundsKey}
 	for _, cells := range [][]image.Point{cellsOutside(old, next), cellsOutside(next, old)} {
@@ -389,6 +409,11 @@ func resizeTouched(old, next image.Rectangle, inverse, resize ResizeArgs) []stri
 	for _, anchors := range [][]AddAnchorArgs{inverse.Anchors, resize.Anchors} {
 		for _, anchor := range anchors {
 			touched = append(touched, AnchorKey(anchor.Anchor.ID))
+		}
+	}
+	for _, placements := range [][]AddPlacementArgs{inverse.Placements, resize.Placements} {
+		for _, placement := range placements {
+			touched = append(touched, PlacementKey(placement.Placement.ID))
 		}
 	}
 
@@ -542,6 +567,9 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: floor.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{Paint{}, Resize{}, AddAnchor{}, RemoveAnchor{}, UpdateAnchor{}},
+		Edits: []model.EditKind{
+			Paint{}, Resize{}, AddAnchor{}, RemoveAnchor{}, UpdateAnchor{},
+			AddPlacement{}, RemovePlacement{}, UpdatePlacement{},
+		},
 	}
 }

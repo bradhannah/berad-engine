@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
@@ -520,6 +521,47 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 		t.Fatalf("destination %+v, want the desk anchor", destination)
 	}
 	t.Logf("screenshot: %s", shot)
+}
+
+// TestNPCPlacedWithBehaviour makes a workflow and an NPC in the project
+// browser, gives the NPC the workflow as its behaviour and some notes, and
+// places the NPC on the map with the Place NPC tool.
+func TestNPCPlacedWithBehaviour(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserShot, mapShot := shotPath(t, "npc-browser.png"), shotPath(t, "npc-map.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:new-npc"), wait(30),
+		click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5), click("ui:use"), wait(30),
+		click("ui:notes"), wait(5), typed("Opens the shop at eight."), keys("Enter"), wait(30),
+		step{Repeat: 2, Screenshot: browserShot}, wait(10), quit(),
+	)
+	mapScript := script(
+		expect("state:loaded", 600), wait(5), keys("N"), expect("npc:NPC 1", 1800), click("npc:NPC 1"), wait(5),
+		click("cell:1,1"), expect("state:placement:1,1=NPC 1", 300), wait(120),
+		step{Repeat: 2, Screenshot: mapShot}, wait(10), quit(),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}})
+
+	routine := readEnvelope(t, project, "workflows/workflow-1--*[^t].json")
+	saved := readEnvelope(t, project, "npcs/npc-1--*.json")
+	decoded, err := npcplugin.Decode(saved.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clerk := decoded.(*npcplugin.Document).NPC
+	if clerk.Behaviour != routine.ID || clerk.Notes != "Opens the shop at eight." {
+		t.Fatalf("the NPC was saved as %+v", clerk)
+	}
+	ground, _ := readFloor(t, project, "ground-floor")
+	placement, found := ground.PlacementAt(1, 1)
+	if !found || placement.NPC != saved.ID || placement.ID.IsZero() {
+		t.Fatalf("placement %+v %v", placement, found)
+	}
+	for _, shot := range []string{browserShot, mapShot} {
+		t.Logf("screenshot: %s", shot)
+	}
 }
 
 // TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process

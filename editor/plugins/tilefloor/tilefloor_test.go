@@ -6,6 +6,7 @@ import (
 	"image"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/model"
@@ -101,6 +102,12 @@ func TestResizeMeetsUndoContract(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if _, taken := document.Floor.PlacementAt(col, row); !taken {
+			placed := floor.Placement{ID: anchorID(seed + 20), NPC: anchorID(seed + 40), Col: col, Row: row}
+			if err := document.Floor.InsertPlacement(int(seed), placed); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	grounds := []string{"grass", "", "floor"}
 	for range 200 {
@@ -114,6 +121,7 @@ func TestResizeMeetsUndoContract(t *testing.T) {
 		}
 		args := encode(t, tilefloor.ResizeArgs{
 			Bounds: tilefloor.BoundsOf(next), Ground: grounds[random.IntN(len(grounds))], Cells: nil, Anchors: nil,
+			Placements: nil,
 		})
 		if err := model.VerifyUndo(document, tilefloor.Resize{}, args, lookup); err != nil {
 			t.Fatal(err)
@@ -289,6 +297,55 @@ func TestAnchorEditsMeetUndoContract(t *testing.T) {
 
 // TestAddAnchorPrepareAssignsID checks that the orchestrator-side step gives a
 // new anchor its permanent ID once, and leaves a complete argument set alone.
+// TestPlacementEditsMeetUndoContract places, moves and removes an NPC,
+// checking each edit restores the floor exactly when undone, and that the
+// floor lists the NPCs it places for where-used.
+func TestPlacementEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	lookup := registry(t).Edit
+	document, err := tilefloor.NewDocumentAt(floor.Centered(6, 6), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clerk := floor.Placement{ID: anchorID(1), NPC: anchorID(9), Col: 0, Row: 0}
+	add := encode(t, tilefloor.AddPlacementArgs{Placement: clerk, Index: 0})
+	if err := model.VerifyUndo(document, tilefloor.AddPlacement{}, add, lookup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (tilefloor.AddPlacement{}).Apply(document, add); err != nil {
+		t.Fatal(err)
+	}
+	moved := clerk
+	moved.Col = 2
+	for _, check := range []struct {
+		kind model.EditKind
+		args json.RawMessage
+	}{
+		{tilefloor.UpdatePlacement{}, encode(t, tilefloor.UpdatePlacementArgs{Placement: moved})},
+		{tilefloor.RemovePlacement{}, encode(t, tilefloor.RemovePlacementArgs{ID: clerk.ID})},
+	} {
+		if err := model.VerifyUndo(document, check.kind, check.args, lookup); err != nil {
+			t.Fatalf("%s: %v", check.kind.Name(), err)
+		}
+	}
+	crowded := floor.Placement{ID: anchorID(2), NPC: anchorID(10), Col: 0, Row: 0}
+	if _, err := (tilefloor.AddPlacement{}).Apply(document, encode(t, tilefloor.AddPlacementArgs{
+		Placement: crowded, Index: 1,
+	})); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("one NPC per cell: %v", err)
+	}
+	references := document.References()
+	if len(references) != 1 || references[0].Document != clerk.NPC || references[0].Label != "placed at 0, 0" {
+		t.Fatalf("references %+v", references)
+	}
+	prepared, err := (tilefloor.AddPlacement{}).Prepare(document, encode(t, tilefloor.AddPlacementArgs{
+		Placement: floor.Placement{ID: anchorID(0), NPC: anchorID(10), Col: 1, Row: 1}, Index: 1,
+	}), func() (ids.ULID, error) { return anchorID(30), nil })
+	if err != nil || !strings.Contains(string(prepared), anchorID(30).String()) {
+		t.Fatalf("a new placement gets its ID when prepared: %s %v", prepared, err)
+	}
+}
+
 func TestAddAnchorPrepareAssignsID(t *testing.T) {
 	t.Parallel()
 	document, err := tilefloor.NewDocument(4, 4, "grass")

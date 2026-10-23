@@ -193,7 +193,8 @@ browser, art as PNG. File names combine the name and a short ID
 deleted or renamed documents move to `.berad/backups/removed` rather than being
 destroyed. Two files holding one document, which a crash during a rename can
 leave, resolve to the newer one on load. For now, folders follow the kind of
-document (`tilefloors`, `zones`, `texts`) rather than the project browser.
+document (`tilefloors`, `zones`, `texts`, `workflows`, `npcs`) rather than the
+project browser.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
 changes only when the layout does (D17). *Open:* chunking very large floors.

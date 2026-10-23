@@ -20,12 +20,13 @@ const windowSeed = 99
 
 // Docs holds documents in memory.
 type Docs struct {
-	docs map[ids.ULID]*client.Document
+	docs    map[ids.ULID]*client.Document
+	viewing bool
 }
 
 // NewDocs returns an empty document store.
 func NewDocs() *Docs {
-	return &Docs{docs: map[ids.ULID]*client.Document{}}
+	return &Docs{docs: map[ids.ULID]*client.Document{}, viewing: false}
 }
 
 // Put adds or replaces a document.
@@ -33,14 +34,21 @@ func (d *Docs) Put(id ids.ULID, name string, document model.Document) {
 	d.docs[id] = &client.Document{ID: id, Name: name, Format: document.Format(), Revision: 0, Model: document}
 }
 
-// View calls fn with a document, as a window's client does.
-func (d *Docs) View(document ids.ULID, fn func(client.Document)) bool {
-	found, ok := d.docs[document]
-	if ok {
-		fn(*found)
+// View calls visit with a document, as a window's client does. Like the
+// client's, it is not re-entrant: viewing a document from inside visit would
+// deadlock a real window, so here it panics.
+func (d *Docs) View(document ids.ULID, visit func(client.Document)) bool {
+	if d.viewing {
+		panic("frametest: View called inside View; a real window would deadlock")
+	}
+	found, exists := d.docs[document]
+	if exists {
+		d.viewing = true
+		defer func() { d.viewing = false }()
+		visit(*found)
 	}
 
-	return ok
+	return exists
 }
 
 // Command is a recorded command and its reply callback.

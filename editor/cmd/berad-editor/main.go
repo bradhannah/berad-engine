@@ -18,6 +18,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
@@ -106,6 +107,7 @@ func usage(stderr io.Writer) {
 func plugins() (*plugin.Registry, error) {
 	registry, err := plugin.NewRegistry(
 		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
+		npcplugin.Plugin(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)

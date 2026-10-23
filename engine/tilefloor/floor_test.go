@@ -278,7 +278,7 @@ func TestResize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(removed) != 1 || removed[0].Name != "Lost" || len(floor.Anchors()) != 1 {
+	if len(removed.Anchors) != 1 || removed.Anchors[0].Name != "Lost" || len(floor.Anchors()) != 1 {
 		t.Fatalf("removed %+v, kept %+v", removed, floor.Anchors())
 	}
 	if top, _ := floor.Top(1, 1); top != "door" { //nolint:errcheck // On the floor.
@@ -324,5 +324,99 @@ func TestUpgradeFromVersion2(t *testing.T) {
 	}
 	if _, found := floor.AnchorAt(1, 0); !found {
 		t.Fatal("the anchor moved")
+	}
+}
+
+func placement(seed, npc byte, col, row int) tilefloor.Placement {
+	var id, npcID ids.ULID
+	id[15], npcID[15] = seed, npc
+
+	return tilefloor.Placement{ID: id, NPC: npcID, Col: col, Row: row}
+}
+
+// TestPlacements puts NPCs on a floor: one per cell, only on the floor, and
+// one NPC as often as wanted; resizing removes those outside and returns
+// them.
+func TestPlacements(t *testing.T) {
+	t.Parallel()
+	floor, err := tilefloor.NewAt(image.Rect(-2, -2, 2, 2), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := floor.InsertPlacement(0, placement(1, 10, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := floor.InsertPlacement(1, placement(2, 11, -2, 1)); err != nil {
+		t.Fatal(err)
+	}
+	for name, bad := range map[string]tilefloor.Placement{
+		"same cell": placement(3, 12, 0, 0), "off the floor": placement(3, 12, 2, 0),
+		"no NPC": placement(3, 0, 1, 1), "repeated ID": placement(1, 12, 1, 1), "no ID": placement(0, 12, 1, 1),
+	} {
+		if err := floor.InsertPlacement(2, bad); !errors.Is(err, tilefloor.ErrPlacement) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if err := floor.InsertPlacement(2, placement(3, 10, -1, -1)); err != nil {
+		t.Fatalf("one NPC can have many placements: %v", err)
+	}
+	if _, _, err := floor.RemovePlacement(placement(3, 10, -1, -1).ID); err != nil {
+		t.Fatal(err)
+	}
+	moved := placement(1, 10, 1, 1)
+	previous, err := floor.UpdatePlacement(moved)
+	if err != nil || previous.Col != 0 {
+		t.Fatalf("update: %+v %v", previous, err)
+	}
+	if found, ok := floor.PlacementAt(1, 1); !ok || found.ID != moved.ID {
+		t.Fatal("the placement moved")
+	}
+	removed, err := floor.Resize(image.Rect(-1, -2, 2, 2), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed.Placements) != 1 || removed.Placements[0].NPC[15] != 11 || len(floor.Placements()) != 1 {
+		t.Fatalf("removed %+v, kept %+v", removed, floor.Placements())
+	}
+	encoded, err := floor.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := tilefloor.Decode(encoded)
+	if err != nil || !decoded.Equal(floor) {
+		t.Fatalf("placements did not round-trip: %v", err)
+	}
+	gone, index, err := floor.RemovePlacement(moved.ID)
+	if err != nil || gone.ID != moved.ID || index != 0 || len(floor.Placements()) != 0 {
+		t.Fatalf("remove: %+v %d %v", gone, index, err)
+	}
+	if _, _, err := floor.RemovePlacement(moved.ID); !errors.Is(err, tilefloor.ErrNoPlacement) {
+		t.Fatalf("remove twice: %v", err)
+	}
+}
+
+// TestUpgradeFromVersion3 gives a version 3 floor an empty list of
+// placements, keeping its bounds, tiles and anchors.
+func TestUpgradeFromVersion3(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(tilefloor.Format()); err != nil {
+		t.Fatal(err)
+	}
+	old := content.Envelope{
+		Format: tilefloor.FormatName, Version: 3, ID: anchor(t, "", 0, 0, 7).ID, Name: "Old", Revision: 3,
+		Data: json.RawMessage(`{"minCol":-1,"minRow":0,"width":2,"height":1,"ground":["grass","floor"],` +
+			`"top":["","wall"],"anchors":[{"id":"00000000000000000000000001","name":"A","col":0,"row":0}]}`),
+	}
+	upgraded, changed, err := registry.Upgrade(old)
+	if err != nil || !changed || upgraded.Version != tilefloor.FormatVersion {
+		t.Fatalf("upgrade: %+v %v %v", upgraded, changed, err)
+	}
+	floor, err := tilefloor.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if floor.Bounds() != image.Rect(-1, 0, 1, 1) || len(floor.Anchors()) != 1 || len(floor.Placements()) != 0 {
+		t.Fatalf("upgraded floor %v %v %v", floor.Bounds(), floor.Anchors(), floor.Placements())
 	}
 }
