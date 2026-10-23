@@ -18,9 +18,16 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/views/browser"
+	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/editor/window"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
 const (
@@ -30,6 +37,18 @@ const (
 	sampleTall  = 24
 	dirPerm     = 0o750
 	tapPerm     = 0o600
+)
+
+// The sample building, in cells: its walls, door and a desk inside.
+const (
+	buildingLeft   = 6
+	buildingTop    = 5
+	buildingRight  = 18
+	buildingBottom = 13
+	doorCol        = 12
+	deskCol        = 9
+	deskRow        = 8
+	mediumOffset   = 4
 )
 
 // ErrNoDocuments reports a project with nothing to edit.
@@ -72,15 +91,16 @@ func run(args []string, stderr io.Writer) int {
 func usage(stderr io.Writer) {
 	report(stderr, `usage:
   berad-editor open [--project DIR] [--sample] [--tap FILE] [--no-window] [--exit-after DURATION]
-      Open a project: start its orchestrator and a Map window.
-  berad-editor window --socket PATH --view map --target ID --window ID
+      Open a project: start its orchestrator, the project browser and a Map
+      window on the first zone.
+  berad-editor window --socket PATH --view map|browser|text --target ID --window ID
       Run one editor window (started by the orchestrator).
 `)
 }
 
 // plugins is the explicit plug-in list for this program.
 func plugins() (*plugin.Registry, error) {
-	registry, err := plugin.NewRegistry(tilefloor.Plugin())
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin())
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)
 	}
@@ -116,7 +136,7 @@ func parseOpen(args []string) (openOptions, error) {
 	flags := flag.NewFlagSet("open", flag.ContinueOnError)
 	var options openOptions
 	flags.StringVar(&options.project, "project", ".", "project folder")
-	flags.BoolVar(&options.sample, "sample", false, "create a sample floor if the project is empty")
+	flags.BoolVar(&options.sample, "sample", false, "create a sample zone if the project is empty")
 	flags.StringVar(&options.tap, "tap", "", "write every protocol message to this file")
 	flags.BoolVar(&options.noWindow, "no-window", false, "run without opening a window")
 	flags.DurationVar(&options.exitAfter, "exit-after", 0, "stop after this long (for smoke tests)")
@@ -151,17 +171,17 @@ func runOpen(args []string, stderr io.Writer) error {
 	defer closeTap()
 	orch, err := orchestrator.New(ctx, cfg)
 	if errors.Is(err, orchestrator.ErrProjectOpen) {
-		return fmt.Errorf("%w: use Cmd+N in one of its Map windows to open another view", err)
+		return fmt.Errorf("%w: use its project browser to open more windows", err)
 	}
 	if err != nil {
 		return fmt.Errorf("open project: %w", err)
 	}
-	first, err := firstDocument(orch, options.sample)
+	firstZone, err := ensureDocuments(orch, options.sample)
 	if err != nil {
 		return errors.Join(err, orch.Close())
 	}
 	if !options.noWindow {
-		if _, err := orch.LaunchWindow("map", first); err != nil {
+		if err := launchFirstWindows(orch, firstZone); err != nil {
 			return errors.Join(err, orch.Close())
 		}
 	}
@@ -207,58 +227,155 @@ func openConfig(options openOptions, stderr io.Writer) (orchestrator.Config, fun
 	return cfg, closeTap, nil
 }
 
-func firstDocument(orch *orchestrator.Orchestrator, sample bool) (ids.ULID, error) {
+// launchFirstWindows opens the project browser and, when the project has a
+// zone, a Map window on it.
+func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID) error {
+	if _, err := orch.LaunchWindow(browser.ViewName, project.IndexID()); err != nil {
+		return fmt.Errorf("open the project browser: %w", err)
+	}
+	if firstZone.IsZero() {
+		return nil
+	}
+	if _, err := orch.LaunchWindow(mapview.ViewName, firstZone); err != nil {
+		return fmt.Errorf("open a map: %w", err)
+	}
+
+	return nil
+}
+
+// ensureDocuments returns the first zone by name, creating the sample project
+// in an empty project when asked to.
+func ensureDocuments(orch *orchestrator.Orchestrator, sample bool) (ids.ULID, error) {
 	documents, err := orch.Documents()
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("list documents: %w", err)
 	}
-	if len(documents) > 0 {
-		return documents[0].ID, nil
+	if len(documents) == 0 {
+		if !sample {
+			return ids.ULID{}, ErrNoDocuments
+		}
+
+		return createSample(orch)
 	}
-	if !sample {
-		return ids.ULID{}, ErrNoDocuments
+	for _, document := range documents {
+		if document.Format == zone.FormatName {
+			return document.ID, nil
+		}
 	}
-	floor, err := sampleFloor()
-	if err != nil {
-		return ids.ULID{}, err
-	}
-	created, err := orch.CreateDocument("Floor 1", floor)
+
+	return ids.ULID{}, nil
+}
+
+// createSample creates placeholder content: a zone with a walled building on
+// the ground floor and its upper floor, an anchor at a desk, and a text
+// document. It holds no game content.
+func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
+	desk, err := orch.NewID()
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 	}
+	ground, err := sampleFloor("grass", "wall.a", true, desk)
+	if err != nil {
+		return ids.ULID{}, err
+	}
+	upper, err := sampleFloor("", "wall.b", false, ids.ULID{})
+	if err != nil {
+		return ids.ULID{}, err
+	}
+	groundID, err := orch.CreateDocument("Ground floor", ground)
+	if err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	upperID, err := orch.CreateDocument("Upper floor", upper)
+	if err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	sampleZone := zoneplugin.NewDocument()
+	for index, floorID := range []ids.ULID{groundID, upperID} {
+		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
+			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+		}
+	}
+	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
+	if err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	notes := textdoc.NewDocument()
+	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."
+	if _, err := orch.CreateDocument("Notes", notes); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
 
-	return created, nil
+	return zoneID, nil
 }
 
-// sampleFloor is placeholder content: grass with one walled room and a door.
-func sampleFloor() (*tilefloor.Document, error) {
-	floor, err := tilefloor.NewDocument(sampleWidth, sampleTall, "grass")
+// sampleFloor is one floor of the sample building: ground everywhere, walls of
+// one family around the building, plain floor inside. The ground floor has a
+// door, two pickups and an anchor at the desk.
+func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tilefloor.Document, error) {
+	document, err := tilefloor.NewDocument(sampleWidth, sampleTall, outside)
 	if err != nil {
 		return nil, fmt.Errorf("sample floor: %w", err)
 	}
-	const left, top, right, bottom, door = 6, 5, 18, 13, 12
-	for col := left; col <= right; col++ {
-		for row := top; row <= bottom; row++ {
-			tile := "floor"
-			if col == left || col == right || row == top || row == bottom {
-				tile = "wall"
+	if err := sampleBuilding(document.Floor, family, groundFloor); err != nil {
+		return nil, err
+	}
+	if !groundFloor {
+		return document, nil
+	}
+	if err := sampleFurnishing(document.Floor, desk); err != nil {
+		return nil, err
+	}
+
+	return document, nil
+}
+
+// sampleBuilding puts plain floor inside the building and walls around it,
+// with a door on the ground floor.
+func sampleBuilding(floorData *floor.Floor, family string, groundFloor bool) error {
+	for col := buildingLeft; col <= buildingRight; col++ {
+		for row := buildingTop; row <= buildingBottom; row++ {
+			if _, err := floorData.SetGround(col, row, "floor"); err != nil {
+				return fmt.Errorf("sample floor: %w", err)
 			}
-			if row == bottom && col == door {
-				tile = "floor"
+			edge := col == buildingLeft || col == buildingRight || row == buildingTop || row == buildingBottom
+			if !edge {
+				continue
 			}
-			if _, err := floor.Floor.Set(col, row, tile); err != nil {
-				return nil, fmt.Errorf("sample floor: %w", err)
+			top := family
+			if groundFloor && row == buildingBottom && col == doorCol {
+				top = "door"
+			}
+			if _, err := floorData.SetTop(col, row, top); err != nil {
+				return fmt.Errorf("sample floor: %w", err)
 			}
 		}
 	}
 
-	return floor, nil
+	return nil
+}
+
+// sampleFurnishing adds two pickups and an anchor at the desk.
+func sampleFurnishing(floorData *floor.Floor, desk ids.ULID) error {
+	for _, item := range []struct {
+		col, row int
+		tile     string
+	}{{deskCol + 1, deskRow, "pickup.small"}, {deskCol + mediumOffset, deskRow + 2, "pickup.medium"}} {
+		if _, err := floorData.SetTop(item.col, item.row, item.tile); err != nil {
+			return fmt.Errorf("sample floor: %w", err)
+		}
+	}
+	if err := floorData.InsertAnchor(0, floor.Anchor{ID: desk, Name: "Desk", Col: deskCol, Row: deskRow}); err != nil {
+		return fmt.Errorf("sample floor: %w", err)
+	}
+
+	return nil
 }
 
 func runWindow(args []string) error {
 	flags := flag.NewFlagSet("window", flag.ContinueOnError)
 	socket := flags.String("socket", "", "orchestrator socket")
-	view := flags.String("view", "map", "window view")
+	view := flags.String("view", mapview.ViewName, "window view")
 	target := flags.String("target", "", "document ID")
 	windowID := flags.String("window", "", "window ID")
 	flags.String("build", "", "orchestrator build (informational)")
