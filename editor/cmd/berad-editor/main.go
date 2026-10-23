@@ -39,15 +39,16 @@ const (
 	tapPerm     = 0o600
 )
 
-// The sample building, in cells: its walls, door and a desk inside.
+// The sample building, in cells from the zone origin, which sits in the
+// middle of its room: its walls, door and a desk inside.
 const (
-	buildingLeft   = 6
-	buildingTop    = 5
-	buildingRight  = 18
-	buildingBottom = 13
-	doorCol        = 12
-	deskCol        = 9
-	deskRow        = 8
+	buildingLeft   = -6
+	buildingTop    = -4
+	buildingRight  = 6
+	buildingBottom = 4
+	doorCol        = 0
+	deskCol        = -3
+	deskRow        = -1
 	mediumOffset   = 4
 )
 
@@ -313,7 +314,7 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 // one family around the building, plain floor inside. The ground floor has a
 // door, two pickups and an anchor at the desk.
 func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tilefloor.Document, error) {
-	document, err := tilefloor.NewDocument(sampleWidth, sampleTall, outside)
+	document, err := tilefloor.NewDocumentAt(floor.Centered(sampleWidth, sampleTall), outside)
 	if err != nil {
 		return nil, fmt.Errorf("sample floor: %w", err)
 	}

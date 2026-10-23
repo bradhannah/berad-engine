@@ -38,6 +38,10 @@ const (
 	// labelBacking is the opacity behind an anchor name, so it reads over
 	// whatever lies under it.
 	labelBacking = 0xd0
+	// hexOrigin marks the zone origin and its axes; axisAlpha keeps the axes
+	// quieter than the origin cell's outline.
+	hexOrigin = 0xc2410c
+	axisAlpha = 0x99
 )
 
 // Draw renders the window.
@@ -77,6 +81,8 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 			return
 		}
 		s.drawCells(area, floorDoc.Floor, grid, false)
+		s.drawFloorEdges(area, floorDoc.Floor, grid)
+		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
 		s.drawSelection(area, grid)
 	})
@@ -88,13 +94,11 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 // drawCells draws every visible cell. The floor below is drawn faintly, with
 // nothing for unassigned ground, so the floor above can be traced over it.
 func (s *State) drawCells(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle, faint bool) {
-	for row := range floorData.Height() {
-		for col := range floorData.Width() {
+	shown := s.camera.visible(floorData.Bounds(), grid)
+	for row := shown.Min.Y; row < shown.Max.Y; row++ {
+		for col := shown.Min.X; col < shown.Max.X; col++ {
 			cell := Cell{X: col, Y: row}
 			rect := s.camera.cellRect(cell, grid)
-			if !rect.Overlaps(grid) {
-				continue
-			}
 			if faint {
 				s.drawFaintCell(area, floorData, cell, rect)
 			} else {
@@ -140,6 +144,25 @@ func (s *State) drawCell(area *ebiten.Image, floorData *floor.Floor, cell Cell, 
 	if size >= minGridSize {
 		ui.StrokeRect(area, rect, ui.Hairline, ui.HexAlpha(0, gridAlpha))
 	}
+}
+
+// drawOrigin marks the zone origin, cell 0,0, that every floor of the zone
+// is positioned from: an axis along the top and the left edge of the cell
+// across the whole view, an outline round the cell and a label.
+func (s *State) drawOrigin(area *ebiten.Image, grid image.Rectangle) {
+	cell := s.camera.cellRect(image.Pt(0, 0), grid)
+	axis := ui.HexAlpha(hexOrigin, axisAlpha)
+	ui.FillRect(area, image.Rect(grid.Min.X, cell.Min.Y, grid.Max.X, cell.Min.Y+ui.Hairline), axis)
+	ui.FillRect(area, image.Rect(cell.Min.X, grid.Min.Y, cell.Min.X+ui.Hairline, grid.Max.Y), axis)
+	ui.StrokeRect(area, cell, ui.Outline, ui.Hex(hexOrigin))
+	if cell.Dx() < minLabel {
+		return
+	}
+	label := "0,0"
+	labelX, labelY := cell.Min.X+ui.Half, cell.Min.Y-ui.TextSize-ui.Gap-ui.Half
+	backing := image.Rect(labelX-1, labelY, labelX+s.theme.TextWidth(label)+ui.Half, labelY+ui.TextSize+ui.Gap)
+	ui.FillRect(area, backing, ui.HexAlpha(hexWhite, labelBacking))
+	s.theme.DrawText(area, label, labelX, labelY, ui.Hex(hexOrigin))
 }
 
 func tint(id string, alpha uint8) color.RGBA {
@@ -241,7 +264,7 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 		tileHeading = "WALL FAMILY"
 	case ToolSelect:
 		tileHeading = "CHANGE SELECTED WALLS TO"
-	case ToolErase, ToolAnchor:
+	case ToolErase, ToolAnchor, ToolResize:
 		tileHeading = ""
 	case ToolGround, ToolObjects:
 	}
@@ -295,6 +318,9 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			s.replace.Draw(screen, s.theme)
 			textY = familyListTop
 			line("Pick a family on the left to change them.", ui.ColorMuted())
+		case s.tool == ToolResize:
+			s.drawResizeInspector(screen, floorData, textX, &textY)
+			s.drawHover(screen, floorData, textX, &textY)
 		default:
 			s.drawCellInspector(screen, floorData, textX, &textY)
 		}
@@ -339,6 +365,18 @@ func (s *State) drawCellInspector(screen *ebiten.Image, floorData *floor.Floor, 
 		return
 	}
 	*textY += ui.LineHeight / ui.Half
+	s.drawHover(screen, floorData, textX, textY)
+}
+
+// drawHover describes the cell under the cursor.
+func (s *State) drawHover(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
+	if !s.hovering {
+		return
+	}
+	line := func(text string, ink color.Color) {
+		s.theme.DrawText(screen, text, textX, *textY, ink)
+		*textY += ui.LineHeight
+	}
 	ground, _ := floorData.Ground(s.hover.X, s.hover.Y) //nolint:errcheck // The hover cell is on the floor.
 	top, _ := floorData.Top(s.hover.X, s.hover.Y)       //nolint:errcheck // The hover cell is on the floor.
 	line(fmt.Sprintf("Cell %d, %d", s.hover.X, s.hover.Y), ui.ColorInk())
@@ -377,7 +415,7 @@ func yesNo(value bool) string {
 func (s *State) drawHelp(screen *ebiten.Image, left, top int) {
 	lines := []string{
 		"KEYS",
-		"G W O E A S: tools   1-9: tile",
+		"G W O E A S R: tools   1-9: tile",
 		"PageUp/PageDown: floor   F: floor below",
 		"Scroll: pan   Cmd+scroll or Cmd+=/-: zoom",
 		"Space+drag: pan   Cmd+0: reset view",

@@ -65,7 +65,8 @@ orchestrator holds the histories.
 If something an undo would revert was changed afterwards from a different
 window, the undo is refused with a message rather than overwriting that change.
 The first build compares individual items (for a floor, each layer of each
-cell and each anchor). Undoing the creation of a document is refused once
+cell and each anchor, plus its bounds, which a resize changes along with every
+cell it adds or removes). Undoing the creation of a document is refused once
 another window has changed that document. *Open:* whether other kinds of
 documents need a broader rule.
 

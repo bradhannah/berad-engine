@@ -13,6 +13,8 @@ interface, and do not introduce synonyms.
 | **Area** | An authored, named region, defined only when something needs to refer to it ("wander in area X"). Areas can be indoors or outdoors, may overlap, and can sit inside other areas. A kind (for example building or room) may add detail. |
 | **Anchor** | A single named point that other content refers to, such as a destination or a place to stand. |
 | **Tile** | One grid cell. |
+| **Zone origin** | Cell 0,0, the fixed point every floor of a zone is positioned from. Columns count to the right and rows downwards; cells left of or above it have negative numbers. |
+| **Floor bounds** | The rectangle of cells a floor covers, around the zone origin. Resizing a floor changes its bounds. |
 | **Placement** | An object or NPC put on a map. One definition can have many placements. |
 
 Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"

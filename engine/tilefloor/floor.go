@@ -2,14 +2,19 @@
 // at most one tile on top in each cell, plus the anchors that mark named points
 // on it.
 //
-// A floor is one level of a zone. Richer world structure (areas, placements)
-// arrives as games need it.
+// A floor is one level of a zone. Every floor of a zone is positioned from the
+// same zone origin, cell 0,0: columns count to the right and rows downwards,
+// and cells left of or above the origin have negative numbers. A floor's
+// bounds are the rectangle of cells it covers, so it can grow or shrink on any
+// side without moving what is already on it. Richer world structure (areas,
+// placements) arrives as games need it.
 package tilefloor
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"slices"
 	"strings"
 
@@ -22,11 +27,15 @@ import (
 const FormatName = "tilefloor"
 
 // FormatVersion is the tile floor format version this package writes.
-// Version 2 split cells into ground and top layers and added anchors.
-const FormatVersion = 2
+// Version 2 split cells into ground and top layers and added anchors; version
+// 3 placed the floor relative to the zone origin.
+const FormatVersion = 3
 
 // MaxSide bounds a floor's width and height.
 const MaxSide = 1024
+
+// MaxReach bounds how far from the zone origin a floor's cells may lie.
+const MaxReach = 1 << 20
 
 // MaxNameLength bounds an anchor name, in bytes.
 const MaxNameLength = 200
@@ -64,16 +73,19 @@ type AnchorRef struct {
 func (r AnchorRef) IsZero() bool { return r.Floor.IsZero() && r.Anchor.IsZero() }
 
 // Floor is a grid of tile IDs in row-major order, one ground layer and one top
-// layer. The empty ID is no tile.
+// layer, covering its bounds. The empty ID is no tile.
 type Floor struct {
-	width   int
-	height  int
+	bounds  image.Rectangle
 	ground  []string
 	top     []string
 	anchors []Anchor
 }
 
+// wireFloor is the saved form. MinCol and MinRow are the floor's top-left
+// cell.
 type wireFloor struct {
+	MinCol  int      `json:"minCol"`
+	MinRow  int      `json:"minRow"`
 	Width   int      `json:"width"`
 	Height  int      `json:"height"`
 	Ground  []string `json:"ground"`
@@ -81,29 +93,61 @@ type wireFloor struct {
 	Anchors []Anchor `json:"anchors"`
 }
 
-// New returns a floor of the given size with every cell's ground set to one
-// tile and nothing on top.
+// New returns a floor of the given size whose top-left cell is the zone
+// origin, with every cell's ground set to one tile and nothing on top.
 func New(width, height int, ground string) (*Floor, error) {
-	if width < 1 || height < 1 || width > MaxSide || height > MaxSide {
-		return nil, fmt.Errorf("%w: %dx%d", ErrSize, width, height)
+	return NewAt(image.Rect(0, 0, width, height), ground)
+}
+
+// NewAt returns a floor covering the given bounds, with every cell's ground
+// set to one tile and nothing on top.
+func NewAt(bounds image.Rectangle, ground string) (*Floor, error) {
+	if err := CheckBounds(bounds); err != nil {
+		return nil, err
 	}
-	cells := make([]string, width*height)
+	cells := make([]string, bounds.Dx()*bounds.Dy())
 	for index := range cells {
 		cells[index] = ground
 	}
 
-	return &Floor{width: width, height: height, ground: cells, top: make([]string, width*height), anchors: []Anchor{}}, nil
+	return &Floor{bounds: bounds, ground: cells, top: make([]string, len(cells)), anchors: []Anchor{}}, nil
 }
 
+// Centered returns bounds of the given size around the zone origin, which
+// sits in the middle cell (left of and above the middle for even sizes).
+func Centered(width, height int) image.Rectangle {
+	const half = 2
+
+	return image.Rect(-width/half, -height/half, width-width/half, height-height/half)
+}
+
+// CheckBounds reports whether bounds can hold a floor: at least one cell, at
+// most MaxSide on each side, and within MaxReach of the zone origin.
+func CheckBounds(bounds image.Rectangle) error {
+	width, height := bounds.Dx(), bounds.Dy()
+	if width < 1 || height < 1 || width > MaxSide || height > MaxSide {
+		return fmt.Errorf("%w: %dx%d", ErrSize, width, height)
+	}
+	if bounds.Min.X < -MaxReach || bounds.Min.Y < -MaxReach || bounds.Max.X > MaxReach || bounds.Max.Y > MaxReach {
+		return fmt.Errorf("%w: %v is too far from the origin", ErrSize, bounds)
+	}
+
+	return nil
+}
+
+// Bounds returns the cells the floor covers: Min is its top-left cell and Max
+// is one past its bottom-right cell.
+func (f *Floor) Bounds() image.Rectangle { return f.bounds }
+
 // Width returns the number of columns.
-func (f *Floor) Width() int { return f.width }
+func (f *Floor) Width() int { return f.bounds.Dx() }
 
 // Height returns the number of rows.
-func (f *Floor) Height() int { return f.height }
+func (f *Floor) Height() int { return f.bounds.Dy() }
 
 // In reports whether a position is on the floor.
 func (f *Floor) In(col, row int) bool {
-	return col >= 0 && row >= 0 && col < f.width && row < f.height
+	return image.Pt(col, row).In(f.bounds)
 }
 
 // Ground returns the ground tile at a position.
@@ -134,7 +178,7 @@ func (f *Floor) Joins(col, row int) tiles.Mask {
 			return false
 		}
 
-		return tiles.Joins(f.top[r*f.width+c])
+		return tiles.Joins(f.top[f.offset(c, r)])
 	}
 
 	return tiles.MaskOf(joined(col, row-1), joined(col+1, row), joined(col, row+1), joined(col-1, row))
@@ -236,24 +280,53 @@ func (f *Floor) checkAnchor(anchor Anchor, self ids.ULID) error {
 	return nil
 }
 
+// Resize changes the floor's bounds. Cells inside both the old and the new
+// bounds keep their tiles; new cells get the ground tile and nothing on top.
+// Anchors outside the new bounds are removed and returned in their stored
+// order.
+func (f *Floor) Resize(bounds image.Rectangle, ground string) ([]Anchor, error) {
+	resized, err := NewAt(bounds, ground)
+	if err != nil {
+		return nil, err
+	}
+	kept := f.bounds.Intersect(bounds)
+	for row := kept.Min.Y; row < kept.Max.Y; row++ {
+		for col := kept.Min.X; col < kept.Max.X; col++ {
+			from, to := f.offset(col, row), resized.offset(col, row)
+			resized.ground[to], resized.top[to] = f.ground[from], f.top[from]
+		}
+	}
+	var removed []Anchor
+	for _, anchor := range f.anchors {
+		if resized.In(anchor.Col, anchor.Row) {
+			resized.anchors = append(resized.anchors, anchor)
+		} else {
+			removed = append(removed, anchor)
+		}
+	}
+	*f = *resized
+
+	return removed, nil
+}
+
 // Clone returns an independent copy.
 func (f *Floor) Clone() *Floor {
 	return &Floor{
-		width: f.width, height: f.height,
-		ground: slices.Clone(f.ground), top: slices.Clone(f.top), anchors: slices.Clone(f.anchors),
+		bounds: f.bounds, ground: slices.Clone(f.ground), top: slices.Clone(f.top), anchors: slices.Clone(f.anchors),
 	}
 }
 
-// Equal reports whether two floors hold the same size, tiles and anchors.
+// Equal reports whether two floors hold the same bounds, tiles and anchors.
 func (f *Floor) Equal(other *Floor) bool {
-	return f.width == other.width && f.height == other.height &&
+	return f.bounds == other.bounds &&
 		slices.Equal(f.ground, other.ground) && slices.Equal(f.top, other.top) && slices.Equal(f.anchors, other.anchors)
 }
 
 // Encode returns the floor's saved data.
 func (f *Floor) Encode() (json.RawMessage, error) {
 	data, err := json.Marshal(wireFloor{
-		Width: f.width, Height: f.height, Ground: f.ground, Top: f.top, Anchors: f.anchors,
+		MinCol: f.bounds.Min.X, MinRow: f.bounds.Min.Y, Width: f.Width(), Height: f.Height(),
+		Ground: f.ground, Top: f.top, Anchors: f.anchors,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode floor: %w", err)
@@ -268,7 +341,7 @@ func Decode(data json.RawMessage) (*Floor, error) {
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrData, err)
 	}
-	floor, err := New(wire.Width, wire.Height, "")
+	floor, err := NewAt(image.Rect(wire.MinCol, wire.MinRow, wire.MinCol+wire.Width, wire.MinRow+wire.Height), "")
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +366,7 @@ func Format() content.Format {
 	return content.Format{
 		Name:       FormatName,
 		Current:    FormatVersion,
-		Migrations: map[int]content.Migration{1: upgradeFrom1},
+		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2},
 	}
 }
 
@@ -304,6 +377,16 @@ type wireFloor1 struct {
 	Tiles  []string `json:"tiles"`
 }
 
+// wireFloor2 is version 2: ground and top layers and anchors, with the
+// floor's top-left cell always at the origin.
+type wireFloor2 struct {
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
+	Ground  []string `json:"ground"`
+	Top     []string `json:"top"`
+	Anchors []Anchor `json:"anchors"`
+}
+
 // upgradeFrom1 moves each cell's tile to the ground layer. Version 1 walls
 // become walls with no family on top of plain floor.
 func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
@@ -311,7 +394,7 @@ func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
 	if err := json.Unmarshal(data, &old); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrData, err)
 	}
-	upgraded := wireFloor{
+	upgraded := wireFloor2{
 		Width: old.Width, Height: old.Height,
 		Ground: make([]string, len(old.Tiles)), Top: make([]string, len(old.Tiles)), Anchors: []Anchor{},
 	}
@@ -323,6 +406,24 @@ func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
 		}
 	}
 	encoded, err := json.Marshal(upgraded)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade floor: %w", err)
+	}
+
+	return encoded, nil
+}
+
+// upgradeFrom2 places a version 2 floor's top-left cell at the origin, which
+// keeps every cell, anchor and reference at the same column and row.
+func upgradeFrom2(data json.RawMessage) (json.RawMessage, error) {
+	var old wireFloor2
+	if err := json.Unmarshal(data, &old); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	encoded, err := json.Marshal(wireFloor{
+		MinCol: 0, MinRow: 0, Width: old.Width, Height: old.Height,
+		Ground: old.Ground, Top: old.Top, Anchors: old.Anchors,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("upgrade floor: %w", err)
 	}
@@ -352,8 +453,13 @@ func (f *Floor) set(layer []string, col, row int, tile string) (string, error) {
 
 func (f *Floor) index(col, row int) (int, error) {
 	if !f.In(col, row) {
-		return 0, fmt.Errorf("%w: (%d, %d) on %dx%d", ErrBounds, col, row, f.width, f.height)
+		return 0, fmt.Errorf("%w: (%d, %d) outside %v", ErrBounds, col, row, f.bounds)
 	}
 
-	return row*f.width + col, nil
+	return f.offset(col, row), nil
+}
+
+// offset returns where a cell on the floor sits in the layer slices.
+func (f *Floor) offset(col, row int) int {
+	return (row-f.bounds.Min.Y)*f.bounds.Dx() + col - f.bounds.Min.X
 }

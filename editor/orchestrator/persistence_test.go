@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,8 +223,9 @@ func TestOldFileIsBackedUpAndUpgraded(t *testing.T) {
 	}
 }
 
-// The first real format upgrade: a version 1 floor file opens as version 2,
-// with walls moved to the top layer, and the original is kept as a backup.
+// The first real format upgrade: a version 1 floor file opens in the current
+// version, with walls moved to the top layer and its top-left cell at the
+// origin, and the original is kept as a backup.
 func TestVersionOneFloorIsUpgraded(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -256,7 +258,8 @@ func TestVersionOneFloorIsUpgraded(t *testing.T) {
 	}
 	envelope := readFloorFile(t, dir)
 	upgraded, err := floor.Decode(envelope.Data)
-	if err != nil || envelope.Version != 2 || envelope.Revision != 2 {
+	if err != nil || envelope.Version != floor.FormatVersion || envelope.Revision != 2 ||
+		upgraded.Bounds() != image.Rect(0, 0, 16, 16) {
 		t.Fatalf("upgraded file: version %d revision %d %v", envelope.Version, envelope.Revision, err)
 	}
 	ground, _ := upgraded.Ground(0, 0) //nolint:errcheck // On the floor.

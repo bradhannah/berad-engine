@@ -35,12 +35,15 @@ make demo     # build the editor and open a sample project in .cache/demo-projec
 The project browser and a Map window open on a sample zone with two floors.
 
 - **Project browser:** create zones, floors and text documents; rename in the
-  inspector (Enter saves); delete with a where-used check; reorder floors;
-  double-click or Enter opens.
+  inspector (Enter or the Rename button saves); delete with a where-used check;
+  reorder floors; double-click or Enter opens.
 - **Map window:** tools on the left (`G` ground, `W` walls, `O` doors and
-  pickups, `E` erase, `A` anchors, `S` select walls), `1`-`9` pick a tile or wall
-  family. With Select walls, click a wall for its run, double-click inside a
-  room for its walls, or drag an area, then pick a family to change them all.
+  pickups, `E` erase, `A` anchors, `S` select walls, `R` resize floor), `1`-`9`
+  pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
+  along its edges; every floor of the zone shares it. Resize floor drags an edge
+  or corner of the floor, or adds and removes rows and columns from buttons.
+  With Select walls, click a wall for its run, double-click inside a room for
+  its walls, or drag an area, then pick a family to change them all.
   `PageUp` / `PageDown` change floor; the floor below shows faintly (`F`).
   Scroll pans, `Cmd`+scroll or `Cmd+=` / `Cmd+-` zoom, `Space`+drag pans.
 - **Text window:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,

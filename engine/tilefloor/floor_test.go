@@ -3,6 +3,7 @@ package tilefloor_test
 import (
 	"encoding/json"
 	"errors"
+	"image"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/engine/content"
@@ -210,5 +211,118 @@ func TestUpgradeFromVersion1(t *testing.T) {
 	grass, _ := floor.Ground(0, 0)  //nolint:errcheck // Position is on the floor.
 	if ground != "floor" || top != "wall" || grass != "grass" || len(floor.Anchors()) != 0 {
 		t.Fatalf("upgraded cells: %q %q %q", ground, top, grass)
+	}
+}
+
+// TestBoundsAroundTheOrigin places a floor around the zone origin: cells left
+// of and above it have negative numbers and work like any other.
+func TestBoundsAroundTheOrigin(t *testing.T) {
+	t.Parallel()
+	if got := tilefloor.Centered(4, 3); got != image.Rect(-2, -1, 2, 2) {
+		t.Fatalf("centred bounds %v", got)
+	}
+	floor, err := tilefloor.NewAt(tilefloor.Centered(4, 3), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !floor.In(-2, -1) || !floor.In(1, 1) || floor.In(2, 0) || floor.In(0, -2) {
+		t.Fatal("bounds do not match the centred rectangle")
+	}
+	for _, col := range []int{-2, -1} {
+		if _, err := floor.SetTop(col, -1, "wall"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if mask := floor.Joins(-2, -1); mask != tiles.MaskOf(false, true, false, false) {
+		t.Fatalf("joins at the corner: %v", mask)
+	}
+	if err := floor.InsertAnchor(0, anchor(t, "West", -2, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := floor.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := tilefloor.Decode(data)
+	if err != nil || !decoded.Equal(floor) || decoded.Bounds() != floor.Bounds() {
+		t.Fatalf("round trip: %v", err)
+	}
+	for _, bounds := range []image.Rectangle{
+		image.Rect(0, 0, 0, 1), image.Rect(-tilefloor.MaxReach-1, 0, -tilefloor.MaxReach+1, 1),
+	} {
+		if _, err := tilefloor.NewAt(bounds, ""); !errors.Is(err, tilefloor.ErrSize) {
+			t.Fatalf("%v: %v", bounds, err)
+		}
+	}
+}
+
+// TestResize grows a floor on the left and shrinks it on the right: kept cells
+// keep their tiles and positions, new cells get the ground, and anchors in
+// removed cells are returned.
+func TestResize(t *testing.T) {
+	t.Parallel()
+	floor, err := tilefloor.New(3, 2, "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.SetTop(1, 1, "door"); err != nil {
+		t.Fatal(err)
+	}
+	if err := floor.InsertAnchor(0, anchor(t, "Kept", 0, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := floor.InsertAnchor(1, anchor(t, "Lost", 2, 1, 2)); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := floor.Resize(image.Rect(-2, 0, 2, 2), "road")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || removed[0].Name != "Lost" || len(floor.Anchors()) != 1 {
+		t.Fatalf("removed %+v, kept %+v", removed, floor.Anchors())
+	}
+	if top, _ := floor.Top(1, 1); top != "door" { //nolint:errcheck // On the floor.
+		t.Fatalf("kept cell lost its door: %q", top)
+	}
+	if ground, _ := floor.Ground(-2, 1); ground != "road" { //nolint:errcheck // On the floor.
+		t.Fatalf("new cell ground %q", ground)
+	}
+	if floor.In(2, 0) || floor.Width() != 4 {
+		t.Fatalf("bounds %v", floor.Bounds())
+	}
+	if _, err := floor.Resize(image.Rect(0, 0, 0, 0), ""); !errors.Is(err, tilefloor.ErrSize) || floor.Width() != 4 {
+		t.Fatalf("an empty resize must fail and change nothing: %v", err)
+	}
+}
+
+// TestUpgradeFromVersion2 puts a version 2 floor's top-left cell at the
+// origin, so nothing moves.
+func TestUpgradeFromVersion2(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(tilefloor.Format()); err != nil {
+		t.Fatal(err)
+	}
+	old := content.Envelope{
+		Format: tilefloor.FormatName, Version: 2, ID: anchor(t, "", 0, 0, 7).ID, Name: "Old", Revision: 3,
+		Data: json.RawMessage(`{"width":2,"height":1,"ground":["grass","floor"],"top":["","wall"],` +
+			`"anchors":[{"id":"00000000000000000000000001","name":"A","col":1,"row":0}]}`),
+	}
+	upgraded, changed, err := registry.Upgrade(old)
+	if err != nil || !changed || upgraded.Version != tilefloor.FormatVersion {
+		t.Fatalf("upgrade: %+v %v %v", upgraded, changed, err)
+	}
+	floor, err := tilefloor.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if floor.Bounds() != image.Rect(0, 0, 2, 1) {
+		t.Fatalf("bounds %v", floor.Bounds())
+	}
+	if top, _ := floor.Top(1, 0); top != "wall" { //nolint:errcheck // On the floor.
+		t.Fatalf("top %q", top)
+	}
+	if _, found := floor.AnchorAt(1, 0); !found {
+		t.Fatal("the anchor moved")
 	}
 }

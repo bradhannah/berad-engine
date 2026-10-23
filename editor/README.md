@@ -15,7 +15,7 @@ It uses the engine module; games never use this module.
 | `model` | Document and edit-kind seams, and the shared undo contract |
 | `plugin` | The explicit plug-in registry |
 | `plugins/project` | The project index and the create, rename and delete edits |
-| `plugins/tilefloor` | Floors: paint either layer; add, change and remove anchors |
+| `plugins/tilefloor` | Floors: paint either layer; resize on any side; add, change and remove anchors |
 | `plugins/zone` | Zones and the edits that add, remove and reorder floors |
 | `plugins/textdoc` | A placeholder text document for proving text editing and picks |
 | `ui`, `ui/textedit` | Widgets in the plain white look; the text editing core |

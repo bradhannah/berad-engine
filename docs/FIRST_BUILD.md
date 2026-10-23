@@ -29,7 +29,7 @@ game features.
 | 1. Core | Protocol, codec, framing; orchestrator services; the paint edit through the plug-in list; versioned files | Scripted clients paint and undo; contract tests pass; round-trip time measured | Done (PR #3) |
 | 2. First window | One program running as orchestrator or window; a Map window painting in strict mode; inspector; speed readout | Painting within one frame | Done (PR #3) |
 | 3. Two views and failures | New view; live updates; shared undo; crash notice and report; clean shutdown | Killing either process loses nothing; reports captured | Done (PR #3) |
-| 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map; project browser; zones with several floors; layers, stand-ins, walls and wall families; pan, zoom and a tile picker | Text editing judged by its author | Built (PR #5), awaiting that judgement |
+| 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map; project browser; zones with several floors; layers, stand-ins, walls and wall families; pan, zoom and a tile picker; the zone origin and resizing floors (format version 3) | Text editing judged by its author | Built (PR #5), awaiting that judgement |
 | 5. Stretch | VM-guest embedding; "create version" through git | Optional | Later |
 
 ## Results so far
@@ -62,6 +62,13 @@ game features.
   Stand-ins are built in for now.
 - A Map window opens a zone, one floor at a time, with the floor below shown
   faintly; views of a zone share undo.
+- After the first try, added to the step: the **zone origin**, cell 0,0, stays
+  fixed and every floor of the zone shares it. Floors grow or shrink on any
+  side without moving what is on them, and cells left of or above the origin
+  have negative numbers. New floors start centred on the origin. Resizing is in
+  the Map window, one undo step per change. This raises the floor format to
+  version 3; version 2 floors open with their top-left cell at the origin, so
+  nothing moves.
 
 ## Step 4 results
 
@@ -86,6 +93,20 @@ game features.
   in the project browser.
 - Not yet judged by a person: typing feel, real press-and-hold accents and other
   input methods, and copy and paste with the system clipboard.
+- First try by its author: panning worked. Two faults were found and fixed.
+  - Single-line fields shook up and down. Their line of text was taller than
+    the room inside the padding, so keeping the caret in view scrolled the text
+    one way, then back, every frame. A test now holds such a field still.
+  - Clicking Rename did not save a typed name; it only selected the field.
+    Rename now saves the typed name, as Enter does, and says so.
+- The zone origin is drawn as an outlined cell with axes along its top and
+  left edges. The Resize tool drags an edge or corner, with the cells it would
+  add or remove shaded, or adds and removes one row or column per side from
+  buttons; it asks first when anchors would be removed. The resize edit's
+  inverse restores the removed cells and anchors exactly; a test resizes at
+  random 200 times and checks each resize and each inverse. Real-window tests
+  add a row with a button, drag an edge and undo it, and rename with the
+  button.
 
 ## If something fails
 

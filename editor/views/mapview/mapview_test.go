@@ -55,6 +55,7 @@ func groundFloor(t *testing.T) *tilefloor.Document {
 type fixture struct {
 	t        *testing.T
 	state    *mapview.State
+	docs     *frametest.Docs
 	requests *frametest.Requests
 	ctx      *frame.Context
 }
@@ -92,7 +93,7 @@ func newFixture(t *testing.T) *fixture {
 	state.Changed(client.Update{Snapshot: &snapshot}, ctx)
 	first := ui.NewInput(image.Pt(0, 0))
 	state.Update(&first, ctx)
-	return &fixture{t: t, state: state, requests: requests, ctx: ctx}
+	return &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx}
 }
 
 func (f *fixture) at(name string) image.Point {
@@ -134,9 +135,12 @@ func (f *fixture) release(name string) {
 	f.frame(input)
 }
 
+// click presses and releases at one place, found once: a dialog closes on the
+// press, so its button is gone by the release.
 func (f *fixture) click(name string) {
-	f.press(name, false)
-	f.release(name)
+	at := f.at(name)
+	f.frame(pointer(at, true, true, false))
+	f.frame(pointer(at, false, false, true))
 }
 
 func paints(t *testing.T, requests *frametest.Requests) []tilefloor.Cell {
@@ -279,6 +283,100 @@ func TestAddingAnAnchorFocusesItsName(t *testing.T) {
 	if f.state.SelectedAnchor() != frametest.ID(50) || f.state.Focused() == nil {
 		t.Fatal("the new anchor is not selected with its name focused")
 	}
+}
+
+// TestNegativeCells paints left of and above the zone origin on a floor
+// centred on it: those cells have negative numbers.
+func TestNegativeCells(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	centred, err := tilefloor.NewDocumentAt(floor.Centered(8, 6), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(groundID, "Ground", centred)
+	f.keys("Cmd+0")
+	f.keys("3")
+	f.click("cell:-4,-3")
+	f.click("cell:0,0")
+	cells := paints(t, f.requests)
+	if len(cells) != 2 || cells[0].Col != -4 || cells[0].Row != -3 || cells[1].Col != 0 || cells[1].Row != 0 {
+		t.Fatalf("painted %+v", cells)
+	}
+	f.click("cell:4,0")
+	if got := len(paints(t, f.requests)); got != 2 {
+		t.Fatal("a click past the right edge painted a cell")
+	}
+}
+
+func resizes(t *testing.T, requests *frametest.Requests) []tilefloor.ResizeArgs {
+	t.Helper()
+	var found []tilefloor.ResizeArgs
+	for _, command := range requests.Of(tilefloor.ResizeEdit) {
+		var args tilefloor.ResizeArgs
+		if err := command.Decode(&args); err != nil {
+			t.Fatal(err)
+		}
+		found = append(found, args)
+	}
+	return found
+}
+
+// TestResizeByDraggingAnEdge drags the left edge two cells outwards: one
+// command adds two columns on the left, filled with the floor's most common
+// ground.
+func TestResizeByDraggingAnEdge(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.keys("R")
+	from := f.at("edge:left")
+	size := f.at("cell:1,0").X - f.at("cell:0,0").X
+	f.frame(pointer(from, true, true, false))
+	f.frame(pointer(from.Add(image.Pt(-size, 0)), false, true, false))
+	f.frame(pointer(from.Add(image.Pt(-2*size, 0)), false, true, false))
+	f.frame(pointer(from.Add(image.Pt(-2*size, 0)), false, false, true))
+	got := resizes(t, f.requests)
+	want := tilefloor.Bounds{Col: -2, Row: 0, Width: 14, Height: 10}
+	if len(got) != 1 || got[0].Bounds != want || got[0].Ground != "grass" {
+		t.Fatalf("resizes %+v, want bounds %+v filled with grass", got, want)
+	}
+}
+
+// TestResizeButtonsAskBeforeRemovingAnAnchor removes rows from the bottom
+// until the next would take the Desk anchor: then the window asks where the
+// anchor is used and confirms first.
+func TestResizeButtonsAskBeforeRemovingAnAnchor(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.keys("R")
+	f.click("ui:grow-top")
+	if got := resizes(t, f.requests); len(got) != 1 || got[0].Bounds != (tilefloor.Bounds{Col: 0, Row: -1, Width: 12, Height: 11}) {
+		t.Fatalf("grow top %+v", got)
+	}
+	shrunk, err := tilefloor.NewDocument(12, 5, "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := shrunk.Floor.InsertAnchor(0, floor.Anchor{ID: deskID, Name: "Desk", Col: 4, Row: 4}); err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(groundID, "Ground", shrunk)
+	f.click("ui:shrink-bottom")
+	if len(f.requests.Uses) != 1 || len(resizes(t, f.requests)) != 1 {
+		t.Fatal("removing the row with the anchor should ask where it is used first")
+	}
+	f.requests.Uses[0](nil, nil)
+	f.click("ui:resize")
+	got := resizes(t, f.requests)
+	if len(got) != 2 || got[1].Bounds != (tilefloor.Bounds{Col: 0, Row: 0, Width: 12, Height: 4}) {
+		t.Fatalf("shrink bottom %+v", got)
+	}
+}
+
+func pointer(at image.Point, pressed, down, released bool) ui.Input {
+	input := ui.NewInput(at)
+	input.Pressed, input.Down, input.Released = pressed, down, released
+	return input
 }
 
 func TestSwitchingFloors(t *testing.T) {

@@ -52,6 +52,12 @@ under consideration), **open** (undecided).
   share one undo list.
 - **Agreed:** pan and zoom the map; integer cell sizes keep pixel art uniformly
   scaled once real tiles replace stand-ins.
+- **Agreed:** the **zone origin**, cell 0,0, is fixed and shown on the map, and
+  every floor of a zone shares it, so stairs line up. Floors grow or shrink on
+  any side without moving what is already placed; cells left of or above the
+  origin have negative numbers. New floors start centred on the origin.
+- **Agreed:** floors are **resized** in the Map window, adding or removing rows
+  and columns on any side, each change one undo step.
 - **Tentative:** keep the map view simple at first (no full lighting or
   visibility editing) and enrich it over time.
 - **Agreed:** portal-linked maps do not need to be shown stitched together;

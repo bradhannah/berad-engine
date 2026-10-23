@@ -36,7 +36,8 @@ const (
 	textView = "text"
 )
 
-// New floors match the zone's top floor, or this size.
+// New floors match the zone's top floor, or this size centred on the zone
+// origin.
 const (
 	defaultWidth  = 32
 	defaultHeight = 24
@@ -488,13 +489,13 @@ func (s *State) createZone(ctx *frame.Context) {
 	s.command(ctx, project.IndexID(), project.CreateEdit, gesture, args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 		s.subscribe(result.Created, ctx)
-		s.addFloor(ctx, result.Created, "Floor 1", defaultWidth, defaultHeight, "grass", 0, gesture)
+		s.addFloor(ctx, result.Created, "Floor 1", floor.Centered(defaultWidth, defaultHeight), "grass", 0, gesture)
 		ctx.Frame.Status("Created “" + name + "” with one floor")
 	}, nil)
 }
 
 // createFloor adds a floor on top of the selected zone (or the zone of the
-// selected floor), the same size as the floor below it.
+// selected floor), with the same bounds as the floor below it.
 func (s *State) createFloor(ctx *frame.Context) {
 	entry, found := s.selected(ctx.Docs)
 	if !found {
@@ -512,26 +513,26 @@ func (s *State) createFloor(ctx *frame.Context) {
 	for _, id := range floors {
 		floorNames = append(floorNames, index.Name(id, ""))
 	}
-	width, height, ground := defaultWidth, defaultHeight, "grass"
+	bounds, ground := floor.Centered(defaultWidth, defaultHeight), "grass"
 	if len(floors) > 0 {
 		ground = ""
 		s.subscribe(floors[len(floors)-1], ctx)
 		ctx.Docs.View(floors[len(floors)-1], func(document client.Document) {
 			if floorDoc, isFloor := document.Model.(*tilefloor.Document); isFloor {
-				width, height = floorDoc.Floor.Width(), floorDoc.Floor.Height()
+				bounds = floorDoc.Floor.Bounds()
 			}
 		})
 	}
 	name := uniqueName("Floor", floorNames)
-	s.addFloor(ctx, zoneID, name, width, height, ground, len(floors), s.gesture())
+	s.addFloor(ctx, zoneID, name, bounds, ground, len(floors), s.gesture())
 }
 
 // addFloor creates a floor document and inserts it into a zone, in one
 // gesture.
 func (s *State) addFloor(
-	ctx *frame.Context, zoneID ids.ULID, name string, width, height int, ground string, position int, gesture string,
+	ctx *frame.Context, zoneID ids.ULID, name string, bounds image.Rectangle, ground string, position int, gesture string,
 ) {
-	document, err := tilefloor.NewDocument(width, height, ground)
+	document, err := tilefloor.NewDocumentAt(bounds, ground)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 

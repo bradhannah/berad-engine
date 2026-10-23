@@ -1,7 +1,8 @@
 // Package mapview is the Map window: one zone, shown a floor at a time with
-// the floor below faintly underneath. Authors paint ground, draw walls with a
-// family and change families for a whole run, room or area, place doors and
-// pickup stand-ins, add and name anchors, and answer picks from other windows.
+// the floor below faintly underneath and the zone origin, cell 0,0, marked.
+// Authors paint ground, draw walls with a family and change families for a
+// whole run, room or area, place doors and pickup stand-ins, add and name
+// anchors, resize floors on any side, and answer picks from other windows.
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -33,7 +34,7 @@ const ViewName = "map"
 // Panel sizes, in screen pixels.
 const (
 	PanelWidth   = 190
-	toolRows     = 6
+	toolRows     = 7
 	floorRows    = 5
 	panelGap     = 10
 	headingSpace = 22
@@ -54,6 +55,7 @@ const (
 	ToolErase   Tool = "erase"
 	ToolAnchor  Tool = "anchor"
 	ToolSelect  Tool = "select"
+	ToolResize  Tool = "resize"
 )
 
 type toolInfo struct {
@@ -71,6 +73,7 @@ func tools() []toolInfo {
 		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
 		{ToolAnchor, "Anchors", "A", "Click to add an anchor; drag one to move it."},
 		{ToolSelect, "Select walls", "S", "Click a wall for its run, double-click a room, or drag an area."},
+		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor."},
 	}
 }
 
@@ -116,6 +119,7 @@ const (
 	dialogNone dialogKind = iota
 	dialogDeleteAnchor
 	dialogReplace
+	dialogResize
 )
 
 // State is one Map window.
@@ -141,6 +145,9 @@ type State struct {
 	wheel    float64
 	lastPan  image.Point
 	panning  bool
+	framed   bool
+	resizing *resizeDrag
+	cursor   image.Point
 
 	toolList  *ui.List
 	tileList  *ui.List
@@ -149,11 +156,13 @@ type State struct {
 	nameField *ui.TextField
 	deleteBtn *ui.Button
 	replace   *ui.Button
+	sides     []sideButtons
 	focus     ui.Focus
 
-	dialog      *ui.Dialog
-	dialogKind  dialogKind
-	replaceFrom string
+	dialog        *ui.Dialog
+	dialogKind    dialogKind
+	replaceFrom   string
+	pendingResize *pendingResize
 }
 
 // New returns the Map window for a zone.
@@ -164,7 +173,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{},
-		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false,
+		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
+		cursor:    image.Pt(0, 0),
 		toolList:  &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
 		tileList:  &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
 		floorList: &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
@@ -174,8 +184,9 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace: &ui.Button{
 			ID: "replace-family", Label: "Replace family everywhere…", Rect: ui.Zero(), Disabled: false, Primary: false,
 		},
+		sides:  newSideButtons(),
 		focus:  ui.Focus{},
-		dialog: nil, dialogKind: dialogNone, replaceFrom: "",
+		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
 	view.focus.Register(view.nameField)
 	for _, info := range tools() {
@@ -370,6 +381,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	if len(s.selected) > 0 {
 		s.replace.Rect = image.Rect(left, replaceTop, left+width, replaceTop+ui.ButtonH)
 	}
+	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero())
 }
 
 // Inspector layout, from the top of the panel.
@@ -417,6 +429,7 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
+	s.cursor = input.Cursor
 	s.layoutWidgets(ctx.Docs)
 	if s.dialog != nil {
 		s.updateDialog(input, ctx)
@@ -440,8 +453,13 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	loaded := ctx.Docs.View(s.floor, func(document client.Document) {
 		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+			if !s.framed {
+				s.camera.frame(floorDoc.Floor.Bounds())
+				s.framed = true
+			}
 			s.syncAnchorField(floorDoc.Floor)
 			s.updateGrid(input, ctx, floorDoc.Floor)
+			s.updateSides(input, ctx, floorDoc.Floor)
 		}
 	})
 	if !loaded {
@@ -464,7 +482,11 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case input.Consume(ui.KeyMinus, command):
 		s.camera.zoomBy(-1, input.Cursor, s.Grid())
 	case input.Consume(ui.Key0, command):
-		s.camera.reset()
+		ctx.Docs.View(s.floor, func(document client.Document) {
+			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+				s.camera.frame(floorDoc.Floor.Bounds())
+			}
+		})
 	case input.Consume(ui.KeyF, plain):
 		s.below.On = !s.below.On
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
@@ -497,7 +519,7 @@ func (s *State) setTool(tool Tool) {
 	s.tool = tool
 	s.toolList.Selected = string(tool)
 	s.tileList.Selected = s.tile[tool]
-	s.stroke.active, s.rect, s.drag = false, nil, nil
+	s.stroke.active, s.rect, s.drag, s.resizing = false, nil, nil, nil
 }
 
 func (s *State) stepFloor(delta int, ctx *frame.Context) {
@@ -565,6 +587,8 @@ func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor
 		s.updateAnchor(input, ctx, floorData, cell, onFloor)
 	case ToolSelect:
 		s.updateSelect(input, ctx, floorData, cell, onFloor)
+	case ToolResize:
+		s.updateResize(input, ctx, floorData)
 	}
 }
 
@@ -601,7 +625,7 @@ func (s *State) paintValue() (string, string) {
 		return tilefloor.LayerTop, s.tile[ToolWalls]
 	case ToolObjects:
 		return tilefloor.LayerTop, s.tile[ToolObjects]
-	case ToolErase, ToolAnchor, ToolSelect:
+	case ToolErase, ToolAnchor, ToolSelect, ToolResize:
 		return tilefloor.LayerTop, ""
 	}
 
@@ -961,12 +985,14 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	if choice == "" {
 		return
 	}
-	dialog, kind := s.dialog, s.dialogKind
-	s.dialog, s.dialogKind = nil, dialogNone
+	dialog, kind, resize := s.dialog, s.dialogKind, s.pendingResize
+	s.dialog, s.dialogKind, s.pendingResize = nil, dialogNone, nil
 	switch {
 	case choice == ui.DialogCancel:
 	case kind == dialogDeleteAnchor:
 		s.removeAnchor(ctx, s.floor, s.anchor)
+	case kind == dialogResize && resize != nil:
+		s.sendResize(ctx, *resize)
 	case kind == dialogReplace && dialog.List != nil:
 		floors := []ids.ULID{s.floor}
 		if choice == "zone" {
@@ -993,8 +1019,9 @@ func (s *State) replaceFamily(ctx *frame.Context, fromFamily, toFamily string, f
 				return
 			}
 			floorData := floorDoc.Floor
-			for row := range floorData.Height() {
-				for col := range floorData.Width() {
+			bounds := floorData.Bounds()
+			for row := bounds.Min.Y; row < bounds.Max.Y; row++ {
+				for col := bounds.Min.X; col < bounds.Max.X; col++ {
 					if top, _ := floorData.Top(col, row); top == fromFamily { //nolint:errcheck // Inside the floor.
 						cells = append(cells, tilefloor.Cell{Col: col, Row: row, Layer: tilefloor.LayerTop, Tile: toFamily})
 					}
@@ -1042,9 +1069,10 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 }
 
 // Locate finds a named part of the window for input scripts: "cell:C,R",
-// "tool:<tool>", "tile:<id>", "floor:<n>" (1 is the bottom floor),
-// "ui:anchor-name", "ui:delete-anchor", "ui:replace-family", "ui:below", or
-// a dialog button or list row by ID.
+// "edge:left" (or top, right, bottom) of the floor, "tool:<tool>",
+// "tile:<id>", "floor:<n>" (1 is the bottom floor), "ui:anchor-name",
+// "ui:delete-anchor", "ui:replace-family", "ui:below", "ui:grow-left" and the
+// other side buttons, or a dialog button or list row by ID.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
@@ -1062,6 +1090,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		rect := s.camera.cellRect(Cell{X: col, Y: row}, s.Grid())
 
 		return image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2), true
+	case "edge":
+		return s.locateEdge(value, docs)
 	case "tool":
 		return s.toolList.Locate(value)
 	case "tile":
@@ -1081,12 +1111,15 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 }
 
 // hasState answers input scripts waiting for the window: "loaded" once the
-// current floor has arrived, "picking" while answering a pick, "floor:N"
-// when the Nth floor from the bottom is shown.
+// current floor has arrived and is in view, "picking" while answering a pick,
+// "floor:N" when the Nth floor from the bottom is shown, and
+// "bounds:C,R,W,H" when the current floor has those bounds.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	switch {
 	case state == "loaded":
-		return !s.floor.IsZero() && docs.View(s.floor, func(client.Document) {})
+		return !s.floor.IsZero() && s.framed && docs.View(s.floor, func(client.Document) {})
+	case strings.HasPrefix(state, "bounds:"):
+		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
 	case state == "picking":
 		return s.pick != nil
 	case strings.HasPrefix(state, "floor:"):
@@ -1098,11 +1131,11 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	return false
 }
 
-func (s *State) locateWidget(id string) (image.Point, bool) {
+func (s *State) locateWidget(widget string) (image.Point, bool) {
 	center := func(rect image.Rectangle) image.Point {
 		return image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2)
 	}
-	switch id {
+	switch widget {
 	case s.nameField.ID:
 		return s.nameField.Center(), true
 	case s.deleteBtn.ID:
@@ -1111,6 +1144,13 @@ func (s *State) locateWidget(id string) (image.Point, bool) {
 		return center(s.replace.Rect), true
 	case s.below.ID:
 		return center(s.below.Rect), true
+	}
+	for _, side := range s.sides {
+		for _, button := range []*ui.Button{side.grow, side.shrink} {
+			if button.ID == widget {
+				return center(button.Rect), true
+			}
+		}
 	}
 
 	return image.Pt(0, 0), false

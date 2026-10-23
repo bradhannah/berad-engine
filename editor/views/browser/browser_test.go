@@ -97,6 +97,10 @@ func TestNewZoneComesWithAFloor(t *testing.T) {
 	if err := creates[1].Decode(&floorArgs); err != nil || floorArgs.Format != floor.FormatName || floorArgs.Scope != newZone {
 		t.Fatalf("floor %+v %v", floorArgs, err)
 	}
+	firstFloor, err := floor.Decode(floorArgs.Data)
+	if err != nil || firstFloor.Bounds() != floor.Centered(32, 24) {
+		t.Fatalf("the first floor should be centred on the zone origin: %v", err)
+	}
 	creates[1].Succeed(frametest.ID(41))
 	inserts := f.requests.Of(zoneplugin.InsertFloorEdit)
 	if len(inserts) != 1 || inserts[0].Command.Document != newZone {

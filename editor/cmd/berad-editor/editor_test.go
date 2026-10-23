@@ -3,6 +3,7 @@ package main_test
 import (
 	"context"
 	"encoding/json"
+	"image"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,9 +19,10 @@ import (
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
-// The sample building's walls (see createSample).
+// The sample building's walls (see createSample), in cells from the zone
+// origin in the middle of its room.
 const (
-	left, top, right, bottom, door = 6, 5, 18, 13, 12
+	left, top, right, bottom, door = -6, -4, 6, 4, 0
 )
 
 // buildEditor compiles berad-editor once per test into a temporary folder.
@@ -97,9 +99,12 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 		t.Fatalf("open: %v\n%s", err, output)
 	}
 	ground, envelope := readFloor(t, project, "ground-floor")
-	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, 0, 0) != "grass" ||
+	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, -16, -12) != "grass" ||
 		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 1 {
 		t.Fatal("sample ground floor not saved")
+	}
+	if ground.Bounds() != floor.Centered(32, 24) || envelope.Version != floor.FormatVersion {
+		t.Fatalf("sample floor bounds %v, version %d", ground.Bounds(), envelope.Version)
 	}
 	zoneEnvelope := readEnvelope(t, project, "zones/sample-zone--*.json")
 	zoneDoc, err := zoneplugin.Decode(zoneEnvelope.Data)
@@ -233,29 +238,39 @@ func closeBrowser() []step {
 // TestMapPaintsDrawsAndUndoes drives a real Map window: a drag paints the
 // ground through the orchestrator, a drag with the Walls tool draws walls in
 // the chosen family, undo takes the walls back in one step, and the result is
-// in the saved file.
+// in the saved file. Then the Resize tool adds a row on top with its button,
+// drags the bottom edge down two rows, and undo takes the drag back.
 func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
-		keys("3"), drag("cell:20,18", "cell:21,18", "cell:22,18", "cell:23,18"), wait(5),
-		keys("W"), keys("3"), drag("cell:20,20", "cell:21,20", "cell:22,20"), wait(10),
-		keys("Cmd+Z"), wait(60), quit(),
+		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
+		keys("W"), keys("3"), drag("cell:4,10", "cell:5,10", "cell:6,10"), wait(10),
+		keys("Cmd+Z"), wait(60),
+		keys("R"), click("ui:grow-top"), expect("state:bounds:-16,-13,32,25", 300), wait(5),
+		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
+		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(60), quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
 
 	ground, _ := readFloor(t, project, "ground-floor")
-	for col := 20; col <= 23; col++ {
-		if got := cellOf(t, ground, tilefloor.LayerGround, col, 18); got != "road" {
+	for col := 4; col <= 7; col++ {
+		if got := cellOf(t, ground, tilefloor.LayerGround, col, 8); got != "road" {
 			t.Fatalf("painted ground cell %d = %q", col, got)
 		}
 	}
-	for col := 20; col <= 22; col++ {
-		if got := cellOf(t, ground, tilefloor.LayerTop, col, 20); got != "" {
+	for col := 4; col <= 6; col++ {
+		if got := cellOf(t, ground, tilefloor.LayerTop, col, 10); got != "" {
 			t.Fatalf("undone wall cell %d = %q", col, got)
 		}
+	}
+	if ground.Bounds() != image.Rect(-16, -13, 16, 12) {
+		t.Fatalf("resized bounds %v", ground.Bounds())
+	}
+	if got := cellOf(t, ground, tilefloor.LayerGround, 0, -13); got != "grass" {
+		t.Fatalf("the added row has ground %q, want the floor's most common ground", got)
 	}
 }
 
@@ -269,9 +284,9 @@ func TestWallFamiliesForARoomAndARun(t *testing.T) {
 	shot := filepath.Join(t.TempDir(), "upper.png")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
-		keys("S"), doubleClick("cell:10,10"), wait(5), click("tile:wall.c"), wait(20),
+		keys("S"), doubleClick("cell:0,0"), wait(5), click("tile:wall.c"), wait(20),
 		keys("PageUp"), expect("state:floor:2", 300), expect("state:loaded", 300), wait(10),
-		click("cell:6,5"), wait(5), click("tile:wall"), wait(20),
+		click("cell:-6,-4"), wait(5), click("tile:wall"), wait(20),
 		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
@@ -307,8 +322,8 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
-		keys("A"), click("cell:20,15"), wait(30), typed("Well"), keys("Enter"), wait(20),
-		expect("state:picking", 1800), wait(5), click("cell:20,15"), wait(40), quit(),
+		keys("A"), click("cell:4,6"), wait(30), typed("Well"), keys("Enter"), wait(20),
+		expect("state:picking", 1800), wait(5), click("cell:4,6"), wait(40), quit(),
 	)
 	browserScript := script(
 		expect("row:Notes", 600), click("row:Notes"), keys("Enter"), wait(30), quit(),
@@ -323,7 +338,7 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "text": {textScript}})
 
 	ground, groundEnvelope := readFloor(t, project, "ground-floor")
-	well, found := ground.AnchorAt(20, 15)
+	well, found := ground.AnchorAt(4, 6)
 	if !found || well.Name != "Well" {
 		t.Fatalf("anchor %+v %v", well, found)
 	}
@@ -342,8 +357,8 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 }
 
 // TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
-// inspector, deletes the text document after confirming, and undoes the
-// deletion.
+// inspector by typing a name and clicking Rename, deletes the text document
+// after confirming, and undoes the deletion.
 func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -351,7 +366,7 @@ func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
 		click("ui:new-zone"), expect("row:Zone 1", 300), click("row:Zone 1"),
-		click("ui:name"), keys("Cmd+A"), typed("Harbour"), keys("Enter"), expect("row:Harbour", 300),
+		click("ui:name"), keys("Cmd+A"), typed("Harbour"), click("ui:rename"), expect("row:Harbour", 300),
 		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
 		keys("Cmd+Z"), expect("row:Notes", 300), wait(10), quit(),
 	)
@@ -374,7 +389,7 @@ func TestViewsShareUndo(t *testing.T) {
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	first := script(
-		expect("state:loaded", 600), wait(5), keys("4"), drag("cell:2,20", "cell:3,20", "cell:4,20"),
+		expect("state:loaded", 600), wait(5), keys("4"), drag("cell:2,9", "cell:3,9", "cell:4,9"),
 		wait(10), keys("Cmd+N"), wait(300), quit(),
 	)
 	second := script(expect("state:loaded", 600), wait(20), keys("Cmd+Z"), wait(30), quit())
@@ -382,7 +397,7 @@ func TestViewsShareUndo(t *testing.T) {
 
 	ground, _ := readFloor(t, project, "ground-floor")
 	for col := 2; col <= 4; col++ {
-		if got := cellOf(t, ground, tilefloor.LayerGround, col, 20); got != "grass" {
+		if got := cellOf(t, ground, tilefloor.LayerGround, col, 9); got != "grass" {
 			t.Fatalf("cell %d = %q; the second view should have undone the first view's stroke", col, got)
 		}
 	}

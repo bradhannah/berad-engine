@@ -3,7 +3,9 @@ package tilefloor_test
 import (
 	"encoding/json"
 	"errors"
+	"image"
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/model"
@@ -70,6 +72,126 @@ func TestPaintMeetsUndoContract(t *testing.T) {
 		if _, err := (tilefloor.Paint{}).Apply(document, args); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestResizeMeetsUndoContract resizes a painted floor with anchors at random,
+// growing and shrinking on every side: each resize, and the inverse it
+// returns, restores exactly what was there.
+func TestResizeMeetsUndoContract(t *testing.T) {
+	t.Parallel()
+	lookup := registry(t).Edit
+	document, err := tilefloor.NewDocumentAt(floor.Centered(8, 6), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	random := rand.New(rand.NewPCG(3, 4))
+	for seed := range byte(6) {
+		bounds := document.Floor.Bounds()
+		col, row := bounds.Min.X+random.IntN(bounds.Dx()), bounds.Min.Y+random.IntN(bounds.Dy())
+		if _, err := document.Floor.SetTop(col, row, "wall.a"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := document.Floor.SetGround(col, row, "road"); err != nil {
+			t.Fatal(err)
+		}
+		if _, taken := document.Floor.AnchorAt(col, row); !taken {
+			spot := floor.Anchor{ID: anchorID(seed + 1), Name: "Spot " + string(rune('A'+seed)), Col: col, Row: row}
+			if err := document.Floor.InsertAnchor(int(seed), spot); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	grounds := []string{"grass", "", "floor"}
+	for range 200 {
+		bounds := document.Floor.Bounds()
+		next := image.Rect(
+			bounds.Min.X+random.IntN(5)-2, bounds.Min.Y+random.IntN(5)-2,
+			bounds.Max.X+random.IntN(5)-2, bounds.Max.Y+random.IntN(5)-2,
+		)
+		if next == bounds || next.Dx() < 1 || next.Dy() < 1 {
+			continue
+		}
+		args := encode(t, tilefloor.ResizeArgs{
+			Bounds: tilefloor.BoundsOf(next), Ground: grounds[random.IntN(len(grounds))], Cells: nil, Anchors: nil,
+		})
+		if err := model.VerifyUndo(document, tilefloor.Resize{}, args, lookup); err != nil {
+			t.Fatal(err)
+		}
+		applied, err := (tilefloor.Resize{}).Apply(document, args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := model.VerifyUndo(document, tilefloor.Resize{}, applied.Inverse, lookup); err != nil {
+			t.Fatalf("the inverse of a resize must itself undo exactly: %v", err)
+		}
+	}
+}
+
+// TestResizeRestoresWhatItRemoved shrinks a floor past a wall and an anchor,
+// then applies the inverse: both come back in the same place.
+func TestResizeRestoresWhatItRemoved(t *testing.T) {
+	t.Parallel()
+	document, err := tilefloor.NewDocument(4, 3, "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := document.Floor.SetTop(3, 1, "wall.b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := document.Floor.InsertAnchor(0, floor.Anchor{ID: anchorID(1), Name: "Edge", Col: 3, Row: 2}); err != nil {
+		t.Fatal(err)
+	}
+	shrink := tilefloor.ResizeArgs{Bounds: tilefloor.Bounds{Col: -1, Row: 0, Width: 4, Height: 3}, Ground: "road"}
+	applied, err := (tilefloor.Resize{}).Apply(document, encode(t, shrink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Floor.In(3, 1) || len(document.Floor.Anchors()) != 0 {
+		t.Fatal("the right column should be gone with its anchor")
+	}
+	if ground, _ := document.Floor.Ground(-1, 0); ground != "road" { //nolint:errcheck // On the floor.
+		t.Fatalf("new column ground %q", ground)
+	}
+	if !slices.Contains(applied.Touched, tilefloor.BoundsKey) ||
+		!slices.Contains(applied.Touched, tilefloor.CellKey(tilefloor.LayerTop, 3, 1)) ||
+		!slices.Contains(applied.Touched, tilefloor.AnchorKey(anchorID(1))) {
+		t.Fatalf("touched %v", applied.Touched)
+	}
+	if _, err := (tilefloor.Resize{}).Apply(document, applied.Inverse); err != nil {
+		t.Fatal(err)
+	}
+	if top, _ := document.Floor.Top(3, 1); top != "wall.b" { //nolint:errcheck // On the floor.
+		t.Fatalf("restored wall %q", top)
+	}
+	if _, found := document.Floor.AnchorAt(3, 2); !found || document.Floor.In(-1, 0) {
+		t.Fatal("undo should restore the anchor and remove the added column")
+	}
+}
+
+func TestResizeRejectsBadArguments(t *testing.T) {
+	t.Parallel()
+	document, err := tilefloor.NewDocument(4, 4, "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []tilefloor.ResizeArgs{
+		{Bounds: tilefloor.Bounds{Col: 0, Row: 0, Width: 4, Height: 4}},
+		{Bounds: tilefloor.Bounds{Col: 0, Row: 0, Width: 0, Height: 4}},
+		{Bounds: tilefloor.Bounds{Col: 0, Row: 0, Width: 5, Height: 4}, Cells: []tilefloor.Cell{
+			{Col: 1, Row: 1, Layer: tilefloor.LayerTop, Tile: "wall"},
+		}},
+		{Bounds: tilefloor.Bounds{Col: 0, Row: 0, Width: 5, Height: 4}, Anchors: []tilefloor.AddAnchorArgs{
+			{Anchor: floor.Anchor{ID: anchorID(2), Name: "Inside", Col: 0, Row: 0}, Index: 0},
+		}},
+		{Bounds: tilefloor.Bounds{Col: -300, Row: 0, Width: 304, Height: 300}},
+	} {
+		if _, err := (tilefloor.Resize{}).Apply(document, encode(t, bad)); !errors.Is(err, model.ErrArgs) {
+			t.Fatalf("%+v: %v", bad, err)
+		}
+	}
+	if document.Floor.Bounds() != image.Rect(0, 0, 4, 4) {
+		t.Fatal("a refused resize changed the floor")
 	}
 }
 
