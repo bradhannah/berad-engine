@@ -24,7 +24,7 @@ to the same strict checks as [the first build](FIRST_BUILD.md).
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. The wireframe look | IBM Plex Sans and Mono; dark 1.5-pixel outlines and rounded boxes; small uppercase labels; blue for selection, orange for live; the dotted or lined canvas | Every window matches the wireframes' look, judged by its author | Built |
-| 2. Workflows | Workflow documents, logic and layout kept apart (D17); node types declared by a plug-in with typed parameters; the Workflow window: palette, canvas, nodes, connections, containers, notes, an inspector built from the declarations, auto-arrange | A routine can be built, edited and undone in the Workflow window | Planned |
+| 2. Workflows | Workflow documents, logic and layout kept apart (D17); node types declared by a plug-in with typed parameters; the Workflow window: palette, canvas, nodes, connections, containers, notes, an inspector built from the declarations, auto-arrange | A routine can be built, edited and undone in the Workflow window | Built |
 | 3. NPCs | NPC documents with a behaviour workflow; placing NPCs on floors; the inspector for an NPC placement | NPCs can be placed and given workflows | Planned |
 | 4. NPCs in the preview | The engine's workflow runner; NPC walking with berad-path; the preview clock; live state in the Map and Workflow windows | NPCs follow a daily routine in the preview, judged by its author | Planned |
 
@@ -77,6 +77,37 @@ Open:
 - Windows driven by test scripts open without taking focus, so the
   real-window tests no longer take the keyboard from whoever is at the
   computer.
+
+- **Workflows:** `engine/workflow` holds the document and the built-in node
+  kinds, each declaring typed parameters (anchor, minutes, percentage, time
+  range, times, text) and its outputs. The workflow plug-in's four edits (add
+  nodes, remove nodes, replace a node, move nodes) pass the shared undo test,
+  which now covers layouts too. A workflow's layout is saved in
+  `<name>--<id>.layout.json` beside its logic, with no revision line, so
+  moving a node never touches the logic file; the layout is read with its
+  document, follows renames and deletions, travels in snapshots, and comes
+  back when a deletion is undone. Document types can prepare a new document,
+  so a new workflow's start node gets its permanent ID from the orchestrator
+  (D4).
+- **The Workflow window,** opened from the project browser (New workflow,
+  then Open): the palette on the left groups the node kinds (Flow, Movement,
+  Action, Annotate). Clicking an entry adds a node after the selected one,
+  connected from its first free output, or as the first step inside a
+  selected container; dragging an entry places it. Dragging from a port to a
+  node connects them, dropping on empty canvas disconnects, and links that
+  break the rules are refused with a reason. Nodes move by dragging, with a
+  container's contents moving with it and staying inside it; a container's
+  corner resizes it. Each free output says where the flow goes: "→ start", or
+  "→ repeat" inside a container. The inspector is built from the node kind's
+  declarations: number and text fields saved with Enter, time fields, a list
+  of times with Add and Remove, and an anchor with Pick on map, through the
+  pick component the Text window now shares. Auto-arrange lays the workflow
+  out in columns from the start, leaving placed notes where they are. Views
+  of one workflow share undo.
+- Chosen while building, for its author to check: the start node is the hub,
+  so there is no separate Hub node yet; new nodes go to the right of the node
+  they follow, and notes above it; zoom, the minimap and search shown in the
+  wireframe are not built yet.
 
 ## Not in this build
 

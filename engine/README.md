@@ -12,6 +12,7 @@ What a top-down tile RPG runs. This module must never import the editor module.
 | `zone` | A zone: its floors from the bottom up |
 | `tiles` | Built-in stand-in tiles, passability, stairs and the wall neighbour mask |
 | `play` | A run of a zone: the player walking, one cell per step, and taking stairs |
+| `workflow` | Workflows: typed node kinds with declared parameters and outputs, and the layout kept apart |
 
 The world model, characteristics, workflow runner, schedules and game loop
 arrive as games need them.

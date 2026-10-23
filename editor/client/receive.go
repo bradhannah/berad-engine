@@ -157,7 +157,7 @@ func (c *Client) install(snapshot protocol.Snapshot) {
 	if !ok {
 		return
 	}
-	decoded, err := documentType.Decode(snapshot.Data)
+	decoded, err := documentType.DecodeWithLayout(snapshot.Data, snapshot.Layout)
 	if err != nil {
 		return
 	}

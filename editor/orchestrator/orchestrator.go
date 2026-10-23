@@ -184,7 +184,11 @@ func (o *Orchestrator) load() error {
 		if !ok {
 			continue
 		}
-		decoded, err := documentType.Decode(document.envelope.Data)
+		var layout json.RawMessage
+		if document.layout != nil {
+			layout = document.layout.envelope.Data
+		}
+		decoded, err := documentType.DecodeWithLayout(document.envelope.Data, layout)
 		if err != nil {
 			return fmt.Errorf("decode %s: %w", document.path, err)
 		}
@@ -198,7 +202,7 @@ func (o *Orchestrator) load() error {
 			},
 			version:  document.envelope.Version,
 			document: decoded,
-			dirty:    document.fromVersion != document.envelope.Version,
+			dirty:    document.upgraded(),
 		}
 	}
 
@@ -425,6 +429,7 @@ func (o *Orchestrator) flush() error {
 	live := map[string]bool{}
 	for _, entry := range o.docs {
 		live[entry.info.Path] = true
+		live[layoutPath(entry.info.Path)] = true
 		if !entry.dirty || entry.info.Path == "" {
 			continue
 		}
@@ -474,9 +479,35 @@ func (o *Orchestrator) save(entry *documentEntry) error {
 	if err := o.project.writeDocument(entry.info.Path, envelope); err != nil {
 		return err
 	}
+	if err := o.saveLayout(entry); err != nil {
+		return err
+	}
 	entry.dirty = false
 
 	return nil
+}
+
+// saveLayout writes a layered document's layout file beside it (D17). Its
+// envelope carries no revision, so the file changes only when the layout
+// does.
+func (o *Orchestrator) saveLayout(entry *documentEntry) error {
+	layout, err := model.LayoutOf(entry.document)
+	if err != nil {
+		return fmt.Errorf("save %s: %w", entry.info.Name, err)
+	}
+	if layout == nil {
+		return nil
+	}
+	documentType, ok := o.cfg.Registry.Document(entry.info.Format)
+	if !ok || documentType.Layout == nil {
+		return fmt.Errorf("%w: %s has a layout but no layout format", content.ErrUnknownFormat, entry.info.Format)
+	}
+	envelope := content.Envelope{
+		Format: documentType.Layout.Name, Version: documentType.Layout.Current, ID: entry.info.ID,
+		Name: entry.info.Name, Revision: 0, Data: layout,
+	}
+
+	return o.project.writeDocument(layoutPath(entry.info.Path), envelope)
 }
 
 // mustMessage builds a message from a payload type defined in this program;

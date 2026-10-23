@@ -78,7 +78,14 @@ func (o *Orchestrator) prepareCreate(args json.RawMessage) (json.RawMessage, ids
 	if !ok || create.Format == projectindex.FormatName {
 		return nil, ids.ULID{}, fmt.Errorf("%w: cannot create a %q document", model.ErrArgs, create.Format)
 	}
-	if _, err := documentType.Decode(create.Data); err != nil {
+	if documentType.Prepare != nil {
+		data, err := documentType.Prepare(create.Data, o.ids.New)
+		if err != nil {
+			return nil, ids.ULID{}, fmt.Errorf("prepare %s: %w", create.Format, err)
+		}
+		create.Data = data
+	}
+	if _, err := documentType.DecodeWithLayout(create.Data, create.Layout); err != nil {
 		return nil, ids.ULID{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
 	var created ids.ULID
@@ -115,9 +122,13 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 	if err != nil {
 		return nil, fmt.Errorf("encode %s: %w", entry.info.Name, err)
 	}
+	layout, err := model.LayoutOf(entry.document)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s: %w", entry.info.Name, err)
+	}
 	deletion = projectindex.DocumentArgs{
 		ID: deletion.ID, Format: entry.info.Format, Name: entry.info.Name, Version: entry.version,
-		Revision: entry.info.Revision, Scope: o.containerOf(deletion.ID), Data: data,
+		Revision: entry.info.Revision, Scope: o.containerOf(deletion.ID), Data: data, Layout: layout,
 	}
 	prepared, err := json.Marshal(deletion)
 	if err != nil {
@@ -193,12 +204,12 @@ func (o *Orchestrator) createDocument(create projectindex.DocumentArgs) error {
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrUnknownDocument, create.Format)
 	}
-	document, err := documentType.Decode(create.Data)
+	document, err := documentType.DecodeWithLayout(create.Data, create.Layout)
 	if err != nil {
 		return fmt.Errorf("recreate %s: %w", create.Name, err)
 	}
 	path := documentPath(create.Format, create.Name, create.ID)
-	delete(o.removed, path)
+	o.keepFiles(path)
 	o.docs[create.ID] = &documentEntry{
 		info: DocumentInfo{
 			ID: create.ID, Name: create.Name, Format: create.Format, Revision: create.Revision, Path: path,
@@ -219,7 +230,7 @@ func (o *Orchestrator) removeDocument(documentID ids.ULID, live bool) {
 		return
 	}
 	delete(o.docs, documentID)
-	o.removed[entry.info.Path] = true
+	o.retireFiles(entry.info.Path)
 	delete(o.subscribed, documentID)
 	if !live {
 		return
@@ -241,11 +252,25 @@ func (o *Orchestrator) renameDocument(documentID ids.ULID, name string) {
 	entry.info.Name = name
 	path := documentPath(entry.info.Format, name, documentID)
 	if path != entry.info.Path {
-		o.removed[entry.info.Path] = true
-		delete(o.removed, path)
+		o.retireFiles(entry.info.Path)
+		o.keepFiles(path)
 		entry.info.Path = path
 	}
 	entry.dirty = true
+}
+
+// retireFiles marks a document's file, and its layout file if it has one, to
+// move to the backups at the next save.
+func (o *Orchestrator) retireFiles(path string) {
+	o.removed[path] = true
+	o.removed[layoutPath(path)] = true
+}
+
+// keepFiles cancels retiring a document's files, for a document that is
+// back at that path.
+func (o *Orchestrator) keepFiles(path string) {
+	delete(o.removed, path)
+	delete(o.removed, layoutPath(path))
 }
 
 // replayLifecycle applies a journaled project index edit during recovery. It

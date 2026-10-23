@@ -97,6 +97,12 @@ func (o *Orchestrator) subscribe(from *window, message protocol.Message) {
 
 		return
 	}
+	layout, err := model.LayoutOf(entry.document)
+	if err != nil {
+		o.reply(from, message.Request, err.Error(), 0)
+
+		return
+	}
 	subscribers, exists := o.subscribed[request.Document]
 	if !exists {
 		subscribers = map[ids.ULID]*window{}
@@ -109,6 +115,7 @@ func (o *Orchestrator) subscribe(from *window, message protocol.Message) {
 		Name:     entry.info.Name,
 		Revision: entry.info.Revision,
 		Data:     data,
+		Layout:   layout,
 	}))
 }
 

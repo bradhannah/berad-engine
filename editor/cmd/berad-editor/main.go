@@ -21,6 +21,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
@@ -103,7 +104,9 @@ func usage(stderr io.Writer) {
 
 // plugins is the explicit plug-in list for this program.
 func plugins() (*plugin.Registry, error) {
-	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin())
+	registry, err := plugin.NewRegistry(
+		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)
 	}

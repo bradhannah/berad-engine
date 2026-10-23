@@ -54,6 +54,12 @@ The project browser and a Map window open on a sample zone with two floors.
   stops. A preview never changes the project.
 - **Text window:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
   Escape reverts; "Pick on map" chooses an anchor in a Map window.
+- **Workflow window:** New workflow in the project browser, then Open. Click a
+  palette entry to add a node after the selected one, or drag it onto the
+  canvas; drag from an output's port to a node to connect them; drag nodes to
+  move them; Backspace removes the selected node. The inspector edits the
+  selected node: Enter saves a field, and "Pick on map" chooses a Go to's
+  destination. Auto-arrange lays the workflow out.
 
 `Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
 opens another view of the same zone, and the views update live and share undo;

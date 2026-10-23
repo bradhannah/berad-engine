@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -37,11 +39,28 @@ type project struct {
 	logger *slog.Logger
 }
 
-// storedDocument is a document read from disk, already upgraded if needed.
+// storedDocument is a document read from disk, already upgraded if needed,
+// with the layout file beside it when it has one (D17).
 type storedDocument struct {
 	path        string
 	envelope    content.Envelope
 	fromVersion int
+	layout      *storedDocument
+}
+
+// upgraded reports whether the document or its layout was upgraded on load,
+// so it must be saved in the current format.
+func (d storedDocument) upgraded() bool {
+	return d.fromVersion != d.envelope.Version || (d.layout != nil && d.layout.upgraded())
+}
+
+// layoutSuffix ends the name of a document's layout file, which sits beside
+// the document's own file.
+const layoutSuffix = ".layout.json"
+
+// layoutPath returns where a document's layout file lives.
+func layoutPath(path string) string {
+	return strings.TrimSuffix(path, ".json") + layoutSuffix
 }
 
 func openProject(dir string, logger *slog.Logger) (*project, error) {
@@ -72,6 +91,7 @@ func (p *project) close() error {
 // document (left by a crash during a rename) resolve to the newer one.
 func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]storedDocument, error) {
 	var documents []storedDocument
+	layouts := map[string]storedDocument{}
 	seen := map[ids.ULID]int{}
 	walk := func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -91,12 +111,17 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 		if err != nil || !ok {
 			return err
 		}
+		if strings.HasSuffix(path, layoutSuffix) {
+			layouts[path] = document
+
+			return nil
+		}
 		if index, duplicate := seen[document.envelope.ID]; duplicate {
 			kept, retired := p.newer(documents[index], document)
 			documents[index] = kept
 			p.logger.Warn("two files hold one document; keeping the newer", "kept", kept.path, "moved", retired.path)
 
-			return p.retire(retired.path, now)
+			return errors.Join(p.retire(retired.path, now), p.retire(layoutPath(retired.path), now))
 		}
 		seen[document.envelope.ID] = len(documents)
 		documents = append(documents, document)
@@ -107,7 +132,26 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 		return nil, fmt.Errorf("load documents: %w", err)
 	}
 
-	return documents, nil
+	return documents, p.attachLayouts(documents, layouts, now)
+}
+
+// attachLayouts gives each document the layout file beside it. A layout file
+// whose document is gone moves to the backups.
+func (p *project) attachLayouts(documents []storedDocument, layouts map[string]storedDocument, now time.Time) error {
+	for index := range documents {
+		path := layoutPath(documents[index].path)
+		if layout, ok := layouts[path]; ok && layout.envelope.ID == documents[index].envelope.ID {
+			documents[index].layout = &layout
+			delete(layouts, path)
+		}
+	}
+	errs := make([]error, 0, len(layouts))
+	for _, path := range slices.Sorted(maps.Keys(layouts)) {
+		p.logger.Warn("a layout file has no document; moving it to the backups", "path", path)
+		errs = append(errs, p.retire(path, now))
+	}
+
+	return errors.Join(errs...)
 }
 
 func (p *project) loadOne(formats *content.Registry, path string, now time.Time) (storedDocument, bool, error) {
@@ -136,7 +180,7 @@ func (p *project) loadOne(formats *content.Registry, path string, now time.Time)
 		}
 	}
 
-	return storedDocument{path: path, envelope: upgraded, fromVersion: envelope.Version}, true, nil
+	return storedDocument{path: path, envelope: upgraded, fromVersion: envelope.Version, layout: nil}, true, nil
 }
 
 // newer returns the copy of a document to keep and the one to retire: the

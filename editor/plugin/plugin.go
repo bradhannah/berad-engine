@@ -65,6 +65,11 @@ func (r *Registry) add(entry Plugin) error {
 		if err := r.formats.Register(documentType.Format); err != nil {
 			return fmt.Errorf("%w: plug-in %q: %w", ErrDuplicate, entry.Name, err)
 		}
+		if documentType.Layout != nil {
+			if err := r.formats.Register(*documentType.Layout); err != nil {
+				return fmt.Errorf("%w: plug-in %q: %w", ErrDuplicate, entry.Name, err)
+			}
+		}
 		r.documents[documentType.Format.Name] = documentType
 	}
 	for _, kind := range entry.Edits {
