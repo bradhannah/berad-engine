@@ -377,12 +377,12 @@ func (l fieldLines) Vertical(offset, delta int, column *float64) int {
 // Draw renders the field: its box, selection, text, unfinished input method
 // text, caret and an unsaved mark.
 func (w *TextField) Draw(screen *ebiten.Image) {
-	FillRect(screen, w.Rect, ColorBackground())
-	edge, width := ColorRule(), float32(Hairline)
+	FillRound(screen, w.Rect, Radius, ColorBackground())
+	edge, width := ColorInk(), Border
 	if w.focused {
 		edge, width = ColorSelect(), Outline
 	}
-	StrokeRect(screen, w.Rect, width, edge)
+	StrokeRound(screen, w.Rect, Radius, width, edge)
 	area, ok := screen.SubImage(w.Rect.Inset(Hairline)).(*ebiten.Image)
 	if !ok {
 		return

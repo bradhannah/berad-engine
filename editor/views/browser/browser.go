@@ -82,9 +82,7 @@ type State struct {
 
 // New returns the project browser.
 func New(window ids.ULID, theme *ui.Theme) *State {
-	button := func(id, label string) *ui.Button {
-		return &ui.Button{ID: id, Label: label, Rect: ui.Zero(), Disabled: false, Primary: false}
-	}
+	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		list:    &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: ""},
@@ -746,9 +744,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout(docs)
 	screen.Fill(ui.ColorBackground())
-	ui.FillRect(screen, image.Rect(0, 0, frame.Content(s.size).Max.X, toolbarHeight), ui.ColorPanel())
+	ui.FillRect(screen, image.Rect(0, 0, frame.Content(s.size).Max.X, toolbarHeight), ui.ColorBackground())
 	width := frame.Content(s.size).Max.X
-	ui.FillRect(screen, image.Rect(0, toolbarHeight-ui.Hairline, width, toolbarHeight), ui.ColorRule())
+	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
 	for _, button := range []*ui.Button{s.newZone, s.newFloor, s.newText, s.open, s.up, s.down} {
 		button.Draw(screen, s.theme)
 	}
@@ -771,7 +769,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
-	s.theme.DrawText(screen, "NAME", textX, nameFieldTop-ui.LineHeight, ui.ColorMuted())
+	s.theme.Heading(screen, "NAME", textX, nameFieldTop-ui.LineHeight)
 	s.name.Draw(screen)
 	textY = nameFieldTop + ui.ButtonH + ui.Gap
 	hint := "Enter saves, Escape reverts"

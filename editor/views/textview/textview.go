@@ -69,8 +69,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		window: window, document: document, theme: theme, size: image.Pt(0, 0),
 		body:     ui.NewTextField("body", textedit.NewField("", true, textdoc.MaxBody), true, theme),
 		focus:    ui.Focus{},
-		pickBtn:  &ui.Button{ID: "pick", Label: "Pick on map", Rect: ui.Zero(), Disabled: false, Primary: false},
-		clearBtn: &ui.Button{ID: "clear", Label: "Clear", Rect: ui.Zero(), Disabled: false, Primary: false},
+		pickBtn:  ui.NewButton("pick", "Pick on map"),
+		clearBtn: ui.NewButton("clear", "Clear"),
 		subs:     map[ids.ULID]bool{},
 		picking:  "", picks: 0, dialog: nil, dialogKind: dialogNone,
 	}
