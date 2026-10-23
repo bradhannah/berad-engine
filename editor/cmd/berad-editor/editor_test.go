@@ -186,6 +186,47 @@ func TestViewsShareUndo(t *testing.T) {
 	}
 }
 
+// TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process
+// outright (no chance to say goodbye) and checks its windows notice the lost
+// connection and close themselves instead of lingering (D10).
+func TestWindowsCloseWhenOrchestratorIsKilled(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	first := []step{wait(10), {NewView: true}, wait(3600)}
+	second := []step{wait(3600)}
+	cmd := exec.Command(binary, "open", "--project", project, "--sample")
+	cmd.Env = append(os.Environ(), "BERAD_INPUT_SCRIPT="+writeScript(t, "first.json", first)+","+writeScript(t, "second.json", second))
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	windows := func() int {
+		output, _ := exec.Command("pgrep", "-f", binary+" window").Output()
+		return len(strings.Fields(string(output)))
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for windows() < 2 {
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("two windows did not open")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Logf("%d windows running; killing the orchestrator", windows())
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	deadline = time.Now().Add(10 * time.Second)
+	for windows() > 0 {
+		if time.Now().After(deadline) {
+			_ = exec.Command("pkill", "-f", binary+" window").Run()
+			t.Fatal("windows kept running after the orchestrator was killed")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // TestCrashedWindowLeavesAReport crashes a second view with the debug key and
 // checks the orchestrator saved a crash report.
 func TestCrashedWindowLeavesAReport(t *testing.T) {
