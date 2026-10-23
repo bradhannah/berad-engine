@@ -25,6 +25,10 @@ when a consuming game needs it, not in anticipation of hypothetical needs.
 Each game keeps its own content, settings and unique game modes (such as intros)
 in its own repository.
 
+## Documentation
+
+Design decisions, vocabulary and build progress are in [docs](docs/README.md).
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) before working in this repository.
