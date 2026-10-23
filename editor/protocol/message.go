@@ -114,6 +114,20 @@ type Session struct {
 	Value json.RawMessage `json:"value"`
 }
 
+// TopicNotice is the session topic for user-facing notices.
+const TopicNotice = "notice"
+
+// NoticeWindowCrashed is the notice kind for a window that closed unexpectedly.
+const NoticeWindowCrashed = "window-crashed"
+
+// Notice is a user-facing message, published on TopicNotice.
+type Notice struct {
+	Kind   string   `json:"kind"`
+	Text   string   `json:"text"`
+	Window ids.ULID `json:"window"`
+	Report string   `json:"report,omitempty"`
+}
+
 // Open asks the orchestrator to open a window.
 type Open struct {
 	View   string   `json:"view"`
@@ -139,6 +153,7 @@ func NewMessage(kind Kind, request uint64, payload any) (Message, error) {
 }
 
 // DecodePayload decodes a message's payload as T.
+//
 //nolint:ireturn // T is the caller-chosen concrete payload type.
 func DecodePayload[T any](message Message) (T, error) {
 	var payload T
