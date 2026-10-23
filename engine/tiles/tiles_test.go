@@ -26,6 +26,7 @@ func TestStandIns(t *testing.T) {
 	}
 	for _, category := range []tiles.Category{
 		tiles.CategoryGround, tiles.CategoryWall, tiles.CategoryDoor, tiles.CategoryPickupSmall, tiles.CategoryPickupMedium,
+		tiles.CategoryStairsUp, tiles.CategoryStairsDown,
 	} {
 		if !categories[category] {
 			t.Fatalf("no stand-in for %s", category)
@@ -39,6 +40,23 @@ func TestStandIns(t *testing.T) {
 	}
 	if tiles.ColorOf("") == tiles.ColorOf("no-such-tile") {
 		t.Fatal("unassigned and unknown tiles must look different")
+	}
+}
+
+func TestPassableAndClimb(t *testing.T) {
+	t.Parallel()
+	for id, want := range map[string]bool{
+		"": true, "grass": true, "water": false, tiles.UnassignedWall: false, "wall.a": false,
+		"door": true, "stairs.up": true, "pickup.small": true, "no-such-tile": true,
+	} {
+		if tiles.Passable(id) != want {
+			t.Fatalf("passable %q: want %v", id, want)
+		}
+	}
+	for id, want := range map[string]int{"stairs.up": 1, "stairs.down": -1, "door": 0, "": 0, "no-such-tile": 0} {
+		if tiles.Climb(id) != want {
+			t.Fatalf("climb %q: want %d", id, want)
+		}
 	}
 }
 
