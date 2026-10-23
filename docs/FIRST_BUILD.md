@@ -29,8 +29,10 @@ game features.
 | 1. Core | Protocol, codec, framing; orchestrator services; the paint edit through the plug-in list; versioned files | Scripted clients paint and undo; contract tests pass; round-trip time measured | Done (PR #3) |
 | 2. First window | One program running as orchestrator or window; a Map window painting in strict mode; inspector; speed readout | Painting within one frame | Done (PR #3) |
 | 3. Two views and failures | New view; live updates; shared undo; crash notice and report; clean shutdown | Killing either process loses nothing; reports captured | Done (PR #3) |
-| 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map; project browser; zones with several floors; layers, stand-ins, walls and wall families; pan, zoom and a tile picker; the zone origin and resizing floors (format version 3) | Text editing judged by its author | Built (PR #5), awaiting that judgement |
+| 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map; project browser; zones with several floors; layers, stand-ins, walls and wall families; pan, zoom and a tile picker; the zone origin and resizing floors (format version 3) | Text editing judged by its author | Done (PR #5) |
 | 5. Stretch | VM-guest embedding; "create version" through git | Optional | Later |
+
+The [second build](SECOND_BUILD.md) follows.
 
 ## Results so far
 
@@ -45,7 +47,8 @@ game features.
 - Command-to-event time over a real socket, including the journal write
   (`make latency`): median 26 µs, p99 58 µs over 2,000 paints. Inside a real
   window, with the display asleep, the readout showed about 1.2 ms median; still
-  far inside the budget, and to be rechecked with the window focused.
+  far inside the budget. Its author later read it with the window focused and
+  found it fine.
 
 ## Step 4 decisions
 
@@ -91,8 +94,9 @@ game features.
   floor, add and name an anchor, write in the Text window (new line, accent,
   Enter), pick the anchor as its location, and create, rename, delete and undo
   in the project browser.
-- Not yet judged by a person: typing feel, real press-and-hold accents and other
-  input methods, and copy and paste with the system clipboard.
+- Judged by its author: typing, real press-and-hold accents, copy and paste with
+  the system clipboard, and the speed readout with the window focused were all
+  fine.
 - First try by its author: panning worked. Two faults were found and fixed.
   - Single-line fields shook up and down. Their line of text was taller than
     the room inside the padding, so keeping the caret in view scrolled the text

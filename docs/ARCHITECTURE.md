@@ -139,6 +139,16 @@ number, the simulation tick together with a preview-run ID; a receiver discards
 anything older than what it holds, and a restarted preview is never mistaken for
 an old one. Game-clock jumps are separate from the tick.
 
+**As built (protocol version 3):** three preview messages. *Start* is answered
+with the run's ID, and refused while another preview runs. *State* goes from
+the window running the preview to the zone's other Map windows; that window
+sends at most 30 a second and only when something changed, the orchestrator
+keeps the latest for a view that opens later, and a window whose queue is half
+full skips a state rather than falling behind. *Stop* comes from the window
+running the preview, or from the orchestrator when that window closes. States
+are kept out of a crash report's recent traffic, which they would crowd out,
+but stay in the wire tap.
+
 ## D8 — Large data
 
 Art is served by the orchestrator. Windows cache assets by content fingerprint
@@ -244,6 +254,14 @@ back with a short reason the window shows.
 - The clock runs only during preview.
 - Conversations appear over the map, as in a game.
 - The world-state view can change flag values for the running preview only.
+- *As built:* `P` or the Preview button, then a click on a cell the player can
+  stand on, starts a preview in the Map window. The engine's `play` package
+  runs it in that window's process (one tick per frame); the arrow keys walk,
+  the view follows the player and switches floor when they take stairs, and
+  `P` stops it. The other views of the zone draw the player from the stream
+  (D7). See [the second build](SECOND_BUILD.md) for the movement rules.
+- *Not built yet:* keeping state until Reset (there is none to keep yet), test
+  profiles, the clock, conversations and the world-state view.
 
 ## D16 — Code layout
 
