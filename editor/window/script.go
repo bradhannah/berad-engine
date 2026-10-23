@@ -67,6 +67,9 @@ func (s *inputScript) takeScreenshot() string {
 	return shot
 }
 
+// scripted reports whether input scripts drive the editor's windows.
+func scripted() bool { return os.Getenv(scriptEnv) != "" }
+
 func loadScript(view string) (*inputScript, error) {
 	path := claimScript(os.Getenv(scriptEnv), view)
 	if path == "" {

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
@@ -325,12 +327,17 @@ func TestInspectorEditsParameters(t *testing.T) {
 	f := newFixture(t)
 	f.click("node:start:1")
 	f.click("palette:" + flow.KindWait)
-	f.typeInto("param-minutes", "45")
-	if minutes, _ := f.nth(flow.KindWait, 1).Number("minutes"); minutes != 45 {
-		t.Fatalf("minutes %d", minutes)
+	f.typeInto("param-duration", "45")
+	if wait, _ := f.nth(flow.KindWait, 1).Duration("duration"); wait.Amount != 45 || wait.Unit != flow.UnitMinutes {
+		t.Fatalf("wait %+v", wait)
+	}
+	f.click("ui:duration-seconds")
+	f.click("ui:duration-real")
+	if wait, _ := f.nth(flow.KindWait, 1).Duration("duration"); wait.Unit != flow.UnitSeconds || wait.Clock != flow.ClockReal {
+		t.Fatalf("unit and clock %+v", wait)
 	}
 	replaces := len(f.requests.Of(workflowplugin.ReplaceEdit))
-	f.typeInto("param-minutes", "lots")
+	f.typeInto("param-duration", "lots")
 	if len(f.requests.Of(workflowplugin.ReplaceEdit)) != replaces || !strings.Contains(f.status(), "whole number") {
 		t.Fatalf("a wrong value is refused: %q", f.status())
 	}
@@ -405,4 +412,49 @@ func TestDeleteAndArrange(t *testing.T) {
 	if len(arranged.Boxes) != 2 || arranged.Boxes[startID].X >= arranged.Boxes[f.nth(flow.KindWait, 1).ID].X {
 		t.Fatalf("arranged %+v", arranged.Boxes)
 	}
+}
+
+// TestRandomWalk builds the test routine "move up or down at random, wait
+// two seconds, repeat": a random choice with two named options, a Move for
+// each, both leading into one Wait, which then has an entry dot per link.
+// "+ option" on the node adds a third option with an equal share.
+func TestRandomWalk(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindRandom)
+	f.typeInto("options-1-label", "up")
+	f.typeInto("options-2-label", "down")
+	f.click("palette:" + flow.KindMove)
+	f.click("node:random:1")
+	f.click("palette:" + flow.KindMove)
+	f.click("ui:direction-down")
+	f.click("node:move:1")
+	f.click("palette:" + flow.KindWait)
+	f.typeInto("param-duration", "2")
+	f.click("ui:duration-seconds")
+	if !f.has("entries:wait:1=1") {
+		t.Fatal("the wait has one link in")
+	}
+	f.drag(f.at("port:move:2:next"), f.at("entry:wait:1"))
+	if !f.has("entries:wait:1=2") {
+		t.Fatal("a second link into the wait gets its own entry dot")
+	}
+	random, wait := f.nth(flow.KindRandom, 1), f.nth(flow.KindWait, 1)
+	up, down := f.nth(flow.KindMove, 1), f.nth(flow.KindMove, 2)
+	options, _ := random.Shares("options")
+	direction, _ := down.Choice("direction")
+	duration, _ := wait.Duration("duration")
+	if len(options) != 2 || options[0].Label != "up" || options[1].Label != "down" ||
+		random.Next[options[0].Port] != up.ID || random.Next[options[1].Port] != down.ID ||
+		up.Next[flow.OutputNext] != wait.ID || down.Next[flow.OutputNext] != wait.ID || direction != flow.DirectionDown ||
+		duration != (flow.Duration{Amount: 2, Unit: flow.UnitSeconds, Clock: flow.ClockGame}) {
+		t.Fatalf("the routine is not built as asked: %+v", f.workflow().Nodes())
+	}
+	f.click("add-option:random:1")
+	options, _ = f.nth(flow.KindRandom, 1).Shares("options")
+	if len(options) != 3 || options[2].Share != options[1].Share || options[2].Label != "option 3" {
+		t.Fatalf("+ option adds an equal option: %+v", options)
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 }

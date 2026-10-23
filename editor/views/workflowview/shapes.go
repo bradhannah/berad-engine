@@ -1,6 +1,7 @@
 package workflowview
 
 import (
+	"cmp"
 	"image"
 	"slices"
 
@@ -28,6 +29,11 @@ const (
 	portRadius      = 5
 	portReach       = 9
 	resizeGrab      = 12
+	// Entry dots sit on a node's left edge, the first entryTop below its
+	// top and each next one entryGap lower, with entryBottom under the last.
+	entryTop    = 20
+	entryGap    = 16
+	entryBottom = 10
 	// Auto-arrange spacing.
 	columnGap = 64
 	rowGap    = 24
@@ -58,6 +64,57 @@ type shape struct {
 	node  flow.Node
 	rect  image.Rectangle
 	ports []port
+	// entries are where links come in, one dot each, top to bottom in the
+	// order of the outputs they come from, so links do not cross; spare is
+	// the empty dot for the next link. Start and notes have neither.
+	entries []entry
+	spare   image.Point
+	// addOption is a random choice's "+ option" row.
+	addOption image.Rectangle
+}
+
+// entry is one link coming into a node: the output it comes from and its dot.
+type entry struct {
+	from   ids.ULID
+	output string
+	at     image.Point
+}
+
+// entryOf returns where a link from an output comes into the shape.
+func (s shape) entryOf(from ids.ULID, output string) (image.Point, bool) {
+	for _, candidate := range s.entries {
+		if candidate.from == from && candidate.output == output {
+			return candidate.at, true
+		}
+	}
+
+	return image.Pt(0, 0), false
+}
+
+// takesEntries reports whether links can come into a kind of node.
+func takesEntries(kind string) bool {
+	return kind != flow.KindStart && kind != flow.KindNote
+}
+
+// incomingLinks lists, for each node, the links that come into it.
+func incomingLinks(workflow *flow.Workflow) map[ids.ULID][]flow.Link {
+	incoming := map[ids.ULID][]flow.Link{}
+	for _, node := range workflow.Nodes() {
+		for _, output := range flow.Outputs(node) {
+			to, linked := node.Next[output.Name]
+			if target, exists := workflow.Node(to); linked && exists && takesEntries(target.Kind) {
+				incoming[to] = append(incoming[to], flow.Link{From: node.ID, Output: output.Name, To: to})
+			}
+		}
+	}
+
+	return incoming
+}
+
+// entriesHeight is how tall a node must be for its entry dots: one per link
+// coming in and the spare.
+func entriesHeight(incoming int) int {
+	return entryTop + incoming*entryGap + entryBottom
 }
 
 // portOf returns a shape's port for an output.
@@ -75,29 +132,65 @@ func (s shape) portOf(output string) (port, bool) {
 func shapes(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[ids.ULID]shape {
 	boxes := workflow.Boxes()
 	arranged := arrange(workflow, noteHeight)
+	incoming := incomingLinks(workflow)
 	result := map[ids.ULID]shape{}
 	for _, node := range workflow.Nodes() {
 		box, placed := boxes[node.ID]
 		if !placed {
 			box = arranged[node.ID]
 		}
-		result[node.ID] = shapeOf(node, box, noteHeight)
+		result[node.ID] = shapeOf(node, box, noteHeight, len(incoming[node.ID]))
 	}
+	placeEntries(result, incoming)
 
 	return result
 }
 
-// shapeOf works out one node's rectangle and ports from its box.
-func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int) shape {
+// placeEntries gives each link coming into a node its own dot, in the order
+// of the ports the links leave from, top to bottom, then the spare dot.
+func placeEntries(result map[ids.ULID]shape, incoming map[ids.ULID][]flow.Link) {
+	for nodeID, made := range result {
+		if !takesEntries(made.node.Kind) {
+			continue
+		}
+		links := slices.Clone(incoming[nodeID])
+		from := func(link flow.Link) image.Point {
+			out, _ := result[link.From].portOf(link.Output)
+
+			return out.at
+		}
+		slices.SortStableFunc(links, func(a, b flow.Link) int {
+			return cmp.Or(cmp.Compare(from(a).Y, from(b).Y), cmp.Compare(from(a).X, from(b).X),
+				a.From.Compare(b.From), cmp.Compare(a.Output, b.Output))
+		})
+		slot := func(index int) image.Point {
+			return image.Pt(made.rect.Min.X, made.rect.Min.Y+entryTop+index*entryGap)
+		}
+		made.entries = make([]entry, 0, len(links))
+		for index, link := range links {
+			made.entries = append(made.entries, entry{from: link.From, output: link.Output, at: slot(index)})
+		}
+		made.spare = slot(len(links))
+		result[nodeID] = made
+	}
+}
+
+// shapeOf works out one node's rectangle and ports from its box; incoming
+// counts the links coming in, which each need an entry dot.
+func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, incoming int) shape {
 	outputs := flow.Outputs(node)
 	origin := image.Pt(box.X, box.Y)
-	made := shape{node: node, rect: image.Rect(0, 0, 0, 0), ports: nil}
+	made := shape{
+		node: node, rect: image.Rect(0, 0, 0, 0), ports: nil, entries: nil, spare: image.Pt(0, 0),
+		addOption: image.Rect(0, 0, 0, 0),
+	}
+	entries := entriesHeight(incoming)
 	switch node.Kind {
 	case flow.KindStart:
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(startWidth, nodeHeight))}
 		made.ports = rightPorts(made.rect, outputs)
 	case flow.KindContainer:
-		width, height := max(box.W, containerMinW), max(box.H, containerMinH)
+		width, height := max(box.W, containerMinW), max(box.H, containerMinH, entries)
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, height))}
 		for _, output := range outputs {
 			at := image.Pt(made.rect.Max.X, made.rect.Min.Y+containerHead/2)
@@ -110,18 +203,24 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int) 
 		width := max(box.W, noteWidth)
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, noteHeight(node, width)))}
 	case flow.KindTimeSwitch, flow.KindRandom:
-		head := headHeight
+		head, rows := headHeight, len(outputs)
 		if node.Kind == flow.KindTimeSwitch {
 			head = switchHead
+		} else {
+			rows++
 		}
-		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, head+len(outputs)*outputRow))}
+		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, max(head+rows*outputRow, entries)))}
 		for index, output := range outputs {
 			top := made.rect.Min.Y + head + index*outputRow
 			row := image.Rect(made.rect.Min.X, top, made.rect.Max.X, top+outputRow)
 			made.ports = append(made.ports, port{output: output, at: image.Pt(row.Max.X, top+outputRow/2), row: row})
 		}
+		if node.Kind == flow.KindRandom {
+			top := made.rect.Min.Y + head + len(outputs)*outputRow
+			made.addOption = image.Rect(made.rect.Min.X, top, made.rect.Max.X, top+outputRow)
+		}
 	default:
-		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, nodeHeight))}
+		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, max(nodeHeight, entries)))}
 		made.ports = rightPorts(made.rect, outputs)
 	}
 
@@ -139,11 +238,10 @@ func rightPorts(rect image.Rectangle, outputs []flow.Output) []port {
 	return ports
 }
 
-// route returns the corners of a connection from a port to a node's left
-// edge: across, down or up, and across again; or, for a node behind the
-// port, out, round underneath both and back in.
-func route(from image.Point, target, source image.Rectangle) []image.Point {
-	end := image.Pt(target.Min.X, target.Min.Y+min(target.Dy(), nodeHeight)/2)
+// route returns the corners of a connection from a port to an entry dot on
+// a node's left edge: across, down or up, and across again; or, for a node
+// behind the port, out, round underneath both and back in.
+func route(from, end image.Point, target, source image.Rectangle) []image.Point {
 	if end.X >= from.X+2*stub {
 		mid := from.X + stub
 
@@ -169,9 +267,13 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 	boxes := map[ids.ULID]flow.Box{}
 	sizes := map[ids.ULID]image.Point{}
 	nodes := workflow.Nodes()
+	incoming := map[ids.ULID]int{}
+	for target, links := range incomingLinks(workflow) {
+		incoming[target] = len(links)
+	}
 	for _, node := range nodes {
 		if node.Kind == flow.KindContainer {
-			sizes[node.ID] = arrangeInside(workflow, node, boxes, noteHeight)
+			sizes[node.ID] = arrangeInside(workflow, node, boxes, sizing{noteHeight: noteHeight, incoming: incoming})
 		}
 	}
 	columns := layers(nodes, workflow.Start(), ids.ULID{})
@@ -180,7 +282,7 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 		top, width := arrangeY, 0
 		for _, nodeID := range column {
 			node, _ := workflow.Node(nodeID)
-			size := sizeOf(node, sizes, noteHeight)
+			size := sizeOf(node, sizes, sizing{noteHeight: noteHeight, incoming: incoming})
 			boxes[nodeID] = boxAt(node, image.Pt(left, top), size)
 			if node.Kind == flow.KindContainer {
 				offsetChildren(workflow, nodeID, boxes, image.Pt(left, top))
@@ -197,7 +299,7 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 // arrangeInside lays out a container's contents relative to the container's
 // top-left corner and returns the container's size.
 func arrangeInside(
-	workflow *flow.Workflow, container flow.Node, boxes map[ids.ULID]flow.Box, noteHeight func(flow.Node, int) int,
+	workflow *flow.Workflow, container flow.Node, boxes map[ids.ULID]flow.Box, sized sizing,
 ) image.Point {
 	contents := workflow.Children(container.ID)
 	children := make([]flow.Node, 0, len(contents))
@@ -211,7 +313,7 @@ func arrangeInside(
 		top, width := containerHead+containerPad, 0
 		for _, nodeID := range column {
 			node, _ := workflow.Node(nodeID)
-			size := sizeOf(node, nil, noteHeight)
+			size := sizeOf(node, nil, sized)
 			boxes[nodeID] = boxAt(node, image.Pt(left, top), size)
 			top += size.Y + rowGap
 			width = max(width, size.X)
@@ -287,11 +389,18 @@ func layers(nodes []flow.Node, first, parent ids.ULID) [][]ids.ULID {
 	return columns
 }
 
-func sizeOf(node flow.Node, containers map[ids.ULID]image.Point, noteHeight func(flow.Node, int) int) image.Point {
+// sizing is what a node's size depends on besides the node: how tall a note
+// must be, and how many links come into each node.
+type sizing struct {
+	noteHeight func(flow.Node, int) int
+	incoming   map[ids.ULID]int
+}
+
+func sizeOf(node flow.Node, containers map[ids.ULID]image.Point, sized sizing) image.Point {
 	if size, ok := containers[node.ID]; ok {
 		return size
 	}
-	made := shapeOf(node, flow.Box{X: 0, Y: 0, W: 0, H: 0}, noteHeight)
+	made := shapeOf(node, flow.Box{X: 0, Y: 0, W: 0, H: 0}, sized.noteHeight, sized.incoming[node.ID])
 
 	return made.rect.Size()
 }

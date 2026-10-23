@@ -53,6 +53,21 @@ Settled by its author before building:
   A* after a review found the search generic once its map and unit types are
   removed.
 
+Settled by its author after step 3, for testing behaviour before step 4:
+
+- Each link coming into a node gets its own **entry** dot, in the order of
+  the nodes it comes from, top to bottom, and every node that can take a
+  link shows a **spare** dot for the next one.
+- **Random choice** has any number of options, each with a share; the node
+  shows what each share works out to as a percentage, so adding an option
+  never breaks the others.
+- **Wait** counts seconds, minutes or hours, on the **game clock** or a
+  **real clock**, chosen on each Wait. A real-time wait ignores the preview
+  clock's pause and speed.
+- A new **Move** node goes up, down, left or right by a number of tiles. If
+  something is in the way, the NPC **stops there and carries on** with the
+  next node.
+
 Open:
 
 - How fast game time runs in the finished game has not been discussed. The
@@ -136,6 +151,25 @@ Open:
   notes are edited in the project browser, while the Map window shows them
   and opens the behaviour; NPCs do not yet block the player in the preview,
   which arrives with step 4.
+
+- **Test nodes and entry dots** (settled after step 3): a node draws a dot
+  for each link coming in and a spare dot, washed blue while a link being
+  drawn is over a node that can take it; a link can be dropped on the dot or
+  anywhere on the node. Random choice lists its options with their
+  percentages and "+ option" under them; the inspector edits each option's
+  name and share, with Add option and Remove, and removing an option removes
+  its link. Wait's inspector has the amount and buttons for the unit and the
+  clock; Move's has a button for each direction and the tiles. Workflows are
+  format 2: a version 1 random choice's chance becomes two options that keep
+  its outputs and links ("chance 30" becomes "chance 30%" and "otherwise
+  70%"), and a wait's minutes become minutes on the game clock. What Move and
+  the clocks do arrives with the runner in step 4. A real-window test builds
+  "move up or down at random, wait two seconds, repeat".
+- Found while building: nodes added after outputs close together could land
+  on top of each other, so a new node now moves down until it is clear. And
+  a window left without a script in a real-window test opened like a normal
+  window, able to take the keyboard; every window opened while scripts drive
+  the editor now opens without taking focus.
 
 ## Not in this build
 

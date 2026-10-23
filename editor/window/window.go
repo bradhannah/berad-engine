@@ -87,8 +87,10 @@ func Run(args Args, registry *plugin.Registry) error {
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	// A window driven by an input script needs no keyboard, so it opens
 	// without taking focus from whatever the person at the computer is using.
+	// So does every other window opened while scripts drive the editor, as
+	// in the real-window tests, even one left without a script.
 	var options ebiten.RunGameOptions
-	options.InitUnfocused = game.script != nil
+	options.InitUnfocused = game.script != nil || scripted()
 	runErr := ebiten.RunGameWithOptions(game, &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil

@@ -313,7 +313,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	case s.resize != nil:
 		s.updateResize(input, ctx, point)
 	case input.Pressed && input.Cursor.In(canvas):
-		s.press(point)
+		s.press(ctx, point)
 	}
 }
 
@@ -331,12 +331,20 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 
 // press starts what a press on the canvas begins: a connection from a port,
 // resizing a container, or selecting and moving a node.
-func (s *State) press(point image.Point) {
+func (s *State) press(ctx *frame.Context, point image.Point) {
 	if from, output, ok := s.portAt(point); ok {
 		s.selected = from
 		s.link = &linkDrag{from: from, output: output, to: point}
 
 		return
+	}
+	for _, nodeID := range s.drawOrder() {
+		if drawn := s.shapes[nodeID]; point.In(drawn.addOption) {
+			s.selected = nodeID
+			s.addOption(ctx, drawn.node)
+
+			return
+		}
 	}
 	if container, ok := s.resizeHandleAt(point); ok {
 		s.selected = container
@@ -445,7 +453,7 @@ func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Poin
 	if !ok {
 		return
 	}
-	target, dropped := s.nodeAt(point)
+	target, dropped := s.dropTarget(point)
 	if !dropped {
 		if _, linked := from.Next[link.output]; linked {
 			s.replace(ctx, from.WithLink(link.output, ids.ULID{}), "Disconnected")
@@ -523,7 +531,25 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 
 		break
 	}
-	s.add(ctx, kind, place, selected.node.Parent, link)
+	s.add(ctx, kind, s.clearOf(place, selected.node.Parent), selected.node.Parent, link)
+}
+
+// clearOf moves a new node's place down until it overlaps none of the nodes
+// beside it, so nodes added after outputs that are close together do not
+// pile up.
+func (s *State) clearOf(place image.Point, parent ids.ULID) image.Point {
+	for moved := true; moved; {
+		moved = false
+		added := image.Rectangle{Min: place, Max: place.Add(image.Pt(nodeWidth, nodeHeight))}
+		for _, other := range s.shapes {
+			if other.node.Parent == parent && added.Overlaps(other.rect.Inset(-rowGap/ui.Half)) {
+				place.Y = other.rect.Max.Y + rowGap
+				moved = true
+			}
+		}
+	}
+
+	return place
 }
 
 // freeSpot returns a place inside a container below its contents.
@@ -668,6 +694,41 @@ func (s *State) resizeHandleAt(point image.Point) (ids.ULID, bool) {
 	}
 
 	return ids.ULID{}, false
+}
+
+// dropTarget returns the node a link dropped at a canvas point goes to: the
+// node whose entry dot is there, or the topmost node there.
+func (s *State) dropTarget(point image.Point) (ids.ULID, bool) {
+	for _, nodeID := range s.drawOrder() {
+		drawn := s.shapes[nodeID]
+		if !takesEntries(drawn.node.Kind) {
+			continue
+		}
+		dots := make([]image.Point, 0, 1+len(drawn.entries))
+		dots = append(dots, drawn.spare)
+		for _, in := range drawn.entries {
+			dots = append(dots, in.at)
+		}
+		for _, dot := range dots {
+			if distance := point.Sub(dot); abs(distance.X) <= portReach && abs(distance.Y) <= portReach {
+				return nodeID, true
+			}
+		}
+	}
+
+	return s.nodeAt(point)
+}
+
+// linkTarget returns the node the link being drawn would connect to now, if
+// it can take it.
+func (s *State) linkTarget() ids.ULID {
+	target, ok := s.dropTarget(s.link.to)
+	from, exists := s.workflow.Node(s.link.from)
+	if !ok || !exists || linkProblem(s.workflow, from, s.link.output, target) != "" {
+		return ids.ULID{}
+	}
+
+	return target
 }
 
 // nodeAt returns the topmost node at a canvas point.

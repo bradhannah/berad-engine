@@ -17,8 +17,10 @@ type ParamType string
 // Parameter types.
 const (
 	TypeAnchor     ParamType = "anchor"
-	TypeMinutes    ParamType = "minutes"
-	TypePercent    ParamType = "percent"
+	TypeChoice     ParamType = "choice"
+	TypeDuration   ParamType = "duration"
+	TypeShares     ParamType = "shares"
+	TypeTiles      ParamType = "tiles"
 	TypeTimeRange  ParamType = "time-range"
 	TypeTimeRanges ParamType = "time-ranges"
 	TypeText       ParamType = "text"
@@ -26,21 +28,50 @@ const (
 
 // Limits on parameter values.
 const (
-	// MaxMinutes is the longest wait: a week.
-	MaxMinutes = 7 * MinutesPerDay
+	// MaxWait is the longest wait, in seconds: a week.
+	MaxWait = 7 * MinutesPerDay * secondsPerMinute
 	// MinutesPerDay is the length of a game day in minutes.
 	MinutesPerDay = 24 * 60
 	// MaxRanges bounds the branches of a time switch.
 	MaxRanges = 24
+	// MaxOptions bounds the options of a random choice; MaxShare bounds
+	// one option's share.
+	MaxOptions = 12
+	MaxShare   = 100
+	// MaxTiles bounds how far one Move goes.
+	MaxTiles = 64
 	// MaxText bounds a text parameter, in characters.
-	MaxText = 2000
-	percent = 100
-	hour    = 60
-	// Defaults for new nodes: a working day, an even chance, half an hour.
-	workStart     = 9 * hour
-	workEnd       = 17 * hour
-	defaultChance = 50
-	defaultWait   = 30
+	MaxText          = 2000
+	percent          = 100
+	hour             = 60
+	secondsPerMinute = 60
+	// Defaults for new nodes: a working day, an even choice, half an hour.
+	workStart    = 9 * hour
+	workEnd      = 17 * hour
+	defaultShare = 50
+	defaultWait  = 30
+)
+
+// Units of a wait.
+const (
+	UnitSeconds = "seconds"
+	UnitMinutes = "minutes"
+	UnitHours   = "hours"
+)
+
+// Clocks a wait can count on: the game clock, which the preview can pause
+// and speed up, or a real clock, which ignores both.
+const (
+	ClockGame = "game"
+	ClockReal = "real"
+)
+
+// Directions a Move can go, as the map shows them.
+const (
+	DirectionUp    = "up"
+	DirectionDown  = "down"
+	DirectionLeft  = "left"
+	DirectionRight = "right"
 )
 
 // Palette groups.
@@ -58,6 +89,7 @@ const (
 	KindRandom     = "random"
 	KindContainer  = "container"
 	KindGoTo       = "go-to"
+	KindMove       = "move"
 	KindWait       = "wait"
 	KindNote       = "note"
 )
@@ -78,6 +110,43 @@ type Param struct {
 	Type  ParamType
 	// Default is the value a new node starts with.
 	Default json.RawMessage
+	// Choices are the values a choice parameter can take.
+	Choices []Choice
+}
+
+// Choice is one value of a choice parameter.
+type Choice struct {
+	Value string
+	Label string
+}
+
+// Duration is how long a wait lasts, in a unit, on the game clock or a real
+// one.
+type Duration struct {
+	Amount int    `json:"amount"`
+	Unit   string `json:"unit"`
+	Clock  string `json:"clock"`
+}
+
+// Seconds returns the duration in seconds.
+func (d Duration) Seconds() int {
+	switch d.Unit {
+	case UnitHours:
+		return d.Amount * hour * secondsPerMinute
+	case UnitMinutes:
+		return d.Amount * secondsPerMinute
+	default:
+		return d.Amount
+	}
+}
+
+// Share is one option of a random choice: the output it takes, its name and
+// how large a share of the choices it gets. Each option is taken its share
+// of the total of all shares.
+type Share struct {
+	Port  string `json:"port"`
+	Label string `json:"label"`
+	Share int    `json:"share"`
 }
 
 // Output declares one way out of a node.
@@ -127,22 +196,18 @@ func Kinds() []Kind {
 			Name: KindTimeSwitch, Label: "Time switch", Group: GroupFlow,
 			Params: []Param{{
 				Name: "ranges", Label: "Times", Type: TypeTimeRanges,
-				Default: mustJSON([]TimeRange{{Port: "r1", From: workStart, To: workEnd}}),
+				Default: mustJSON([]TimeRange{{Port: "r1", From: workStart, To: workEnd}}), Choices: nil,
 			}},
 			Outputs: []Output{{Name: OutputOtherwise, Label: "otherwise"}},
 		},
-		{
-			Name: KindRandom, Label: "Random choice", Group: GroupFlow,
-			Params:  []Param{{Name: "chance", Label: "Chance", Type: TypePercent, Default: mustJSON(defaultChance)}},
-			Outputs: []Output{{Name: OutputYes, Label: "chance"}, {Name: OutputOtherwise, Label: "otherwise"}},
-		},
+		randomKind(),
 		{
 			Name: KindContainer, Label: "Time-bound container", Group: GroupFlow,
 			Params: []Param{
-				{Name: "name", Label: "Name", Type: TypeText, Default: mustJSON("Group")},
+				{Name: "name", Label: "Name", Type: TypeText, Default: mustJSON("Group"), Choices: nil},
 				{
 					Name: "bound", Label: "Time", Type: TypeTimeRange,
-					Default: mustJSON(TimeRange{Port: "", From: workStart, To: workEnd}),
+					Default: mustJSON(TimeRange{Port: "", From: workStart, To: workEnd}), Choices: nil,
 				},
 			},
 			Outputs: []Output{{Name: OutputInside, Label: "first step"}, {Name: OutputExit, Label: "exit"}},
@@ -151,20 +216,57 @@ func Kinds() []Kind {
 			Name: KindGoTo, Label: "Go to", Group: GroupMovement,
 			Params: []Param{{
 				Name: "destination", Label: "Destination", Type: TypeAnchor,
-				Default: mustJSON(tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}),
+				Default: mustJSON(tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}), Choices: nil,
+			}},
+			Outputs: next,
+		},
+		moveKind(next),
+		{
+			Name: KindWait, Label: "Wait", Group: GroupAction,
+			Params: []Param{{
+				Name: "duration", Label: "How long", Type: TypeDuration, Choices: nil,
+				Default: mustJSON(Duration{Amount: defaultWait, Unit: UnitMinutes, Clock: ClockGame}),
 			}},
 			Outputs: next,
 		},
 		{
-			Name: KindWait, Label: "Wait", Group: GroupAction,
-			Params:  []Param{{Name: "minutes", Label: "Minutes", Type: TypeMinutes, Default: mustJSON(defaultWait)}},
-			Outputs: next,
-		},
-		{
 			Name: KindNote, Label: "Note", Group: GroupAnnotate,
-			Params:  []Param{{Name: "text", Label: "Note", Type: TypeText, Default: mustJSON("")}},
+			Params:  []Param{{Name: "text", Label: "Note", Type: TypeText, Default: mustJSON(""), Choices: nil}},
 			Outputs: nil,
 		},
+	}
+}
+
+// randomKind declares Random choice: two even options to start with, and an
+// output for each option.
+func randomKind() Kind {
+	return Kind{
+		Name: KindRandom, Label: "Random choice", Group: GroupFlow,
+		Params: []Param{{
+			Name: "options", Label: "Options", Type: TypeShares, Choices: nil,
+			Default: mustJSON([]Share{
+				{Port: "o1", Label: "option 1", Share: defaultShare}, {Port: "o2", Label: "option 2", Share: defaultShare},
+			}),
+		}},
+		Outputs: nil,
+	}
+}
+
+// moveKind declares Move: a direction and a number of tiles.
+func moveKind(next []Output) Kind {
+	return Kind{
+		Name: KindMove, Label: "Move", Group: GroupMovement,
+		Params: []Param{
+			{
+				Name: "direction", Label: "Direction", Type: TypeChoice, Default: mustJSON(DirectionUp),
+				Choices: []Choice{
+					{Value: DirectionUp, Label: "Up"}, {Value: DirectionDown, Label: "Down"},
+					{Value: DirectionLeft, Label: "Left"}, {Value: DirectionRight, Label: "Right"},
+				},
+			},
+			{Name: "tiles", Label: "Tiles", Type: TypeTiles, Default: mustJSON(1), Choices: nil},
+		},
+		Outputs: next,
 	}
 }
 
@@ -198,11 +300,24 @@ func NewNode(kind string) (Node, error) {
 }
 
 // Outputs returns a node's outputs: its kind's, with a time switch's ranges
-// first, one output per range.
+// first, one output per range, and a random choice's options, one output per
+// option.
 func Outputs(node Node) []Output {
 	declared, ok := KindOf(node.Kind)
 	if !ok {
 		return nil
+	}
+	if node.Kind == KindRandom {
+		options, err := node.Shares("options")
+		if err != nil {
+			return nil
+		}
+		outputs := make([]Output, 0, len(options))
+		for _, option := range options {
+			outputs = append(outputs, Output{Name: option.Port, Label: option.Label})
+		}
+
+		return outputs
 	}
 	if node.Kind != KindTimeSwitch {
 		return declared.Outputs
@@ -234,7 +349,7 @@ func CheckParams(node Node) error {
 		if !present {
 			return fmt.Errorf("%w: %s has no %s", ErrNode, node.Kind, param.Name)
 		}
-		if err := checkValue(param.Type, value); err != nil {
+		if err := checkValue(param, value); err != nil {
 			return fmt.Errorf("%w: %s %s: %w", ErrNode, node.Kind, param.Name, err)
 		}
 	}
@@ -242,16 +357,28 @@ func CheckParams(node Node) error {
 	return nil
 }
 
-func checkValue(kind ParamType, value json.RawMessage) error {
-	switch kind {
+func checkValue(param Param, value json.RawMessage) error {
+	switch param.Type {
 	case TypeAnchor:
 		var ref tilefloor.AnchorRef
 
 		return json.Unmarshal(value, &ref) //nolint:wrapcheck // Wrapped by the caller.
-	case TypeMinutes:
-		return checkNumber(value, 0, MaxMinutes)
-	case TypePercent:
-		return checkNumber(value, 0, percent)
+	case TypeChoice:
+		var chosen string
+		if err := json.Unmarshal(value, &chosen); err != nil {
+			return err //nolint:wrapcheck // Wrapped by the caller.
+		}
+		if !slices.ContainsFunc(param.Choices, func(choice Choice) bool { return choice.Value == chosen }) {
+			return fmt.Errorf("%w: %q is not one of the choices", ErrNode, chosen)
+		}
+
+		return nil
+	case TypeTiles:
+		return checkNumber(value, 1, MaxTiles)
+	case TypeDuration:
+		return checkDuration(value)
+	case TypeShares:
+		return checkShares(value)
 	case TypeTimeRange:
 		var span TimeRange
 		if err := json.Unmarshal(value, &span); err != nil {
@@ -272,8 +399,73 @@ func checkValue(kind ParamType, value json.RawMessage) error {
 
 		return nil
 	default:
-		return fmt.Errorf("%w: unknown parameter type %q", ErrNode, kind)
+		return fmt.Errorf("%w: unknown parameter type %q", ErrNode, param.Type)
 	}
+}
+
+func checkDuration(value json.RawMessage) error {
+	var wait Duration
+	if err := json.Unmarshal(value, &wait); err != nil {
+		return err //nolint:wrapcheck // Wrapped by the caller.
+	}
+	if wait.Unit != UnitSeconds && wait.Unit != UnitMinutes && wait.Unit != UnitHours {
+		return fmt.Errorf("%w: %q is not a unit of time", ErrNode, wait.Unit)
+	}
+	if wait.Clock != ClockGame && wait.Clock != ClockReal {
+		return fmt.Errorf("%w: %q is not a clock", ErrNode, wait.Clock)
+	}
+	if wait.Amount < 0 || wait.Seconds() > MaxWait {
+		return fmt.Errorf("%w: a wait lasts from nothing to a week", ErrNode)
+	}
+
+	return nil
+}
+
+func checkShares(value json.RawMessage) error {
+	var options []Share
+	if err := json.Unmarshal(value, &options); err != nil {
+		return err //nolint:wrapcheck // Wrapped by the caller.
+	}
+	if len(options) == 0 || len(options) > MaxOptions {
+		return fmt.Errorf("%w: a random choice has 1 to %d options", ErrNode, MaxOptions)
+	}
+	ports, total := map[string]bool{}, 0
+	for _, option := range options {
+		if option.Port == "" || ports[option.Port] {
+			return fmt.Errorf("%w: each option needs its own output name", ErrNode)
+		}
+		ports[option.Port] = true
+		if option.Share < 0 || option.Share > MaxShare {
+			return fmt.Errorf("%w: a share is from 0 to %d", ErrNode, MaxShare)
+		}
+		if utf8.RuneCountInString(option.Label) > MaxText {
+			return fmt.Errorf("%w: an option name is longer than %d characters", ErrNode, MaxText)
+		}
+		total += option.Share
+	}
+	if total == 0 {
+		return fmt.Errorf("%w: at least one option needs a share", ErrNode)
+	}
+
+	return nil
+}
+
+// Percentages returns what each option's share works out to, in whole per
+// cent, in the options' order.
+func Percentages(options []Share) []int {
+	total := 0
+	for _, option := range options {
+		total += option.Share
+	}
+	result := make([]int, len(options))
+	if total == 0 {
+		return result
+	}
+	for index, option := range options {
+		result[index] = (option.Share*percent + total/2) / total
+	}
+
+	return result
 }
 
 func checkNumber(value json.RawMessage, low, high int) error {

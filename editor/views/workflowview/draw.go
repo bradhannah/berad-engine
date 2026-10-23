@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -148,6 +149,7 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	}
 	for _, nodeID := range order {
 		s.drawPorts(area, s.shapes[nodeID])
+		s.drawEntries(area, s.shapes[nodeID])
 	}
 	if selected, ok := s.shapes[s.selected]; ok {
 		ui.StrokeRound(area, s.screenRect(selected.rect).Inset(-selectGap), ui.Radius+selectGap, selectWidth,
@@ -173,12 +175,16 @@ func (s *State) drawLinks(area *ebiten.Image, from shape) {
 		if !linked || !ok {
 			continue
 		}
+		end, entered := target.entryOf(from.node.ID, out.output.Name)
+		if !entered {
+			end = image.Pt(target.rect.Min.X, target.rect.Min.Y+entryTop)
+		}
+		end.X -= portRadius
 		var corners []image.Point
 		if out.output.Name == flow.OutputInside {
-			end := image.Pt(target.rect.Min.X, target.rect.Min.Y+min(target.rect.Dy(), nodeHeight)/ui.Half)
 			corners = []image.Point{out.at, {X: out.at.X, Y: end.Y}, end}
 		} else {
-			corners = route(out.at, target.rect, from.rect)
+			corners = route(out.at, end, target.rect, from.rect)
 		}
 		for index := 1; index < len(corners); index++ {
 			ui.Line(area, s.toScreen(corners[index-1]), s.toScreen(corners[index]), lineWidth, ui.ColorInk())
@@ -193,6 +199,26 @@ func (s *State) drawLinks(area *ebiten.Image, from shape) {
 		fill.ColorScale.ScaleWithColor(ui.ColorInk())
 		vector.FillPath(area, &arrow, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, fill)
 	}
+}
+
+// drawEntries draws a node's entry dots: filled for each link coming in, and
+// the hollow spare for the next one, washed blue while a link being drawn is
+// over a node that can take it.
+func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
+	if !takesEntries(drawn.node.Kind) {
+		return
+	}
+	for _, in := range drawn.entries {
+		centre := s.toScreen(in.at)
+		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.ColorInk(), true)
+	}
+	centre := s.toScreen(drawn.spare)
+	fill, ring := ui.ColorBackground(), ui.ColorInk()
+	if s.link != nil && s.linkTarget() == drawn.node.ID {
+		fill, ring = ui.ColorSelectWash(), ui.ColorSelect()
+	}
+	vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
+	vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
 }
 
 // drawPorts draws each output's port: filled when connected, hollow with
@@ -255,21 +281,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		}
-		for index, out := range drawn.ports {
-			row := s.screenRect(out.row)
-			ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
-				ui.ColorRule())
-			label, ink := outputLabel(drawn.node, out.output), ui.ColorInk()
-			if out.output.Name == flow.OutputOtherwise {
-				ink = ui.ColorMuted()
-			}
-			textY := row.Min.Y + (outputRow-ui.MonoSize)/ui.Half - 1
-			if drawn.node.Kind == flow.KindTimeSwitch && index < len(drawn.ports)-1 {
-				s.theme.DrawMono(area, label, row.Min.X+textPad, textY, ink)
-			} else {
-				s.theme.DrawText(area, label, row.Min.X+textPad, row.Min.Y+(outputRow-ui.TextSize)/ui.Half-1, ink)
-			}
-		}
+		s.drawOutputRows(area, drawn)
 	default:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		title := kind.Label + " · " + s.summary(drawn.node, docs)
@@ -278,16 +290,57 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 	}
 }
 
-// outputLabel names an output in a node's list of outputs.
-func outputLabel(node flow.Node, output flow.Output) string {
-	if node.Kind == flow.KindRandom && output.Name == flow.OutputYes {
-		chance, err := node.Number("chance")
-		if err == nil {
-			return "chance " + strconv.Itoa(chance) + "%"
+// drawOutputRows lists a time switch's times or a random choice's options,
+// one row per output, the options with what their shares work out to and
+// "+ option" under them.
+func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
+	for index, out := range drawn.ports {
+		row := s.screenRect(out.row)
+		ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
+			ui.ColorRule())
+		label, ink := out.output.Label, ui.ColorInk()
+		if drawn.node.Kind == flow.KindTimeSwitch && out.output.Name == flow.OutputOtherwise {
+			ink = ui.ColorMuted()
+		}
+		textY := row.Min.Y + (outputRow-ui.MonoSize)/ui.Half - 1
+		switch {
+		case drawn.node.Kind == flow.KindTimeSwitch && index < len(drawn.ports)-1:
+			s.theme.DrawMono(area, label, row.Min.X+textPad, textY, ink)
+		case drawn.node.Kind == flow.KindRandom:
+			share := shareLabel(drawn.node, index)
+			shareX := row.Max.X - textPad - portRadius - s.theme.MonoWidth(share)
+			s.theme.DrawText(area, s.clip(label, shareX-row.Min.X-ui.Half*textPad), row.Min.X+textPad,
+				row.Min.Y+(outputRow-ui.TextSize)/ui.Half-1, ink)
+			s.theme.DrawMono(area, share, shareX, textY, ui.ColorInk())
+		default:
+			s.theme.DrawText(area, label, row.Min.X+textPad, row.Min.Y+(outputRow-ui.TextSize)/ui.Half-1, ink)
 		}
 	}
+	if drawn.node.Kind == flow.KindRandom {
+		s.drawAddOption(area, drawn)
+	}
+}
 
-	return output.Label
+// shareLabel is what a random choice's option works out to, as "25%".
+func shareLabel(node flow.Node, index int) string {
+	options, err := node.Shares("options")
+	if err != nil || index >= len(options) {
+		return ""
+	}
+
+	return strconv.Itoa(flow.Percentages(options)[index]) + "%"
+}
+
+// drawAddOption draws a random choice's "+ option" row, under its options.
+func (s *State) drawAddOption(area *ebiten.Image, drawn shape) {
+	row := s.screenRect(drawn.addOption)
+	ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
+		ui.ColorRule())
+	ink := ui.ColorMuted()
+	if s.cursor.In(row) {
+		ink = ui.ColorSelect()
+	}
+	s.theme.DrawText(area, "+ option", row.Min.X+textPad, row.Min.Y+(outputRow-ui.TextSize)/ui.Half-1, ink)
 }
 
 // summary describes a node's parameters in a few words.
@@ -305,15 +358,43 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 
 		return name
 	case flow.KindWait:
-		minutes, err := node.Number("minutes")
+		wait, err := node.Duration("duration")
 		if err != nil {
 			return "?"
 		}
 
-		return strconv.Itoa(minutes) + " min"
+		return formatDuration(wait)
+	case flow.KindMove:
+		direction, directionErr := node.Choice("direction")
+		tiles, tilesErr := node.Number("tiles")
+		if directionErr != nil || tilesErr != nil {
+			return "?"
+		}
+
+		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	default:
 		return ""
 	}
+}
+
+// formatDuration writes a wait as "2 s", "30 min" or "1 h", adding "real"
+// for a wait on a real clock.
+func formatDuration(wait flow.Duration) string {
+	unit := map[string]string{flow.UnitSeconds: "s", flow.UnitMinutes: "min", flow.UnitHours: "h"}[wait.Unit]
+	written := strconv.Itoa(wait.Amount) + " " + unit
+	if wait.Clock == flow.ClockReal {
+		written += " real time"
+	}
+
+	return written
+}
+
+func plural(count int, one, many string) string {
+	if count == 1 {
+		return one
+	}
+
+	return many
 }
 
 // drawContainer draws a time-bound container: a dashed box with a tinted
@@ -389,13 +470,13 @@ func (s *State) titleWidth(value string) int {
 func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
 	s.theme.DrawStrong(screen, made.param.Label, left, made.label, ui.ColorInk())
 	switch made.param.Type {
-	case flow.TypeMinutes, flow.TypePercent, flow.TypeText:
+	case flow.TypeTiles, flow.TypeText:
 		made.field.Draw(screen)
-		unit := map[flow.ParamType]string{flow.TypeMinutes: "game minutes", flow.TypePercent: "per cent"}[made.param.Type]
-		if unit != "" {
-			s.theme.DrawText(screen, unit, made.field.Rect.Max.X-s.theme.TextWidth(unit)-textPad,
-				made.field.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorSubdued())
+		if made.param.Type == flow.TypeTiles {
+			s.drawUnit(screen, made.field, "tiles")
 		}
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+		s.drawChoices(screen, made, node)
 	case flow.TypeTimeRange:
 		s.drawTimes(screen, made.from, made.to)
 	case flow.TypeTimeRanges:
@@ -424,6 +505,40 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 	}
 }
 
+// drawUnit writes a field's unit, faintly, at its right end.
+func (s *State) drawUnit(screen *ebiten.Image, field *ui.TextField, unit string) {
+	s.theme.DrawText(screen, unit, field.Rect.Max.X-s.theme.TextWidth(unit)-textPad,
+		field.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorSubdued())
+}
+
+// drawChoices draws a choice's buttons, a wait's amount, units and clocks,
+// or a random choice's options.
+func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node) {
+	for _, button := range slices.Concat(made.choices, made.units, made.clocks) {
+		button.Draw(screen, s.theme)
+	}
+	switch made.param.Type {
+	case flow.TypeDuration:
+		made.field.Draw(screen)
+		if wait, err := node.Duration(made.param.Name); err == nil {
+			s.drawUnit(screen, made.field, wait.Unit)
+		}
+	case flow.TypeShares:
+		top := made.label + ui.LineHeight
+		if len(made.options) > 0 {
+			s.theme.DrawSmall(screen, "Name", made.options[0].label.Rect.Min.X, top, ui.ColorMuted())
+			s.theme.DrawSmall(screen, "Share", made.options[0].share.Rect.Min.X, top, ui.ColorMuted())
+		}
+		for _, option := range made.options {
+			option.label.Draw(screen)
+			option.share.Draw(screen)
+			option.remove.Draw(screen, s.theme)
+		}
+		made.addOption.Draw(screen, s.theme)
+	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText:
+	}
+}
+
 func (s *State) drawTimes(screen *ebiten.Image, from, to *ui.TextField) {
 	from.Draw(screen)
 	to.Draw(screen)
@@ -436,11 +551,14 @@ func hintFor(kind string) string {
 	return map[string]string{
 		flow.KindStart:      "Where the workflow begins. A branch with nothing after it comes back here.",
 		flow.KindTimeSwitch: "Takes the output for the time now on the game clock; if no time matches, “otherwise”.",
-		flow.KindRandom:     "Takes “chance” that often, at random; otherwise the other output.",
+		flow.KindRandom: "Takes one option at random. Each option is taken its share of the total; the node " +
+			"shows what that works out to.",
 		flow.KindContainer: "Repeats what is inside while its time lasts, then leaves by its exit, even partway " +
 			"through a step.",
 		flow.KindGoTo: "Walks to the anchor.",
-		flow.KindWait: "Waits this many game minutes.",
+		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
+		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
+			"ignores it.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
 	}[kind]
 }
@@ -515,8 +633,9 @@ func mod(value, divisor int) int {
 
 // Locate finds a named part of the window for input scripts: "palette:<kind>",
 // "node:<kind>:<n>" for the nth node of a kind, "port:<kind>:<n>:<output>",
-// "canvas:X,Y" for a canvas point, "ui:<id>" for a button or field, a dialog
-// button, or "state:..." (see hasState).
+// "entry:<kind>:<n>" for its spare entry dot, "add-option:<kind>:<n>" for a
+// random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for
+// a button or field, a dialog button, or "state:..." (see hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.load(docs)
 	s.layoutWidgets(docs)
@@ -533,26 +652,47 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 				return ui.Center(entry.rect), true
 			}
 		}
+	case "ui":
+		return s.locateWidget(value)
+	default:
+		if at, found := s.locateOnCanvas(kind, value); found {
+			return s.toScreen(at), true
+		}
+	}
+
+	return image.Pt(0, 0), false
+}
+
+// locateOnCanvas finds a node, a port, a spare entry dot, a "+ option" row
+// or a canvas point, in canvas pixels.
+func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
+	switch kind {
 	case "node":
 		if drawn, ok := s.nthNode(value); ok {
-			return s.toScreen(drawn.rect.Min.Add(image.Pt(textPad*ui.Half, textPad*ui.Half))), true
+			return drawn.rect.Min.Add(image.Pt(textPad*ui.Half, textPad*ui.Half)), true
 		}
 	case "port":
 		where := strings.Split(value, ":")
 		if len(where) == portParts {
 			if drawn, ok := s.nthNode(where[0] + ":" + where[1]); ok {
 				if out, found := drawn.portOf(where[2]); found {
-					return s.toScreen(out.at), true
+					return out.at, true
 				}
 			}
+		}
+	case "entry":
+		if drawn, ok := s.nthNode(value); ok && takesEntries(drawn.node.Kind) {
+			return drawn.spare, true
+		}
+	case "add-option":
+		if drawn, ok := s.nthNode(value); ok && !drawn.addOption.Empty() {
+			return ui.Center(drawn.addOption), true
 		}
 	case "canvas":
 		var x, y int
 		if _, err := fmt.Sscanf(value, "%d,%d", &x, &y); err == nil {
-			return s.toScreen(image.Pt(x, y)), true
+			return image.Pt(x, y), true
 		}
-	case "ui":
-		return s.locateWidget(value)
 	}
 
 	return image.Pt(0, 0), false
@@ -591,10 +731,15 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		var fields []*ui.TextField
 		var buttons []*ui.Button
 		fields = append(fields, made.field, made.from, made.to)
-		buttons = append(buttons, made.addRange, made.pick, made.clear)
+		buttons = append(buttons, made.addRange, made.pick, made.clear, made.addOption)
+		buttons = append(buttons, slices.Concat(made.choices, made.units, made.clocks)...)
 		for _, row := range made.rows {
 			fields = append(fields, row.from, row.to)
 			buttons = append(buttons, row.remove)
+		}
+		for _, option := range made.options {
+			fields = append(fields, option.label, option.share)
+			buttons = append(buttons, option.remove)
 		}
 		for _, field := range fields {
 			if field != nil && field.ID == widget {
@@ -613,10 +758,16 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 
 // hasState answers input scripts waiting for the window: "loaded", "nodes:N"
 // when the workflow holds N nodes, "selected:<kind>" when a node of that kind
-// is selected, "picking" while a pick is in progress, and "destination" once
-// the selected Go to has one.
+// is selected, "picking" while a pick is in progress, "destination" once
+// the selected Go to has one, and "entries:<kind>:<n>=C" when C links come
+// into the nth node of a kind.
 func (s *State) hasState(state string) bool {
 	switch {
+	case strings.HasPrefix(state, "entries:"):
+		which, count, _ := strings.Cut(strings.TrimPrefix(state, "entries:"), "=")
+		drawn, ok := s.nthNode(which)
+
+		return ok && strconv.Itoa(len(drawn.entries)) == count
 	case state == "loaded":
 		return s.workflow != nil
 	case strings.HasPrefix(state, "nodes:"):

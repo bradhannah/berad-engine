@@ -2,7 +2,8 @@
 // nodes and the connections between them. A workflow starts at its start
 // node and follows each node's outputs; when a branch ends with nothing
 // connected, it goes back to the start. A time-bound container holds nodes
-// that repeat while its time lasts, then it leaves by its exit.
+// that repeat while its time lasts, then it leaves by its exit. Any number of
+// links can lead into one node.
 //
 // The workflow's logic and its layout, where each node sits on the canvas,
 // are saved apart (D17), so moving a node never shows up as a change to the
@@ -21,10 +22,11 @@ import (
 )
 
 // FormatName and FormatVersion identify workflow logic inside saved
-// envelopes; the Layout names identify its layout.
+// envelopes; the Layout names identify its layout. Version 2 gave random
+// choices any number of options and waits a unit and a clock.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 1
+	FormatVersion       = 2
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 1
 )
@@ -346,7 +348,47 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 
 // Format returns the workflow logic's content format.
 func Format() content.Format {
-	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: nil}
+	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{1: upgradeFrom1}}
+}
+
+// upgradeFrom1 turns a version 1 random choice's chance into two options
+// that keep its outputs, "chance" and "otherwise", and a wait's minutes into
+// minutes on the game clock.
+func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
+	var wire wireWorkflow
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	for index, node := range wire.Nodes {
+		var err error
+		switch node.Kind {
+		case KindRandom:
+			var chance int
+			if err = node.decode("chance", &chance); err == nil {
+				delete(node.Params, "chance")
+				node, err = node.WithParam("options", []Share{
+					{Port: "yes", Label: "chance", Share: chance},
+					{Port: OutputOtherwise, Label: "otherwise", Share: percent - chance},
+				})
+			}
+		case KindWait:
+			var minutes int
+			if err = node.decode("minutes", &minutes); err == nil {
+				delete(node.Params, "minutes")
+				node, err = node.WithParam("duration", Duration{Amount: minutes, Unit: UnitMinutes, Clock: ClockGame})
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: upgrade %s: %w", ErrData, node.ID, err)
+		}
+		wire.Nodes[index] = node
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade workflow: %w", err)
+	}
+
+	return encoded, nil
 }
 
 // LayoutFormat returns the workflow layout's content format.

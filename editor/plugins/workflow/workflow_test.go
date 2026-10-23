@@ -111,7 +111,7 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		}
 	}
 	apply(t, document, workflow.Add{}, add)
-	longer, err := inner.WithParam("minutes", 90)
+	longer, err := inner.WithParam("duration", flow.Duration{Amount: 90, Unit: flow.UnitMinutes, Clock: flow.ClockGame})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,8 +161,8 @@ func TestEditsRefuseNodesThatDoNotFit(t *testing.T) {
 	document := newDocument(t)
 	wait := newNode(t, flow.KindWait, 2, ids.ULID{})
 	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{wait}, Boxes: nil, Links: nil}))
-	badMinutes, _ := wait.WithParam("minutes", -5)
-	wrongOutput := wait.WithLink(flow.OutputYes, id(2))
+	badMinutes, _ := wait.WithParam("duration", flow.Duration{Amount: -5, Unit: flow.UnitMinutes, Clock: flow.ClockGame})
+	wrongOutput := wait.WithLink(flow.OutputOtherwise, id(2))
 	for name, args := range map[string]json.RawMessage{
 		"bad parameter": encode(t, workflow.ReplaceArgs{Node: badMinutes}),
 		"wrong output":  encode(t, workflow.ReplaceArgs{Node: wrongOutput}),
