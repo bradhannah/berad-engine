@@ -83,6 +83,10 @@ The editor uses Ebitengine v2.10.5. ebitenui v0.7.3 is the chosen widget
 library and is added when the first window needs it. The two modules are joined
 by `go.work` for development.
 
+## Documentation
+
+Design decisions, vocabulary and build progress are in [docs](docs/README.md).
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) before working in this repository.
