@@ -1,0 +1,7 @@
+.DS_Store
+.cache/
+go.work
+go.work.sum
+*.test
+*.out
+/bin/
