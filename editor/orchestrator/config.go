@@ -66,6 +66,9 @@ type Config struct {
 	Tap io.Writer
 	// Launcher starts window processes. Without one, Open requests fail.
 	Launcher Launcher
+	// QuitWhenLastWindowCloses stops the orchestrator once every window it
+	// launched has closed, so no headless orchestrator is left running.
+	QuitWhenLastWindowCloses bool
 }
 
 func (c Config) withDefaults() (Config, error) {

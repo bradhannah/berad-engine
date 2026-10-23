@@ -89,6 +89,7 @@ type Orchestrator struct {
 	children   map[ids.ULID]*child
 	seq        uint64
 	stopping   bool
+	quit       bool
 
 	inbound chan inbound
 	joins   chan *window
@@ -134,6 +135,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		children:   map[ids.ULID]*child{},
 		seq:        0,
 		stopping:   false,
+		quit:       false,
 		inbound:    make(chan inbound),
 		joins:      make(chan *window),
 		leaves:     make(chan *window),
@@ -327,6 +329,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			o.handle(message)
 		case exit := <-o.exits:
 			o.childExited(exit)
+			if o.quit {
+				return o.shutdown()
+			}
 		case <-flush.C:
 			o.flushLogged()
 		case <-sync.C:

@@ -127,10 +127,13 @@ func (o *Orchestrator) launch(view string, target ids.ULID) (ids.ULID, error) {
 // childExited handles a window process ending. An unexpected failure produces
 // a crash report and a notice to the remaining windows.
 func (o *Orchestrator) childExited(exit childExit) {
-	started, ok := o.children[exit.window]
+	started, found := o.children[exit.window]
 	delete(o.children, exit.window)
 	defer delete(o.recent, exit.window)
-	if !ok || exit.err == nil || o.stopping {
+	if o.cfg.QuitWhenLastWindowCloses && len(o.children) == 0 {
+		o.quit = true
+	}
+	if !found || exit.err == nil || o.stopping {
 		return
 	}
 	reportPath, err := o.writeCrashReport(started, exit)
@@ -203,4 +206,14 @@ func (o *Orchestrator) waitForChildren(deadline time.Time) {
 			return
 		}
 	}
+}
+
+// LaunchWindow starts a window before Run, typically the first window of an
+// editing session. Its exit is handled once Run starts.
+func (o *Orchestrator) LaunchWindow(view string, target ids.ULID) (ids.ULID, error) {
+	if o.running.Load() {
+		return ids.ULID{}, ErrRunning
+	}
+
+	return o.launch(view, target)
 }
