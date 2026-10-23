@@ -320,20 +320,34 @@ func (w *TextField) lines() textedit.Lines { //nolint:ireturn // The field needs
 	return fieldLines{widget: w}
 }
 
-// LineBounds returns the visual line holding an offset.
+// LineBounds returns the visual line holding an offset. An offset where a
+// wrapped line ends and the next begins belongs to the next line, where the
+// caret is drawn.
 func (l fieldLines) LineBounds(offset int) (int, int) {
 	layout := l.widget.layout()
 	if layout == nil {
 		return 0, 0
 	}
 	lines := layout.Lines()
+	if len(lines) == 0 {
+		return 0, 0
+	}
+	line := lines[lineIndex(lines, offset)]
+
+	return line.Start, line.End
+}
+
+// lineIndex returns the visual line an offset is drawn on: the last line
+// starting at or before it.
+func lineIndex(lines []berad.Line, offset int) int {
+	current := 0
 	for index, line := range lines {
-		if offset <= line.End || index == len(lines)-1 || offset < lines[index+1].Start {
-			return line.Start, line.End
+		if line.Start <= offset {
+			current = index
 		}
 	}
 
-	return 0, 0
+	return current
 }
 
 // Vertical returns the offset delta visual lines away, nearest column x.
@@ -343,14 +357,7 @@ func (l fieldLines) Vertical(offset, delta int, column *float64) int {
 		return offset
 	}
 	lines := layout.Lines()
-	current := 0
-	for index, line := range lines {
-		if offset >= line.Start && offset <= line.Next {
-			current = index
-
-			break
-		}
-	}
+	current := lineIndex(lines, offset)
 	if *column < 0 {
 		if caret, err := layout.CaretAt(offset, false); err == nil {
 			*column = caret.Position.X
