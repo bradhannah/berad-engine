@@ -13,10 +13,12 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/engine/content"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
 // The sample building's walls (see createSample), in cells from the zone
@@ -450,6 +452,74 @@ func TestPreviewWalksAndClimbs(t *testing.T) {
 		}
 		t.Logf("screenshot: %s", shot)
 	}
+}
+
+// TestWorkflowBuildsARoutine creates a workflow in the project browser, opens
+// it, and builds a routine from the palette in a real Workflow window: start,
+// a time switch, a time-bound container holding a Go to and a Wait, and a
+// Wait for the rest of the day. The Go to's destination is picked on the Map
+// window (D13). The saved logic and its separate layout file are checked.
+func TestWorkflowBuildsARoutine(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "workflow.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60), quit(),
+	)
+	mapScript := script(
+		expect("state:loaded", 600), expect("state:picking", 1800), wait(5), click("cell:-3,-1"), wait(300), quit(),
+	)
+	workflowScript := script(
+		expect("state:loaded", 600), wait(5),
+		click("node:start:1"), wait(5), click("palette:time-switch"), wait(10),
+		click("palette:container"), wait(10), click("palette:go-to"), wait(10),
+		click("ui:pick"), expect("state:destination", 1800), wait(5),
+		click("palette:wait"), wait(10),
+		click("node:time-switch:1"), wait(5), click("palette:wait"), wait(10),
+		expect("state:nodes:6", 300), click("ui:arrange"), wait(20),
+		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
+	)
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "map": {mapScript}, "workflow": {workflowScript},
+	})
+
+	logic := readEnvelope(t, project, "workflows/workflow-1--*[^t].json")
+	layout := readEnvelope(t, project, "workflows/workflow-1--*.layout.json")
+	decoded, err := workflowplugin.Decode(logic.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routine := decoded.(*workflowplugin.Document).Workflow
+	if err := routine.DecodeLayout(layout.Data); err != nil {
+		t.Fatal(err)
+	}
+	byKind := map[string][]flow.Node{}
+	for _, node := range routine.Nodes() {
+		byKind[node.Kind] = append(byKind[node.Kind], node)
+		if _, placed := routine.Box(node.ID); !placed {
+			t.Fatalf("auto-arrange placed every node; %s has no box", node.Kind)
+		}
+	}
+	start, _ := routine.Node(routine.Start())
+	timeSwitch, container := byKind[flow.KindTimeSwitch][0], byKind[flow.KindContainer][0]
+	goTo, waits := byKind[flow.KindGoTo][0], byKind[flow.KindWait]
+	if len(routine.Nodes()) != 6 || len(waits) != 2 {
+		t.Fatalf("nodes %+v", byKind)
+	}
+	inner, outer := waits[0], waits[1]
+	if start.Next[flow.OutputNext] != timeSwitch.ID || timeSwitch.Next["r1"] != container.ID ||
+		timeSwitch.Next[flow.OutputOtherwise] != outer.ID || container.Next[flow.OutputInside] != goTo.ID ||
+		goTo.Next[flow.OutputNext] != inner.ID || goTo.Parent != container.ID || inner.Parent != container.ID {
+		t.Fatalf("the routine is not linked as built: %+v", routine.Nodes())
+	}
+	ground, groundEnvelope := readFloor(t, project, "ground-floor")
+	desk, found := ground.AnchorAt(-3, -1)
+	destination, err := goTo.Anchor("destination")
+	if err != nil || !found || destination.Floor != groundEnvelope.ID || destination.Anchor != desk.ID {
+		t.Fatalf("destination %+v, want the desk anchor", destination)
+	}
+	t.Logf("screenshot: %s", shot)
 }
 
 // TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process

@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -23,6 +24,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -32,8 +34,9 @@ const ViewName = "browser"
 
 // Views the browser opens.
 const (
-	mapView  = "map"
-	textView = "text"
+	mapView      = "map"
+	textView     = "text"
+	workflowView = "workflow"
 )
 
 // New floors match the zone's top floor, or this size centred on the zone
@@ -49,9 +52,10 @@ const (
 )
 
 const (
-	headingZones = "heading:zones"
-	headingText  = "heading:text"
-	headingLoose = "heading:loose"
+	headingZones     = "heading:zones"
+	headingWorkflows = "heading:workflows"
+	headingText      = "heading:text"
+	headingLoose     = "heading:loose"
 )
 
 type dialogKind int
@@ -72,7 +76,7 @@ type State struct {
 	name   *ui.TextField
 	named  ids.ULID
 
-	newZone, newFloor, newText, rename, remove, up, down, open *ui.Button
+	newZone, newFloor, newText, newWorkflow, rename, remove, up, down, open *ui.Button
 
 	dialog     *ui.Dialog
 	dialogKind dialogKind
@@ -90,7 +94,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		name:    ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
 		named:   ids.ULID{},
 		newZone: button("new-zone", "New zone"), newFloor: button("new-floor", "New floor"),
-		newText: button("new-text", "New text"), rename: button("rename", "Rename"),
+		newText: button("new-text", "New text"), newWorkflow: button("new-workflow", "New workflow"),
+		rename: button("rename", "Rename"),
 		remove: button("delete", "Delete"), up: button("move-up", "Move up"),
 		down: button("move-down", "Move down"), open: button("open", "Open"),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
@@ -182,6 +187,10 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 			rows = append(rows, row(floors[position], index.Name(floors[position], "missing floor"), "", 1))
 		}
 	}
+	rows = append(rows, heading(headingWorkflows, "WORKFLOWS"))
+	for _, entry := range index.OfFormat(flow.FormatName) {
+		rows = append(rows, row(entry.ID, entry.Name, "", 0))
+	}
 	rows = append(rows, heading(headingText, "TEXT DOCUMENTS"))
 	for _, entry := range index.OfFormat(textdoc.FormatName) {
 		rows = append(rows, row(entry.ID, entry.Name, "", 0))
@@ -211,7 +220,7 @@ func plural(count int, one, many string) string {
 func (s *State) layout(docs frame.Docs) {
 	content := frame.Content(s.size)
 	x := ui.Inset
-	for _, button := range []*ui.Button{s.newZone, s.newFloor, s.newText, s.open, s.up, s.down} {
+	for _, button := range s.toolbar() {
 		button.Rect = image.Rect(x, ui.Inset/ui.Half+ui.Gap, x+buttonWidth, ui.Inset/ui.Half+ui.Gap+ui.ButtonH)
 		x += buttonWidth + buttonGap
 	}
@@ -333,6 +342,8 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 		s.createFloor(ctx)
 	case s.newText.Update(input):
 		s.createText(ctx)
+	case s.newWorkflow.Update(input):
+		s.createWorkflow(ctx)
 	case s.open.Update(input):
 		s.openSelected(ctx)
 	case s.up.Update(input):
@@ -564,8 +575,22 @@ func (s *State) createText(ctx *frame.Context) {
 	}, nil)
 }
 
-// openSelected opens a zone, or the zone of a floor, in a Map window, and a
-// text document in a Text window.
+// createWorkflow creates a workflow holding only its start node.
+func (s *State) createWorkflow(ctx *frame.Context) {
+	name := uniqueName("Workflow", names(s.entries(ctx.Docs, flow.FormatName)))
+	args := newDocument(flow.FormatName, name, ids.ULID{}, workflowplugin.NewData())
+	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
+		s.list.Selected = result.Created.String()
+	}, nil)
+}
+
+// toolbar lists the buttons along the top, in order.
+func (s *State) toolbar() []*ui.Button {
+	return []*ui.Button{s.newZone, s.newFloor, s.newText, s.newWorkflow, s.open, s.up, s.down}
+}
+
+// openSelected opens a zone, or the zone of a floor, in a Map window, a text
+// document in a Text window and a workflow in a Workflow window.
 func (s *State) openSelected(ctx *frame.Context) {
 	entry, ok := s.selected(ctx.Docs)
 	if !ok {
@@ -584,6 +609,8 @@ func (s *State) openSelected(ctx *frame.Context) {
 		ctx.Requests.Open(mapView, zoneID, false)
 	case textdoc.FormatName:
 		ctx.Requests.Open(textView, entry.ID, false)
+	case flow.FormatName:
+		ctx.Requests.Open(workflowView, entry.ID, false)
 	}
 }
 
@@ -729,7 +756,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		if value == s.name.ID {
 			return s.name.Center(), true
 		}
-		for _, button := range []*ui.Button{s.newZone, s.newFloor, s.newText, s.rename, s.remove, s.up, s.down, s.open} {
+		for _, button := range append(s.toolbar(), s.rename, s.remove) {
 			if button.ID == value {
 				return image.Pt(button.Rect.Min.X+button.Rect.Dx()/2, button.Rect.Min.Y+button.Rect.Dy()/2), true
 			}
@@ -747,7 +774,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	ui.FillRect(screen, image.Rect(0, 0, frame.Content(s.size).Max.X, toolbarHeight), ui.ColorBackground())
 	width := frame.Content(s.size).Max.X
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
-	for _, button := range []*ui.Button{s.newZone, s.newFloor, s.newText, s.open, s.up, s.down} {
+	for _, button := range s.toolbar() {
 		button.Draw(screen, s.theme)
 	}
 	s.list.Draw(screen, s.theme)
