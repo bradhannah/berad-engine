@@ -692,7 +692,8 @@ func mod(value, divisor int) int {
 
 // Locate finds a named part of the window for input scripts: "palette:<kind>",
 // "node:<kind>:<n>" for the nth node of a kind, "port:<kind>:<n>:<output>",
-// "entry:<kind>:<n>" for its spare entry dot, "add-option:<kind>:<n>" for a
+// "entry:<kind>:<n>" for its spare entry dot or "entry:<kind>:<n>:<i>" for
+// its i-th filled one, "add-option:<kind>:<n>" for a
 // random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for
 // a button or field, a dialog button, or "state:..." (see hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
@@ -733,9 +734,7 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 	case "port":
 		return s.locatePort(value)
 	case "entry":
-		if drawn, ok := s.nthNode(value); ok && takesEntries(drawn.node.Kind) {
-			return drawn.spare, true
-		}
+		return s.locateEntry(value)
 	case "add-option":
 		if drawn, ok := s.nthNode(value); ok && !drawn.addOption.Empty() {
 			return ui.Center(drawn.addOption), true
@@ -750,6 +749,25 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateEntry finds the spare entry dot of "<kind>:<n>", or the i-th filled
+// one of "<kind>:<n>:<i>", counting from 1.
+func (s *State) locateEntry(value string) (image.Point, bool) {
+	where := strings.Split(value, ":")
+	drawn, ok := s.nthNode(strings.Join(where[:min(len(where), ui.Half)], ":"))
+	if !ok || !takesEntries(drawn.node.Kind) {
+		return image.Pt(0, 0), false
+	}
+	if len(where) != portParts {
+		return drawn.spare, true
+	}
+	number, err := strconv.Atoi(where[2])
+	if err != nil || number < 1 || number > len(drawn.entries) {
+		return image.Pt(0, 0), false
+	}
+
+	return drawn.entries[number-1].at, true
 }
 
 // locatePort finds the port of "<kind>:<n>:<output>".

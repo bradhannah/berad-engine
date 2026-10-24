@@ -18,6 +18,8 @@ const (
 	// middle, showing which way the line runs; chevronSize is its size.
 	chevronRun  = 96
 	chevronSize = 4
+	// movingAlpha is how solid a line being moved is drawn where it was.
+	movingAlpha = 0x66
 )
 
 // drawLines draws every line: the others first, then the lit ones over them.
@@ -33,33 +35,36 @@ func (s *State) drawLines(area *ebiten.Image) {
 }
 
 // lineLit reports whether a line is drawn blue: a line of the selected node,
-// the line under the pointer, the selected line, or the line a node from the
-// palette would go into.
+// the line under the pointer, or the selected line.
 func (s *State) lineLit(key routeKey) bool {
 	to, linked := s.targetOf(key)
 	if !linked {
 		return false
 	}
 
-	return key.from == s.selected || to == s.selected || key == s.hoverLink || key == s.selectedLink ||
-		(s.adding != nil && key == s.dropOn)
+	return key.from == s.selected || to == s.selected || key == s.hoverLink || key == s.selectedLink
 }
 
 // drawLine draws one line along its route, with an arrowhead into its entry
 // dot and a chevron along each long stretch. A loop, a line back to a node
-// already on the way, is dashed; a time switch's "otherwise" line is grey.
+// already on the way, is dashed; a time switch's "otherwise" line is grey;
+// a line being moved is faint where it was.
 func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 	corners := s.routes[link.key]
 	if len(corners) < ui.Half {
 		return
 	}
-	ink := ui.ColorInk()
+	base := ui.ColorInk()
 	if from, ok := s.workflow.Node(link.key.from); ok && from.Kind == flow.KindTimeSwitch &&
 		link.key.output == flow.OutputOtherwise {
-		ink = ui.ColorMuted()
+		base = ui.ColorMuted()
 	}
 	if lit {
-		ink = ui.ColorSelect()
+		base = ui.ColorSelect()
+	}
+	var ink color.Color = base
+	if s.link != nil && s.link.from == link.key.from && s.link.output == link.key.output {
+		ink = color.NRGBA{R: base.R, G: base.G, B: base.B, A: movingAlpha}
 	}
 	width := float32(lineWidth)
 	if link.key == s.selectedLink {

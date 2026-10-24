@@ -79,8 +79,11 @@ Settled by its author for the Workflow window's lines:
   grey; in step 4 the line an NPC just took will flash orange.
 - Lines keep their **arrowhead** at the entry dot and get a **chevron**
   along each long stretch.
-- A line can be **selected and deleted**, and a node dropped from the
-  palette **onto a line** goes into it. Nodes with a problem get a **mark**.
+- A line can be **selected and deleted**, and **picked up by its arrow
+  end**, the entry dot it goes into, and dropped on another node; dropped on
+  empty canvas, it is removed. Nodes with a problem get a **mark**.
+  Dropping a palette node onto a line to put it into the line was tried and
+  taken out as too eager.
 - **Moving lines by hand** is decided later. If it comes, a line moved by
   hand keeps its shape between its ends when a node moves, and auto-arrange
   resets it, with undo bringing it back.
@@ -203,8 +206,11 @@ Open:
   node's lines and the line under the pointer are blue; loops are dashed; a
   time switch's "otherwise" line is grey; long stretches have a chevron.
   Clicking a line selects it, and Delete or Backspace, or Delete line in the
-  inspector, removes it. Dropping a node from the palette onto a line puts
-  it between the line's ends, as one undo step. A Go to with no destination
+  inspector, removes it. Pressing a line's filled entry dot picks it up by
+  its arrow end: dropped on another node it moves there, leaving the same
+  output; dropped back where it was it changes nothing; dropped on empty
+  canvas it is removed. While it moves, the line is drawn faint where it
+  was. A Go to with no destination
   or a broken one, a container with no first step, and a node nothing links
   into get a warning mark; pointing at it says what is wrong, and so does
   the inspector. The window now lays the workflow out only when it changes,

@@ -533,7 +533,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	shot := shotPath(t, "random-walk.png")
+	shot, held := shotPath(t, "random-walk.png"), shotPath(t, "random-walk-held.png")
 	retype := func(field, text string) []step {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
@@ -551,6 +551,9 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		drag("port:move:2:next", "entry:wait:1"), expect("state:entries:wait:1=2", 300), wait(10),
 		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{7, 0}}, wait(10),
 		drag("port:wait:1:next", "node:random:1"), expect("state:entries:random:1=2", 300), wait(10),
+		step{Repeat: 3, At: "entry:random:1:2", Down: true, Pressed: true},
+		step{Repeat: 10, At: "canvas:600,420", Down: true}, step{Repeat: 2, At: "canvas:600,420", Down: true, Screenshot: held},
+		step{Repeat: 3, At: "node:random:1", Down: true}, step{Repeat: 2, At: "node:random:1", Released: true}, wait(10),
 		click("node:random:1"), wait(10), step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
@@ -578,7 +581,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		direction != flow.DirectionDown || duration.Amount != 2 || duration.Unit != flow.UnitSeconds {
 		t.Fatalf("the routine was saved as %+v", byKind)
 	}
-	t.Logf("screenshot: %s", shot)
+	t.Logf("screenshots: %s %s", shot, held)
 }
 
 // TestNPCPlacedWithBehaviour makes a workflow and an NPC in the project

@@ -484,25 +484,6 @@ func TestLinesCanBeSelectedAndDeleted(t *testing.T) {
 	}
 }
 
-// TestDroppingOnALineInsertsTheNode drags a Wait from the palette onto the
-// line from the start to a Move: the Wait goes between them, as one gesture.
-func TestDroppingOnALineInsertsTheNode(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t)
-	f.click("node:start:1")
-	f.click("palette:" + flow.KindMove)
-	before := len(f.requests.Commands)
-	f.drag(f.at("palette:"+flow.KindWait), f.at("line:start:1:next"))
-	start, wait, move := f.nth(flow.KindStart, 1), f.nth(flow.KindWait, 1), f.nth(flow.KindMove, 1)
-	if start.Next[flow.OutputNext] != wait.ID || wait.Next[flow.OutputNext] != move.ID {
-		t.Fatalf("start → wait → move expected: %+v", f.workflow().Nodes())
-	}
-	added := f.requests.Commands[before:]
-	if len(added) != 2 || added[0].Command.Gesture == "" || added[0].Command.Gesture != added[1].Command.Gesture {
-		t.Fatalf("one gesture, two commands: %+v", added)
-	}
-}
-
 // TestProblemMarks marks a Go to with no destination and clears the mark
 // once it has one; a node nothing links to is marked too, and so is a
 // destination whose anchor was deleted.
@@ -554,5 +535,57 @@ func TestLayoutIsNotRedoneWhenIdle(t *testing.T) {
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if f.state.LayoutCount() == laidOut {
 		t.Fatal("a change lays the workflow out again")
+	}
+}
+
+// TestPickingUpALineByItsArrowEnd moves a line to another node by its entry
+// dot, without moving the node, leaves it alone when dropped back where it
+// was, refuses the start node, and removes it when dropped on empty canvas.
+func TestPickingUpALineByItsArrowEnd(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:520,420"))
+	first, second := f.nth(flow.KindWait, 1), f.nth(flow.KindWait, 2)
+	firstBox, _ := f.workflow().Box(first.ID)
+	from, onto := f.at("entry:wait:1:1"), f.at("node:wait:2")
+	f.press(from)
+	f.hold(onto)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.release(onto)
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != second.ID {
+		t.Fatalf("the line moves to the second wait: %+v", f.nth(flow.KindStart, 1).Next)
+	}
+	if box, _ := f.workflow().Box(first.ID); box != firstBox {
+		t.Fatal("picking up a line does not drag the node")
+	}
+	sent := len(f.requests.Commands)
+	f.drag(f.at("entry:wait:2:1"), f.at("node:wait:2"))
+	if len(f.requests.Commands) != sent {
+		t.Fatal("dropping a line back where it was changes nothing")
+	}
+	f.drag(f.at("entry:wait:2:1"), f.at("node:start:1"))
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != second.ID || !strings.Contains(f.status(), "back to the start") {
+		t.Fatalf("a line cannot go into the start: %q", f.status())
+	}
+	f.drag(f.at("entry:wait:2:1"), f.at("canvas:900,40"))
+	if len(f.nth(flow.KindStart, 1).Next) != 0 {
+		t.Fatal("dropping a line on empty canvas removes it")
+	}
+}
+
+// TestDroppingOnALineAddsASeparateNode drops a Wait from the palette on the
+// line from the start to a Move: the Wait is added on its own and the line
+// stays as it was.
+func TestDroppingOnALineAddsASeparateNode(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindMove)
+	f.drag(f.at("palette:"+flow.KindWait), f.at("line:start:1:next"))
+	wait, move := f.nth(flow.KindWait, 1), f.nth(flow.KindMove, 1)
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != move.ID || len(wait.Next) != 0 {
+		t.Fatalf("the line is unchanged and the wait stands alone: %+v", f.workflow().Nodes())
 	}
 }

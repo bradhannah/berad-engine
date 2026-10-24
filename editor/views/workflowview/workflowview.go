@@ -2,9 +2,9 @@
 // nodes and their connections on a dotted canvas, a palette of node kinds on
 // the left, and an inspector on the right built from the selected node's
 // declared parameters (D13). Click a palette entry to add a node after the
-// selected one, or drag it onto the canvas or onto a line; drag from an
-// output's port to a node to connect them; drag a node to move it; click a
-// line to select it.
+// selected one, or drag it onto the canvas; drag from an output's port to a
+// node to connect them, or pick a line up by its arrow end to move it to
+// another node; drag a node to move it; click a line to select it.
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -109,8 +109,6 @@ type State struct {
 	hoverLink    routeKey
 	selectedLink routeKey
 	hoverMark    ids.ULID
-	// dropOn is the line a node dragged from the palette would go into.
-	dropOn routeKey
 
 	drag    *nodeDrag
 	link    *linkDrag
@@ -134,7 +132,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
 		problems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false, layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
-		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{}, dropOn: noRoute(),
+		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, panning: false, lastPan: image.Pt(0, 0),
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"),
@@ -347,12 +345,8 @@ func (s *State) removeLine(ctx *frame.Context) {
 // updatePalette adds a node when a palette entry is clicked, or dragged onto
 // the canvas and dropped.
 func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
-	s.dropOn = noRoute()
 	if s.adding != nil {
 		s.adding.at = input.Cursor
-		if s.adding.kind != flow.KindNote && input.Cursor.In(s.Canvas()) {
-			s.dropOn, _ = s.linkAt(s.toCanvas(input.Cursor))
-		}
 		if !input.Released && input.Down {
 			return
 		}
@@ -362,12 +356,7 @@ func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
 		dragged := max(abs(moved.X), abs(moved.Y)) > dragStart
 		switch {
 		case dragged && adding.at.In(s.Canvas()):
-			point := s.toCanvas(adding.at)
-			if key, onLine := s.linkAt(point); onLine && adding.kind != flow.KindNote {
-				s.insertOnLine(ctx, adding.kind, point, key)
-			} else {
-				s.addAt(ctx, adding.kind, point)
-			}
+			s.addAt(ctx, adding.kind, s.toCanvas(adding.at))
 		case !dragged:
 			s.addAfterSelected(ctx, adding.kind)
 		}
@@ -421,11 +410,18 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 }
 
 // press starts what a press on the canvas begins: a connection from a port,
-// resizing a container, or selecting and moving a node.
+// a line picked up by its arrow end, resizing a container, or selecting and
+// moving a node.
 func (s *State) press(ctx *frame.Context, point image.Point) {
 	if from, output, ok := s.portAt(point); ok {
 		s.selected = from
 		s.link = &linkDrag{from: from, output: output, to: point}
+
+		return
+	}
+	if in, ok := s.entryAt(point); ok {
+		s.selected, s.selectedLink = ids.ULID{}, routeKey{from: in.from, output: in.output}
+		s.link = &linkDrag{from: in.from, output: in.output, to: point}
 
 		return
 	}
@@ -534,8 +530,10 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, point image.Po
 		workflowplugin.MoveArgs{Boxes: map[ids.ULID]flow.Box{s.resize.id: box}}, nil)
 }
 
-// updateLink follows a connection being drawn from a port, then connects it
-// to the node it is dropped on, or clears it when dropped on empty canvas.
+// updateLink follows a connection being drawn from a port, or a line picked
+// up by its arrow end, then connects it to the node it is dropped on, or
+// clears it when dropped on empty canvas. Dropped back on the node it
+// already leads to, it changes nothing.
 func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Point) {
 	s.link.to = point
 	if input.Down {
@@ -553,6 +551,9 @@ func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Poin
 			s.replace(ctx, from.WithLink(link.output, ids.ULID{}), "Disconnected")
 		}
 
+		return
+	}
+	if current, linked := from.Next[link.output]; linked && current == target {
 		return
 	}
 	if reason := linkProblem(s.workflow, from, link.output, target); reason != "" {
@@ -680,61 +681,6 @@ func newBox(kind string, place image.Point) flow.Box {
 	}
 
 	return box
-}
-
-// insertOnLine adds a node into a line where it is dropped: the line's
-// output leads to the new node, and the new node's first output, or a
-// container's exit, to where the line led, all as one undo step.
-func (s *State) insertOnLine(ctx *frame.Context, kind string, point image.Point, key routeKey) {
-	from, fromOK := s.workflow.Node(key.from)
-	target, linked := s.targetOf(key)
-	targetNode, targetOK := s.workflow.Node(target)
-	if !fromOK || !linked || !targetOK {
-		s.addAt(ctx, kind, point)
-
-		return
-	}
-	if kind == flow.KindContainer && !targetNode.Parent.IsZero() {
-		ctx.Frame.Status("A container cannot go inside another container")
-
-		return
-	}
-	node, err := flow.NewNode(kind)
-	if err != nil {
-		ctx.Frame.Status(err.Error())
-
-		return
-	}
-	node.Parent = targetNode.Parent
-	if output, carries := continuation(node); carries {
-		node = node.WithLink(output, target)
-	}
-	gesture := s.gesture()
-	box := newBox(kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)))
-	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
-	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {
-		s.selected, s.selectedLink = result.Created, noRoute()
-		if current, found := s.currentNode(ctx.Docs, from.ID); found {
-			s.command(ctx, workflowplugin.ReplaceEdit, gesture,
-				workflowplugin.ReplaceArgs{Node: current.WithLink(key.output, result.Created)}, func(protocol.Result) {
-					ctx.Frame.Status("Added into the line. Undo takes it out.")
-				})
-		}
-	})
-}
-
-// continuation is the output a node inserted into a line carries on by: a
-// container's exit, or a node's first output.
-func continuation(node flow.Node) (string, bool) {
-	if node.Kind == flow.KindContainer {
-		return flow.OutputExit, true
-	}
-	outputs := flow.Outputs(node)
-	if len(outputs) == 0 {
-		return "", false
-	}
-
-	return outputs[0].Name, true
 }
 
 // updateHover follows the line and the problem mark under the pointer, and
@@ -879,6 +825,21 @@ func (s *State) resizeHandleAt(point image.Point) (ids.ULID, bool) {
 	}
 
 	return ids.ULID{}, false
+}
+
+// entryAt returns the filled entry dot at a canvas point: the end of a line
+// that can be picked up and moved to another node.
+func (s *State) entryAt(point image.Point) (entry, bool) {
+	order := s.drawOrder()
+	for index := len(order) - 1; index >= 0; index-- {
+		for _, in := range s.shapes[order[index]].entries {
+			if distance := point.Sub(in.at); abs(distance.X) <= portReach && abs(distance.Y) <= portReach {
+				return in, true
+			}
+		}
+	}
+
+	return entry{from: ids.ULID{}, output: "", at: image.Pt(0, 0)}, false
 }
 
 // dropTarget returns the node a link dropped at a canvas point goes to: the
