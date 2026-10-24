@@ -339,6 +339,18 @@ Open:
   a button per tag that searches for it. Three new project index edits move
   a document, change a folder and set tags; files move at the next save, as
   on a rename, and tags are saved in each document's envelope.
+- **The project browser's right-click menu.** Asked for by its author on
+  2026-10-24, for making folders and documents quickly. A right-click
+  selects the folder or document it lands on, then opens a menu: on a
+  section heading, a new document or folder of that type at the top of the
+  section; on a folder, a new document or folder inside it, Rename, Move
+  to… and Delete folder (only when empty); on a document, Open, a new
+  document or folder beside it, Add floor for a zone, Rename, Move to… and
+  Delete; on a floor, Open map, Add floor, Rename and Delete; below the
+  rows, everything New ▾ makes. With unsaved changes in the inspector it
+  asks first, as selecting does, and opens no menu. A menu that mixes items
+  with and without icons now lines their labels up. The protocol is
+  unchanged.
 
 ## Not in this build
 

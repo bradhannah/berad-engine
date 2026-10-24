@@ -48,6 +48,9 @@ under consideration), **open** (undecided).
   disk. Tags group documents across types. The search box matches names,
   folder names and tags, and "#" searches tags only. Documents and folders
   move by dragging or with Move to….
+- **Agreed:** right-clicking in the project browser makes documents and
+  folders where the click landed: a section heading makes them at the top
+  of its section, a folder inside it, and a document beside it.
 
 ## Maps and tiles
 
