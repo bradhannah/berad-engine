@@ -193,15 +193,13 @@ type State struct {
 	keySheet ui.KeySheet
 	openBn   *ui.Button
 	removeBn *ui.Button
-	// The preview's start time, clock controls and Watch.
-	startField *ui.TextField
-	jumpField  *ui.TextField
-	jumpBn     *ui.Button
-	rateBns    []*ui.Button
-	stopBn     *ui.Button
-	watchBn    *ui.Button
-	sides      []sideButtons
-	focus      ui.Focus
+	// clockBn opens the Clock window and watchBn the Watch window; start is
+	// the time of day the next preview starts at, set in the Clock window.
+	clockBn *ui.Button
+	watchBn *ui.Button
+	start   float64
+	sides   []sideButtons
+	focus   ui.Focus
 
 	dialog        *ui.Dialog
 	dialogKind    dialogKind
@@ -211,7 +209,6 @@ type State struct {
 
 // New returns the Map window for a zone.
 func New(window, zone ids.ULID, theme *ui.Theme) *State {
-	rateBns, stopBn, watchBn := newPreviewButtons()
 	view := &State{
 		window: window, zone: zone, theme: theme, floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
@@ -232,20 +229,16 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
 		previewBn: ui.NewButton("preview", "Preview"),
 		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
-		openBn:     ui.NewButton("open-behaviour", "Open behaviour"),
-		removeBn:   ui.NewButton("remove-npc", "Remove"),
-		startField: ui.NewTextField("start-time", textedit.NewField("", false, clockFieldBytes), false, theme),
-		jumpField:  ui.NewTextField("jump-time", textedit.NewField("", false, clockFieldBytes), false, theme),
-		jumpBn:     ui.NewButton("jump", "Jump"),
-		rateBns:    rateBns, stopBn: stopBn, watchBn: watchBn,
+		openBn:   ui.NewButton("open-behaviour", "Open behaviour"),
+		removeBn: ui.NewButton("remove-npc", "Remove"),
+		clockBn:  ui.NewButton("clock", "Clock"), watchBn: ui.NewButton("watch", "Watch"),
+		start:  protocol.DefaultClockStart,
 		sides:  newSideButtons(),
 		focus:  ui.Focus{},
 		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
-	view.startField.Field.SetSaved(defaultStart)
 	view.deleteBtn.Danger = true
-	view.jumpField.Placeholder = "Jump to…"
-	view.focus.Register(view.nameField, view.startField, view.jumpField)
+	view.focus.Register(view.nameField)
 	for _, info := range tools() {
 		row := ui.NewRow(string(info.tool), info.label)
 		row.Detail = string(info.key)
@@ -305,6 +298,11 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		s.previewChanged(update, ctx)
 	case update.PreviewControl != nil:
 		s.control(*update.PreviewControl, ctx)
+	case update.Session != nil && update.Session.Topic == protocol.TopicClockStart:
+		var start protocol.ClockStart
+		if err := json.Unmarshal(update.Session.Value, &start); err == nil {
+			s.start = start.Seconds
+		}
 	case update.PickStart != nil:
 		start := *update.PickStart
 		s.pick = &start
@@ -600,16 +598,12 @@ func (s *State) updateOver(input *ui.Input, ctx *frame.Context) bool {
 	return true
 }
 
-// updateFields handles the text fields and the anchor's save bar: Enter
-// saves a name, jumps the clock or sets the next preview's start.
+// updateFields handles the anchor's name field and save bar: Enter saves
+// the name.
 func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
-	switch field, outcome := s.focus.Update(input, ctx.Clipboard); {
-	case field == s.nameField && outcome == textedit.OutcomeCommit:
+	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.nameField &&
+		outcome == textedit.OutcomeCommit {
 		s.saveName(ctx)
-	case field == s.jumpField && outcome == textedit.OutcomeCommit:
-		s.jumpClock(ctx)
-	case field == s.startField && outcome == textedit.OutcomeCommit:
-		s.setStart(ctx)
 	}
 	s.save.Unsaved = s.Unsaved(ctx.Docs)
 	switch s.save.Update(input) {
@@ -1417,6 +1411,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
+	case strings.HasPrefix(state, "clock:"):
+		return s.clockShows(strings.TrimPrefix(state, "clock:"))
 	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"):
 		which, cell, _ := strings.Cut(state, ":")
 

@@ -500,29 +500,36 @@ func TestViewsShareUndo(t *testing.T) {
 // start the player inside the building, arrow keys walk them onto the stairs
 // and up to the same cell of the upper floor, and a second view of the zone
 // shows the player as they walk. The preview changes nothing in the project.
+// The Clock window opens by itself, on top, and its +1h moves the preview's
+// clock on an hour.
 func TestPreviewWalksAndClimbs(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	walking, upstairs, seen := shotPath(t, "preview.png"), shotPath(t, "preview-upstairs.png"), shotPath(t, "preview-other-view.png")
+	clockShot := shotPath(t, "clock.png")
 	first := script(
 		expect("state:loaded", 600), wait(5), keys("Cmd+N"), wait(120),
 		keys("P"), click("cell:2,-2"), expect("state:previewing", 300),
 		walk("Right"), expect("state:player:3,-2", 120), step{Repeat: 2, Screenshot: walking}, wait(90),
 		walk("Right"), expect("state:floor:2", 120), expect("state:player:4,-2", 120),
-		step{Repeat: 2, Screenshot: upstairs}, wait(60), keys("P"), wait(60), quit(),
+		step{Repeat: 2, Screenshot: upstairs}, must("state:clock:09:", 1200), wait(30), keys("P"), wait(60), quit(),
+	)
+	clockScript := script(
+		must("state:running", 900), must("state:on-top", 60), must("state:time:08:", 300),
+		click("ui:hour-on"), must("state:time:09:", 300), step{Repeat: 2, Screenshot: clockShot}, wait(10), quit(),
 	)
 	second := script(
 		expect("state:loaded", 600), expect("state:remote-player:3,-2", 900),
 		step{Repeat: 2, Screenshot: seen}, expect("state:remote-player:4,-2", 600), wait(30), quit(),
 	)
-	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}, "clock": {clockScript}})
 
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, 4, -2) != "stairs.up" || envelope.Revision != 0 {
 		t.Fatalf("the preview must not change the project: revision %d", envelope.Revision)
 	}
-	for _, shot := range []string{walking, upstairs, seen} {
+	for _, shot := range []string{walking, upstairs, seen, clockShot} {
 		if _, err := os.Stat(shot); err != nil {
 			t.Fatalf("missing screenshot: %v", err)
 		}
@@ -748,8 +755,10 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10),
 		click("ui:step"), must("state:stepped", 300), wait(10), step{Repeat: 2, Screenshot: stepShot}, wait(10), quit(),
 	)
+	clockScript := script(must("state:running", 2400), wait(30), quit())
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "watch": {watchScript},
+		"clock": {clockScript},
 	})
 	noCrashes(t, project)
 

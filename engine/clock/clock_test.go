@@ -36,3 +36,19 @@ func TestClockRunsStopsWrapsAndJumps(t *testing.T) {
 		t.Fatal("formatting")
 	}
 }
+
+// TestParse reads times of day as typed, and refuses what is not one.
+func TestParse(t *testing.T) {
+	t.Parallel()
+	for value, want := range map[string]float64{"8": 8 * clock.Hour, "8:30": 30600, " 08:30 ": 30600, "0830": 30600,
+		"23:59": 86340, "0": 0} {
+		if got, ok := clock.Parse(value); !ok || got != want {
+			t.Fatalf("%q: %v %v, want %v", value, got, ok, want)
+		}
+	}
+	for _, value := range []string{"", "24:00", "8:60", "-1", "noon", "8:3x"} {
+		if _, ok := clock.Parse(value); ok {
+			t.Fatalf("%q is not a time of day", value)
+		}
+	}
+}

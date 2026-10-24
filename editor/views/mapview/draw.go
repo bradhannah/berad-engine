@@ -432,9 +432,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	if !loaded {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
-	foot := footTop(panel)
-	s.drawPreviewInspector(screen, docs, textX, foot)
-	s.drawNPCPreview(screen, textX, foot)
+	s.drawPreview(screen, docs, textX, footTop(panel))
 	s.keysBn.Draw(screen, s.theme)
 }
 

@@ -7,7 +7,6 @@ import (
 	"image"
 	"math"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -28,23 +28,10 @@ import (
 
 // Preview clock and NPCs.
 const (
-	// watchView is the Watch window's view name.
+	// watchView is the Watch window's view name, and clockView the Clock
+	// window's.
 	watchView = "watch"
-	// defaultStart is where the start-time field begins: 08:00.
-	defaultStart = "08:00"
-	secondsPerHr = 3600
-	secondsPerMn = 60
-	clockDigits  = 4
-	hoursPerDay  = 24
-	// previewRows is how many lines of text the clock and watch part of the
-	// inspector has while a preview runs, besides its rows of buttons.
-	previewRows    = 4
-	previewButtons = 3
-	idleRows       = 2
-	// jumpWidth is the width of the Jump button beside its field.
-	jumpWidth = 52
-	// clockFieldBytes bounds what can be typed into a time field.
-	clockFieldBytes = 8
+	clockView = "clock"
 	// stepBudget is how many ticks a step runs in one frame: a minute of
 	// real time, so most steps end in the frame they start.
 	stepBudget = 60 * clock.TicksPerSecond
@@ -59,48 +46,10 @@ type npcRun struct {
 	revision uint64
 }
 
-// rates are the clock rates the preview offers, in button order.
-func rates() []clock.Rate {
-	return []clock.Rate{clock.Real, clock.MinutePerSecond, clock.TenMinutesPerSecond}
-}
-
-// newPreviewButtons makes the preview's clock and watch controls.
-func newPreviewButtons() ([]*ui.Button, *ui.Button, *ui.Button) {
-	rateButtons := make([]*ui.Button, 0, len(rates()))
-	for _, rate := range rates() {
-		rateButtons = append(rateButtons, ui.NewButton("rate-"+strconv.Itoa(int(rate)), clock.RateLabel(rate)))
-	}
-
-	return rateButtons, ui.NewButton("stop-clock", "Stop clock"), ui.NewButton("watch", "Watch")
-}
-
-// parseClock reads "8", "8:30", "08:30" or "0830" as seconds from midnight.
-func parseClock(value string) (float64, bool) {
-	value = strings.TrimSpace(value)
-	hours, minutes, found := strings.Cut(value, ":")
-	if !found {
-		hours, minutes = value, "0"
-		if len(value) == clockDigits {
-			hours, minutes = value[:2], value[2:]
-		}
-	}
-	hour, hourErr := strconv.Atoi(hours)
-	minute, minuteErr := strconv.Atoi(minutes)
-	if hourErr != nil || minuteErr != nil || hour < 0 || hour >= hoursPerDay || minute < 0 || minute >= secondsPerMn {
-		return 0, false
-	}
-
-	return float64(hour*secondsPerHr + minute*secondsPerMn), true
-}
-
-// startClock starts the preview's clock at the time in the start field.
+// startClock starts the preview's clock at the time set in the Clock
+// window.
 func (s *State) startClock() *clock.Clock {
-	seconds, ok := parseClock(s.startField.Field.Value())
-	if !ok {
-		seconds, _ = parseClock(defaultStart)
-	}
-
-	return clock.New(seconds, clock.MinutePerSecond)
+	return clock.New(s.start, clock.MinutePerSecond)
 }
 
 // seed is an NPC's random seed: the run and its placement, so a run repeats
@@ -127,14 +76,9 @@ func (s *State) watchClicked(input *ui.Input, ctx *frame.Context, cell Cell, onF
 	return onNPC
 }
 
-// locatePreviewWidget finds the preview's fields and buttons.
+// locatePreviewWidget finds the preview's buttons.
 func (s *State) locatePreviewWidget(widget string) (image.Point, bool) {
-	for _, field := range []*ui.TextField{s.startField, s.jumpField} {
-		if field.ID == widget && !field.Rect.Empty() {
-			return field.Center(), true
-		}
-	}
-	for _, button := range append(slices.Clone(s.rateBns), s.stopBn, s.jumpBn, s.watchBn) {
+	for _, button := range []*ui.Button{s.clockBn, s.watchBn} {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
@@ -262,12 +206,21 @@ func (s *State) stepped() bool {
 	return true
 }
 
-// control carries out a preview control from another window, or this one.
+// control carries out a preview control from another window, or this one:
+// the Watch window's controls for the NPCs, and the Clock window's for the
+// clock. A jump starts every NPC's workflow again.
 func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 	if s.preview == nil || control.Run != s.preview.id {
 		return
 	}
 	switch control.Action {
+	case protocol.ControlRate:
+		s.preview.clock.SetRate(clock.Rate(control.Rate))
+	case protocol.ControlJump:
+		s.preview.clock.Jump(control.Seconds)
+		ctx.Frame.Status("Jumped to " + clock.Format(control.Seconds) + ". NPCs start their workflows again.")
+	case protocol.ControlStopClock, protocol.ControlStartClock:
+		s.preview.clock.Stop(control.Action == protocol.ControlStopClock)
 	case protocol.ControlWatch:
 		s.preview.watched, s.preview.step = control.Placement, nil
 	case protocol.ControlPause:
@@ -286,7 +239,9 @@ func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 // watch watches the NPC at a placement: this window's own preview at once,
 // another window's through it.
 func (s *State) watch(placement ids.ULID, ctx *frame.Context) {
-	control := protocol.PreviewControl{Run: ids.ULID{}, Action: protocol.ControlWatch, Placement: placement}
+	control := protocol.PreviewControl{
+		Run: ids.ULID{}, Action: protocol.ControlWatch, Placement: placement, Rate: 0, Seconds: 0,
+	}
 	switch {
 	case s.preview != nil:
 		control.Run = s.preview.id
@@ -423,109 +378,50 @@ func (s *State) drawLiveNPCs(area *ebiten.Image, grid image.Rectangle) {
 	}
 }
 
-// layoutPreview places the preview's controls above the keys: the start time
-// before a preview, and the clock and Watch while this window runs one.
+// layoutPreview places the Clock button, and Watch while a preview runs, at
+// the foot of the inspector.
 func (s *State) layoutPreview(left, width, foot int) {
-	for _, button := range slices.Concat(s.rateBns, []*ui.Button{s.stopBn, s.jumpBn, s.watchBn}) {
-		button.Rect = ui.Zero()
-	}
-	s.startField.Rect, s.jumpField.Rect = ui.Zero(), ui.Zero()
-	switch {
-	case s.preview != nil:
-		rowY := clockTop(foot) + ui.Half*ui.LineHeight
-		gaps := (len(s.rateBns) - 1) * ui.Gap
-		for index, button := range s.rateBns {
-			from := left + index*(width-gaps)/len(s.rateBns) + index*ui.Gap
-			to := left + (index+1)*(width-gaps)/len(s.rateBns) + index*ui.Gap
-			button.Rect = image.Rect(from, rowY, to, rowY+ui.ButtonH)
-			button.On = s.preview.clock.Rate() == rates()[index]
-		}
-		rowY += ui.ButtonH + ui.Gap
-		half := (width - ui.Gap) / ui.Half
-		s.stopBn.Rect = image.Rect(left, rowY, left+half, rowY+ui.ButtonH)
-		s.stopBn.Label = "Stop clock"
-		if s.preview.clock.Stopped() {
-			s.stopBn.Label = "Start clock"
-		}
-		s.jumpField.Rect = image.Rect(left+half+ui.Gap, rowY, left+width-jumpWidth-ui.Gap, rowY+ui.ButtonH)
-		s.jumpBn.Rect = image.Rect(left+width-jumpWidth, rowY, left+width, rowY+ui.ButtonH)
-		rowY += ui.ButtonH + ui.Gap + ui.Half*ui.LineHeight
-		s.watchBn.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
-	case s.remote == nil:
-		top := foot - idleRows*ui.LineHeight - ui.ButtonH - ui.Gap
-		s.startField.Rect = image.Rect(left+width/ui.Half, top+ui.LineHeight, left+width, top+ui.LineHeight+ui.ButtonH)
+	top := foot - ui.ButtonH
+	half := (width - ui.Gap) / ui.Half
+	s.clockBn.Rect = image.Rect(left, top, left+half, foot)
+	s.watchBn.Rect = ui.Zero()
+	if s.preview != nil || s.remote != nil {
+		s.watchBn.Rect = image.Rect(left+half+ui.Gap, top, left+width, foot)
 	}
 }
 
-// clockTop is where the clock and watch part of the inspector starts, a line
-// above the keys.
-func clockTop(foot int) int {
-	return foot - (previewRows+1)*ui.LineHeight - previewButtons*ui.ButtonH - ui.Half*ui.Gap
-}
-
-// updatePreviewControls handles the clock's buttons and fields and Watch.
+// updatePreviewControls handles Clock and Watch.
 func (s *State) updatePreviewControls(input *ui.Input, ctx *frame.Context) {
-	if s.preview == nil {
-		return
-	}
-	for index, button := range s.rateBns {
-		if button.Update(input) {
-			s.preview.clock.SetRate(rates()[index])
-		}
-	}
-	if s.stopBn.Update(input) {
-		s.preview.clock.Stop(!s.preview.clock.Stopped())
-	}
-	if s.jumpBn.Update(input) {
-		s.jumpClock(ctx)
+	if s.clockBn.Update(input) {
+		ctx.Requests.Open(clockView, project.IndexID(), false)
 	}
 	if s.watchBn.Update(input) {
 		ctx.Requests.Open(watchView, s.zone, false)
 	}
 }
 
-// setStart keeps the time typed into the start field for the next preview,
-// or says what is wrong with it.
-func (s *State) setStart(ctx *frame.Context) {
-	value, _ := s.startField.Field.Commit()
-	seconds, ok := parseClock(value)
-	if !ok {
-		s.startField.Field.Failed()
-		ctx.Frame.Status("Enter a time of day such as 08:00")
+// labelPreview heads the preview's part of the inspector.
+const labelPreview = "PREVIEW"
 
-		return
-	}
-	s.startField.Field.SetSaved(clock.Format(seconds))
-	s.focus.Set(nil)
-	ctx.Frame.Status("The next preview starts at " + clock.Format(seconds))
+// previewGroup is one headed group of lines in the preview's part of the
+// inspector.
+type previewGroup struct {
+	label string
+	lines []string
 }
 
-// jumpClock jumps the preview's clock to the time typed into the jump field;
-// every NPC starts its workflow again from where it stands.
-func (s *State) jumpClock(ctx *frame.Context) {
-	value, _ := s.jumpField.Field.Commit()
-	seconds, ok := parseClock(value)
-	if !ok || s.preview == nil {
-		s.jumpField.Field.Failed()
-		ctx.Frame.Status("Enter a time of day such as 12:30")
-
-		return
-	}
-	s.preview.clock.Jump(seconds)
-	s.jumpField.Field.SetSaved("")
-	s.focus.Set(nil)
-	ctx.Frame.Status("Jumped to " + clock.Format(seconds) + ". NPCs start their workflows again.")
-}
-
-// drawNPCPreview draws the preview's part of the inspector: before a
-// preview, the start time; while one runs, the clock, its controls and the
-// watched NPC.
-func (s *State) drawNPCPreview(screen *ebiten.Image, left, foot int) {
+// previewGroups describe the preview: when the next one starts; where the
+// player starts, while choosing; and while this window or another view of
+// the zone runs one, the player, the clock and the watched NPC.
+func (s *State) previewGroups(docs frame.Docs) []previewGroup {
 	switch {
+	case s.choosing || s.starting:
+		return []previewGroup{{label: labelPreview, lines: []string{
+			"Click the cell where the player starts.", "Escape cancels.",
+		}}}
 	case s.preview != nil:
-		top := clockTop(foot)
+		player := s.preview.run.Player()
 		game := s.preview.clock
-		s.theme.DrawLabel(screen, "CLOCK", left, top, ui.ColorLive())
 		state := clock.Format(game.Seconds()) + " · " + clock.RateLabel(game.Rate())
 		if game.Stopped() {
 			state += " · stopped"
@@ -533,22 +429,56 @@ func (s *State) drawNPCPreview(screen *ebiten.Image, left, foot int) {
 		if s.preview.paused {
 			state += " · NPCs paused"
 		}
-		s.theme.DrawMono(screen, state, left, top+ui.LineHeight, ui.ColorInk())
-		for _, button := range append(slices.Clone(s.rateBns), s.stopBn, s.jumpBn) {
-			button.Draw(screen, s.theme)
+
+		return []previewGroup{
+			{label: labelPreview, lines: []string{
+				fmt.Sprintf("Player on %s, cell %d, %d", s.floorName(docs, player.Floor), player.Cell.X, player.Cell.Y),
+				"Arrows walk · click an NPC · P stops",
+			}},
+			{label: "CLOCK", lines: []string{state}},
+			{label: "WATCHING", lines: []string{s.watchedLine()}},
 		}
-		s.jumpField.Draw(screen)
-		watchTop := s.jumpField.Rect.Max.Y + ui.Gap
-		s.theme.DrawLabel(screen, "WATCHING", left, watchTop, ui.ColorLive())
-		s.theme.DrawText(screen, s.watchedLine(), left, watchTop+ui.LineHeight, ui.ColorInk())
-		s.watchBn.Draw(screen, s.theme)
-	case s.remote == nil:
-		top := foot - idleRows*ui.LineHeight - ui.ButtonH - ui.Gap
-		s.theme.DrawLabel(screen, "PREVIEW", left, top, ui.ColorMuted())
-		s.theme.DrawText(screen, "Clock starts at", left, top+ui.LineHeight+(ui.ButtonH-ui.TextSize)/ui.Half-1,
-			ui.ColorInk())
-		s.startField.Draw(screen)
+	case s.remote != nil:
+		return []previewGroup{
+			{label: labelPreview, lines: []string{"Running in another view of this zone."}},
+			{label: "CLOCK", lines: []string{strings.TrimPrefix(s.remoteClock(), "Clock ")}},
+		}
 	}
+
+	return []previewGroup{{label: labelPreview, lines: []string{
+		"Starts at " + clock.Format(s.start) + ",", "set in the Clock window.",
+	}}}
+}
+
+// drawPreview draws the preview's part of the inspector above its buttons.
+func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, left, foot int) {
+	groups := s.previewGroups(docs)
+	ink := ui.ColorMuted()
+	if s.preview != nil || s.remote != nil {
+		ink = ui.ColorLive()
+	}
+	height := (len(groups) - 1) * ui.Gap
+	for _, group := range groups {
+		height += (len(group.lines) + 1) * ui.LineHeight
+	}
+	top := foot - ui.ButtonH - ui.Inset - height
+	for _, group := range groups {
+		s.theme.DrawLabel(screen, group.label, left, top, ink)
+		top += ui.LineHeight
+		for _, line := range group.lines {
+			s.theme.DrawText(screen, line, left, top, ui.ColorInk())
+			top += ui.LineHeight
+		}
+		top += ui.Gap
+	}
+	s.clockBn.Draw(screen, s.theme)
+	s.watchBn.Draw(screen, s.theme)
+}
+
+// clockShows reports whether this window's preview clock reads a time that
+// starts with prefix, such as "09:" for any minute of nine o'clock.
+func (s *State) clockShows(prefix string) bool {
+	return s.preview != nil && strings.HasPrefix(clock.Format(s.preview.clock.Seconds()), prefix)
 }
 
 // remoteClock describes the clock of another window's preview.

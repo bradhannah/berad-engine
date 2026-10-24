@@ -49,6 +49,9 @@ type Requests interface {
 	Subscribe(document ids.ULID, done func(error))
 	Open(view string, target ids.ULID, newView bool)
 	WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error))
+	// Publish sets session state every window shares under a topic, such as
+	// the time the next preview starts at; the other windows are told.
+	Publish(topic string, value any)
 	Picks
 	Previews
 }
@@ -231,6 +234,7 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 		ink = ui.ColorSelect()
 	}
 	textY := bar.Min.Y + (StatusHeight-ui.MonoSize)/ui.Half - 1
+	message = theme.FitText(message, f.OnTop.Rect.Min.X-statusGap-ui.Inset)
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
 	f.OnTop.Draw(screen, theme)
 	speed := "command to event: last " + formatLatency(f.last()) + ", median " + formatLatency(f.median())

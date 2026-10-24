@@ -38,8 +38,6 @@ const (
 	// startAlpha is how faintly the player shows on the cell under the
 	// cursor while the author chooses where the player starts.
 	startAlpha = 0x80
-	// previewLines is the height of the preview's part of the inspector.
-	previewLines = 4
 )
 
 // previewRun is the preview this window runs (D15). The run, its clock and
@@ -365,31 +363,6 @@ func (s *State) drawDisc(area *ebiten.Image, grid image.Rectangle, x, y float64,
 		faceX, faceY = faceX/length*radius*faceOffset, faceY/length*radius*faceOffset
 	}
 	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), blue, true)
-}
-
-// drawPreviewInspector describes the preview above its controls and the
-// keys.
-func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left, foot int) {
-	lines := []string{}
-	top := foot - (idleRows+previewLines)*ui.LineHeight - ui.ButtonH - ui.Gap
-	switch {
-	case s.choosing || s.starting:
-		lines = append(lines, "Click the cell where the player starts.", "Escape cancels.")
-	case s.preview != nil:
-		player := s.preview.run.Player()
-		lines = append(lines, fmt.Sprintf("Player on %s, cell %d, %d", s.floorName(docs, player.Floor),
-			player.Cell.X, player.Cell.Y), "Arrows walk · click an NPC · P stops")
-		top = clockTop(foot) - (len(lines)+1)*ui.LineHeight - ui.Gap
-	case s.remote != nil:
-		lines = append(lines, "Running in another view of this zone.", s.remoteClock())
-		top = foot - previewLines*ui.LineHeight
-	default:
-		return
-	}
-	s.theme.DrawLabel(screen, "PREVIEW", left, top, ui.ColorLive())
-	for index, text := range lines {
-		s.theme.DrawText(screen, text, left, top+(index+1)*ui.LineHeight, ui.ColorInk())
-	}
 }
 
 // hasPlayer answers "player:C,R" for this window's preview and

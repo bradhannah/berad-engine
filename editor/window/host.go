@@ -342,6 +342,17 @@ func (h *host) Open(view string, target ids.ULID, newView bool) {
 	})
 }
 
+// Publish sets session state every window shares.
+func (h *host) Publish(topic string, value any) {
+	encoded, err := json.Marshal(value)
+	if err == nil {
+		err = h.conn.Publish(topic, encoded)
+	}
+	if err != nil {
+		h.frame.Status(err.Error())
+	}
+}
+
 // WhereUsed asks where a document or item is used.
 func (h *host) WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error)) {
 	h.background(func(ctx context.Context) func() {

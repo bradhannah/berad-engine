@@ -1,6 +1,7 @@
 // Package window runs one editor window process: it connects to the
 // orchestrator, subscribes to its target document and runs the Ebitengine
-// window for its view (the project browser, a Map window or a Text window).
+// window for its view (the project browser, a Map, Text, Workflow, Watch or
+// Clock window).
 package window
 
 import (
@@ -19,6 +20,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
+	"github.com/bradhannah/berad-engine/editor/views/clockview"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/editor/views/textview"
@@ -49,7 +51,8 @@ type Args struct {
 // from the main goroutine, as Ebitengine requires.
 func Run(args Args, registry *plugin.Registry) error {
 	switch args.View {
-	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName:
+	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
+		clockview.ViewName:
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
@@ -84,16 +87,20 @@ func Run(args Args, registry *plugin.Registry) error {
 		return errors.Join(err, conn.Close())
 	}
 	ebiten.SetWindowTitle(game.view.Title(conn))
-	ebiten.SetWindowSize(windowWidth, windowHeight)
+	ebiten.SetWindowSize(windowSize(args.View))
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	// The Clock window stays on top of the others until its author turns
+	// that off.
+	game.frame.OnTop.On = args.View == clockview.ViewName
 	// The close button asks the view first, so unsaved changes are not lost.
 	ebiten.SetWindowClosingHandled(true)
 	// A window driven by an input script needs no keyboard, so it opens
 	// without taking focus from whatever the person at the computer is using.
 	// So does every other window opened while scripts drive the editor, as
-	// in the real-window tests, even one left without a script.
+	// in the real-window tests, even one left without a script, and the
+	// Clock window, which opens by itself when a preview starts.
 	var options ebiten.RunGameOptions
-	options.InitUnfocused = game.script != nil || scripted()
+	options.InitUnfocused = game.script != nil || scripted() || args.View == clockview.ViewName
 	runErr := ebiten.RunGameWithOptions(game, &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil
@@ -102,11 +109,22 @@ func Run(args Args, registry *plugin.Registry) error {
 	return errors.Join(runErr, conn.Close())
 }
 
+// windowSize is the size a window opens at: small for the Clock window.
+func windowSize(view string) (int, int) {
+	if view == clockview.ViewName {
+		return clockview.Width, clockview.Height
+	}
+
+	return windowWidth, windowHeight
+}
+
 //nolint:ireturn // Each window runs one of several views.
 func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 	switch args.View {
 	case browser.ViewName:
 		return browser.New(window, theme)
+	case clockview.ViewName:
+		return clockview.New(theme)
 	case textview.ViewName:
 		return textview.New(window, args.Target, theme)
 	case workflowview.ViewName:

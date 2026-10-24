@@ -53,8 +53,10 @@ func everyMessage(t *testing.T) []protocol.Message {
 			},
 		}, Clock: 8 * 3600, Rate: 60, ClockStopped: true, NPCsPaused: true, Watched: testID, Stepping: true,
 			Step: []protocol.PreviewChange{{From: testID, Output: "o1", To: testID, Tick: 9, Status: "b"}}},
-		protocol.KindPreviewStop:    protocol.PreviewStop{Run: testID, Reason: "r"},
-		protocol.KindPreviewControl: protocol.PreviewControl{Run: testID, Action: protocol.ControlStep, Placement: testID},
+		protocol.KindPreviewStop: protocol.PreviewStop{Run: testID, Reason: "r"},
+		protocol.KindPreviewControl: protocol.PreviewControl{
+			Run: testID, Action: protocol.ControlJump, Placement: testID, Rate: 60, Seconds: 9 * 3600,
+		},
 	}
 	messages := make([]protocol.Message, 0, len(payloads))
 	for kind, payload := range payloads {
