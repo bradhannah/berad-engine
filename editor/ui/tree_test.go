@@ -55,9 +55,9 @@ func TestTreeRowsToggleAddAndSelect(t *testing.T) {
 func TestMenuChoosesAndCloses(t *testing.T) {
 	t.Parallel()
 	menu := ui.Menu{Items: []ui.MenuItem{
-		{ID: "zone", Label: "Zone", Icon: ui.IconZone, Disabled: false},
-		{ID: "floor", Label: "Floor", Icon: ui.IconFloor, Disabled: true},
-	}}
+		{ID: "zone", Label: "Zone", Icon: ui.IconZone, Disabled: false, Danger: false, Rule: false},
+		{ID: "floor", Label: "Floor", Icon: ui.IconFloor, Disabled: true, Danger: false, Rule: false},
+	}, Width: 0}
 	window := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(600, 10, 700, 36)
 	menu.Open(anchor, window)
@@ -74,6 +74,33 @@ func TestMenuChoosesAndCloses(t *testing.T) {
 	zone, _ := menu.Locate("zone")
 	if chosen := menu.Update(clickAt(zone)); chosen != "zone" {
 		t.Fatalf("chosen %q", chosen)
+	}
+}
+
+// TestMenuOpensAtTheCursor opens a right-click menu inside the window, wide
+// enough for its longest label, and chooses with the right button.
+func TestMenuOpensAtTheCursor(t *testing.T) {
+	t.Parallel()
+	items := []ui.MenuItem{
+		{ID: "add", Label: "Add anchor here", Icon: ui.IconNone, Disabled: false, Danger: false, Rule: false},
+		{
+			ID: "delete", Label: "Delete anchor and everything that refers to it in every workflow", Icon: ui.IconNone,
+			Disabled: false, Danger: true, Rule: true,
+		},
+	}
+	menu := ui.Menu{Items: items, Width: ui.MenuWidth(items, theme(t))}
+	if menu.Width <= 200 {
+		t.Fatalf("width %d does not fit the long label", menu.Width)
+	}
+	window := image.Rect(0, 0, 800, 600)
+	menu.OpenAt(image.Pt(790, 590), window)
+	add, _ := menu.Locate("add")
+	if !add.In(window) || add.X > 790 || add.Y > 590 {
+		t.Fatalf("the menu left the window: %v", add)
+	}
+	menu.Draw(ebiten.NewImage(800, 600), theme(t))
+	if chosen := menu.Update(&ui.Input{Cursor: add, Secondary: true}); chosen != "add" {
+		t.Fatalf("right button chose %q", chosen)
 	}
 }
 

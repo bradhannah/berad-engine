@@ -12,19 +12,24 @@ const (
 	menuPad   = 4
 )
 
-// MenuItem is one choice of a Menu.
+// MenuItem is one choice of a Menu. Danger marks a destructive choice, drawn
+// in red; Rule draws a dividing line above the item, to start a group.
 type MenuItem struct {
 	ID       string
 	Label    string
 	Icon     Icon
 	Disabled bool
+	Danger   bool
+	Rule     bool
 }
 
 // Menu is a small list of choices that opens below a button, such as
-// "New ▾". While open it takes all input; a choice, Escape or a click
-// outside closes it.
+// "New ▾", or at the cursor, such as a right-click menu. While open it takes
+// all input; a choice, Escape or a click outside closes it. Width is the
+// menu's width, or a default when zero.
 type Menu struct {
 	Items []MenuItem
+	Width int
 	open  bool
 	rect  image.Rectangle
 	hover int
@@ -32,14 +37,37 @@ type Menu struct {
 
 // Open shows the menu below an anchor, kept inside the window.
 func (m *Menu) Open(anchor, window image.Rectangle) {
-	height := len(m.Items)*RowHeight + Half*menuPad
-	left := min(anchor.Min.X, window.Max.X-menuWidth-Gap)
-	m.rect = image.Rect(left, anchor.Max.Y+Gap, left+menuWidth, anchor.Max.Y+Gap+height)
+	width := m.width()
+	left := min(anchor.Min.X, window.Max.X-width-Gap)
+	m.rect = image.Rect(left, anchor.Max.Y+Gap, left+width, anchor.Max.Y+Gap+m.height())
 	m.open, m.hover = true, -1
 }
 
+// OpenAt shows the menu with its top-left corner at a point, moved left or
+// up as needed to stay inside the window.
+func (m *Menu) OpenAt(point image.Point, window image.Rectangle) {
+	width, height := m.width(), m.height()
+	left := max(min(point.X, window.Max.X-width-Gap), window.Min.X)
+	top := max(min(point.Y, window.Max.Y-height-Gap), window.Min.Y)
+	m.rect = image.Rect(left, top, left+width, top+height)
+	m.open, m.hover = true, -1
+}
+
+func (m *Menu) width() int {
+	if m.Width > 0 {
+		return m.Width
+	}
+
+	return menuWidth
+}
+
+func (m *Menu) height() int { return len(m.Items)*RowHeight + Half*menuPad }
+
 // IsOpen reports whether the menu is showing.
 func (m *Menu) IsOpen() bool { return m.open }
+
+// Close hides the menu without a choice.
+func (m *Menu) Close() { m.open = false }
 
 // itemRect is the rectangle of an item.
 func (m *Menu) itemRect(index int) image.Rectangle {
@@ -49,7 +77,7 @@ func (m *Menu) itemRect(index int) image.Rectangle {
 }
 
 // Update handles a frame of input while open and returns the chosen item's
-// ID, or "".
+// ID, or "". Either mouse button chooses.
 func (m *Menu) Update(input *Input) string {
 	if !m.open {
 		return ""
@@ -66,7 +94,7 @@ func (m *Menu) Update(input *Input) string {
 			m.hover = index
 		}
 	}
-	if !input.Pressed {
+	if !input.Pressed && !input.Secondary {
 		return ""
 	}
 	m.open = false
@@ -98,6 +126,9 @@ func (m *Menu) Draw(screen *ebiten.Image, theme *Theme) {
 	Box(screen, m.rect, ColorBackground())
 	for index, item := range m.Items {
 		rect := m.itemRect(index)
+		if item.Rule && index > 0 {
+			Divider(screen, image.Pt(rect.Min.X, rect.Min.Y), image.Pt(rect.Max.X, rect.Min.Y))
+		}
 		if index == m.hover {
 			FillRound(screen, rect, rowRadius, ColorHover())
 		}
@@ -107,9 +138,27 @@ func (m *Menu) Draw(screen *ebiten.Image, theme *Theme) {
 			left += IconSize + treeLabelGap
 		}
 		ink := ColorInk()
-		if item.Disabled {
+		switch {
+		case item.Disabled:
 			ink = ColorSubdued()
+		case item.Danger:
+			ink = ColorWarn()
 		}
 		theme.DrawText(screen, item.Label, left, rect.Min.Y+(RowHeight-TextSize)/Half-1, ink)
 	}
+}
+
+// MenuWidth returns a width that fits every item's label, at least the
+// default width.
+func MenuWidth(items []MenuItem, theme *Theme) int {
+	width := menuWidth
+	for _, item := range items {
+		labelWidth := theme.TextWidth(item.Label) + Half*Half*menuPad
+		if item.Icon != IconNone {
+			labelWidth += IconSize + treeLabelGap
+		}
+		width = max(width, labelWidth)
+	}
+
+	return width
 }

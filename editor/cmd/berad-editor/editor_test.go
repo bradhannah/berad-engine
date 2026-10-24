@@ -125,6 +125,7 @@ type step struct {
 	Pressed    bool            `json:"pressed,omitempty"`
 	Released   bool            `json:"released,omitempty"`
 	Double     bool            `json:"double,omitempty"`
+	Secondary  bool            `json:"secondary,omitempty"`
 	Keys       []string        `json:"keys,omitempty"`
 	Hold       []string        `json:"hold,omitempty"`
 	Text       string          `json:"text,omitempty"`
@@ -190,6 +191,9 @@ func noCrashes(t *testing.T, project string) {
 func click(at string) []step {
 	return []step{{Repeat: 2, At: at, Down: true, Pressed: true}, {Repeat: 2, At: at, Released: true}}
 }
+
+// rightClick presses the right button on a named part of the window.
+func rightClick(at string) step { return step{Repeat: 2, At: at, Secondary: true} }
 
 func doubleClick(at string) []step {
 	return append(click(at), step{Repeat: 2, At: at, Down: true, Pressed: true, Double: true}, step{Repeat: 2, At: at, Released: true})
@@ -279,12 +283,15 @@ func closeBrowser() []step {
 // ground through the orchestrator, a drag with the Walls tool draws walls in
 // the chosen family, undo takes the walls back in one step, and the result is
 // in the saved file. Then the Resize tool adds a row on top with its button,
-// drags the bottom edge down two rows, and undo takes the drag back.
+// drags the bottom edge down two rows, and undo takes the drag back. Last, a
+// right-click on a cell adds an anchor there from its menu, and the Keys
+// button lists the keys.
 func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	zoomed := shotPath(t, "map-zoom.png")
+	zoomed, menuShot := shotPath(t, "map-zoom.png"), shotPath(t, "map-menu.png")
+	keysShot := shotPath(t, "map-keys.png")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
 		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
@@ -294,7 +301,11 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
 		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(10),
 		click("ui:zoom-in"), must("state:zoom:150", 60), click("ui:zoom-fit"), wait(5),
-		step{Repeat: 2, Screenshot: zoomed}, wait(30), quit(),
+		step{Repeat: 2, Screenshot: zoomed}, wait(5),
+		rightClick("cell:-10,5"), must("menu:add-anchor", 60), step{Repeat: 2, Screenshot: menuShot},
+		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30),
+		click("ui:keys"), must("state:keys", 60), step{Repeat: 2, Screenshot: keysShot}, keys("Escape"), wait(5),
+		quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
 
@@ -315,8 +326,11 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	if got := cellOf(t, ground, tilefloor.LayerGround, 0, -13); got != "grass" {
 		t.Fatalf("the added row has ground %q, want the floor's most common ground", got)
 	}
+	if gate, found := ground.AnchorAt(-10, 5); !found || gate.Name != "Gate" {
+		t.Fatalf("anchor added from the right-click menu: %+v %v", gate, found)
+	}
 	noCrashes(t, project)
-	t.Logf("screenshot: %s", zoomed)
+	t.Logf("screenshots: %s %s %s", zoomed, menuShot, keysShot)
 }
 
 // TestWallFamiliesForARoomAndARun selects a room by double-clicking inside it
@@ -431,7 +445,8 @@ func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
 
 // TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
 // inspector by typing a name and clicking Save, deletes the text document
-// after confirming, and undoes the deletion.
+// after confirming, and undoes the deletion. Its status bar keeps the window
+// on top and lets it go again.
 func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -443,7 +458,8 @@ func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 		click("ui:name"), keys("Cmd+A"), typed("Harbour"), step{Repeat: 2, Screenshot: shot}, click("ui:save"),
 		must("row:Harbour", 300),
 		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
-		keys("Cmd+Z"), expect("row:Notes", 300), wait(10), quit(),
+		keys("Cmd+Z"), expect("row:Notes", 300), wait(10),
+		click("ui:on-top"), must("state:on-top", 60), wait(10), click("ui:on-top"), wait(5), quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
@@ -484,29 +500,36 @@ func TestViewsShareUndo(t *testing.T) {
 // start the player inside the building, arrow keys walk them onto the stairs
 // and up to the same cell of the upper floor, and a second view of the zone
 // shows the player as they walk. The preview changes nothing in the project.
+// The Clock window opens by itself, on top, and its +1h moves the preview's
+// clock on an hour.
 func TestPreviewWalksAndClimbs(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	walking, upstairs, seen := shotPath(t, "preview.png"), shotPath(t, "preview-upstairs.png"), shotPath(t, "preview-other-view.png")
+	clockShot := shotPath(t, "clock.png")
 	first := script(
 		expect("state:loaded", 600), wait(5), keys("Cmd+N"), wait(120),
 		keys("P"), click("cell:2,-2"), expect("state:previewing", 300),
 		walk("Right"), expect("state:player:3,-2", 120), step{Repeat: 2, Screenshot: walking}, wait(90),
 		walk("Right"), expect("state:floor:2", 120), expect("state:player:4,-2", 120),
-		step{Repeat: 2, Screenshot: upstairs}, wait(60), keys("P"), wait(60), quit(),
+		step{Repeat: 2, Screenshot: upstairs}, must("state:clock:09:", 1200), wait(30), keys("P"), wait(60), quit(),
+	)
+	clockScript := script(
+		must("state:running", 900), must("state:on-top", 60), must("state:time:08:", 300),
+		click("ui:hour-on"), must("state:time:09:", 300), step{Repeat: 2, Screenshot: clockShot}, wait(10), quit(),
 	)
 	second := script(
 		expect("state:loaded", 600), expect("state:remote-player:3,-2", 900),
 		step{Repeat: 2, Screenshot: seen}, expect("state:remote-player:4,-2", 600), wait(30), quit(),
 	)
-	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}, "clock": {clockScript}})
 
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, 4, -2) != "stairs.up" || envelope.Revision != 0 {
 		t.Fatalf("the preview must not change the project: revision %d", envelope.Revision)
 	}
-	for _, shot := range []string{walking, upstairs, seen} {
+	for _, shot := range []string{walking, upstairs, seen, clockShot} {
 		if _, err := os.Stat(shot); err != nil {
 			t.Fatalf("missing screenshot: %v", err)
 		}
@@ -732,8 +755,10 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10),
 		click("ui:step"), must("state:stepped", 300), wait(10), step{Repeat: 2, Screenshot: stepShot}, wait(10), quit(),
 	)
+	clockScript := script(must("state:running", 2400), wait(30), quit())
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "watch": {watchScript},
+		"clock": {clockScript},
 	})
 	noCrashes(t, project)
 

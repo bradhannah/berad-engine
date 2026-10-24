@@ -165,6 +165,15 @@ step is running, and carries the watched NPC's changes in the latest step.
 The window running the preview runs a step as fast as it can, up to a minute
 of ticks a frame, until the watched NPC changes node.
 
+**As built (protocol version 8):** a control can also set the clock's rate,
+jump it to a time of day, and stop or start it. Clock windows receive every
+preview's starts, states and stops, whatever its zone, and may send
+controls; when a preview starts and no Clock window is open, the
+orchestrator opens one. The time the next preview starts at is session state
+under its own topic, set by the Clock window: the orchestrator keeps it and
+gives it to every window, including ones that open later, and until it is
+set a preview starts at 08:00.
+
 ## D8 — Large data
 
 Art is served by the orchestrator. Windows cache assets by content fingerprint

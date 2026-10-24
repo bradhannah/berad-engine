@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 7
+const Version = 8
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -147,6 +147,20 @@ type Session struct {
 
 // TopicNotice is the session topic for user-facing notices.
 const TopicNotice = "notice"
+
+// TopicClockStart is the session topic for the time the next preview starts
+// at, a ClockStart. The Clock window sets it; until then a preview starts at
+// DefaultClockStart.
+const TopicClockStart = "clock-start"
+
+// DefaultClockStart is the time of day, in seconds, a preview starts at until
+// the Clock window sets another: 08:00.
+const DefaultClockStart = 8 * 3600
+
+// ClockStart is the time of day, in seconds, the next preview starts at.
+type ClockStart struct {
+	Seconds float64 `json:"seconds"`
+}
 
 // NoticeWindowCrashed is the notice kind for a window that closed unexpectedly.
 const NoticeWindowCrashed = "window-crashed"
@@ -307,21 +321,29 @@ type PreviewState struct {
 
 // Preview controls.
 const (
-	ControlWatch  = "watch"
-	ControlPause  = "pause"
-	ControlResume = "resume"
-	ControlStep   = "step"
+	ControlWatch      = "watch"
+	ControlPause      = "pause"
+	ControlResume     = "resume"
+	ControlStep       = "step"
+	ControlRate       = "rate"
+	ControlJump       = "jump"
+	ControlStopClock  = "stop-clock"
+	ControlStartClock = "start-clock"
 )
 
 // PreviewControl asks the window running a preview to watch an NPC, by its
 // placement, or to pause, resume or step its NPCs: a step runs them, as fast
-// as it can, until the watched NPC changes node, then pauses them. It comes from a Watch window or another Map
-// window of the zone, and the orchestrator passes it to the window running
-// the preview.
+// as it can, until the watched NPC changes node, then pauses them. It also
+// runs the preview's clock: a rate, a jump to a time of day in Seconds, and
+// stopping and starting it. It comes from a Watch window, the Clock window
+// or another Map window of the zone, and the orchestrator passes it to the
+// window running the preview.
 type PreviewControl struct {
 	Run       ids.ULID `json:"run"`
 	Action    string   `json:"action"`
 	Placement ids.ULID `json:"placement,omitzero"`
+	Rate      int      `json:"rate,omitempty"`
+	Seconds   float64  `json:"seconds,omitempty"`
 }
 
 // PreviewStop ends a preview. The window running it sends it; the

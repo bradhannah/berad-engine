@@ -109,7 +109,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		focus:   ui.Focus{},
 		name:    ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
 		named:   ids.ULID{},
-		newMenu: button("new", "New"), menu: ui.Menu{Items: menuItems()},
+		newMenu: button("new", "New"), menu: ui.Menu{Items: menuItems(), Width: 0},
 		open: button("open", "Open"), floorButton: button(newFloor, "Add floor"), up: button("move-up", "Move up"),
 		down: button("move-down", "Move down"), remove: button("delete", "Delete"), save: ui.NewSaveBar(),
 		guard:  frame.Guard{},
@@ -125,11 +125,11 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 // menuItems lists what New ▾ creates.
 func menuItems() []ui.MenuItem {
 	return []ui.MenuItem{
-		{ID: newZone, Label: "Zone", Icon: ui.IconZone, Disabled: false},
-		{ID: newFloor, Label: "Floor in the selected zone", Icon: ui.IconFloor, Disabled: false},
-		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false},
-		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false},
-		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false},
+		{ID: newZone, Label: "Zone", Icon: ui.IconZone, Disabled: false, Danger: false, Rule: false},
+		{ID: newFloor, Label: "Floor in the selected zone", Icon: ui.IconFloor, Disabled: false, Danger: false, Rule: false},
+		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false, Danger: false, Rule: false},
+		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
+		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 	}
 }
 

@@ -127,18 +127,21 @@ const (
 
 // State is one Map window.
 type State struct {
-	window   ids.ULID
-	zone     ids.ULID
-	theme    *ui.Theme
-	floors   []ids.ULID
-	floor    ids.ULID
-	subs     map[ids.ULID]bool
-	tool     Tool
-	tile     map[Tool]string
-	camera   camera
-	size     image.Point
+	window ids.ULID
+	zone   ids.ULID
+	theme  *ui.Theme
+	floors []ids.ULID
+	floor  ids.ULID
+	subs   map[ids.ULID]bool
+	tool   Tool
+	tile   map[Tool]string
+	camera camera
+	size   image.Point
+	// hover is the cell under the cursor: hovering when it is on the floor,
+	// outside when it is beyond the floor bounds.
 	hover    Cell
 	hovering bool
+	outside  bool
 	stroke   stroke
 	rect     *rectDrag
 	drag     *anchorDrag
@@ -152,13 +155,17 @@ type State struct {
 	names     *project.Index
 	placedNPC ids.ULID
 	behaviour ids.ULID
-	pick      *protocol.PickStart
-	wheel     float64
-	lastPan   image.Point
-	panning   bool
-	framed    bool
-	resizing  *resizeDrag
-	cursor    image.Point
+	// menu is the open right-click menu; openLoaded is the placement whose
+	// behaviour it asked to open, waiting for the NPC to load.
+	menu       *cellMenu
+	openLoaded ids.ULID
+	pick       *protocol.PickStart
+	wheel      float64
+	lastPan    image.Point
+	panning    bool
+	framed     bool
+	resizing   *resizeDrag
+	cursor     image.Point
 	// choosing waits for the cell where a preview's player starts; starting
 	// waits for the orchestrator to agree. preview is this window's own
 	// preview, remote another window's preview of the zone.
@@ -181,17 +188,18 @@ type State struct {
 	deleteBtn *ui.Button
 	replace   *ui.Button
 	previewBn *ui.Button
-	openBn    *ui.Button
-	removeBn  *ui.Button
-	// The preview's start time, clock controls and Watch.
-	startField *ui.TextField
-	jumpField  *ui.TextField
-	jumpBn     *ui.Button
-	rateBns    []*ui.Button
-	stopBn     *ui.Button
-	watchBn    *ui.Button
-	sides      []sideButtons
-	focus      ui.Focus
+	// keysBn opens keySheet, the list of the window's keys.
+	keysBn   *ui.Button
+	keySheet ui.KeySheet
+	openBn   *ui.Button
+	removeBn *ui.Button
+	// clockBn opens the Clock window and watchBn the Watch window; start is
+	// the time of day the next preview starts at, set in the Clock window.
+	clockBn *ui.Button
+	watchBn *ui.Button
+	start   float64
+	sides   []sideButtons
+	focus   ui.Focus
 
 	dialog        *ui.Dialog
 	dialogKind    dialogKind
@@ -201,14 +209,13 @@ type State struct {
 
 // New returns the Map window for a zone.
 func New(window, zone ids.ULID, theme *ui.Theme) *State {
-	rateBns, stopBn, watchBn := newPreviewButtons()
 	view := &State{
 		window: window, zone: zone, theme: theme, floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
-		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
+		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false, outside: false,
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
-		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{},
+		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{}, menu: nil, openLoaded: ids.ULID{},
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
@@ -218,23 +225,20 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
 		nameField: ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
 		named:     ids.ULID{}, save: ui.NewSaveBar(), guard: frame.Guard{}, zoom: newZoomControl(),
-		deleteBtn:  ui.NewButton("delete-anchor", "Delete anchor"),
-		replace:    ui.NewButton("replace-family", "Replace family everywhere…"),
-		previewBn:  ui.NewButton("preview", "Preview"),
-		openBn:     ui.NewButton("open-behaviour", "Open behaviour"),
-		removeBn:   ui.NewButton("remove-npc", "Remove"),
-		startField: ui.NewTextField("start-time", textedit.NewField("", false, clockFieldBytes), false, theme),
-		jumpField:  ui.NewTextField("jump-time", textedit.NewField("", false, clockFieldBytes), false, theme),
-		jumpBn:     ui.NewButton("jump", "Jump"),
-		rateBns:    rateBns, stopBn: stopBn, watchBn: watchBn,
+		deleteBtn: ui.NewButton("delete-anchor", "Delete anchor"),
+		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
+		previewBn: ui.NewButton("preview", "Preview"),
+		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
+		openBn:   ui.NewButton("open-behaviour", "Open behaviour"),
+		removeBn: ui.NewButton("remove-npc", "Remove"),
+		clockBn:  ui.NewButton("clock", "Clock"), watchBn: ui.NewButton("watch", "Watch"),
+		start:  protocol.DefaultClockStart,
 		sides:  newSideButtons(),
 		focus:  ui.Focus{},
 		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
-	view.startField.Field.SetSaved(defaultStart)
 	view.deleteBtn.Danger = true
-	view.jumpField.Placeholder = "Jump to…"
-	view.focus.Register(view.nameField, view.startField, view.jumpField)
+	view.focus.Register(view.nameField)
 	for _, info := range tools() {
 		row := ui.NewRow(string(info.tool), info.label)
 		row.Detail = string(info.key)
@@ -294,6 +298,11 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		s.previewChanged(update, ctx)
 	case update.PreviewControl != nil:
 		s.control(*update.PreviewControl, ctx)
+	case update.Session != nil && update.Session.Topic == protocol.TopicClockStart:
+		var start protocol.ClockStart
+		if err := json.Unmarshal(update.Session.Value, &start); err == nil {
+			s.start = start.Seconds
+		}
 	case update.PickStart != nil:
 		start := *update.PickStart
 		s.pick = &start
@@ -464,13 +473,22 @@ func (s *State) layoutInspector() {
 	if len(s.selected) > 0 {
 		s.replace.Rect = image.Rect(left, replaceTop, left+width, replaceTop+ui.ButtonH)
 	}
-	s.layoutPreview(left, width, inspector.Max.Y-len(helpLines())*ui.LineHeight)
+	s.keysBn.Rect = image.Rect(left+width-keysWidth, inspector.Max.Y-ui.Inset-ui.ButtonH, left+width,
+		inspector.Max.Y-ui.Inset)
+	s.layoutPreview(left, width, footTop(inspector))
 	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero() &&
 		s.placement.IsZero())
 }
 
+// footTop is where the inspector's sections at its foot end, above the
+// Keys button.
+func footTop(inspector image.Rectangle) int {
+	return inspector.Max.Y - ui.Inset - ui.ButtonH - ui.Inset
+}
+
 // Inspector layout, from the top of the panel.
 const (
+	keysWidth         = 72
 	inspectorFieldTop = 6*ui.LineHeight + ui.Inset
 	replaceTop        = inspectorFieldTop + ui.LineHeight*2
 	familyListTop     = replaceTop + ui.ButtonH + ui.LineHeight
@@ -517,14 +535,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.layoutWidgets(ctx.Docs)
-	if s.guard.Active() {
-		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
-
-		return
-	}
-	if s.dialog != nil {
-		s.updateDialog(input, ctx)
-
+	if s.updateOver(input, ctx) {
 		return
 	}
 	s.guardAnchor()
@@ -540,6 +551,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	frame.CommonKeys(input, ctx)
 	s.updatePanels(input, ctx)
 	s.subscribeNPC(ctx)
+	s.openWhenLoaded(ctx)
 	if s.preview != nil {
 		s.stepPreview(input, ctx)
 	} else {
@@ -561,21 +573,37 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 	})
 	if !loaded {
-		s.hovering = false
+		s.hovering, s.outside = false, false
 	}
 	s.guardAnchor()
 }
 
-// updateFields handles the text fields and the anchor's save bar: Enter
-// saves a name, jumps the clock or sets the next preview's start.
+// updateOver gives a frame of input to whatever lies over the window: the
+// unsaved changes guard, a dialog, the right-click menu or the key sheet. It
+// reports whether one took it.
+func (s *State) updateOver(input *ui.Input, ctx *frame.Context) bool {
+	switch {
+	case s.guard.Active():
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
+	case s.dialog != nil:
+		s.updateDialog(input, ctx)
+	case s.menu != nil:
+		s.updateMenu(input, ctx)
+	case s.keySheet.IsOpen():
+		s.keySheet.Update(input)
+	default:
+		return false
+	}
+
+	return true
+}
+
+// updateFields handles the anchor's name field and save bar: Enter saves
+// the name.
 func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
-	switch field, outcome := s.focus.Update(input, ctx.Clipboard); {
-	case field == s.nameField && outcome == textedit.OutcomeCommit:
+	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.nameField &&
+		outcome == textedit.OutcomeCommit {
 		s.saveName(ctx)
-	case field == s.jumpField && outcome == textedit.OutcomeCommit:
-		s.jumpClock(ctx)
-	case field == s.startField && outcome == textedit.OutcomeCommit:
-		s.setStart(ctx)
 	}
 	s.save.Unsaved = s.Unsaved(ctx.Docs)
 	switch s.save.Update(input) {
@@ -623,6 +651,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.below.On = !s.below.On
 	case input.Consume(ui.KeyP, plain):
 		s.togglePreview(ctx)
+	case input.Consume(ui.KeySlash, ui.Mods{Shortcut: false, Shift: true, Alt: false, Control: false}):
+		s.keySheet.Open(image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, s.theme)
 	case s.choosing && input.Consume(ui.KeyEscape, plain):
 		s.togglePreview(ctx)
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
@@ -710,6 +740,9 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 // updateInspectorButtons handles the buttons for what is selected.
 func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 	s.updatePreviewControls(input, ctx)
+	if s.keysBn.Update(input) {
+		s.keySheet.Open(image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, s.theme)
+	}
 	if s.deleteBtn.Update(input) && !s.anchor.IsZero() {
 		s.deleteAnchor(ctx)
 	}
@@ -728,23 +761,10 @@ func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor.Floor) {
 	grid := s.Grid()
 	s.panAndZoom(input, grid)
-	cell, onFloor := s.camera.cellAt(input.Cursor, grid)
-	onFloor = onFloor && floorData.In(cell.X, cell.Y)
-	s.hover, s.hovering = cell, onFloor
-	if s.panning || input.Space {
-		return
-	}
-	if s.pick != nil {
-		s.updatePick(input, ctx, floorData, cell, onFloor)
-
-		return
-	}
-	if s.choosing {
-		s.updateChoosing(input, ctx, floorData, cell, onFloor)
-
-		return
-	}
-	if s.watchClicked(input, ctx, cell, onFloor) {
+	cell, inGrid := s.camera.cellAt(input.Cursor, grid)
+	onFloor := inGrid && floorData.In(cell.X, cell.Y)
+	s.hover, s.hovering, s.outside = cell, onFloor, inGrid && !onFloor && !s.zoom.contains(input.Cursor)
+	if s.panning || input.Space || s.updateGridMode(input, ctx, floorData, cell, inGrid) {
 		return
 	}
 	switch s.tool {
@@ -759,6 +779,27 @@ func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor
 	case ToolResize:
 		s.updateResize(input, ctx, floorData)
 	}
+}
+
+// updateGridMode handles what takes a click before the current tool: picking
+// for another window, choosing where a preview starts, the right-click menu,
+// and watching an NPC in a preview. It reports whether one took it.
+func (s *State) updateGridMode(
+	input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, inGrid bool,
+) bool {
+	onFloor := inGrid && floorData.In(cell.X, cell.Y)
+	switch {
+	case s.pick != nil:
+		s.updatePick(input, ctx, floorData, cell, onFloor)
+	case s.choosing:
+		s.updateChoosing(input, ctx, floorData, cell, onFloor)
+	case input.Secondary && inGrid && !s.zoom.contains(input.Cursor):
+		s.openMenu(floorData, cell, onFloor, input.Cursor)
+	default:
+		return s.watchClicked(input, ctx, cell, onFloor)
+	}
+
+	return true
 }
 
 func (s *State) panAndZoom(input *ui.Input, grid image.Rectangle) {
@@ -867,24 +908,7 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 
 			return
 		}
-		name := uniqueAnchorName(floorData)
-		args := tilefloor.AddAnchorArgs{
-			Anchor: floor.Anchor{ID: ids.ULID{}, Name: name, Col: cell.X, Row: cell.Y}, Index: len(floorData.Anchors()),
-		}
-		s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
-			s.anchor = result.Created
-			if s.nameField.Field.Unsaved() {
-				// The guard asks about the other anchor's unsaved name first.
-				return
-			}
-			s.named = result.Created
-			s.nameField.Field.SetSaved(name)
-			s.focus.Set(s.nameField)
-			if buffer := s.nameField.Field.Buffer(); buffer != nil {
-				buffer.SelectAll()
-			}
-			ctx.Frame.Status("Added “" + name + "”. Type a name, then press Enter or Save.")
-		})
+		s.addAnchor(ctx, floorData, cell)
 	}
 	if s.drag != nil && !input.Down {
 		drag := s.drag
@@ -902,6 +926,30 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 			s.command(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
 		}
 	}
+}
+
+// addAnchor adds an anchor on a cell with a name not yet used, selects it
+// and focuses its name, ready to type over.
+func (s *State) addAnchor(ctx *frame.Context, floorData *floor.Floor, cell Cell) {
+	name := uniqueAnchorName(floorData)
+	args := tilefloor.AddAnchorArgs{
+		Anchor: floor.Anchor{ID: ids.ULID{}, Name: name, Col: cell.X, Row: cell.Y}, Index: len(floorData.Anchors()),
+	}
+	s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
+		s.anchor = result.Created
+		s.placement, s.selected = ids.ULID{}, nil
+		if s.nameField.Field.Unsaved() {
+			// The guard asks about the other anchor's unsaved name first.
+			return
+		}
+		s.named = result.Created
+		s.nameField.Field.SetSaved(name)
+		s.focus.Set(s.nameField)
+		if buffer := s.nameField.Field.Buffer(); buffer != nil {
+			buffer.SelectAll()
+		}
+		ctx.Frame.Status("Added “" + name + "”. Type a name, then press Enter or Save.")
+	})
 }
 
 // uniqueAnchorName returns "Anchor N" not yet used on the floor.
@@ -1301,11 +1349,8 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
-	if s.guard.Active() {
-		return s.guard.Locate(value, s.size)
-	}
-	if s.dialog != nil {
-		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	if point, found, over := s.locateOver(kind, value); over {
+		return point, found
 	}
 	switch kind {
 	case "state":
@@ -1349,23 +1394,25 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
 // is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
+	simple := map[string]bool{"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen()}
+	if value, isSimple := simple[state]; isSimple {
+		return value
+	}
 	switch {
 	case state == "loaded":
 		return !s.floor.IsZero() && s.framed && docs.View(s.floor, func(client.Document) {})
 	case strings.HasPrefix(state, "bounds:"):
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
-	case state == "picking":
-		return s.pick != nil
 	case strings.HasPrefix(state, "zoom:"):
 		s.zoom.layout(s.Grid(), s.camera)
 
 		return s.zoom.reset.Label == strings.TrimPrefix(state, "zoom:")+"%"
-	case state == "previewing":
-		return s.preview != nil
 	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"):
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
+	case strings.HasPrefix(state, "clock:"):
+		return s.clockShows(strings.TrimPrefix(state, "clock:"))
 	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"):
 		which, cell, _ := strings.Cut(state, ":")
 
@@ -1380,6 +1427,28 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 }
 
 // locateFloor finds the Nth floor from the bottom in the floor list.
+// locateOver finds a part of whatever lies over the window: the unsaved
+// changes guard, a dialog, or the right-click menu. over reports whether
+// one does.
+func (s *State) locateOver(kind, value string) (image.Point, bool, bool) {
+	switch {
+	case s.guard.Active():
+		point, found := s.guard.Locate(value, s.size)
+
+		return point, found, true
+	case s.dialog != nil:
+		point, found := s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+
+		return point, found, true
+	case s.menu != nil && kind == "menu":
+		point, found := s.menu.Locate(value)
+
+		return point, found, true
+	}
+
+	return image.Pt(0, 0), false, false
+}
+
 func (s *State) locateFloor(value string) (image.Point, bool) {
 	number, err := strconv.Atoi(value)
 	if err != nil || number < 1 || number > len(s.floors) {
@@ -1408,6 +1477,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return center(s.openBn.Rect), true
 	case s.removeBn.ID:
 		return center(s.removeBn.Rect), true
+	case s.keysBn.ID:
+		return center(s.keysBn.Rect), true
 	}
 	if at, found := s.locatePreviewWidget(widget); found {
 		return at, true

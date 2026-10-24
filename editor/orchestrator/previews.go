@@ -1,6 +1,9 @@
 package orchestrator
 
 import (
+	"errors"
+
+	projectindex "github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -22,6 +25,10 @@ type preview struct {
 
 // WatchView is the Watch window's view name; its target is a zone.
 const WatchView = "watch"
+
+// ClockView is the Clock window's view name; its target is the project
+// index, as it shows the preview of whichever zone runs one.
+const ClockView = "clock"
 
 // handlePreview routes one of the preview messages.
 func (o *Orchestrator) handlePreview(from *window, message protocol.Message) {
@@ -77,6 +84,25 @@ func (o *Orchestrator) previewStart(from *window, message protocol.Message) {
 	}))
 	start.Run, start.Window = run, from.id
 	o.toZoneViews(mustMessage(protocol.KindPreviewStart, 0, start), false)
+	o.openClock()
+}
+
+// openClock opens the Clock window for a preview that has started, unless
+// one is open or opening.
+func (o *Orchestrator) openClock() {
+	for _, open := range o.windows {
+		if open.hello.View == ClockView {
+			return
+		}
+	}
+	for _, started := range o.children {
+		if started.request.View == ClockView {
+			return
+		}
+	}
+	if _, err := o.launch(ClockView, projectindex.IndexID()); err != nil && !errors.Is(err, ErrNoLauncher) {
+		o.cfg.Logger.Warn("could not open the Clock window", "error", err)
+	}
 }
 
 // previewState keeps the running preview's latest state and passes it on.
@@ -128,9 +154,9 @@ func (o *Orchestrator) previewJoined(joined *window) {
 	}
 }
 
-// toZoneViews sends a preview message to every Map window of the preview's
-// zone except the one running it. A state is skipped for a window that is
-// behind: the next one carries a newer value, so it never builds a backlog.
+// toZoneViews sends a preview message to every window that shows the preview
+// except the one running it. A state is skipped for a window that is behind:
+// the next one carries a newer value, so it never builds a backlog.
 func (o *Orchestrator) toZoneViews(message protocol.Message, latestWins bool) {
 	for _, open := range o.windows {
 		if !o.showsPreview(open) {
@@ -144,8 +170,15 @@ func (o *Orchestrator) toZoneViews(message protocol.Message, latestWins bool) {
 }
 
 // showsPreview reports whether a window other than the one running the
-// preview shows it: a Map window or a Watch window of its zone.
+// preview shows it: a Map window or a Watch window of its zone, or the Clock
+// window.
 func (o *Orchestrator) showsPreview(open *window) bool {
-	return open.id != o.preview.owner && (open.hello.View == MapView || open.hello.View == WatchView) &&
-		open.hello.Target == o.preview.zone
+	if open.id == o.preview.owner {
+		return false
+	}
+	if open.hello.View == ClockView {
+		return true
+	}
+
+	return (open.hello.View == MapView || open.hello.View == WatchView) && open.hello.Target == o.preview.zone
 }

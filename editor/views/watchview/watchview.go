@@ -190,7 +190,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.state == nil {
 		return
 	}
-	control := protocol.PreviewControl{Run: s.run, Action: "", Placement: s.state.Watched}
+	control := protocol.PreviewControl{Run: s.run, Action: "", Placement: s.state.Watched, Rate: 0, Seconds: 0}
 	switch {
 	case s.pause.Update(input):
 		control.Action = protocol.ControlPause

@@ -59,6 +59,10 @@ type host struct {
 	quitAsking bool
 	quitSaving bool
 	reported   protocol.Unsaved
+	// floating is whether the window was last asked to stay on top, and
+	// float asks; tests replace it.
+	floating bool
+	float    func(bool)
 }
 
 func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme) *host {
@@ -72,6 +76,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
+		floating: false, float: ebiten.SetWindowFloating,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -102,6 +107,8 @@ func (h *host) Update() error {
 	} else {
 		input = h.reader.read(h.view.Focused())
 	}
+	h.frame.UpdateStatus(&input, h.ctx.Size)
+	h.applyOnTop()
 	h.windowKeys(&input)
 	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
@@ -125,6 +132,16 @@ func (h *host) Update() error {
 	}
 
 	return nil
+}
+
+// applyOnTop keeps the window above every other window while the status
+// bar's On top toggle is on.
+func (h *host) applyOnTop() {
+	if h.frame.OnTop.On == h.floating {
+		return
+	}
+	h.floating = h.frame.OnTop.On
+	h.float(h.floating)
 }
 
 // save saves a Saver's typed changes for Cmd+S, or says there is nothing
@@ -323,6 +340,17 @@ func (h *host) Open(view string, target ids.ULID, newView bool) {
 
 		return func() { h.frame.Report("")(result, err) }
 	})
+}
+
+// Publish sets session state every window shares.
+func (h *host) Publish(topic string, value any) {
+	encoded, err := json.Marshal(value)
+	if err == nil {
+		err = h.conn.Publish(topic, encoded)
+	}
+	if err != nil {
+		h.frame.Status(err.Error())
+	}
 }
 
 // WhereUsed asks where a document or item is used.

@@ -29,7 +29,7 @@ func keyNames() map[ebiten.Key]ui.Key {
 		ebiten.KeySpace: ui.KeySpace, ebiten.KeyArrowLeft: ui.KeyLeft, ebiten.KeyArrowRight: ui.KeyRight,
 		ebiten.KeyArrowUp: ui.KeyUp, ebiten.KeyArrowDown: ui.KeyDown, ebiten.KeyHome: ui.KeyHome,
 		ebiten.KeyEnd: ui.KeyEnd, ebiten.KeyPageUp: ui.KeyPageUp, ebiten.KeyPageDown: ui.KeyPageDown,
-		ebiten.KeyEqual: ui.KeyEqual, ebiten.KeyMinus: ui.KeyMinus,
+		ebiten.KeyEqual: ui.KeyEqual, ebiten.KeyMinus: ui.KeyMinus, ebiten.KeySlash: ui.KeySlash,
 	}
 	for offset := range 26 {
 		names[ebiten.KeyA+ebiten.Key(offset)] = ui.Key(string(rune('A' + offset)))
@@ -55,12 +55,16 @@ type inputReader struct {
 	compose   string
 	lastPress time.Time
 	lastPoint image.Point
+	// controlClick is true from a Control-click on macOS until its release:
+	// the whole click is a right-click.
+	controlClick bool
 }
 
 func newInputReader() *inputReader {
 	reader := &inputReader{
 		names: keyNames(), composer: newComposer(), field: nil, before: "", after: "",
 		text: strings.Builder{}, replace: nil, compose: "", lastPress: time.Time{}, lastPoint: image.Pt(0, 0),
+		controlClick: false,
 	}
 	reader.composer.OnNewSession = reader.newSession
 	reader.composer.OnComposition = func(composition *textinput.Composition) { reader.compose = composition.Text() }
@@ -121,6 +125,7 @@ func (r *inputReader) read(focused *ui.TextField) ui.Input {
 	input.WheelX, input.WheelY = ebiten.Wheel()
 	input.Held = heldMods()
 	input.Space = ebiten.IsKeyPressed(ebiten.KeySpace)
+	r.readSecondary(&input)
 	if input.Pressed {
 		now := time.Now()
 		distance := input.Cursor.Sub(r.lastPoint)
@@ -143,6 +148,26 @@ func (r *inputReader) read(focused *ui.TextField) ui.Input {
 	r.runInputMethod(&input, focused)
 
 	return input
+}
+
+// macOS is runtime.GOOS on a Mac.
+const macOS = "darwin"
+
+// readSecondary marks a right-button press. On macOS a Control-click is a
+// right-click too, so its press, hold and release never reach the main
+// button.
+func (r *inputReader) readSecondary(input *ui.Input) {
+	input.Secondary = inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
+	if runtime.GOOS == macOS && input.Pressed && input.Held.Control {
+		r.controlClick, input.Secondary = true, true
+	}
+	if !r.controlClick {
+		return
+	}
+	if input.Released || !input.Down {
+		r.controlClick = false
+	}
+	input.Pressed, input.Down, input.Released = false, false, false
 }
 
 // runInputMethod feeds the focused field's input method. While the input
@@ -196,7 +221,7 @@ func heldMods() ui.Mods {
 	meta := ebiten.IsKeyPressed(ebiten.KeyMeta)
 	control := ebiten.IsKeyPressed(ebiten.KeyControl)
 	shortcut := meta
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != macOS {
 		shortcut = control
 	}
 

@@ -25,20 +25,22 @@ const scriptEnv = "BERAD_INPUT_SCRIPT"
 // the input method: Replace is what pressing and holding a key for an accent
 // produces. Hold names keys held down for every frame of the step.
 type scriptStep struct {
-	Repeat   int              `json:"repeat"`
-	At       string           `json:"at"`
-	Down     bool             `json:"down"`
-	Pressed  bool             `json:"pressed"`
-	Released bool             `json:"released"`
-	Double   bool             `json:"double"`
-	Keys     []string         `json:"keys"`
-	Hold     []string         `json:"hold"`
-	Text     string           `json:"text"`
-	Replace  *ui.Replacement  `json:"replace"`
-	Wheel    *[2]float64      `json:"wheel"`
-	Held     string           `json:"held"`
-	Space    bool             `json:"space"`
-	Expect   *scriptExpection `json:"expect"`
+	Repeat   int    `json:"repeat"`
+	At       string `json:"at"`
+	Down     bool   `json:"down"`
+	Pressed  bool   `json:"pressed"`
+	Released bool   `json:"released"`
+	Double   bool   `json:"double"`
+	// Secondary is a right-button press.
+	Secondary bool             `json:"secondary"`
+	Keys      []string         `json:"keys"`
+	Hold      []string         `json:"hold"`
+	Text      string           `json:"text"`
+	Replace   *ui.Replacement  `json:"replace"`
+	Wheel     *[2]float64      `json:"wheel"`
+	Held      string           `json:"held"`
+	Space     bool             `json:"space"`
+	Expect    *scriptExpection `json:"expect"`
 	// Screenshot saves the window to this path after the first frame of the
 	// step.
 	Screenshot string `json:"screenshot"`
@@ -121,6 +123,7 @@ func (s *inputScript) next(view locator, docs frame.Docs) ui.Input {
 	input.Pressed = step.Pressed && first
 	input.Released = step.Released && first
 	input.DoubleClick = step.Double && first
+	input.Secondary = step.Secondary && first
 	input.Held = ui.ParsePress(step.Held + "+x").Mods
 	input.Space = step.Space
 	for _, key := range step.Hold {
