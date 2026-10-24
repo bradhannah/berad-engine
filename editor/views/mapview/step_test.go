@@ -18,6 +18,14 @@ func (f *fixture) control(action string, placement ids.ULID) {
 	}}, f.ctx)
 }
 
+// clockControl sends the preview a control for its clock, as the Clock
+// window does.
+func (f *fixture) clockControl(action string, rate int, seconds float64) {
+	f.state.Changed(client.Update{PreviewControl: &protocol.PreviewControl{
+		Run: runID, Action: action, Rate: rate, Seconds: seconds,
+	}}, f.ctx)
+}
+
 // TestStepGoesStraightToTheNextNode steps the clerk past its hour-long Wait
 // in one frame, keeping the way it went until the NPCs resume; at the real
 // rate a step runs over several frames, and comes back round to the Wait
@@ -53,7 +61,7 @@ func TestStepGoesStraightToTheNextNode(t *testing.T) {
 	if state := f.lastState(); state.NPCsPaused || len(state.Step) != 0 {
 		t.Fatalf("resuming forgets the step: %+v", state)
 	}
-	f.click("ui:rate-1")
+	f.clockControl(protocol.ControlRate, 1, 0)
 	f.control(protocol.ControlPause, clerkPlacement)
 	f.control(protocol.ControlStep, clerkPlacement)
 	f.idle(2)

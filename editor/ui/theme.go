@@ -16,10 +16,13 @@ import (
 
 // Sizes, in screen pixels.
 const (
-	TextSize    = 13
-	LabelSize   = 11
-	MonoSize    = 11
-	TitleSize   = 16
+	TextSize  = 13
+	LabelSize = 11
+	MonoSize  = 11
+	TitleSize = 16
+	// DisplaySize is the size of large figures, such as the Clock window's
+	// time.
+	DisplaySize = 36
 	LineHeight  = 20
 	Inset       = 14
 	RowHeight   = 24
@@ -58,6 +61,7 @@ const (
 	hexSelectWash = 0xe8eef8
 	hexPanel      = 0xf7f7f5
 	hexCanvas     = 0xfafaf8
+	hexOutside    = 0xebece8
 	hexRule       = 0xc9cbc5
 	hexRuleSoft   = 0xe4e5e1
 	hexWarn       = 0xb3261e
@@ -129,6 +133,9 @@ func ColorPanel() color.RGBA { return Hex(hexPanel) }
 // ColorCanvas is the background of a map or workflow canvas.
 func ColorCanvas() color.RGBA { return Hex(hexCanvas) }
 
+// ColorOutside is the shade of a map beyond the floor bounds.
+func ColorOutside() color.RGBA { return Hex(hexOutside) }
+
 // ColorRule is the colour of light dividing lines and canvas dots.
 func ColorRule() color.RGBA { return Hex(hexRule) }
 
@@ -168,14 +175,15 @@ func ColorShade() color.RGBA { return HexAlpha(0, shadeAlpha) }
 // Theme holds the fonts every widget draws with.
 type Theme struct {
 	// Face draws text, Strong its semi-bold form, Small the small uppercase
-	// labels, Title headings, and Mono and MonoStrong numbers, times and
-	// IDs.
+	// labels, Title headings, Mono and MonoStrong numbers, times and IDs,
+	// and Display large figures.
 	Face       *etext.GoTextFace
 	Strong     *etext.GoTextFace
 	Small      *etext.GoTextFace
 	Title      *etext.GoTextFace
 	Mono       *etext.GoTextFace
 	MonoStrong *etext.GoTextFace
+	Display    *etext.GoTextFace
 	// Font lays out and draws editable text.
 	Font *berad.Font
 	// Text draws laid-out editable text.
@@ -220,7 +228,7 @@ func NewTheme() (*Theme, error) {
 	return &Theme{
 		Face: face("sans", TextSize), Strong: face("sans-bold", TextSize), Small: face("sans-bold", LabelSize),
 		Title: face("sans-bold", TitleSize), Mono: face("mono", MonoSize), MonoStrong: face("mono-bold", MonoSize),
-		Font: font, Text: renderer,
+		Display: face("mono-bold", DisplaySize), Font: font, Text: renderer,
 	}, nil
 }
 
@@ -229,6 +237,22 @@ func (t *Theme) Close() { t.Text.Close() }
 
 // TextWidth measures text in the ordinary face.
 func (t *Theme) TextWidth(value string) int { return measure(value, t.Face) }
+
+// FitText shortens text in the ordinary face to fit a width, ending it with
+// an ellipsis when it had to be cut.
+func (t *Theme) FitText(value string, width int) string {
+	if t.TextWidth(value) <= width {
+		return value
+	}
+	runes := []rune(value)
+	for cut := len(runes) - 1; cut > 0; cut-- {
+		if shortened := strings.TrimRight(string(runes[:cut]), " ") + "\u2026"; t.TextWidth(shortened) <= width {
+			return shortened
+		}
+	}
+
+	return ""
+}
 
 // StrongWidth measures text in the semi-bold face.
 func (t *Theme) StrongWidth(value string) int { return measure(value, t.Strong) }
@@ -274,6 +298,12 @@ func (t *Theme) DrawMono(screen *ebiten.Image, value string, x, y int, ink color
 // DrawMonoStrong draws semi-bold monospaced text.
 func (t *Theme) DrawMonoStrong(screen *ebiten.Image, value string, x, y int, ink color.Color) {
 	draw(screen, value, t.MonoStrong, float64(x), float64(y), ink)
+}
+
+// DrawDisplay draws large semi-bold monospaced figures with their top-left
+// corner at a point.
+func (t *Theme) DrawDisplay(screen *ebiten.Image, value string, x, y int, ink color.Color) {
+	draw(screen, value, t.Display, float64(x), float64(y), ink)
 }
 
 // DrawLabel draws a small uppercase label with spread letters, the

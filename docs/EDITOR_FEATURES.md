@@ -38,6 +38,10 @@ under consideration), **open** (undecided).
   colour beside it, never by colour alone: zones and floors green, workflows
   purple, NPCs slate, text brown. Blue and orange stay for selection and
   live.
+- **Agreed:** any window can be kept on top of the others with the On top
+  toggle at the right of its status bar. The Clock window starts on top.
+- **Agreed:** a window's keys are listed on a sheet opened with its Keys
+  button or ?, rather than always on screen.
 
 ## Maps and tiles
 
@@ -75,6 +79,13 @@ under consideration), **open** (undecided).
   share one undo list.
 - **Agreed:** pan and zoom the map; integer cell sizes keep pixel art uniformly
   scaled once real tiles replace stand-ins.
+- **Agreed:** beyond the floor bounds the map is shaded, with a fainter grid of
+  the same cells, so the space around the floor can be pictured.
+- **Agreed:** right-click on the map opens a menu of what can be done at that
+  cell, acting on what is there (an anchor, an NPC placement, a wall) or on
+  the cell itself (add an anchor, place the chosen NPC, remove what is on
+  top, preview from here). On a cell beyond the floor bounds it offers
+  Extend floor to here.
 - **Agreed:** the **zone origin**, cell 0,0, is fixed and shown on the map, and
   every floor of a zone shares it, so stairs line up. Floors grow or shrink on
   any side without moving what is already placed; cells left of or above the
@@ -211,6 +222,11 @@ under consideration), **open** (undecided).
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
   new time immediately rather than simulating the gap: each restarts its
   workflow from the start and walks to wherever its new branch sends it.
+- **Agreed:** the clock's controls live in the Clock window, as in the
+  wireframes. Before a preview it sets the time the next one starts at;
+  during one it runs the preview's clock: an hour back or on, a jump to a
+  time, stopping and starting it, and its rate. It opens by itself when a
+  preview starts, and is on top by default.
 - **Agreed (early compromise):** editing during preview restarts affected NPCs'
   behaviour rather than preserving their place in a changed workflow.
 - **Agreed:** a workflow view can show the step each NPC is on and its inputs,

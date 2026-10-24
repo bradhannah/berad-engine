@@ -1,7 +1,6 @@
 package mapview_test
 
 import (
-	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -9,7 +8,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
-	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -70,14 +68,6 @@ func (f *fixture) lastState() protocol.PreviewState {
 	return states[len(states)-1]
 }
 
-func (f *fixture) typeInto(field, text string) {
-	f.click("ui:" + field)
-	input := ui.NewInput(image.Pt(0, 0))
-	input.Text = text
-	f.frame(input)
-	f.keys("Enter")
-}
-
 // TestNPCsFollowTheirWorkflowsInThePreview starts a preview at 08:00: the
 // clerk moves one tile right and waits, its state goes to the other views,
 // the clock's rate changes, a jump restarts it, a click watches it, and a
@@ -96,12 +86,18 @@ func TestNPCsFollowTheirWorkflowsInThePreview(t *testing.T) {
 		state.Rate != 60 || state.Clock < 8*3600 || state.Clock > 8*3600+60 {
 		t.Fatalf("the state carries the clerk and the clock: %+v", state)
 	}
-	f.click("ui:rate-600")
+	f.clockControl(protocol.ControlRate, 600, 0)
 	f.idle(2)
 	if f.lastState().Rate != 600 {
-		t.Fatal("the rate buttons change the clock's rate")
+		t.Fatal("a rate from the Clock window changes the clock's rate")
 	}
-	f.typeInto("jump-time", "12:00")
+	f.clockControl(protocol.ControlStopClock, 0, 0)
+	f.idle(2)
+	if !f.lastState().ClockStopped {
+		t.Fatal("the Clock window stops the clock")
+	}
+	f.clockControl(protocol.ControlStartClock, 0, 0)
+	f.clockControl(protocol.ControlJump, 0, 12*3600)
 	f.idle(play.StepTicks + 2)
 	if clock := f.lastState().Clock; clock < 12*3600 || clock > 12*3600+600 {
 		t.Fatalf("the jump moved the clock: %v", clock)

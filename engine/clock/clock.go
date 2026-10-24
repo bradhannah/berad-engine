@@ -7,6 +7,8 @@ package clock
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
 // unitsPerSecond is how finely the clock counts: in sixtieths of a game
@@ -28,10 +30,14 @@ const (
 const (
 	// TicksPerSecond is how many ticks of the game loop make a real second.
 	TicksPerSecond = 60
-	// Day is the length of a game day.
-	Day              = 24 * 60 * secondsPerMinute
+	// Day is the length of a game day, and Hour of an hour.
+	Day              = hoursPerDay * Hour
+	Hour             = minutesPerHour * secondsPerMinute
 	secondsPerMinute = 60
 	minutesPerHour   = 60
+	hoursPerDay      = 24
+	// clockDigits is the length of a time written without a colon, "0830".
+	clockDigits = 4
 )
 
 // Clock is a game clock. Its zero value stands at midnight and does not
@@ -92,6 +98,26 @@ func Format(seconds float64) string {
 	minute := int(wrap(seconds)) / secondsPerMinute
 
 	return fmt.Sprintf("%02d:%02d", minute/minutesPerHour, minute%minutesPerHour)
+}
+
+// Parse reads a time of day written "8", "8:30", "08:30" or "0830" as
+// seconds from midnight, and reports whether it is one.
+func Parse(value string) (float64, bool) {
+	value = strings.TrimSpace(value)
+	hours, minutes, found := strings.Cut(value, ":")
+	if !found {
+		hours, minutes = value, "0"
+		if len(value) == clockDigits {
+			hours, minutes = value[:2], value[2:]
+		}
+	}
+	hour, hourErr := strconv.Atoi(hours)
+	minute, minuteErr := strconv.Atoi(minutes)
+	if hourErr != nil || minuteErr != nil || hour < 0 || hour >= hoursPerDay || minute < 0 || minute >= minutesPerHour {
+		return 0, false
+	}
+
+	return float64(hour*Hour + minute*secondsPerMinute), true
 }
 
 // RateLabel names a rate as the preview's buttons do.

@@ -66,6 +66,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Draft** | A text field's unsaved text; Save, Cmd+S, or Enter in a one-line field saves it as an ordinary edit |
 | **Save bar** | The strip at the foot of an inspector, or of the Text window, that says how many changes are unsaved and holds Revert and Save |
 | **Section** | A group of one document type in the project browser, such as Zones or NPCs, with a count and a [+] |
+| **On top** | A window kept above every other window, set with the toggle at the right of its status bar; session state for each window |
+| **Clock window** | The preview's clock and its controls, on top by default; before a preview it sets the time the next one starts at |
+| **Keys sheet** | The list of a window's keys, opened with its Keys button or ? |
 | **Pick** | Choosing something in a Map window for another window, through the orchestrator |
 | **Preview** | Playing a zone inside the editor, run by the Map window that started it (D15); it never changes the project |
 | **Run** | One play of a zone from its start; a preview is a run, and each has its own ID |

@@ -95,9 +95,11 @@ type Requests struct {
 	PickAnswers []protocol.PickAnswer
 	PickCancels []protocol.PickCancel
 	// Previews are preview starts waiting for the test to answer.
-	Previews        []func(protocol.Result, error)
-	PreviewStates   []protocol.PreviewState
-	PreviewStops    []protocol.PreviewStop
+	Previews      []func(protocol.Result, error)
+	PreviewStates []protocol.PreviewState
+	PreviewStops  []protocol.PreviewStop
+	// Published is the session state set, in order.
+	Published       []protocol.Session
 	PreviewControls []protocol.PreviewControl
 }
 
@@ -123,6 +125,15 @@ func (r *Requests) Subscribe(document ids.ULID, done func(error)) {
 // Open records a window request.
 func (r *Requests) Open(view string, target ids.ULID, newView bool) {
 	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: newView})
+}
+
+// Publish records session state set.
+func (r *Requests) Publish(topic string, value any) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	r.Published = append(r.Published, protocol.Session{Topic: topic, Value: encoded})
 }
 
 // WhereUsed records a where-used question; the test answers it.
