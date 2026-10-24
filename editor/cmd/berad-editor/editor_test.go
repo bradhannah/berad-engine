@@ -445,7 +445,8 @@ func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
 
 // TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
 // inspector by typing a name and clicking Save, deletes the text document
-// after confirming, and undoes the deletion.
+// after confirming, and undoes the deletion. Its status bar keeps the window
+// on top and lets it go again.
 func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -457,7 +458,8 @@ func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 		click("ui:name"), keys("Cmd+A"), typed("Harbour"), step{Repeat: 2, Screenshot: shot}, click("ui:save"),
 		must("row:Harbour", 300),
 		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
-		keys("Cmd+Z"), expect("row:Notes", 300), wait(10), quit(),
+		keys("Cmd+Z"), expect("row:Notes", 300), wait(10),
+		click("ui:on-top"), must("state:on-top", 60), wait(10), click("ui:on-top"), wait(5), quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})

@@ -28,6 +28,10 @@ const (
 	StatusHeight   = 30
 	InspectorWidth = 280
 	statusDuration = 4 * time.Second
+	// onTopWidth is the width of the On top toggle in the status bar, and
+	// statusGap the space kept between the status bar's parts.
+	onTopWidth = 76
+	statusGap  = 24
 )
 
 // Docs gives read access to the window's subscribed documents. fn runs while
@@ -99,8 +103,8 @@ type View interface {
 	Locate(name string, docs Docs) (image.Point, bool)
 }
 
-// Frame is the window state every view shares: status messages, notices and
-// the command-to-event speed readout.
+// Frame is the window state every view shares: status messages, notices, the
+// command-to-event speed readout, and whether the window stays on top.
 type Frame struct {
 	status      string
 	statusUntil time.Time
@@ -115,13 +119,16 @@ type Frame struct {
 	Closing bool
 	// Crash asks the window to crash on purpose, to show failure handling.
 	Crash bool
+	// OnTop is the status bar's toggle that keeps the window above every
+	// other window, session state for each window.
+	OnTop *ui.Toggle
 }
 
 // NewFrame returns an empty frame.
 func NewFrame(now func() time.Time) *Frame {
 	return &Frame{
 		status: "", statusUntil: time.Time{}, notice: "", latencies: nil, now: now, Quit: false, Closing: false,
-		Crash: false,
+		Crash: false, OnTop: &ui.Toggle{ID: "on-top", Label: "On top", Rect: ui.Zero(), On: false},
 	}
 }
 
@@ -184,10 +191,37 @@ func Inspector(size image.Point) image.Rectangle {
 	return image.Rect(size.X-InspectorWidth, 0, size.X, size.Y-StatusHeight)
 }
 
+// layoutStatus places the On top toggle at the right end of the status bar.
+func (f *Frame) layoutStatus(size image.Point) {
+	top := size.Y - StatusHeight
+	f.OnTop.Rect = image.Rect(size.X-ui.Inset-onTopWidth, top, size.X-ui.Inset, size.Y)
+}
+
+// UpdateStatus handles a click on the status bar's On top toggle.
+func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
+	f.layoutStatus(size)
+	f.OnTop.Update(input)
+}
+
+// LocateStatus finds the On top toggle, "ui:on-top", and reports
+// "state:on-top" while the window is kept on top, for input scripts.
+func (f *Frame) LocateStatus(name string) (image.Point, bool) {
+	switch name {
+	case "ui:" + f.OnTop.ID:
+		return ui.Center(f.OnTop.Rect), !f.OnTop.Rect.Empty()
+	case "state:" + f.OnTop.ID:
+		return image.Pt(0, 0), f.OnTop.On
+	}
+
+	return image.Pt(0, 0), false
+}
+
 // DrawStatus draws the status bar: the wireframes' monospaced strip along
-// the bottom of the window.
+// the bottom of the window, with the On top toggle at its right end. The
+// speed readout is left out when the window is too narrow for it.
 func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	bounds := screen.Bounds()
+	f.layoutStatus(bounds.Size())
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
 	ui.FillRect(screen, bar, ui.ColorPanel())
 	ui.Divider(screen, image.Pt(0, bar.Min.Y), image.Pt(bar.Max.X, bar.Min.Y))
@@ -198,8 +232,12 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	}
 	textY := bar.Min.Y + (StatusHeight-ui.MonoSize)/ui.Half - 1
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
+	f.OnTop.Draw(screen, theme)
 	speed := "command to event: last " + formatLatency(f.last()) + ", median " + formatLatency(f.median())
-	theme.DrawMono(screen, speed, bar.Max.X-ui.Inset-theme.MonoWidth(speed), textY, ui.ColorMuted())
+	speedLeft := f.OnTop.Rect.Min.X - statusGap - theme.MonoWidth(speed)
+	if speedLeft >= ui.Inset+theme.TextWidth(message)+statusGap {
+		theme.DrawMono(screen, speed, speedLeft, textY, ui.ColorMuted())
+	}
 }
 
 func (f *Frame) last() time.Duration {

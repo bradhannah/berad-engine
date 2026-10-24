@@ -177,12 +177,16 @@ func (h *host) reportUnsaved() {
 }
 
 // Locate finds a named part of the window for input scripts: the quit
-// dialog's buttons while it shows, or the view's parts.
+// dialog's buttons while it shows, the status bar's On top toggle, or the
+// view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
 
 		return h.quitDialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: h.ctx.Size})
+	}
+	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" {
+		return point, found
 	}
 
 	return h.view.Locate(name, docs)
