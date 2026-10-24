@@ -319,10 +319,21 @@ Open:
   node is doing: why a node carried on goes with the change it carried on
   by, rather than staying until a later node finishes. "Stepping…" shows
   while a step runs.
+- **The map, On top and the Clock window** (protocol version 8). Decided
+  with its author on 2026-10-24. Beyond the floor bounds the map is shaded
+  with a fainter grid, so the space around the floor can be pictured.
+  Right-click on the map opens a menu of what can be done at that cell,
+  including Extend floor to here beyond the bounds; right-click did nothing
+  before. The Map window's always-visible list of keys becomes a Keys
+  sheet. Any window can be kept on top with a toggle in its status bar. The
+  preview's clock controls move from the Map window to a Clock window, on
+  top by default and opening by itself when a preview starts: before a
+  preview it sets the time the next one starts at, shared by every window;
+  during one it jumps the clock an hour back or on or to a typed time,
+  stops and starts it, and sets its rate.
 
 ## Not in this build
 
 Reusable workflows with input parameters, workflow inheritance, nested
-containers, conversations, objects and placements other than NPCs, areas, the
-Clock window (the preview's clock controls live in the Map window for now),
-and the Problems view.
+containers, conversations, objects and placements other than NPCs, areas, and
+the Problems view.
