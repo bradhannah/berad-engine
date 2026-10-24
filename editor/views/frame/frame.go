@@ -54,6 +54,28 @@ type Requests interface {
 	Publish(topic string, value any)
 	Picks
 	Previews
+	Audio
+}
+
+// Audio are the requests for the project's audio (D8): its library, the cues
+// it can play, and a recording's bytes, a part at a time from an offset.
+type Audio interface {
+	AudioLibrary(done func(protocol.AudioLibrary, error))
+	Recording(recording string, offset int64, done func(protocol.Recording, error))
+}
+
+// Sounds plays the project's cues in this window. The orchestrator sends the
+// recordings (D1, D8), so a cue plays once they have arrived; a cue that
+// cannot play says why in the status bar, once.
+type Sounds interface {
+	// Prepare fetches what cues need, so they play without waiting later.
+	Prepare(cues []string)
+	// Play plays a cue once, alongside whatever else is playing.
+	Play(cue string)
+	// Stop stops everything this window plays, and what waits to play.
+	Stop()
+	// Playing reports whether a cue is playing, or waiting to.
+	Playing(cue string) bool
 }
 
 // Picks are the requests for pick on map (D13).
@@ -79,6 +101,7 @@ type Previews interface {
 type Context struct {
 	Docs      Docs
 	Requests  Requests
+	Sounds    Sounds
 	Clipboard textedit.Clipboard
 	// Window is this window's ID; Size is its size in pixels.
 	Window ids.ULID
