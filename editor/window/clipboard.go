@@ -30,7 +30,7 @@ type clipboardCommand struct {
 
 func clipboardCommands() (clipboardCommand, bool) {
 	switch runtime.GOOS {
-	case "darwin":
+	case macOS:
 		return clipboardCommand{read: []string{"pbpaste"}, write: []string{"pbcopy"}}, true
 	case "windows":
 		return clipboardCommand{

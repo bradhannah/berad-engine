@@ -119,12 +119,22 @@ func (s *State) updateChoosing(input *ui.Input, ctx *frame.Context, floorData *f
 	if !input.Pressed || !onFloor {
 		return
 	}
-	shown := play.Levels{{ID: s.floor, Floor: floorData}}
-	if !play.CanStand(shown, s.floor, cell) {
+	if !s.canStart(floorData, cell) {
 		ctx.Frame.Status("The player cannot stand there. Choose a cell where nothing blocks.")
 
 		return
 	}
+	s.startPreviewAt(ctx, cell)
+}
+
+// canStart reports whether the player can start a preview on a cell.
+func (s *State) canStart(floorData *floor.Floor, cell Cell) bool {
+	return play.CanStand(play.Levels{{ID: s.floor, Floor: floorData}}, s.floor, cell)
+}
+
+// startPreviewAt starts a preview with the player on a cell of the current
+// floor.
+func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 	s.choosing, s.starting = false, true
 	floorID := s.floor
 	ctx.Requests.PreviewStart(s.zone, func(result protocol.Result, err error) {

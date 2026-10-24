@@ -73,6 +73,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	}
 	s.drawPanel(screen, docs)
 	s.drawInspector(screen, docs)
+	if s.menu != nil {
+		s.menu.Draw(screen, s.theme)
+	}
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}

@@ -115,6 +115,9 @@ type Input struct {
 	// the frames it changed. DoubleClick marks a second press close to the
 	// first.
 	Down, Pressed, Released, DoubleClick bool
+	// Secondary marks a right-button press this frame, or on macOS a
+	// Control-click, which never also counts as a main-button press.
+	Secondary bool
 	// PanDown is true while the middle button is held.
 	PanDown bool
 	// WheelX and WheelY are scroll amounts this frame; trackpads give
@@ -140,7 +143,7 @@ type Input struct {
 // else happening.
 func NewInput(cursor image.Point) Input {
 	return Input{
-		Cursor: cursor, Down: false, Pressed: false, Released: false, DoubleClick: false, PanDown: false,
+		Cursor: cursor, Down: false, Pressed: false, Released: false, DoubleClick: false, Secondary: false, PanDown: false,
 		WheelX: 0, WheelY: 0, Presses: nil, Held: Plain(), Space: false, Keys: nil, Text: "", Replace: nil,
 		Composition: "",
 	}
@@ -186,7 +189,7 @@ func (input *Input) Consume(key Key, mods Mods) bool {
 // a menu do not react to them.
 func (input *Input) ClearPointer() {
 	input.Pressed, input.Released, input.DoubleClick = false, false, false
-	input.Down = false
+	input.Down, input.Secondary = false, false
 }
 
 // ClearAll removes every key, text and button event.

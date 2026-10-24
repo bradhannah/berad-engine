@@ -155,13 +155,17 @@ type State struct {
 	names     *project.Index
 	placedNPC ids.ULID
 	behaviour ids.ULID
-	pick      *protocol.PickStart
-	wheel     float64
-	lastPan   image.Point
-	panning   bool
-	framed    bool
-	resizing  *resizeDrag
-	cursor    image.Point
+	// menu is the open right-click menu; openLoaded is the placement whose
+	// behaviour it asked to open, waiting for the NPC to load.
+	menu       *cellMenu
+	openLoaded ids.ULID
+	pick       *protocol.PickStart
+	wheel      float64
+	lastPan    image.Point
+	panning    bool
+	framed     bool
+	resizing   *resizeDrag
+	cursor     image.Point
 	// choosing waits for the cell where a preview's player starts; starting
 	// waits for the orchestrator to agree. preview is this window's own
 	// preview, remote another window's preview of the zone.
@@ -211,7 +215,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false, outside: false,
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
-		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{},
+		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{}, menu: nil, openLoaded: ids.ULID{},
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
@@ -530,6 +534,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if s.menu != nil {
+		s.updateMenu(input, ctx)
+
+		return
+	}
 	s.guardAnchor()
 	s.updateZoom(input, ctx)
 	s.updateFields(input, ctx)
@@ -543,6 +552,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	frame.CommonKeys(input, ctx)
 	s.updatePanels(input, ctx)
 	s.subscribeNPC(ctx)
+	s.openWhenLoaded(ctx)
 	if s.preview != nil {
 		s.stepPreview(input, ctx)
 	} else {
@@ -734,20 +744,7 @@ func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor
 	cell, inGrid := s.camera.cellAt(input.Cursor, grid)
 	onFloor := inGrid && floorData.In(cell.X, cell.Y)
 	s.hover, s.hovering, s.outside = cell, onFloor, inGrid && !onFloor && !s.zoom.contains(input.Cursor)
-	if s.panning || input.Space {
-		return
-	}
-	if s.pick != nil {
-		s.updatePick(input, ctx, floorData, cell, onFloor)
-
-		return
-	}
-	if s.choosing {
-		s.updateChoosing(input, ctx, floorData, cell, onFloor)
-
-		return
-	}
-	if s.watchClicked(input, ctx, cell, onFloor) {
+	if s.panning || input.Space || s.updateGridMode(input, ctx, floorData, cell, inGrid) {
 		return
 	}
 	switch s.tool {
@@ -762,6 +759,27 @@ func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor
 	case ToolResize:
 		s.updateResize(input, ctx, floorData)
 	}
+}
+
+// updateGridMode handles what takes a click before the current tool: picking
+// for another window, choosing where a preview starts, the right-click menu,
+// and watching an NPC in a preview. It reports whether one took it.
+func (s *State) updateGridMode(
+	input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, inGrid bool,
+) bool {
+	onFloor := inGrid && floorData.In(cell.X, cell.Y)
+	switch {
+	case s.pick != nil:
+		s.updatePick(input, ctx, floorData, cell, onFloor)
+	case s.choosing:
+		s.updateChoosing(input, ctx, floorData, cell, onFloor)
+	case input.Secondary && inGrid && !s.zoom.contains(input.Cursor):
+		s.openMenu(floorData, cell, onFloor, input.Cursor)
+	default:
+		return s.watchClicked(input, ctx, cell, onFloor)
+	}
+
+	return true
 }
 
 func (s *State) panAndZoom(input *ui.Input, grid image.Rectangle) {
@@ -870,24 +888,7 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 
 			return
 		}
-		name := uniqueAnchorName(floorData)
-		args := tilefloor.AddAnchorArgs{
-			Anchor: floor.Anchor{ID: ids.ULID{}, Name: name, Col: cell.X, Row: cell.Y}, Index: len(floorData.Anchors()),
-		}
-		s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
-			s.anchor = result.Created
-			if s.nameField.Field.Unsaved() {
-				// The guard asks about the other anchor's unsaved name first.
-				return
-			}
-			s.named = result.Created
-			s.nameField.Field.SetSaved(name)
-			s.focus.Set(s.nameField)
-			if buffer := s.nameField.Field.Buffer(); buffer != nil {
-				buffer.SelectAll()
-			}
-			ctx.Frame.Status("Added “" + name + "”. Type a name, then press Enter or Save.")
-		})
+		s.addAnchor(ctx, floorData, cell)
 	}
 	if s.drag != nil && !input.Down {
 		drag := s.drag
@@ -905,6 +906,30 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 			s.command(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
 		}
 	}
+}
+
+// addAnchor adds an anchor on a cell with a name not yet used, selects it
+// and focuses its name, ready to type over.
+func (s *State) addAnchor(ctx *frame.Context, floorData *floor.Floor, cell Cell) {
+	name := uniqueAnchorName(floorData)
+	args := tilefloor.AddAnchorArgs{
+		Anchor: floor.Anchor{ID: ids.ULID{}, Name: name, Col: cell.X, Row: cell.Y}, Index: len(floorData.Anchors()),
+	}
+	s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
+		s.anchor = result.Created
+		s.placement, s.selected = ids.ULID{}, nil
+		if s.nameField.Field.Unsaved() {
+			// The guard asks about the other anchor's unsaved name first.
+			return
+		}
+		s.named = result.Created
+		s.nameField.Field.SetSaved(name)
+		s.focus.Set(s.nameField)
+		if buffer := s.nameField.Field.Buffer(); buffer != nil {
+			buffer.SelectAll()
+		}
+		ctx.Frame.Status("Added “" + name + "”. Type a name, then press Enter or Save.")
+	})
 }
 
 // uniqueAnchorName returns "Anchor N" not yet used on the floor.
@@ -1304,11 +1329,8 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
-	if s.guard.Active() {
-		return s.guard.Locate(value, s.size)
-	}
-	if s.dialog != nil {
-		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	if point, found, over := s.locateOver(kind, value); over {
+		return point, found
 	}
 	switch kind {
 	case "state":
@@ -1383,6 +1405,28 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 }
 
 // locateFloor finds the Nth floor from the bottom in the floor list.
+// locateOver finds a part of whatever lies over the window: the unsaved
+// changes guard, a dialog, or the right-click menu. over reports whether
+// one does.
+func (s *State) locateOver(kind, value string) (image.Point, bool, bool) {
+	switch {
+	case s.guard.Active():
+		point, found := s.guard.Locate(value, s.size)
+
+		return point, found, true
+	case s.dialog != nil:
+		point, found := s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+
+		return point, found, true
+	case s.menu != nil && kind == "menu":
+		point, found := s.menu.Locate(value)
+
+		return point, found, true
+	}
+
+	return image.Pt(0, 0), false, false
+}
+
 func (s *State) locateFloor(value string) (image.Point, bool) {
 	number, err := strconv.Atoi(value)
 	if err != nil || number < 1 || number > len(s.floors) {

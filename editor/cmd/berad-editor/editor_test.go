@@ -125,6 +125,7 @@ type step struct {
 	Pressed    bool            `json:"pressed,omitempty"`
 	Released   bool            `json:"released,omitempty"`
 	Double     bool            `json:"double,omitempty"`
+	Secondary  bool            `json:"secondary,omitempty"`
 	Keys       []string        `json:"keys,omitempty"`
 	Hold       []string        `json:"hold,omitempty"`
 	Text       string          `json:"text,omitempty"`
@@ -190,6 +191,9 @@ func noCrashes(t *testing.T, project string) {
 func click(at string) []step {
 	return []step{{Repeat: 2, At: at, Down: true, Pressed: true}, {Repeat: 2, At: at, Released: true}}
 }
+
+// rightClick presses the right button on a named part of the window.
+func rightClick(at string) step { return step{Repeat: 2, At: at, Secondary: true} }
 
 func doubleClick(at string) []step {
 	return append(click(at), step{Repeat: 2, At: at, Down: true, Pressed: true, Double: true}, step{Repeat: 2, At: at, Released: true})
@@ -279,12 +283,13 @@ func closeBrowser() []step {
 // ground through the orchestrator, a drag with the Walls tool draws walls in
 // the chosen family, undo takes the walls back in one step, and the result is
 // in the saved file. Then the Resize tool adds a row on top with its button,
-// drags the bottom edge down two rows, and undo takes the drag back.
+// drags the bottom edge down two rows, and undo takes the drag back. Last, a
+// right-click on a cell adds an anchor there from its menu.
 func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	zoomed := shotPath(t, "map-zoom.png")
+	zoomed, menuShot := shotPath(t, "map-zoom.png"), shotPath(t, "map-menu.png")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
 		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
@@ -294,7 +299,9 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
 		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(10),
 		click("ui:zoom-in"), must("state:zoom:150", 60), click("ui:zoom-fit"), wait(5),
-		step{Repeat: 2, Screenshot: zoomed}, wait(30), quit(),
+		step{Repeat: 2, Screenshot: zoomed}, wait(5),
+		rightClick("cell:-10,5"), must("menu:add-anchor", 60), step{Repeat: 2, Screenshot: menuShot},
+		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30), quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
 
@@ -315,8 +322,11 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	if got := cellOf(t, ground, tilefloor.LayerGround, 0, -13); got != "grass" {
 		t.Fatalf("the added row has ground %q, want the floor's most common ground", got)
 	}
+	if gate, found := ground.AnchorAt(-10, 5); !found || gate.Name != "Gate" {
+		t.Fatalf("anchor added from the right-click menu: %+v %v", gate, found)
+	}
 	noCrashes(t, project)
-	t.Logf("screenshot: %s", zoomed)
+	t.Logf("screenshots: %s %s", zoomed, menuShot)
 }
 
 // TestWallFamiliesForARoomAndARun selects a room by double-clicking inside it
