@@ -219,9 +219,9 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
-		toolList:  &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
-		tileList:  &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
-		floorList: &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
+		toolList:  &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround), CanDrop: nil},
+		tileList:  &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass", CanDrop: nil},
+		floorList: &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
 		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
 		nameField: ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
 		named:     ids.ULID{}, save: ui.NewSaveBar(), guard: frame.Guard{}, zoom: newZoomControl(),
@@ -1228,7 +1228,7 @@ func (s *State) openReplace(ctx *frame.Context) {
 	for _, id := range s.floors {
 		s.subscribe(id, ctx)
 	}
-	list := &ui.List{ID: "families", Rect: ui.Zero(), Rows: nil, Selected: ""}
+	list := &ui.List{ID: "families", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
 	for _, family := range tiles.WallFamilies() {
 		if family.ID != from {
 			swatch := ui.Hex(family.Color)

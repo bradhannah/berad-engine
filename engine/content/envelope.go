@@ -35,13 +35,15 @@ var ErrDuplicateFormat = errors.New("format already registered")
 var ErrMigration = errors.New("document upgrade failed")
 
 // Envelope wraps every saved document with its format, format version,
-// permanent ID, display name and revision.
+// permanent ID, display name and revision, and any tags an author gave it to
+// find it by. Tags carry no meaning for a game.
 type Envelope struct {
 	Format   string          `json:"format"`
 	Version  int             `json:"version"`
 	ID       ids.ULID        `json:"id"`
 	Name     string          `json:"name"`
 	Revision uint64          `json:"revision"`
+	Tags     []string        `json:"tags,omitempty"`
 	Data     json.RawMessage `json:"data"`
 }
 

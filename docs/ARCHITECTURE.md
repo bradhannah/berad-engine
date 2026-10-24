@@ -231,11 +231,21 @@ separately so small edits make small diffs, folders mirroring the project
 browser, art as PNG. File names combine the name and a short ID
 (`floor-1--PJY7525V.json`), so renaming shows as a git rename. Editor state
 (journal, backups, logs, lock) lives in a git-ignored `.berad` folder. Files of
-deleted or renamed documents move to `.berad/backups/removed` rather than being
-destroyed. Two files holding one document, which a crash during a rename can
-leave, resolve to the newer one on load. For now, folders follow the kind of
-document (`tilefloors`, `zones`, `texts`, `workflows`, `npcs`) rather than the
-project browser.
+deleted, renamed or moved documents move to `.berad/backups/removed` rather
+than being destroyed. Two files holding one document, which a crash during a
+rename can leave, resolve to the newer one on load. Each kind of document has
+its folder (`tilefloors`, `zones`, `texts`, `workflows`, `npcs`).
+
+**As built (protocol version 9):** inside a kind's folder, the project
+browser's folders are real folders, so a workflow in Town › Guards is
+`workflows/Town/Guards/<name>--<id>.json`, and every directory there is read
+as a folder on load, empty ones included (git keeps no empty directory). The
+project index lists each kind's folders and each document's folder and tags;
+moving a document, changing a folder and setting tags are journaled,
+undoable index edits like a rename. Files move at the next save; a folder's
+directory goes once nothing but Finder's `.DS_Store` is left in it. A
+document's tags are an optional list in its envelope. Floors stay with their
+zone and take no folder.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
 changes only when the layout does (D17). A workflow's layout holds where

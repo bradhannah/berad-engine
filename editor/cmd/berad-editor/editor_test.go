@@ -475,6 +475,40 @@ func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	t.Logf("screenshot: %s", shot)
 }
 
+// TestBrowserFoldersTagsAndSearch makes a text folder from New ▾ and names
+// it, drags the text document into it, makes a folder inside that one and
+// moves the document there with Move to…, tags the document and finds it by
+// searching for the tag. The saved file is in the inner folder, with its
+// tag.
+func TestBrowserFoldersTagsAndSearch(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot, menuShot := shotPath(t, "browser-folders.png"), shotPath(t, "browser-move.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		click("ui:new"), click("ui:new-folder-text"), wait(30), typed("Letters"), keys("Enter"),
+		must("row:Letters", 300), wait(5),
+		drag("row:Notes", "row:Letters"), wait(30),
+		click("row:Letters"), click("ui:new-folder"), wait(30), typed("Drafts"), keys("Enter"),
+		must("row:Drafts", 300), wait(5),
+		click("row:Notes"), click("ui:move-to"), must("menu:Letters/Drafts", 60), step{Repeat: 2, Screenshot: menuShot},
+		click("menu:Letters/Drafts"), wait(30),
+		click("row:Notes"), click("ui:tags"), typed("quest"), keys("Enter"), wait(30),
+		click("ui:search"), typed("#quest"), must("row:Notes", 60), step{Repeat: 2, Screenshot: shot},
+		keys("Escape"), keys("Escape"), wait(5), quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	notes := readEnvelope(t, project, "texts/Letters/Drafts/notes--*.json")
+	if len(notes.Tags) != 1 || notes.Tags[0] != "quest" {
+		t.Fatalf("the notes are in Letters/Drafts with their tag: %+v", notes.Tags)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s", shot, menuShot)
+}
+
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes
 // the first view's stroke, because views of one zone share one undo list.
 func TestViewsShareUndo(t *testing.T) {

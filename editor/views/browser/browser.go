@@ -1,7 +1,8 @@
 // Package browser is the project browser window: the project's zones with
-// their floors, its workflows, NPCs and text documents. Authors create,
-// rename, delete and open documents here, reorder a zone's floors, and choose
-// each NPC's behaviour and write its notes.
+// their floors, its workflows, NPCs and text documents, in folders. Authors
+// create, rename, delete and open documents here, keep them in folders and
+// tag them, search them, reorder a zone's floors, and choose each NPC's
+// behaviour and write its notes.
 package browser
 
 import (
@@ -47,8 +48,10 @@ const (
 	defaultWidth  = 32
 	defaultHeight = 24
 	toolbarHeight = 44
+	searchHeight  = ui.ButtonH + ui.Inset
 	newWidth      = 96
 	buttonGap     = 6
+	searchBytes   = 100
 )
 
 // npcLabel names the NPC type wherever the browser shows it.
@@ -82,14 +85,24 @@ type State struct {
 	// window's session state, never saved.
 	closed map[string]bool
 	focus  ui.Focus
+	// search filters the list; name and tags edit what is selected, and
+	// named is the row whose name and tags the fields hold.
+	search *ui.TextField
 	name   *ui.TextField
-	named  ids.ULID
+	tags   *ui.TextField
+	named  string
 
 	newMenu                             *ui.Button
 	menu                                ui.Menu
 	open, floorButton, up, down, remove *ui.Button
-	save                                *ui.SaveBar
-	guard                               frame.Guard
+	// moveBn opens moveMenu, the folders the selection can move to;
+	// newFolderBn makes a folder inside a selected folder, and tagBns
+	// search for each of a document's tags.
+	moveBn, newFolderBn *ui.Button
+	moveMenu            ui.Menu
+	tagBns              []*ui.Button
+	save                *ui.SaveBar
+	guard               frame.Guard
 
 	npc *npcPanel
 
@@ -104,20 +117,27 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		list:    &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: ""},
+		list:    &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
 		closed:  map[string]bool{},
 		focus:   ui.Focus{},
+		search:  ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
 		name:    ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
-		named:   ids.ULID{},
+		tags:    ui.NewTextField("tags", textedit.NewField("", false, searchBytes*ui.Half), false, theme),
+		named:   "",
 		newMenu: button("new", "New"), menu: ui.Menu{Items: menuItems(), Width: 0},
 		open: button("open", "Open"), floorButton: button(newFloor, "Add floor"), up: button("move-up", "Move up"),
-		down: button("move-down", "Move down"), remove: button("delete", "Delete"), save: ui.NewSaveBar(),
+		down: button("move-down", "Move down"), remove: button("delete", "Delete"),
+		moveBn: button("move-to", "Move to…"), newFolderBn: button("new-folder", "New folder"),
+		moveMenu: ui.Menu{Items: nil, Width: 0}, tagBns: nil, save: ui.NewSaveBar(),
 		guard:  frame.Guard{},
 		npc:    newNPCPanel(theme),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 	}
-	view.remove.Danger, view.newMenu.Caret = true, true
-	view.focus.Register(view.name, view.npc.notes)
+	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
+	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
+	view.tags.Placeholder = "town, guards"
+	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
+	view.focus.Register(view.search, view.name, view.tags, view.npc.notes)
 
 	return view
 }
@@ -130,6 +150,14 @@ func menuItems() []ui.MenuItem {
 		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false, Danger: false, Rule: false},
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
 		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
+		{ID: newFolderPrefix + zone.FormatName, Label: "Zone folder", Icon: ui.IconFolder, Disabled: false, Danger: false,
+			Rule: true},
+		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
+			Danger: false, Rule: false},
+		{ID: newFolderPrefix + npc.FormatName, Label: npcLabel + " folder", Icon: ui.IconFolder, Disabled: false,
+			Danger: false, Rule: false},
+		{ID: newFolderPrefix + textdoc.FormatName, Label: "Text folder", Icon: ui.IconFolder, Disabled: false,
+			Danger: false, Rule: false},
 	}
 }
 
@@ -171,7 +199,7 @@ func (s *State) index(docs frame.Docs) *project.Index {
 	found := project.NewIndex(nil)
 	docs.View(project.IndexID(), func(document client.Document) {
 		if index, ok := document.Model.(*project.Index); ok {
-			found = project.NewIndex(index.Entries())
+			found = project.NewIndexWithFolders(index.Entries(), index.AllFolders())
 		}
 	})
 
@@ -201,13 +229,17 @@ func plural(count int, one, many string) string {
 	return many
 }
 
-// layout places the toolbar, the list and the inspector.
+// layout places the toolbar, the search box, the list and the inspector.
 func (s *State) layout(docs frame.Docs) {
 	content := frame.Content(s.size)
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	s.newMenu.Rect = image.Rect(content.Max.X-ui.Inset-newWidth, top, content.Max.X-ui.Inset, top+ui.ButtonH)
-	s.list.Rect = image.Rect(0, toolbarHeight, content.Max.X, content.Max.Y)
+	searchTop := toolbarHeight + ui.Inset/ui.Half
+	s.search.Rect = image.Rect(ui.Inset, searchTop, content.Max.X-ui.Inset, searchTop+ui.ButtonH)
+	s.list.Rect = image.Rect(0, toolbarHeight+searchHeight, content.Max.X, content.Max.Y)
 	s.list.Rows = s.rows(docs)
+	index := s.index(docs)
+	s.list.CanDrop = func(dragged, target string) bool { return s.canDrop(index, dragged, target) }
 	s.layoutInspector(docs)
 }
 
@@ -254,13 +286,17 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.create(ctx, s.menu.Update(input))
 
 		return
+	case s.moveMenu.IsOpen():
+		if chosen, ok := strings.CutPrefix(s.moveMenu.Update(input), movePrefix); ok {
+			s.moveSelected(ctx, chosen)
+		}
+
+		return
 	}
 	s.guardSelection(ctx)
 	s.syncName(ctx.Docs)
 	s.syncNPC(ctx)
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); outcome == textedit.OutcomeCommit && field == s.name {
-		s.commitName(ctx)
-	}
+	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
 	}
@@ -270,8 +306,25 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.guardSelection(ctx)
 }
 
+// updateFields handles the text fields: Enter saves a name or tags, and the
+// search box filters the list as it is typed. Escape clears the search.
+func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
+	field, outcome := s.focus.Update(input, ctx.Clipboard)
+	switch {
+	case field == s.search && outcome == textedit.OutcomeCommit:
+		value, _ := s.search.Field.Commit()
+		s.search.Field.SetSaved(value)
+	case field == s.search && outcome == textedit.OutcomeBlur:
+		s.search.Field.SetSaved("")
+	case field == s.name && outcome == textedit.OutcomeCommit:
+		s.commitName(ctx)
+	case field == s.tags && outcome == textedit.OutcomeCommit:
+		s.commitTags(ctx)
+	}
+}
+
 // updateList handles the list: selecting, opening, showing and hiding rows,
-// and a section's [+].
+// a section's [+], and dropping a row on a folder or a section.
 func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 	result := s.list.Update(input)
 	if result.Changed {
@@ -286,6 +339,9 @@ func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 	if result.Added != "" {
 		s.create(ctx, sectionNew(result.Added))
 	}
+	if result.Dropped != "" {
+		s.drop(ctx, result.Dragged, result.Dropped)
+	}
 }
 
 func (s *State) keys(input *ui.Input, ctx *frame.Context) {
@@ -293,6 +349,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case input.Consume(ui.KeyEnter, plain):
 		s.openSelected(ctx)
+	case input.Consume(ui.KeyF, ui.Cmd()):
+		s.focus.Set(s.search)
 	case input.Consume(ui.KeyBackspace, ui.Cmd()):
 		s.deleteSelected(ctx)
 	case input.Consume(ui.KeyUp, plain):
@@ -330,20 +388,34 @@ func (s *State) step(delta int) {
 	}
 }
 
-// fold hides or shows a selected zone's floors, as Left and Right do in an
-// outline; Left on a floor selects its zone.
+// fold hides or shows what a selected zone or folder holds, as Left and
+// Right do in an outline; Left on a closed folder, a floor, or a document in
+// a folder selects what holds it.
 func (s *State) fold(docs frame.Docs, hide bool) {
+	if folder, ok := s.selectedFolder(); ok {
+		rowID := folderRowID(folder.Format, folder.Path)
+		if hide && s.closed[rowID] && project.FolderParent(folder.Path) != "" {
+			s.list.Selected = folderRowID(folder.Format, project.FolderParent(folder.Path))
+
+			return
+		}
+		s.closed[rowID] = hide
+
+		return
+	}
 	entry, ok := s.selected(docs)
 	if !ok {
 		return
 	}
-	switch entry.Format {
-	case zone.FormatName:
+	switch {
+	case entry.Format == zone.FormatName && (!hide || !s.closed[entry.ID.String()]):
 		s.closed[entry.ID.String()] = hide
-	case floor.FormatName:
+	case entry.Format == floor.FormatName:
 		if zoneID, inZone := s.zoneOf(docs, entry.ID); inZone && hide {
 			s.list.Selected = zoneID.String()
 		}
+	case hide && entry.Folder != "":
+		s.list.Selected = folderRowID(entry.Format, entry.Folder)
 	}
 }
 
@@ -375,8 +447,19 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 		s.moveFloor(ctx, -1)
 	case s.remove.Update(input):
 		s.deleteSelected(ctx)
+	case s.moveBn.Update(input):
+		s.openMoveMenu(ctx.Docs)
+	case s.newFolderBn.Update(input):
+		if folder, ok := s.selectedFolder(); ok {
+			s.createFolder(ctx, folder.Format)
+		}
 	default:
 		s.updateNPC(input, ctx)
+		for _, chip := range s.tagBns {
+			if chip.Update(input) {
+				s.searchTag(strings.TrimPrefix(chip.ID, "tag:"))
+			}
+		}
 	}
 }
 
@@ -393,6 +476,11 @@ func (s *State) openMenu(docs frame.Docs) {
 
 // create makes what a New ▾ item or a section's [+] names.
 func (s *State) create(ctx *frame.Context, item string) {
+	if format, isFolder := strings.CutPrefix(item, newFolderPrefix); isFolder {
+		s.createFolder(ctx, format)
+
+		return
+	}
 	switch item {
 	case newZone:
 		s.createZone(ctx)
@@ -466,7 +554,8 @@ func names(entries []project.Entry) []string {
 // assigns its ID and version.
 func newDocument(format, name string, scope ids.ULID, data json.RawMessage) documentArgs {
 	return documentArgs{project.DocumentArgs{
-		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Data: data, Layout: nil,
+		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Folder: "", Tags: nil,
+		Data: data, Layout: nil,
 	}}
 }
 
@@ -493,6 +582,7 @@ func (s *State) createZone(ctx *frame.Context) {
 	}
 	gesture := s.gesture()
 	args := newDocument(zone.FormatName, name, ids.ULID{}, data)
+	args.Folder = s.targetFolder(ctx.Docs, zone.FormatName)
 	s.command(ctx, project.IndexID(), project.CreateEdit, gesture, args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 		s.subscribe(result.Created, ctx)
@@ -575,6 +665,7 @@ func (s *State) createText(ctx *frame.Context) {
 		return
 	}
 	args := newDocument(textdoc.FormatName, name, ids.ULID{}, data)
+	args.Folder = s.targetFolder(ctx.Docs, textdoc.FormatName)
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 	}, nil)
@@ -584,6 +675,7 @@ func (s *State) createText(ctx *frame.Context) {
 func (s *State) createWorkflow(ctx *frame.Context) {
 	name := uniqueName("Workflow", names(s.entries(ctx.Docs, flow.FormatName)))
 	args := newDocument(flow.FormatName, name, ids.ULID{}, workflowplugin.NewData())
+	args.Folder = s.targetFolder(ctx.Docs, flow.FormatName)
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 	}, nil)
@@ -591,8 +683,14 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
 // document in a Text window, and a workflow, or an NPC's behaviour workflow,
-// in a Workflow window.
+// in a Workflow window. A folder opens or closes.
 func (s *State) openSelected(ctx *frame.Context) {
+	if folder, isFolder := s.selectedFolder(); isFolder {
+		id := folderRowID(folder.Format, folder.Path)
+		s.closed[id] = !s.closed[id]
+
+		return
+	}
 	entry, ok := s.selected(ctx.Docs)
 	if !ok {
 		return
@@ -647,8 +745,14 @@ func (s *State) moveFloor(ctx *frame.Context, delta int) {
 }
 
 // deleteSelected asks where the selected document is used, then confirms
-// (D4). Deleting a zone deletes its floors with it, as one undo step.
+// (D4). Deleting a zone deletes its floors with it, as one undo step. A
+// folder is deleted when it is empty.
 func (s *State) deleteSelected(ctx *frame.Context) {
+	if folder, isFolder := s.selectedFolder(); isFolder {
+		s.deleteFolder(ctx, folder)
+
+		return
+	}
 	entry, ok := s.selected(ctx.Docs)
 	if !ok {
 		return
@@ -765,6 +869,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.locateInDialog(kind, value)
 	case s.menu.IsOpen():
 		return s.menu.Locate(value)
+	case s.moveMenu.IsOpen():
+		return s.moveMenu.Locate(movePrefix + value)
 	}
 	switch kind {
 	case "row", "toggle":
@@ -803,7 +909,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	for _, field := range []*ui.TextField{s.name, s.npc.notes} {
+	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes} {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}
@@ -819,7 +925,9 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 
 // allButtons lists the window's buttons outside dialogs.
 func (s *State) allButtons() []*ui.Button {
-	return []*ui.Button{s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.npc.choose, s.npc.open}
+	return append([]*ui.Button{
+		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
+	}, s.tagBns...)
 }
 
 // locateInDialog finds a dialog button, or a dialog list row by its name.
@@ -845,6 +953,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, "Project", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
 	s.newMenu.Draw(screen, s.theme)
+	s.search.Draw(screen)
 	s.list.Draw(screen, s.theme)
 	s.drawInspector(screen, docs)
 	s.menu.Draw(screen, s.theme)
