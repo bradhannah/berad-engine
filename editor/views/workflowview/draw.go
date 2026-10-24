@@ -135,13 +135,16 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	}
 	order := s.drawOrder()
 	for _, nodeID := range order {
-		if s.shapes[nodeID].node.Kind == flow.KindContainer {
+		switch s.shapes[nodeID].node.Kind {
+		case flow.KindContainer:
 			s.drawContainer(area, s.shapes[nodeID])
+		case flow.KindNote:
+			s.drawNode(area, s.shapes[nodeID], docs)
 		}
 	}
 	s.drawLines(area)
 	for _, nodeID := range order {
-		if s.shapes[nodeID].node.Kind != flow.KindContainer {
+		if runsBehindLines(s.shapes[nodeID].node.Kind) {
 			s.drawNode(area, s.shapes[nodeID], docs)
 		}
 	}
@@ -457,6 +460,11 @@ func (s *State) hasLineState(state string) (bool, bool) {
 	switch {
 	case state == "line-selected":
 		return s.lineSelected(), true
+	case strings.HasPrefix(state, "bent:"):
+		key, ok := s.lineNamed(strings.TrimPrefix(state, "bent:"))
+		_, bent := s.workflow.Bend(key.from, key.output)
+
+		return ok && bent, true
 	case strings.HasPrefix(state, "lit:"):
 		where := strings.Split(strings.TrimPrefix(state, "lit:"), ":")
 		if len(where) != portParts {
@@ -501,9 +509,14 @@ func (s *State) drawLineInspector(screen *ebiten.Image, docs frame.Docs, left, t
 			ui.ColorMuted())
 	}
 	s.deleteLine.Draw(screen, s.theme)
+	s.resetLine.Draw(screen, s.theme)
 	panel := frame.Inspector(s.size)
-	hint := s.wrap("Delete or Backspace removes it. Undo puts it back.", panel.Dx()-ui.Half*ui.Inset)
+	text := "Drag the middle of the line to move it. Delete or Backspace removes it. Undo puts it back."
+	hint := s.wrap(text, panel.Dx()-ui.Half*ui.Inset)
 	bottom := s.deleteLine.Rect.Min.Y - ui.Gap
+	if !s.resetLine.Rect.Empty() {
+		bottom = s.resetLine.Rect.Min.Y - ui.Gap
+	}
 	for index, line := range hint {
 		s.theme.DrawText(screen, line, left, bottom-(len(hint)-index)*ui.LineHeight, ui.ColorMuted())
 	}
@@ -692,6 +705,7 @@ func mod(value, divisor int) int {
 
 // Locate finds a named part of the window for input scripts: "palette:<kind>",
 // "node:<kind>:<n>" for the nth node of a kind, "port:<kind>:<n>:<output>",
+// "bend:<kind>:<n>:<output>" for the middle of a line that can be dragged,
 // "entry:<kind>:<n>" for its spare entry dot or "entry:<kind>:<n>:<i>" for
 // its i-th filled one, "add-option:<kind>:<n>" for a
 // random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for
@@ -741,6 +755,8 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 		}
 	case "line":
 		return s.locateLine(value)
+	case "bend":
+		return s.locateBend(value)
 	case "canvas":
 		var x, y int
 		if _, err := fmt.Sscanf(value, "%d,%d", &x, &y); err == nil {
@@ -805,9 +821,17 @@ func (s *State) nthNode(value string) (shape, bool) {
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	if widget == s.arrange.ID {
-		return ui.Center(s.arrange.Rect), true
+	for _, button := range []*ui.Button{s.arrange, s.deleteLine, s.resetLine} {
+		if widget == button.ID && !button.Rect.Empty() {
+			return ui.Center(button.Rect), true
+		}
 	}
+
+	return s.locateFormWidget(widget)
+}
+
+// locateFormWidget finds a field or button of the inspector's form.
+func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	if s.form == nil {
 		return image.Pt(0, 0), false
 	}

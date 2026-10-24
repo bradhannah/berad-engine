@@ -71,6 +71,14 @@ type containerResize struct {
 	gesture string
 }
 
+// lineDrag moves the middle of a line by hand.
+type lineDrag struct {
+	key     routeKey
+	start   image.Point
+	gesture string
+	moved   bool
+}
+
 // paletteEntry is one node kind offered on the left.
 type paletteEntry struct {
 	kind  flow.Kind
@@ -114,12 +122,14 @@ type State struct {
 	link    *linkDrag
 	adding  *paletteDrag
 	resize  *containerResize
+	bending *lineDrag
 	panning bool
 	lastPan image.Point
 
 	palette    []paletteEntry
 	arrange    *ui.Button
 	deleteLine *ui.Button
+	resetLine  *ui.Button
 	form       *form
 	focus      ui.Focus
 	picker     *picker.Picker
@@ -133,10 +143,10 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		problems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false, layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
-		drag: nil, link: nil, adding: nil, resize: nil, panning: false, lastPan: image.Pt(0, 0),
+		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
-		deleteLine: ui.NewButton("delete-line", "Delete line"),
-		form:       nil, focus: ui.Focus{}, picker: picker.New(window),
+		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
+		form: nil, focus: ui.Focus{}, picker: picker.New(window),
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -260,11 +270,15 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		top += paletteItem + paletteGap
 	}
 	s.layoutForm(docs)
-	s.deleteLine.Rect = ui.Zero()
+	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
 	if s.lineSelected() {
 		panel := frame.Inspector(s.size)
 		bottom := panel.Max.Y - ui.Inset
 		s.deleteLine.Rect = image.Rect(panel.Min.X+ui.Inset, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
+		if _, bent := s.workflow.Bend(s.selectedLink.from, s.selectedLink.output); bent {
+			above := bottom - ui.ButtonH - rowSpace
+			s.resetLine.Rect = image.Rect(panel.Min.X+ui.Inset, above-ui.ButtonH, panel.Max.X-ui.Inset, above)
+		}
 	}
 }
 
@@ -298,6 +312,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	if s.lineSelected() && s.deleteLine.Update(input) {
 		s.removeLine(ctx)
+	}
+	if s.lineSelected() && !s.resetLine.Rect.Empty() && s.resetLine.Update(input) {
+		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, "")
+		ctx.Frame.Status("Line reset. Undo puts it back where you moved it.")
 	}
 	s.updateForm(input, ctx)
 	if s.arrange.Update(input) {
@@ -388,6 +406,8 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
+	case s.bending != nil:
+		s.updateBend(input, ctx, point)
 	case s.drag != nil:
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
@@ -439,12 +459,17 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 
 		return
 	}
+	if key, onLine := s.linkAt(point); onLine {
+		s.selected, s.selectedLink = ids.ULID{}, key
+		if s.onMiddle(key, point) {
+			s.bending = &lineDrag{key: key, start: point, gesture: s.gesture(), moved: false}
+		}
+
+		return
+	}
 	hit, ok := s.nodeAt(point)
 	if !ok {
 		s.selected, s.selectedLink = ids.ULID{}, noRoute()
-		if key, onLine := s.linkAt(point); onLine {
-			s.selectedLink = key
-		}
 
 		return
 	}
@@ -483,7 +508,7 @@ func (s *State) updateDrag(input *ui.Input, ctx *frame.Context, point image.Poin
 	for _, child := range s.workflow.Children(drag.id) {
 		boxes[child] = s.movedBox(s.shapes[child], delta)
 	}
-	s.command(ctx, workflowplugin.MoveEdit, drag.gesture, workflowplugin.MoveArgs{Boxes: boxes}, nil)
+	s.command(ctx, workflowplugin.MoveEdit, drag.gesture, workflowplugin.MoveArgs{Boxes: boxes, Lines: nil}, nil)
 }
 
 // movedBox is a node's box shifted by a distance, keeping a container's or
@@ -527,7 +552,59 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, point image.Po
 		X: container.rect.Min.X, Y: container.rect.Min.Y, W: right - container.rect.Min.X, H: bottom - container.rect.Min.Y,
 	}
 	s.command(ctx, workflowplugin.MoveEdit, s.resize.gesture,
-		workflowplugin.MoveArgs{Boxes: map[ids.ULID]flow.Box{s.resize.id: box}}, nil)
+		workflowplugin.MoveArgs{Boxes: map[ids.ULID]flow.Box{s.resize.id: box}, Lines: nil}, nil)
+}
+
+// updateBend moves the middle of a line as it is dragged: a forward line's
+// upright part sideways, or a back line's run up or down, above the nodes if
+// wanted. Each change is a move edit in the drag's gesture.
+func (s *State) updateBend(input *ui.Input, ctx *frame.Context, point image.Point) {
+	drag := s.bending
+	if !input.Down {
+		s.bending = nil
+
+		return
+	}
+	moved := point.Sub(drag.start)
+	if !drag.moved && max(abs(moved.X), abs(moved.Y)) <= dragStart {
+		return
+	}
+	drag.moved = true
+	corners := s.routes[drag.key]
+	target, linked := s.targetOf(drag.key)
+	if !linked || len(corners) < forwardCorners {
+		s.bending = nil
+
+		return
+	}
+	output := corners[0]
+	bend := flow.Bend{To: target, Lane: nil, Depth: nil}
+	if len(corners) == backCorners {
+		depth := point.Y - output.Y
+		bend.Depth = &depth
+	} else {
+		lane := point.X - output.X
+		bend.Lane = &lane
+	}
+	if current, bent := s.workflow.Bend(drag.key.from, drag.key.output); bent && sameBend(current, bend) {
+		return
+	}
+	s.bend(ctx, drag.key, bend, drag.gesture)
+}
+
+// bend sends the move edit that sets, or with no To removes, a line's bend.
+func (s *State) bend(ctx *frame.Context, key routeKey, bend flow.Bend, gesture string) {
+	args := workflowplugin.MoveArgs{
+		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{flow.LineKey(key.from, key.output): bend},
+	}
+	s.command(ctx, workflowplugin.MoveEdit, gesture, args, nil)
+}
+
+// sameBend reports whether two bends put a line in the same place.
+func sameBend(a, b flow.Bend) bool {
+	same := func(x, y *int) bool { return (x == nil && y == nil) || (x != nil && y != nil && *x == *y) }
+
+	return a.To == b.To && same(a.Lane, b.Lane) && same(a.Depth, b.Depth)
 }
 
 // updateLink follows a connection being drawn from a port, or a line picked
@@ -637,7 +714,8 @@ func (s *State) clearOf(place image.Point, parent ids.ULID) image.Point {
 		moved = false
 		added := image.Rectangle{Min: place, Max: place.Add(image.Pt(nodeWidth, nodeHeight))}
 		for _, other := range s.shapes {
-			if other.node.Parent == parent && added.Overlaps(other.rect.Inset(-rowGap/ui.Half)) {
+			if other.node.Parent == parent && other.node.Kind != flow.KindNote &&
+				added.Overlaps(other.rect.Inset(-rowGap/ui.Half)) {
 				place.Y = other.rect.Max.Y + rowGap
 				moved = true
 			}
@@ -749,8 +827,9 @@ func (s *State) removeSelected(ctx *frame.Context) {
 	})
 }
 
-// autoArrange lays the whole workflow out again, as one undo step. Notes
-// already placed keep their place, beside whatever they explain.
+// autoArrange lays the whole workflow out again and puts every line moved by
+// hand back where routing puts it, as one undo step. Notes already placed
+// keep their place, beside whatever they explain.
 func (s *State) autoArrange(ctx *frame.Context) {
 	boxes := arrange(s.workflow, s.noteHeight)
 	for _, node := range s.workflow.Nodes() {
@@ -758,7 +837,14 @@ func (s *State) autoArrange(ctx *frame.Context) {
 			delete(boxes, node.ID)
 		}
 	}
-	s.command(ctx, workflowplugin.MoveEdit, "", workflowplugin.MoveArgs{Boxes: boxes}, func(protocol.Result) {
+	args := workflowplugin.MoveArgs{Boxes: boxes, Lines: nil}
+	for key := range s.workflow.Bends() {
+		if args.Lines == nil {
+			args.Lines = map[string]flow.Bend{}
+		}
+		args.Lines[key] = flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}
+	}
+	s.command(ctx, workflowplugin.MoveEdit, "", args, func(protocol.Result) {
 		ctx.Frame.Status("Arranged. Undo puts the nodes back where they were.")
 	})
 }
@@ -889,22 +975,25 @@ func (s *State) nodeAt(point image.Point) (ids.ULID, bool) {
 	return ids.ULID{}, false
 }
 
-// drawOrder lists nodes back to front: containers first, then the rest in
-// creation order.
+// drawOrder lists nodes back to front: containers, then notes, which lines
+// run over, then the rest, in creation order.
 func (s *State) drawOrder() []ids.ULID {
 	if s.workflow == nil {
 		return nil
 	}
-	var containers, others []ids.ULID
+	var containers, notes, others []ids.ULID
 	for _, node := range s.workflow.Nodes() {
-		if node.Kind == flow.KindContainer {
+		switch node.Kind {
+		case flow.KindContainer:
 			containers = append(containers, node.ID)
-		} else {
+		case flow.KindNote:
+			notes = append(notes, node.ID)
+		default:
 			others = append(others, node.ID)
 		}
 	}
 
-	return append(containers, others...)
+	return slices.Concat(containers, notes, others)
 }
 
 // clampInto keeps a rectangle of a size at a point inside an area.

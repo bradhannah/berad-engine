@@ -3,6 +3,7 @@ package workflowview
 import (
 	"image"
 	"maps"
+	"slices"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -269,5 +270,96 @@ func TestOverlapsCountsLinesOnTopOfEachOther(t *testing.T) {
 	}
 	if overlaps(shared) != 1 || overlaps(crossing) != 0 {
 		t.Fatalf("overlaps %d and %d", overlaps(shared), overlaps(crossing))
+	}
+}
+
+// randomWalk is "random choice up or down, wait, back to the random choice",
+// with a note (seed 6) not yet linked to anything.
+func randomWalk(t *testing.T) *flow.Workflow {
+	t.Helper()
+
+	return graph(t, map[byte]string{
+		2: flow.KindRandom, 3: flow.KindMove, 4: flow.KindMove, 5: flow.KindWait, 6: flow.KindNote,
+	}, [][3]any{
+		{byte(1), flow.OutputNext, byte(2)}, {byte(2), "o1", byte(3)}, {byte(2), "o2", byte(4)},
+		{byte(3), flow.OutputNext, byte(5)}, {byte(4), flow.OutputNext, byte(5)}, {byte(5), flow.OutputNext, byte(2)},
+	})
+}
+
+// TestNotesDoNotMoveLines lays a note right across the loop's path: every
+// line routes exactly as it would without it.
+func TestNotesDoNotMoveLines(t *testing.T) {
+	t.Parallel()
+	workflow := randomWalk(t)
+	laid, without := arranged(t, workflow)
+	bottom := 0
+	for _, drawn := range laid {
+		if drawn.node.Kind != flow.KindNote {
+			bottom = max(bottom, drawn.rect.Max.Y)
+		}
+	}
+	if _, err := workflow.Move(map[ids.ULID]flow.Box{testID(6): {X: 0, Y: bottom, W: 600, H: 0}}); err != nil {
+		t.Fatal(err)
+	}
+	with := routes(workflow, shapes(workflow, plainNotes))
+	if !maps.EqualFunc(without, with, slices.Equal[[]image.Point]) {
+		t.Fatalf("a note moved the lines:\n%v\n%v", without, with)
+	}
+}
+
+// TestArrangeLeavesNotesOut arranges the same with or without a note, and
+// puts a note with no place yet under the flow.
+func TestArrangeLeavesNotesOut(t *testing.T) {
+	t.Parallel()
+	withNote := randomWalk(t)
+	withoutNote := graph(t, map[byte]string{2: flow.KindRandom, 3: flow.KindMove, 4: flow.KindMove, 5: flow.KindWait},
+		[][3]any{
+			{byte(1), flow.OutputNext, byte(2)}, {byte(2), "o1", byte(3)}, {byte(2), "o2", byte(4)},
+			{byte(3), flow.OutputNext, byte(5)}, {byte(4), flow.OutputNext, byte(5)}, {byte(5), flow.OutputNext, byte(2)},
+		})
+	boxes, plain := arrange(withNote, plainNotes), arrange(withoutNote, plainNotes)
+	note := boxes[testID(6)]
+	delete(boxes, testID(6))
+	if !maps.Equal(boxes, plain) {
+		t.Fatalf("a note changed the layout:\n%v\n%v", boxes, plain)
+	}
+	for nodeID, box := range plain {
+		size := sizeOf(func() flow.Node { node, _ := withoutNote.Node(nodeID); return node }(), nil, sizing{
+			noteHeight: plainNotes, incoming: map[ids.ULID]int{},
+		})
+		if note.Y < box.Y+size.Y {
+			t.Fatalf("the note goes under the flow: note at %d, %v ends at %d", note.Y, nodeID, box.Y+size.Y)
+		}
+	}
+}
+
+// TestBendsMoveLines moves the loop's run above the nodes and a forward
+// line's upright part sideways, and the lines follow.
+func TestBendsMoveLines(t *testing.T) {
+	t.Parallel()
+	workflow := randomWalk(t)
+	laid, found := arranged(t, workflow)
+	loop := found[routeKey{from: testID(5), output: flow.OutputNext}]
+	down := found[routeKey{from: testID(2), output: "o2"}]
+	if len(loop) != backCorners || len(down) != forwardCorners {
+		t.Fatalf("the loop goes back and the down line turns: %v %v", loop, down)
+	}
+	top := laid[testID(2)].rect.Min.Y
+	for _, drawn := range laid {
+		top = min(top, drawn.rect.Min.Y)
+	}
+	depth, lane := top-loop[0].Y-30, down[1].X-down[0].X+20
+	if _, err := workflow.SetBends(map[string]flow.Bend{
+		flow.LineKey(testID(5), flow.OutputNext): {To: testID(2), Lane: nil, Depth: &depth},
+		flow.LineKey(testID(2), "o2"):            {To: testID(4), Lane: &lane, Depth: nil},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bent := routes(workflow, shapes(workflow, plainNotes))
+	if run := bent[routeKey{from: testID(5), output: flow.OutputNext}][2].Y; run != top-30 {
+		t.Fatalf("the loop runs above the nodes: %d, top %d", run, top)
+	}
+	if upright := bent[routeKey{from: testID(2), output: "o2"}][1].X; upright != down[1].X+20 {
+		t.Fatalf("the down line turns where it was moved: %d, was %d", upright, down[1].X)
 	}
 }

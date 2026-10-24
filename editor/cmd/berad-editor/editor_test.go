@@ -554,11 +554,16 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		step{Repeat: 3, At: "entry:random:1:2", Down: true, Pressed: true},
 		step{Repeat: 10, At: "canvas:600,420", Down: true}, step{Repeat: 2, At: "canvas:600,420", Down: true, Screenshot: held},
 		step{Repeat: 3, At: "node:random:1", Down: true}, step{Repeat: 2, At: "node:random:1", Released: true}, wait(10),
+		drag("palette:note", "bend:wait:1:next"), expect("state:nodes:6", 300), wait(10),
+		drag("bend:wait:1:next", "canvas:600,8"), expect("state:bent:wait:1:next", 300), wait(10),
 		click("node:random:1"), wait(10), step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}, "workflow": {workflowScript}})
 
+	if layout := readEnvelope(t, project, "workflows/workflow-1--*.layout.json"); !strings.Contains(string(layout.Data), `"lines"`) {
+		t.Fatalf("the loop moved by hand is saved with the layout: %s", layout.Data)
+	}
 	decoded, err := workflowplugin.Decode(readEnvelope(t, project, "workflows/workflow-1--*[^t].json").Data)
 	if err != nil {
 		t.Fatal(err)

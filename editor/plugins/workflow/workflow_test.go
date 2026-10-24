@@ -130,6 +130,27 @@ func TestEditsMeetUndoContract(t *testing.T) {
 			t.Fatalf("%s: %v", check.kind.Name(), err)
 		}
 	}
+	key, depth := flow.LineKey(id(1), flow.OutputNext), -60
+	bend := encode(t, workflow.MoveArgs{
+		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: id(3), Lane: nil, Depth: &depth}},
+	})
+	if err := model.VerifyUndo(document, workflow.Move{}, bend, registry.Edit); err != nil {
+		t.Fatalf("moving a line: %v", err)
+	}
+	apply(t, document, workflow.Move{}, bend)
+	for _, check := range []struct {
+		kind model.EditKind
+		args json.RawMessage
+	}{
+		{workflow.Move{}, encode(t, workflow.MoveArgs{
+			Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: ids.ULID{}, Lane: nil, Depth: nil}},
+		})},
+		{workflow.Remove{}, encode(t, workflow.RemoveArgs{Nodes: []ids.ULID{id(3)}})},
+	} {
+		if err := model.VerifyUndo(document, check.kind, check.args, registry.Edit); err != nil {
+			t.Fatalf("%s with a moved line: %v", check.kind.Name(), err)
+		}
+	}
 }
 
 func TestAddGivesNewNodesIDs(t *testing.T) {

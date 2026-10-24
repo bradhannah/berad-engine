@@ -20,6 +20,9 @@ const (
 	chevronSize = 4
 	// movingAlpha is how solid a line being moved is drawn where it was.
 	movingAlpha = 0x66
+	// A grip is gripLength by gripWidth either side of a line's middle.
+	gripLength = 7
+	gripWidth  = 3
 )
 
 // drawLines draws every line: the others first, then the lit ones over them.
@@ -54,18 +57,7 @@ func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 	if len(corners) < ui.Half {
 		return
 	}
-	base := ui.ColorInk()
-	if from, ok := s.workflow.Node(link.key.from); ok && from.Kind == flow.KindTimeSwitch &&
-		link.key.output == flow.OutputOtherwise {
-		base = ui.ColorMuted()
-	}
-	if lit {
-		base = ui.ColorSelect()
-	}
-	var ink color.Color = base
-	if s.link != nil && s.link.from == link.key.from && s.link.output == link.key.output {
-		ink = color.NRGBA{R: base.R, G: base.G, B: base.B, A: movingAlpha}
-	}
+	ink := s.lineInk(link, lit)
 	width := float32(lineWidth)
 	if link.key == s.selectedLink {
 		width = selectedLine
@@ -82,6 +74,44 @@ func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 		}
 	}
 	drawArrowhead(area, s.toScreen(corners[len(corners)-1]), ink)
+	if link.key == s.hoverLink || link.key == s.selectedLink {
+		s.drawGrip(area, corners)
+	}
+}
+
+// drawGrip draws a small handle across the middle of a line's draggable
+// part, showing it can be moved.
+func (s *State) drawGrip(area *ebiten.Image, corners []image.Point) {
+	start, end, ok := middleOf(corners)
+	if !ok {
+		return
+	}
+	centre := s.toScreen(image.Pt((start.X+end.X)/ui.Half, (start.Y+end.Y)/ui.Half))
+	half := image.Pt(gripLength, gripWidth)
+	if start.Y == end.Y {
+		half = image.Pt(gripWidth, gripLength)
+	}
+	grip := image.Rectangle{Min: centre.Sub(half), Max: centre.Add(half)}
+	ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
+	ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
+}
+
+// lineInk is a line's colour: blue when lit, grey for a time switch's
+// "otherwise", ink otherwise; faint where it was while it is being moved.
+func (s *State) lineInk(link line, lit bool) color.Color {
+	base := ui.ColorInk()
+	if from, ok := s.workflow.Node(link.key.from); ok && from.Kind == flow.KindTimeSwitch &&
+		link.key.output == flow.OutputOtherwise {
+		base = ui.ColorMuted()
+	}
+	if lit {
+		base = ui.ColorSelect()
+	}
+	if s.link != nil && s.link.from == link.key.from && s.link.output == link.key.output {
+		return color.NRGBA{R: base.R, G: base.G, B: base.B, A: movingAlpha}
+	}
+
+	return base
 }
 
 // dashedLine draws a straight line in dashes.

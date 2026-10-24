@@ -117,8 +117,29 @@ func arrangeLevel(
 		}
 		left += width + max(columnGap, ui.Half*laneMargin+(leaving+1)*laneGap)
 	}
+	placeNotes(workflow, parent, corners, sizes, sized, origin)
 
 	return corners
+}
+
+// placeNotes puts a level's notes in a row under its other nodes. Notes are
+// not part of the flow, so they never take a place in its columns; placed
+// notes keep their own place when the workflow is arranged.
+func placeNotes(
+	workflow *flow.Workflow, parent ids.ULID, corners, sizes map[ids.ULID]image.Point, sized sizing, origin image.Point,
+) {
+	top := origin.Y
+	for nodeID, at := range corners {
+		node, _ := workflow.Node(nodeID)
+		top = max(top, at.Y+sizeOf(node, sizes, sized).Y+rowGap)
+	}
+	left := origin.X
+	for _, node := range workflow.Nodes() {
+		if node.Parent == parent && node.Kind == flow.KindNote {
+			corners[node.ID] = image.Pt(left, top)
+			left += sizeOf(node, nil, sized).X + rowGap
+		}
+	}
 }
 
 // levelOf collects the nodes with one parent and the links between them
@@ -127,7 +148,7 @@ func arrangeLevel(
 func levelOf(workflow *flow.Workflow, parent ids.ULID, cycle map[routeKey]bool) *level {
 	graph := &level{nodes: map[ids.ULID]flow.Node{}, order: nil, into: map[ids.ULID][]edge{}, outOf: map[ids.ULID][]edge{}}
 	for _, node := range workflow.Nodes() {
-		if node.Parent == parent {
+		if node.Parent == parent && node.Kind != flow.KindNote {
 			graph.nodes[node.ID] = node
 			graph.order = append(graph.order, node.ID)
 		}

@@ -197,7 +197,8 @@ document (`tilefloors`, `zones`, `texts`, `workflows`, `npcs`) rather than the
 project browser.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
-changes only when the layout does (D17). *Open:* chunking very large floors.
+changes only when the layout does (D17). A workflow's layout holds where
+each node sits and the bends of lines moved by hand. *Open:* chunking very large floors.
 
 ## D12 — Testing
 

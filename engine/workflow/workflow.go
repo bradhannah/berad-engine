@@ -5,9 +5,9 @@
 // that repeat while its time lasts, then it leaves by its exit. Any number of
 // links can lead into one node.
 //
-// The workflow's logic and its layout, where each node sits on the canvas,
-// are saved apart (D17), so moving a node never shows up as a change to the
-// logic.
+// The workflow's logic and its layout, where each node sits on the canvas
+// and any lines moved by hand, are saved apart (D17), so moving a node or a
+// line never shows up as a change to the logic.
 package workflow
 
 import (
@@ -28,7 +28,7 @@ const (
 	FormatName          = "workflow"
 	FormatVersion       = 2
 	LayoutFormatName    = "workflow-layout"
-	LayoutFormatVersion = 1
+	LayoutFormatVersion = 2
 )
 
 // MaxNodes bounds the nodes in one workflow.
@@ -83,11 +83,13 @@ type Link struct {
 	To     ids.ULID `json:"to"`
 }
 
-// Workflow is a graph of nodes with a start node, and their layout.
+// Workflow is a graph of nodes with a start node, and their layout: where
+// each node sits, and the bends of lines moved by hand.
 type Workflow struct {
 	start ids.ULID
 	nodes []Node
 	boxes map[ids.ULID]Box
+	bends map[string]Bend
 }
 
 type wireWorkflow struct {
@@ -97,6 +99,7 @@ type wireWorkflow struct {
 
 type wireLayout struct {
 	Boxes map[ids.ULID]Box `json:"boxes"`
+	Lines map[string]Bend  `json:"lines,omitempty"`
 }
 
 // New returns a workflow holding only its start node.
@@ -106,7 +109,7 @@ func New(start ids.ULID) (*Workflow, error) {
 	}
 	node := Node{ID: start, Kind: KindStart, Parent: ids.ULID{}, Params: map[string]json.RawMessage{}, Next: nil}
 
-	return &Workflow{start: start, nodes: []Node{node}, boxes: map[ids.ULID]Box{}}, nil
+	return &Workflow{start: start, nodes: []Node{node}, boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}}, nil
 }
 
 // Start returns the start node's ID.
@@ -281,13 +284,13 @@ const Unplaced = -1
 
 // Clone returns an independent copy.
 func (w *Workflow) Clone() *Workflow {
-	return &Workflow{start: w.start, nodes: w.Nodes(), boxes: maps.Clone(w.boxes)}
+	return &Workflow{start: w.start, nodes: w.Nodes(), boxes: maps.Clone(w.boxes), bends: maps.Clone(w.bends)}
 }
 
 // Equal reports whether two workflows hold the same logic and layout.
 func (w *Workflow) Equal(other *Workflow) bool {
 	return w.start == other.start && slices.EqualFunc(w.nodes, other.nodes, Node.Equal) &&
-		maps.Equal(w.boxes, other.boxes)
+		maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends())
 }
 
 // Encode returns the workflow's logic.
@@ -302,7 +305,7 @@ func (w *Workflow) Encode() (json.RawMessage, error) {
 
 // EncodeLayout returns the workflow's layout.
 func (w *Workflow) EncodeLayout() (json.RawMessage, error) {
-	data, err := json.Marshal(wireLayout{Boxes: w.boxes})
+	data, err := json.Marshal(wireLayout{Boxes: w.boxes, Lines: w.Bends()})
 	if err != nil {
 		return nil, fmt.Errorf("encode workflow layout: %w", err)
 	}
@@ -317,7 +320,7 @@ func Decode(data json.RawMessage) (*Workflow, error) {
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrData, err)
 	}
-	decoded := &Workflow{start: wire.Start, nodes: wire.Nodes, boxes: map[ids.ULID]Box{}}
+	decoded := &Workflow{start: wire.Start, nodes: wire.Nodes, boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}}
 	for index := range decoded.nodes {
 		decoded.nodes[index] = decoded.nodes[index].Clone()
 	}
@@ -329,8 +332,8 @@ func Decode(data json.RawMessage) (*Workflow, error) {
 	return decoded, nil
 }
 
-// DecodeLayout reads a saved layout into the workflow, keeping the boxes of
-// nodes it holds and dropping any others.
+// DecodeLayout reads a saved layout into the workflow, keeping the boxes and
+// bends of nodes it holds and dropping any others.
 func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 	var wire wireLayout
 	if err := json.Unmarshal(data, &wire); err != nil {
@@ -340,6 +343,12 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 	for id, box := range wire.Boxes {
 		if w.index(id) >= 0 {
 			w.boxes[id] = box
+		}
+	}
+	w.bends = map[string]Bend{}
+	for key, bend := range wire.Lines {
+		if from, _, ok := SplitLineKey(key); ok && w.index(from) >= 0 && !bend.To.IsZero() {
+			w.bends[key] = bend
 		}
 	}
 
@@ -393,7 +402,15 @@ func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
 
 // LayoutFormat returns the workflow layout's content format.
 func LayoutFormat() content.Format {
-	return content.Format{Name: LayoutFormatName, Current: LayoutFormatVersion, Migrations: nil}
+	return content.Format{
+		Name: LayoutFormatName, Current: LayoutFormatVersion, Migrations: map[int]content.Migration{1: layoutFrom1},
+	}
+}
+
+// layoutFrom1 reads a version 1 layout, which held only boxes, unchanged:
+// version 2 added lines moved by hand.
+func layoutFrom1(data json.RawMessage) (json.RawMessage, error) {
+	return data, nil
 }
 
 // check enforces the structure every workflow keeps: one start node; unique

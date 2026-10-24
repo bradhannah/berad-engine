@@ -84,12 +84,34 @@ Settled by its author for the Workflow window's lines:
   empty canvas, it is removed. Nodes with a problem get a **mark**.
   Dropping a palette node onto a line to put it into the line was tried and
   taken out as too eager.
-- **Moving lines by hand** is decided later. If it comes, a line moved by
-  hand keeps its shape between its ends when a node moves, and auto-arrange
-  resets it, with undo bringing it back.
+- **Moving lines by hand:** drag a line's middle. A line going back moves
+  its level run up or down, above the nodes if wanted; a line going forward
+  moves its upright part sideways. A moved line keeps its shape between its
+  ends when a node moves, and auto-arrange resets it, with undo bringing it
+  back.
+- **Notes** are not part of the flow: lines run over them, and they never
+  move a line, take a place in auto-arrange or push a new node.
 - **Later:** zoom with fit and a minimap, node titles and frames that only
   group nodes, and search. The step 4 runner guards against loops that never
   wait.
+
+Settled by its author for step 4, to see which state an NPC is in and
+check its changes from one node to the next:
+
+- A **Watch window** follows the NPC selected during a preview, chosen by
+  clicking its token on the map. It shows the NPC's workflow, read-only,
+  with the current node outlined orange under a LIVE bar and the line just
+  taken flashing orange; what the node is doing now, such as "walking to
+  Desk, 6 tiles to go" or "Wait 1.2 s of 2 s (game time)"; where the NPC
+  stands; and the clock.
+- It can **pause** the preview and **step to the next change**: run until
+  the watched NPC changes node, then pause.
+- Each NPC's state rides in the preview stream (D7); the Map window's NPC
+  selection reaches Watch windows through the orchestrator; pause and step
+  go from the Watch window to the window running the preview. Watching is
+  session state, never saved.
+- Not now: a history of changes with their reasons, counts of how often
+  each output is taken, and pausing on a marked node.
 
 Open:
 
@@ -210,7 +232,12 @@ Open:
   its arrow end: dropped on another node it moves there, leaving the same
   output; dropped back where it was it changes nothing; dropped on empty
   canvas it is removed. While it moves, the line is drawn faint where it
-  was. A Go to with no destination
+  was. Pointing at a line's middle shows a grip; dragging it moves the
+  middle, saved in the layout file as a bend measured from the line's
+  output, and Reset line in the inspector puts it back. A bend applies only
+  while the line leads where it did when moved. Notes are drawn behind
+  lines and nodes and play no part in routing or auto-arrange; a note
+  with no place yet goes under the flow. A Go to with no destination
   or a broken one, a container with no first step, and a node nothing links
   into get a warning mark; pointing at it says what is wrong, and so does
   the inspector. The window now lays the workflow out only when it changes,

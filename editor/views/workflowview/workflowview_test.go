@@ -589,3 +589,111 @@ func TestDroppingOnALineAddsASeparateNode(t *testing.T) {
 		t.Fatalf("the line is unchanged and the wait stands alone: %+v", f.workflow().Nodes())
 	}
 }
+
+// nodeInset is how far inside a node's top-left corner "node:<kind>:<n>"
+// points.
+const nodeInset = 18
+
+// loopFixture builds start → random choice → Wait, with a line from the Wait
+// back to the random choice, and auto-arranges it.
+func loopFixture(t *testing.T) *fixture {
+	t.Helper()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindRandom)
+	f.click("palette:" + flow.KindWait)
+	f.drag(f.at("port:wait:1:next"), f.at("node:random:1"))
+	f.click("ui:arrange")
+
+	return f
+}
+
+// lastLines returns the line bends the last move edit sent.
+func (f *fixture) lastLines() map[string]flow.Bend {
+	f.t.Helper()
+	moves := f.requests.Of(workflowplugin.MoveEdit)
+	if len(moves) == 0 {
+		f.t.Fatal("no move sent")
+	}
+	var args workflowplugin.MoveArgs
+	if err := moves[len(moves)-1].Decode(&args); err != nil {
+		f.t.Fatal(err)
+	}
+
+	return args.Lines
+}
+
+// TestMovingALineByHand drags the loop's run up above the nodes, moves the
+// Wait and sees the run follow, then resets the line, bends it again and
+// auto-arranges, which resets it too.
+func TestMovingALineByHand(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	key := flow.LineKey(f.nth(flow.KindWait, 1).ID, flow.OutputNext)
+	grip := f.at("bend:wait:1:next")
+	top := f.at("node:random:1").Y - nodeInset
+	f.drag(grip, image.Pt(grip.X, top-30))
+	if !f.has("bent:wait:1:next") || !f.has("line-selected") {
+		t.Fatal("dragging the middle bends the line and selects it")
+	}
+	if bend := f.lastLines()[key]; bend.Depth == nil || *bend.Depth >= 0 {
+		t.Fatalf("the run moves above the wait's output: %+v", bend)
+	}
+	run := f.at("bend:wait:1:next")
+	if run.Y >= top {
+		t.Fatalf("the loop now runs above the nodes: %d, nodes start at %d", run.Y, top)
+	}
+	wait := f.at("node:wait:1")
+	f.drag(wait, wait.Add(image.Pt(0, 40)))
+	if moved := f.at("bend:wait:1:next"); moved.Y != run.Y+40 {
+		t.Fatalf("the run follows its node: %d, was %d", moved.Y, run.Y)
+	}
+	f.click("bend:wait:1:next")
+	f.click("ui:reset-line")
+	if f.has("bent:wait:1:next") {
+		t.Fatal("Reset line puts the line back")
+	}
+	grip = f.at("bend:wait:1:next")
+	f.drag(grip, image.Pt(grip.X, top-30))
+	f.click("ui:arrange")
+	if f.has("bent:wait:1:next") {
+		t.Fatal("auto-arrange resets lines moved by hand")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestMovingAForwardLineSideways drags the upright part of a line going
+// forward.
+func TestMovingAForwardLineSideways(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindRandom)
+	f.click("palette:" + flow.KindWait)
+	f.click("node:random:1")
+	f.click("palette:" + flow.KindWait)
+	f.click("ui:arrange")
+	grip := f.at("bend:random:1:o2")
+	f.drag(grip, grip.Add(image.Pt(20, 0)))
+	if !f.has("bent:random:1:o2") {
+		t.Fatal("dragging the upright part bends the line")
+	}
+	if moved := f.at("bend:random:1:o2"); moved.X != grip.X+20 {
+		t.Fatalf("the upright part follows the pointer: %d, was %d", moved.X, grip.X)
+	}
+}
+
+// TestLinesRunOverNotes puts a note on top of a line: clicking the line
+// there selects the line, not the note.
+func TestLinesRunOverNotes(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.drag(f.at("palette:"+flow.KindNote), f.at("line:start:1:next"))
+	f.click("line:start:1:next")
+	if !f.has("line-selected") || f.has("selected:note") {
+		t.Fatal("a line over a note is clicked, not the note")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
