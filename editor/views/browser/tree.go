@@ -153,8 +153,10 @@ func (s *State) zoneRows(
 		if !open {
 			continue
 		}
-		floorEntry := project.Entry{ID: floors[position], Name: index.Name(floors[position], "missing floor"),
-			Format: floor.FormatName}
+		floorEntry := project.Entry{
+			ID: floors[position], Name: index.Name(floors[position], "missing floor"), Format: floor.FormatName,
+			Folder: "", Tags: nil,
+		}
 		detail := ""
 		if position == len(floors)-1 && len(floors) > 1 {
 			detail = "top"
