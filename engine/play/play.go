@@ -173,7 +173,7 @@ func Start(floor ids.ULID, cell image.Point) *Run {
 // CanStand reports whether the player can stand on a cell of a floor.
 func CanStand(zone Zone, floor ids.ULID, cell image.Point) bool {
 	can := false
-	zone.Floor(floor, func(loaded *tilefloor.Floor) { can = standable(loaded, cell) })
+	zone.Floor(floor, func(loaded *tilefloor.Floor) { can = Standable(loaded, cell) })
 
 	return can
 }
@@ -235,7 +235,7 @@ func (r *Run) begin(floor *tilefloor.Floor, delta image.Point) {
 		return
 	}
 	r.player.Facing = delta
-	if canStep(floor, r.player.Cell, delta) {
+	if CanStep(floor, r.player.Cell, delta) {
 		r.player.To = r.player.Cell.Add(delta)
 	}
 }
@@ -249,7 +249,7 @@ func (r *Run) join(floor *tilefloor.Floor, held Direction) bool {
 		return false
 	}
 	if (step.X == 0 || step.X == wanted.X) && (step.Y == 0 || step.Y == wanted.Y) &&
-		canStep(floor, r.player.Cell, wanted) {
+		CanStep(floor, r.player.Cell, wanted) {
 		r.player.To = r.player.Cell.Add(wanted)
 		r.player.Facing = wanted
 
@@ -283,21 +283,21 @@ func climbAt(floor *tilefloor.Floor, cell image.Point) int {
 	return tiles.Climb(top)
 }
 
-// canStep reports whether a step can be taken: its cell can be stood on and,
+// CanStep reports whether a step can be taken: its cell can be stood on and,
 // for a diagonal, the two cells beside it do not both block.
-func canStep(floor *tilefloor.Floor, from, delta image.Point) bool {
-	if !standable(floor, from.Add(delta)) {
+func CanStep(floor *tilefloor.Floor, from, delta image.Point) bool {
+	if !Standable(floor, from.Add(delta)) {
 		return false
 	}
 	if delta.X == 0 || delta.Y == 0 {
 		return true
 	}
 
-	return standable(floor, from.Add(image.Pt(delta.X, 0))) || standable(floor, from.Add(image.Pt(0, delta.Y)))
+	return Standable(floor, from.Add(image.Pt(delta.X, 0))) || Standable(floor, from.Add(image.Pt(0, delta.Y)))
 }
 
-// standable reports whether a cell is on a floor and nothing on it blocks.
-func standable(floor *tilefloor.Floor, cell image.Point) bool {
+// Standable reports whether a cell is on a floor and nothing on it blocks.
+func Standable(floor *tilefloor.Floor, cell image.Point) bool {
 	if !floor.In(cell.X, cell.Y) {
 		return false
 	}

@@ -72,6 +72,9 @@ type Update struct {
 	PreviewStart *protocol.PreviewStart
 	PreviewState *protocol.PreviewState
 	PreviewStop  *protocol.PreviewStop
+	// PreviewControl asks the window running a preview to watch, pause,
+	// resume or step its NPCs.
+	PreviewControl *protocol.PreviewControl
 }
 
 // Client is one window's connection.
@@ -346,6 +349,12 @@ func (c *Client) PreviewState(state protocol.PreviewState) error {
 // PreviewStop ends this window's preview.
 func (c *Client) PreviewStop(stop protocol.PreviewStop) error {
 	return c.notify(protocol.KindPreviewStop, stop)
+}
+
+// PreviewControl asks the window running the preview to watch, pause, resume
+// or step its NPCs.
+func (c *Client) PreviewControl(control protocol.PreviewControl) error {
+	return c.notify(protocol.KindPreviewControl, control)
 }
 
 // notify sends a message that expects no reply.

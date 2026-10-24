@@ -339,6 +339,14 @@ func (h *host) PreviewStop(stop protocol.PreviewStop) {
 	}
 }
 
+// PreviewControl asks the window running the preview to watch, pause, resume
+// or step its NPCs.
+func (h *host) PreviewControl(control protocol.PreviewControl) {
+	if err := h.conn.PreviewControl(control); err != nil {
+		h.frame.Status(err.Error())
+	}
+}
+
 // Draw renders the view, the status bar and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
 	h.view.Draw(screen, h.conn)

@@ -122,3 +122,61 @@ func TestPreviewEndsWhenItsWindowCloses(t *testing.T) {
 		t.Fatalf("a new preview after the window closed: %v", err)
 	}
 }
+
+// A Watch window of the zone gets the preview's start, its states and, when
+// it opens late, the latest state; its controls go to the window running the
+// preview and nowhere else.
+func TestWatchWindowsFollowAndControlThePreview(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	createProject(t, dir)
+	h := start(t, dir, nil)
+	group := "map:" + previewZone.String()
+	owner := h.dialView(t, orchestrator.MapView, previewZone, group)
+	viewer := h.dialView(t, orchestrator.MapView, previewZone, group)
+	watcher := h.dialView(t, orchestrator.WatchView, previewZone, "")
+	run, err := startPreview(t, owner, previewZone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextUpdate(t, watcher, "the start", func(u client.Update) bool { return u.PreviewStart != nil })
+	if err := owner.PreviewState(playerAt(run, 1, 2.5)); err != nil {
+		t.Fatal(err)
+	}
+	nextUpdate(t, watcher, "the state", func(u client.Update) bool { return u.PreviewState != nil })
+	late := h.dialView(t, orchestrator.WatchView, previewZone, "")
+	nextUpdate(t, late, "the start for a late watcher", func(u client.Update) bool { return u.PreviewStart != nil })
+	nextUpdate(t, late, "the latest state", func(u client.Update) bool { return u.PreviewState != nil })
+
+	control := protocol.PreviewControl{Run: run, Action: protocol.ControlStep, Placement: previewZone}
+	if err := watcher.PreviewControl(control); err != nil {
+		t.Fatal(err)
+	}
+	got := nextUpdate(t, owner, "the control", func(u client.Update) bool { return u.PreviewControl != nil })
+	if *got.PreviewControl != control {
+		t.Fatalf("control %+v", got.PreviewControl)
+	}
+	if err := viewer.PreviewControl(protocol.PreviewControl{Run: ids.ULID{}, Action: protocol.ControlPause}); err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.PreviewState(playerAt(run, 2, 3)); err != nil {
+		t.Fatal(err)
+	}
+	nextUpdate(t, viewer, "a later state", func(u client.Update) bool {
+		return u.PreviewState != nil && u.PreviewState.Tick == 2
+	})
+	for {
+		select {
+		case update := <-owner.Updates():
+			if update.PreviewControl != nil {
+				t.Fatalf("a control for another run reached the owner: %+v", update.PreviewControl)
+			}
+		case update := <-viewer.Updates():
+			if update.PreviewControl != nil {
+				t.Fatalf("a control reached a window not running the preview: %+v", update.PreviewControl)
+			}
+		default:
+			return
+		}
+	}
+}

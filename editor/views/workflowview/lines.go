@@ -107,6 +107,9 @@ func (s *State) lineInk(link line, lit bool) color.Color {
 	if lit {
 		base = ui.ColorSelect()
 	}
+	if s.lineFlashing(link.key) {
+		base = ui.ColorLive()
+	}
 	if s.link != nil && s.link.from == link.key.from && s.link.output == link.key.output {
 		return color.NRGBA{R: base.R, G: base.G, B: base.B, A: movingAlpha}
 	}

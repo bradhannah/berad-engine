@@ -133,6 +133,9 @@ type State struct {
 	form       *form
 	focus      ui.Focus
 	picker     *picker.Picker
+	// live is set for a read-only view of an NPC's workflow in the Watch
+	// window.
+	live *live
 }
 
 // New returns the Workflow window for a workflow.
@@ -146,7 +149,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
-		form: nil, focus: ui.Focus{}, picker: picker.New(window),
+		form: nil, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -241,6 +244,9 @@ func (s *State) load(docs frame.Docs) {
 
 // Canvas returns the screen area that shows the workflow.
 func (s *State) Canvas() image.Rectangle {
+	if s.live != nil {
+		return s.live.area
+	}
 	content := frame.Content(s.size)
 
 	return image.Rect(PaletteWidth, toolbarHeight, content.Max.X, content.Max.Y)
@@ -284,6 +290,11 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
+	if s.live != nil {
+		s.updateLive(input, ctx)
+
+		return
+	}
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.load(ctx.Docs)

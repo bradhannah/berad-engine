@@ -57,6 +57,11 @@ func textParam(node flow.Node, name string) string {
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
+	if s.live != nil {
+		s.drawLive(screen, docs)
+
+		return
+	}
 	s.size = screen.Bounds().Size()
 	s.load(docs)
 	s.layoutWidgets(docs)
@@ -156,6 +161,7 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 		ui.StrokeRound(area, s.screenRect(selected.rect).Inset(-selectGap), ui.Radius+selectGap, selectWidth,
 			ui.ColorSelect())
 	}
+	s.drawLiveNode(area)
 	if s.link != nil {
 		if from, ok := s.shapes[s.link.from].portOf(s.link.output); ok {
 			ui.Line(area, s.toScreen(from.at), s.toScreen(s.link.to), lineWidth, ui.ColorSelect())

@@ -14,6 +14,9 @@ What a top-down tile RPG runs. This module must never import the editor module.
 | `play` | A run of a zone: the player walking, one cell per step, and taking stairs |
 | `workflow` | Workflows: typed node kinds with declared parameters and outputs, and the layout kept apart |
 | `npc` | An NPC: its behaviour workflow and its author's private notes |
+| `clock` | The game clock: a time of day, a rate, stop and jump |
+| `npcrun` | NPCs running their workflows, a tick at a time; Go to finds its way with berad-path |
 
-The world model, characteristics, workflow runner, schedules and game loop
+The engine depends on one berad-sdk module, `modules/berad-path`, pinned at a
+reviewed revision. The world model, characteristics, schedules and game loop
 arrive as games need them.

@@ -136,6 +136,7 @@ type step struct {
 
 type expectation struct {
 	Locate string `json:"locate"`
+	Must   bool   `json:"must,omitempty"`
 }
 
 func wait(frames int) step { return step{Repeat: frames} }
@@ -163,6 +164,26 @@ func quit() step { return keys("Cmd+W") }
 // expect waits up to frames for a named part of the window to exist.
 func expect(locate string, frames int) step {
 	return step{Repeat: frames, Expect: &expectation{Locate: locate}}
+}
+
+// must is expect that crashes the window when the part never appears, so
+// noCrashes fails the test.
+func must(locate string, frames int) step {
+	return step{Repeat: frames, Expect: &expectation{Locate: locate, Must: true}}
+}
+
+// noCrashes fails the test if any window crashed, as a must does when its
+// part never appears.
+func noCrashes(t *testing.T, project string) {
+	t.Helper()
+	reports, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*-crash.json"))
+	if err != nil || len(reports) != 0 {
+		for _, report := range reports {
+			raw, _ := os.ReadFile(report) //nolint:errcheck,gosec // The test's own project.
+			t.Logf("%s:\n%.800s", report, raw)
+		}
+		t.Fatalf("windows crashed: %v %v", reports, err)
+	}
 }
 
 // click presses and releases the main button on a named part of the window.
@@ -628,6 +649,63 @@ func TestNPCPlacedWithBehaviour(t *testing.T) {
 	for _, shot := range []string{browserShot, mapShot} {
 		t.Logf("screenshot: %s", shot)
 	}
+}
+
+// TestNPCFollowsItsWorkflow builds the random walk, makes it an NPC's
+// behaviour, places the NPC and starts a preview at 08:00: the NPC must
+// leave its cell. Clicking it watches it, and the Watch window shows it on
+// its workflow and pauses the NPCs.
+func TestNPCFollowsItsWorkflow(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	mapShot, watchShot := shotPath(t, "npc-preview-map.png"), shotPath(t, "npc-preview-watch.png")
+	retype := func(field, text string) []step {
+		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
+	}
+	browserScript := script(
+		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
+		click("ui:use"), wait(30), quit(),
+	)
+	workflowScript := script(
+		must("state:loaded", 600), wait(5),
+		click("node:start:1"), wait(5), click("palette:random"), wait(10),
+		click("palette:move"), wait(10), click("node:random:1"), wait(5), click("palette:move"), wait(10),
+		click("ui:direction-down"), wait(10), click("node:move:1"), wait(5), click("palette:wait"), wait(10),
+		retype("param-duration", "1"), click("ui:duration-seconds"), wait(10),
+		drag("port:move:2:next", "entry:wait:1"), must("state:entries:wait:1=2", 300), wait(10), quit(),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(5), keys("N"), must("npc:NPC 1", 1800), click("npc:NPC 1"), wait(5),
+		click("cell:1,1"), must("state:placement:1,1=NPC 1", 300), wait(400),
+		keys("P"), click("cell:2,-2"), must("state:previewing", 300), must("state:npcs-moved", 900),
+		click("live-npc:NPC 1"), wait(5), click("live-npc:NPC 1"), must("state:watching", 300), wait(10),
+		click("ui:watch"), wait(600), step{Repeat: 2, Screenshot: mapShot}, wait(10), keys("P"), wait(30), quit(),
+	)
+	watchScript := script(
+		must("state:previewing", 1800), must("state:watching:NPC 1", 600), wait(60),
+		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10), quit(),
+	)
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "watch": {watchScript},
+	})
+	noCrashes(t, project)
+
+	routine := readEnvelope(t, project, "workflows/workflow-1--*[^t].json")
+	saved := readEnvelope(t, project, "npcs/npc-1--*.json")
+	decoded, err := npcplugin.Decode(saved.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.(*npcplugin.Document).NPC.Behaviour != routine.ID {
+		t.Fatal("the NPC follows the random walk")
+	}
+	ground, _ := readFloor(t, project, "ground-floor")
+	if placement, found := ground.PlacementAt(1, 1); !found || placement.NPC != saved.ID {
+		t.Fatal("the preview must not move the NPC's placement")
+	}
+	t.Logf("screenshots: %s %s", mapShot, watchShot)
 }
 
 // TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process

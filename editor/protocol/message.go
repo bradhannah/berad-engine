@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 4
+const Version = 5
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -49,11 +49,13 @@ const (
 	KindPickStart  Kind = "pick-start"
 	KindPickAnswer Kind = "pick-answer"
 	KindPickCancel Kind = "pick-cancel"
-	// The three preview messages (D7, D15): a Map window starts a preview,
-	// streams its live state through the orchestrator, and stops it.
-	KindPreviewStart Kind = "preview-start"
-	KindPreviewState Kind = "preview-state"
-	KindPreviewStop  Kind = "preview-stop"
+	// The preview messages (D7, D15): a Map window starts a preview, streams
+	// its live state through the orchestrator, and stops it; other windows
+	// of the zone control its NPCs.
+	KindPreviewStart   Kind = "preview-start"
+	KindPreviewState   Kind = "preview-state"
+	KindPreviewStop    Kind = "preview-stop"
+	KindPreviewControl Kind = "preview-control"
 )
 
 // Message is one framed protocol message.
@@ -242,7 +244,8 @@ type PreviewStart struct {
 const EntityPlayer = "player"
 
 // PreviewEntity is one live entity of a preview: where it is, in cells,
-// part-way between two cells while it moves.
+// part-way between two cells while it moves. The player's ID is
+// EntityPlayer; an NPC's is its placement's.
 type PreviewEntity struct {
 	ID    string   `json:"id"`
 	Floor ids.ULID `json:"floor"`
@@ -250,6 +253,25 @@ type PreviewEntity struct {
 	Y     float64  `json:"y"`
 	// Face is the direction the entity faces, one cell.
 	Face [2]int `json:"face"`
+	// An NPC also says which NPC it is, the workflow it follows, the node it
+	// is on, what it is doing there, why a node could not do its work, its
+	// latest change of node and how many changes it has made.
+	NPC      ids.ULID      `json:"npc,omitzero"`
+	Workflow ids.ULID      `json:"workflow,omitzero"`
+	Node     ids.ULID      `json:"node,omitzero"`
+	Activity string        `json:"activity,omitempty"`
+	Status   string        `json:"status,omitempty"`
+	Last     PreviewChange `json:"last,omitzero"`
+	Changes  uint64        `json:"changes,omitempty"`
+}
+
+// PreviewChange is an NPC's change from one node to another: the output it
+// took and the tick.
+type PreviewChange struct {
+	From   ids.ULID `json:"from,omitzero"`
+	Output string   `json:"output,omitempty"`
+	To     ids.ULID `json:"to,omitzero"`
+	Tick   uint64   `json:"tick,omitempty"`
 }
 
 // PreviewState is a preview's latest live state, sent at a limited rate; the
@@ -259,6 +281,34 @@ type PreviewState struct {
 	Run      ids.ULID        `json:"run"`
 	Tick     uint64          `json:"tick"`
 	Entities []PreviewEntity `json:"entities"`
+	// Clock is the game clock's time of day in seconds, Rate how many game
+	// seconds pass in a real one, and ClockStopped whether it is stopped.
+	Clock        float64 `json:"clock"`
+	Rate         int     `json:"rate"`
+	ClockStopped bool    `json:"clockStopped,omitempty"`
+	// NPCsPaused says the NPCs are paused; Watched is the placement of the
+	// NPC being watched, if any.
+	NPCsPaused bool     `json:"npcsPaused,omitempty"`
+	Watched    ids.ULID `json:"watched,omitzero"`
+}
+
+// Preview controls.
+const (
+	ControlWatch  = "watch"
+	ControlPause  = "pause"
+	ControlResume = "resume"
+	ControlStep   = "step"
+)
+
+// PreviewControl asks the window running a preview to watch an NPC, by its
+// placement, or to pause, resume or step its NPCs: a step runs them until the
+// watched NPC changes node. It comes from a Watch window or another Map
+// window of the zone, and the orchestrator passes it to the window running
+// the preview.
+type PreviewControl struct {
+	Run       ids.ULID `json:"run"`
+	Action    string   `json:"action"`
+	Placement ids.ULID `json:"placement,omitzero"`
 }
 
 // PreviewStop ends a preview. The window running it sends it; the

@@ -94,7 +94,11 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawFloorEdges(area, floorDoc.Floor, grid)
 		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
-		s.drawPlacements(area, floorDoc.Floor, grid)
+		if s.preview != nil || s.remote != nil {
+			s.drawLiveNPCs(area, grid)
+		} else {
+			s.drawPlacements(area, floorDoc.Floor, grid)
+		}
 		s.drawSelection(area, grid)
 		s.drawPlayer(area, grid)
 		s.drawStartCell(area, floorDoc.Floor, grid)
@@ -389,7 +393,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
 	helpTop := panel.Max.Y - len(helpLines())*ui.LineHeight
-	s.drawPreviewInspector(screen, docs, textX, helpTop-previewLines*ui.LineHeight)
+	s.drawPreviewInspector(screen, docs, textX, helpTop)
+	s.drawNPCPreview(screen, textX, helpTop)
 	s.drawHelp(screen, textX, helpTop)
 }
 

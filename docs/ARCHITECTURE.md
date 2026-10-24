@@ -149,6 +149,15 @@ running the preview, or from the orchestrator when that window closes. States
 are kept out of a crash report's recent traffic, which they would crowd out,
 but stay in the wire tap.
 
+**As built (protocol version 5):** a state also carries every NPC (its NPC,
+workflow, node, what it is doing, why a node could not do its work, its
+latest change of node and a count of changes), the game clock (time of day,
+rate, stopped) and the watched NPC. A fourth message, *Control*, asks the
+window running the preview to watch an NPC, or pause, resume or step its
+NPCs; the orchestrator passes it only to that window, and only from a window
+that shows the preview. Watch windows of the zone receive starts, states and
+stops as its Map windows do.
+
 ## D8 — Large data
 
 Art is served by the orchestrator. Windows cache assets by content fingerprint

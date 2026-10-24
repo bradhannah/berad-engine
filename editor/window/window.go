@@ -22,6 +22,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/editor/views/textview"
+	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -48,7 +49,7 @@ type Args struct {
 // from the main goroutine, as Ebitengine requires.
 func Run(args Args, registry *plugin.Registry) error {
 	switch args.View {
-	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName:
+	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName:
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
@@ -108,6 +109,8 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return textview.New(window, args.Target, theme)
 	case workflowview.ViewName:
 		return workflowview.New(window, args.Target, theme)
+	case watchview.ViewName:
+		return watchview.New(window, args.Target, theme)
 	default:
 		return mapview.New(window, args.Target, theme)
 	}

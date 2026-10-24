@@ -49,7 +49,8 @@ func (c *Client) dispatch(message protocol.Message) {
 		c.emit(update)
 	case protocol.KindPickAsk, protocol.KindPickStart, protocol.KindPickAnswer, protocol.KindPickCancel:
 		c.dispatchPick(message)
-	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop:
+	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop,
+		protocol.KindPreviewControl:
 		c.dispatchPreview(message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery:
@@ -90,7 +91,7 @@ func (c *Client) dispatchPick(message protocol.Message) {
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
 		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPreviewStart, protocol.KindPreviewState,
-		protocol.KindPreviewStop:
+		protocol.KindPreviewStop, protocol.KindPreviewControl:
 		return
 	default:
 		return
@@ -116,6 +117,10 @@ func (c *Client) dispatchPreview(message protocol.Message) {
 		var stop protocol.PreviewStop
 		stop, err = protocol.DecodePayload[protocol.PreviewStop](message)
 		update.PreviewStop = &stop
+	case protocol.KindPreviewControl:
+		var control protocol.PreviewControl
+		control, err = protocol.DecodePayload[protocol.PreviewControl](message)
+		update.PreviewControl = &control
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
 		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
@@ -290,6 +295,6 @@ func newUpdate() Update {
 	return Update{
 		Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Session: nil, Shutdown: nil,
 		Attention: false, PickStart: nil, PickAnswer: nil, PickCancel: nil,
-		PreviewStart: nil, PreviewState: nil, PreviewStop: nil,
+		PreviewStart: nil, PreviewState: nil, PreviewStop: nil, PreviewControl: nil,
 	}
 }

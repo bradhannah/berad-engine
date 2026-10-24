@@ -26,7 +26,7 @@ to the same strict checks as [the first build](FIRST_BUILD.md).
 | 1. The wireframe look | IBM Plex Sans and Mono; dark 1.5-pixel outlines and rounded boxes; small uppercase labels; blue for selection, orange for live; the dotted or lined canvas | Every window matches the wireframes' look, judged by its author | Built |
 | 2. Workflows | Workflow documents, logic and layout kept apart (D17); node types declared by a plug-in with typed parameters; the Workflow window: palette, canvas, nodes, connections, containers, notes, an inspector built from the declarations, auto-arrange | A routine can be built, edited and undone in the Workflow window | Built |
 | 3. NPCs | NPC documents with a behaviour workflow; placing NPCs on floors; the inspector for an NPC placement | NPCs can be placed and given workflows | Built |
-| 4. NPCs in the preview | The engine's workflow runner; NPC walking with berad-path; the preview clock; live state in the Map and Workflow windows | NPCs follow a daily routine in the preview, judged by its author | Planned |
+| 4. NPCs in the preview | The engine's workflow runner; NPC walking with berad-path; the preview clock; live state in the Map window and the Watch window | NPCs follow a daily routine in the preview, judged by its author | Built |
 
 Pathfinding comes from a new berad-sdk module, **berad-path**, built from
 Ultima V Redux's A*; berad-engine pins it once it is merged.
@@ -112,6 +112,13 @@ check its changes from one node to the next:
   session state, never saved.
 - Not now: a history of changes with their reasons, counts of how often
   each output is taken, and pausing on a marked node.
+- NPCs walk at the player's pace whatever the clock's rate, and NPCs and
+  the player pass through each other.
+- The preview's start time is set in the Map window before it starts (08:00
+  to begin with).
+- A Go to whose anchor is on another floor cannot be reached: the Watch
+  window says so, and the flow carries on. Walking between floors comes
+  later.
 
 Open:
 
@@ -245,6 +252,32 @@ Open:
 - Found while building: the test stand-in for a window's documents never
   raised a document's revision, which the window now relies on, so it does
   when a document changes, as the orchestrator does.
+
+- **NPCs in the preview** (step 4): `engine/npcrun` runs each NPC through
+  its workflow a tick at a time. Nodes that take no time are followed in the
+  same tick, at most 64 of them before it stops with "Looping without
+  waiting"; Wait counts game or real time; Move walks by the player's rules
+  and carries on when blocked; Go to finds its way with berad-path, pinned at
+  `bea6c15`, and walks it, finding a new way if something comes into the
+  way. A free output goes back to the start, or inside a container to its
+  first step; a container whose time is up is left by its exit at once; a
+  clock jump starts every NPC again; random choices are seeded by the run and
+  the placement, so a run repeats. `engine/clock` is the game clock, counting
+  in sixtieths of a game second so it never drifts. The window running a
+  preview steps every NPC on the zone's floors, picks up NPCs placed or
+  removed during it, and restarts an NPC whose workflow is edited. Its
+  inspector has the clock: real time, 1 min/s and 10 min/s, Stop clock and
+  a Jump field; clicking an NPC watches it, and Watch opens the Watch
+  window. The Watch window follows the watched NPC: its workflow, read-only,
+  with the node it is on outlined in orange under a LIVE bar and the line
+  it took flashing orange, what it is doing now and where it stands, the
+  clock, and Pause NPCs and Step to next change. Pausing the NPCs holds the
+  clock too; stepping runs them until the watched NPC changes node.
+- Found while building: a real-window test could not fail when something it
+  waited for never happened, so input scripts gained strict expectations
+  that crash the window, which the test then reports; and the Watch window
+  first skipped loading the project index, whose ID is the zero ID, which
+  its unit test could not see.
 
 ## Not in this build
 
