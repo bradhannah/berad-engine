@@ -25,10 +25,25 @@ under consideration), **open** (undecided).
   style of the editor wireframes for every window: IBM Plex Sans and Mono,
   dark outlines and rounded boxes, small uppercase labels, blue for selection
   and orange for anything live.
+- **Agreed:** typed changes wait for an explicit save: every inspector with
+  fields to type into, and the Text window, has a save bar with Revert and
+  Save, and Cmd+S saves in any window. Enter saves a one-line field and
+  starts a new line in a field of several lines. Buttons, choices and pick
+  on map still apply at once and can be undone. Selecting something else or
+  closing a window with unsaved changes asks: Save, Don't save or Cancel.
+- **Agreed:** Cmd+W closes a window; Cmd+Q in any window asks whether the
+  author is done and, if so, closes every window. With unsaved changes in
+  any window it names them and offers Save and quit, Don't save or Cancel.
+- **Agreed:** document types are told apart by an icon, always with a muted
+  colour beside it, never by colour alone: zones and floors green, workflows
+  purple, NPCs slate, text brown. Blue and orange stay for selection and
+  live.
 
 ## Maps and tiles
 
-- **Agreed:** a visual map editor.
+- **Agreed:** a visual map editor, with a floating zoom control in the map's
+  bottom-right corner (−, the zoom as a percentage, + and Fit). Scrolling
+  pans the Map, Workflow and Watch windows the same way.
 - **Agreed:** **stand-in tiles** let an author lay out a map before its art
   exists. Stand-ins are typed (for example ground, generic wall, generic door,
   stairs up and down, small or medium pickup) so their role is recognisable. Default behaviour and
@@ -200,6 +215,10 @@ under consideration), **open** (undecided).
   behaviour rather than preserving their place in a changed workflow.
 - **Agreed:** a workflow view can show the step each NPC is on and its inputs,
   ideally with the surrounding steps visible.
+- **Agreed:** Step to next change goes straight to the watched NPC's next
+  node, however long its node takes, and shows the way it went (each node
+  passed, the choice taken, what was blocked) until the NPCs resume or step
+  again.
 - **Tentative:** loadable test scenarios set just enough state (conditions true
   or false) to test something without replaying the game. Later: prepared save
   states and jumping straight to a location.

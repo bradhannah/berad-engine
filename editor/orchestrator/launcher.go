@@ -130,7 +130,7 @@ func (o *Orchestrator) childExited(exit childExit) {
 	started, found := o.children[exit.window]
 	delete(o.children, exit.window)
 	defer delete(o.recent, exit.window)
-	if o.cfg.QuitWhenLastWindowCloses && len(o.children) == 0 {
+	if (o.cfg.QuitWhenLastWindowCloses || o.quitting) && len(o.children) == 0 {
 		o.quit = true
 	}
 	if !found || exit.err == nil || o.stopping {

@@ -145,7 +145,8 @@ func TestMoveThenWait(t *testing.T) {
 	}
 }
 
-// TestMoveStopsAtAWall carries on when the wall is in the way.
+// TestMoveStopsAtAWall carries on when the wall is in the way, saying so on
+// the change it carried on by.
 func TestMoveStopsAtAWall(t *testing.T) {
 	t.Parallel()
 	workflow := workflowOf(t, []flow.Node{
@@ -154,8 +155,43 @@ func TestMoveStopsAtAWall(t *testing.T) {
 	}, link(1, flow.OutputNext, 2), link(2, flow.OutputNext, 3))
 	r := newRunner(t, workflow, image.Pt(3, 2), eight, clock.Real)
 	r.run(5 * play.StepTicks)
-	if r.npc.Cell != image.Pt(4, 2) || r.npc.Node != id(3) || r.npc.Status != npcrun.StatusBlocked {
-		t.Fatalf("stopped beside the wall and carried on: %v on %v, %q", r.npc.Cell, r.npc.Node, r.npc.Status)
+	if r.npc.Cell != image.Pt(4, 2) || r.npc.Node != id(3) || r.npc.Last.Status != npcrun.StatusBlocked {
+		t.Fatalf("stopped beside the wall and carried on: %v on %v, %+v", r.npc.Cell, r.npc.Node, r.npc.Last)
+	}
+	if r.npc.Status != "" || !strings.HasPrefix(r.npc.Activity(workflow), "Wait 59 min") {
+		t.Fatalf("the wait after it is not blocked: %q, %q", r.npc.Status, r.npc.Activity(workflow))
+	}
+}
+
+// TestTakenListsTheChangesOfOneStep lists every node passed in one tick: a
+// finished wait, the start, a random choice and a blocked move, back to the
+// wait.
+func TestTakenListsTheChangesOfOneStep(t *testing.T) {
+	t.Parallel()
+	workflow := workflowOf(t, []flow.Node{
+		node(t, 2, flow.KindRandom, map[string]any{"options": []flow.Share{{Port: "o1", Label: "only", Share: 1}}}),
+		node(t, 3, flow.KindMove, map[string]any{"direction": flow.DirectionUp, "tiles": 1}),
+		node(t, 4, flow.KindWait, map[string]any{"duration": waitFor(1, flow.UnitSeconds, flow.ClockGame)}),
+	}, link(1, flow.OutputNext, 2), link(2, "o1", 3), link(3, flow.OutputNext, 4))
+	r := newRunner(t, workflow, image.Pt(1, 0), eight, clock.Real)
+	r.run(1)
+	if r.npc.Node != id(4) || len(r.npc.Taken) != 4 {
+		t.Fatalf("start, choice, blocked move, wait: on %v after %+v", r.npc.Node, r.npc.Taken)
+	}
+	r.run(1)
+	if len(r.npc.Taken) != 0 {
+		t.Fatalf("a tick of waiting takes nothing: %+v", r.npc.Taken)
+	}
+	for range 2 * clock.TicksPerSecond {
+		if r.run(1); len(r.npc.Taken) > 0 {
+			break
+		}
+	}
+	taken := r.npc.Taken
+	if len(taken) != 4 || taken[0].From != id(4) || taken[0].To != id(1) || taken[1].To != id(2) ||
+		taken[2].Output != "o1" || taken[3].From != id(3) || taken[3].Status != npcrun.StatusBlocked ||
+		taken[3].To != id(4) || taken[2].Status != "" {
+		t.Fatalf("the wait ends and the NPC comes round to it again: %+v", taken)
 	}
 }
 
@@ -196,8 +232,8 @@ func TestGoToAnotherFloorCarriesOn(t *testing.T) {
 	}, link(1, flow.OutputNext, 2), link(2, flow.OutputNext, 3))
 	r := newRunner(t, workflow, image.Pt(2, 1), eight, clock.Real)
 	r.run(1)
-	if r.npc.Node != id(3) || r.npc.Status != npcrun.StatusOtherFloor || r.npc.Moving() {
-		t.Fatalf("carried on: on %v, %q", r.npc.Node, r.npc.Status)
+	if r.npc.Node != id(3) || r.npc.Last.Status != npcrun.StatusOtherFloor || r.npc.Moving() {
+		t.Fatalf("carried on: on %v, %+v", r.npc.Node, r.npc.Last)
 	}
 }
 

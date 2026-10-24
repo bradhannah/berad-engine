@@ -42,6 +42,8 @@ const (
 	KeyK         Key = "K"
 	KeyN         Key = "N"
 	KeyP         Key = "P"
+	KeyQ         Key = "Q"
+	KeyS         Key = "S"
 	KeyV         Key = "V"
 	KeyW         Key = "W"
 	KeyX         Key = "X"
@@ -142,6 +144,16 @@ func NewInput(cursor image.Point) Input {
 		WheelX: 0, WheelY: 0, Presses: nil, Held: Plain(), Space: false, Keys: nil, Text: "", Replace: nil,
 		Composition: "",
 	}
+}
+
+// wheelStep is how far a canvas pans for one step of the scroll wheel, in
+// screen pixels.
+const wheelStep = 24
+
+// WheelPan returns how far a canvas's offset moves for this frame's
+// scrolling, so the Map, Workflow and Watch windows all scroll the same way.
+func (input *Input) WheelPan() image.Point {
+	return image.Pt(-int(input.WheelX*wheelStep), -int(input.WheelY*wheelStep))
 }
 
 // IsDown reports whether a key is held down now.

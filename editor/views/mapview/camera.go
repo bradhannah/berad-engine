@@ -13,7 +13,6 @@ func zoomSizes() []int { return []int{6, 12, 18, 24, 36, 48, 72, 96} }
 const (
 	defaultZoom = 3
 	gridMargin  = 16
-	wheelPan    = 24
 )
 
 // camera maps zone cells to screen positions: a zoom level and the screen
@@ -96,6 +95,20 @@ func (c *camera) frame(bounds image.Rectangle) {
 	*c = newCamera()
 	size := c.cellSize()
 	c.offset = image.Pt(gridMargin-bounds.Min.X*size, gridMargin-bounds.Min.Y*size)
+}
+
+// fit shows the whole of bounds as large as the grid allows, centred.
+func (c *camera) fit(bounds, grid image.Rectangle) {
+	room := grid.Inset(gridMargin)
+	c.zoom = 0
+	for level, size := range zoomSizes() {
+		if bounds.Dx()*size <= room.Dx() && bounds.Dy()*size <= room.Dy() {
+			c.zoom = level
+		}
+	}
+	size := c.cellSize()
+	middle := image.Pt(grid.Dx()/ui.Half, grid.Dy()/ui.Half)
+	c.offset = middle.Sub(image.Pt((bounds.Min.X*2+bounds.Dx())*size/ui.Half, (bounds.Min.Y*2+bounds.Dy())*size/ui.Half))
 }
 
 // pan moves the view by a screen distance.

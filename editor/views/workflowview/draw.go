@@ -76,6 +76,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if dialog := s.picker.Dialog(); dialog != nil {
 		dialog.Draw(screen, s.theme)
 	}
+	s.guard.Draw(screen, s.theme)
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -446,8 +447,15 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	if s.form.remove != nil {
 		s.form.remove.Draw(screen, s.theme)
 	}
+	s.save.Draw(screen, s.theme)
 	hint := s.wrap(hintFor(node.Kind), panel.Dx()-ui.Half*ui.Inset)
-	bottom := panel.Max.Y - ui.Inset - ui.ButtonH - ui.Gap
+	bottom := panel.Max.Y - ui.Inset
+	switch {
+	case !s.save.Rect.Empty():
+		bottom = s.save.Rect.Min.Y - ui.Gap
+	case s.form.remove != nil:
+		bottom = s.form.remove.Rect.Min.Y - ui.Gap
+	}
 	for index, line := range hint {
 		s.theme.DrawText(screen, line, left, bottom-(len(hint)-index)*ui.LineHeight, ui.ColorMuted())
 	}
@@ -720,6 +728,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.load(docs)
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
+	if s.guard.Active() {
+		return s.guard.Locate(value, s.size)
+	}
 	if s.picker.Dialog() != nil {
 		return s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	}
@@ -843,6 +854,9 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	}
 	if s.form.remove != nil && widget == s.form.remove.ID {
 		return ui.Center(s.form.remove.Rect), true
+	}
+	if point, found := s.save.Locate(widget); found {
+		return point, true
 	}
 	for _, made := range s.form.controls {
 		var fields []*ui.TextField

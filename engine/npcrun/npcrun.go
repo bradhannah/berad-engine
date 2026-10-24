@@ -29,8 +29,9 @@ import (
 // tick.
 const MaxInstant = 64
 
-// Statuses an NPC reports when a node could not do its work, or it has
-// nothing to follow.
+// Statuses: what keeps an NPC from following its workflow (no behaviour,
+// looping), and why a node could not do its work and carried on (the rest),
+// which goes with the change of node it carried on by.
 const (
 	StatusNoBehaviour = "No behaviour"
 	StatusLooping     = "Looping without waiting"
@@ -40,12 +41,14 @@ const (
 	StatusOtherFloor  = "Can't reach it: the destination is on another floor"
 )
 
-// Change is a move from one node to another: the output taken, and the tick.
+// Change is a move from one node to another: the output taken, the tick,
+// and, when the node it left could not do its work and carried on, why.
 type Change struct {
 	From   ids.ULID
 	Output string
 	To     ids.ULID
 	Tick   uint64
+	Status string
 }
 
 // World is what an NPC needs on a tick: the zone's floors as they are now,
@@ -73,11 +76,13 @@ type NPC struct {
 	// at the top level.
 	Node      ids.ULID
 	Container ids.ULID
-	// Last is the latest change of node, and Changes counts them.
+	// Last is the latest change of node, and Changes counts them. Taken is
+	// the changes the latest Step made, oldest first, until the next Step.
 	Last    Change
 	Changes uint64
-	// Status says why the latest node could not do its work, if it could
-	// not, or that there is nothing to follow.
+	Taken   []Change
+	// Status says what keeps the NPC from following its workflow now: it has
+	// none, or it is looping without waiting.
 	Status string
 
 	work  work
@@ -90,6 +95,8 @@ type NPC struct {
 type work struct {
 	started bool
 	waiting bool
+	// skipped says why the node is carrying on without doing its work.
+	skipped string
 	// waitLeft and waitTotal are the seconds of a Wait, on its clock.
 	waitLeft, waitTotal float64
 	real                bool
@@ -108,7 +115,7 @@ type work struct {
 // idle is no work: a node not yet set up.
 func idle() work {
 	return work{
-		started: false, waiting: false, waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0, movesTotal: 0,
+		started: false, waiting: false, skipped: "", waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0, movesTotal: 0,
 		direction: image.Pt(0, 0), way: "", route: nil, goal: "", target: image.Pt(0, 0),
 	}
 }
@@ -145,8 +152,8 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 	return &NPC{
 		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
-		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0},
-		Changes: 0, Status: "", work: idle(), jumps: 0,
+		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
+		Changes: 0, Taken: nil, Status: "", work: idle(), jumps: 0,
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
@@ -174,6 +181,7 @@ func (n *NPC) Restart() {
 // Step runs the NPC for one tick: it finishes or continues a step between
 // cells, leaves a container whose time is up, and follows its workflow.
 func (n *NPC) Step(world World, tick uint64) {
+	n.Taken = n.Taken[:0]
 	if world.Workflow == nil {
 		n.Node, n.Container, n.Status = ids.ULID{}, ids.ULID{}, StatusNoBehaviour
 		n.walk()
@@ -238,6 +246,7 @@ func (n *NPC) wait(world World) {
 // follow does the current node's work, following nodes that take no time
 // until one takes time or MaxInstant is reached.
 func (n *NPC) follow(world World, tick uint64) {
+	n.Status = ""
 	for range MaxInstant {
 		node, ok := world.Workflow.Node(n.Node)
 		if !ok {
@@ -341,7 +350,6 @@ func (n *NPC) actWait(node flow.Node) (string, bool) {
 	if n.work.waitLeft > 0 {
 		return "", false
 	}
-	n.Status = ""
 
 	return flow.OutputNext, true
 }
@@ -358,12 +366,10 @@ func (n *NPC) actMove(world World, node flow.Node) (string, bool) {
 		n.work = moveWork(tiles, direction)
 	}
 	if n.work.movesLeft <= 0 {
-		n.Status = ""
-
 		return flow.OutputNext, true
 	}
 	if !n.step(world.Zone, n.work.direction) {
-		n.Status = StatusBlocked
+		n.work.skipped = StatusBlocked
 
 		return flow.OutputNext, true
 	}
@@ -428,7 +434,8 @@ func (n *NPC) restartOf(workflow *flow.Workflow, from flow.Node, output string) 
 
 // enter moves the NPC onto a node, recording the change.
 func (n *NPC) enter(workflow *flow.Workflow, to ids.ULID, output string, tick uint64) {
-	n.Last = Change{From: n.Node, Output: output, To: to, Tick: tick}
+	n.Last = Change{From: n.Node, Output: output, To: to, Tick: tick, Status: n.work.skipped}
+	n.Taken = append(n.Taken, n.Last)
 	n.Changes++
 	n.Node, n.work = to, idle()
 	node, _ := workflow.Node(to)

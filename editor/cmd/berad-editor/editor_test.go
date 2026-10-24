@@ -284,6 +284,7 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
+	zoomed := shotPath(t, "map-zoom.png")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
 		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
@@ -291,7 +292,9 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 		keys("Cmd+Z"), wait(60),
 		keys("R"), click("ui:grow-top"), expect("state:bounds:-16,-13,32,25", 300), wait(5),
 		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
-		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(60), quit(),
+		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(10),
+		click("ui:zoom-in"), must("state:zoom:150", 60), click("ui:zoom-fit"), wait(5),
+		step{Repeat: 2, Screenshot: zoomed}, wait(30), quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
 
@@ -312,6 +315,8 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	if got := cellOf(t, ground, tilefloor.LayerGround, 0, -13); got != "grass" {
 		t.Fatalf("the added row has ground %q, want the floor's most common ground", got)
 	}
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", zoomed)
 }
 
 // TestWallFamiliesForARoomAndARun selects a room by double-clicking inside it
@@ -372,7 +377,7 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 		expect("state:loaded", 600), wait(5),
 		click("ui:body"), keys("Cmd+Down"), keys("Cmd+Enter"),
 		typed("caf"), typed("e"), step{Repeat: 2, Replace: &ui.Replacement{Before: 1, After: 0, Text: "é", Caret: 2}},
-		typed(" ok"), keys("Enter"), expect("state:saved", 300), wait(120),
+		typed(" ok"), keys("Cmd+S"), must("state:saved", 300), wait(120),
 		click("ui:pick"), expect("state:located", 1800), wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "text": {textScript}})
@@ -396,17 +401,47 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 	}
 }
 
+// TestQuitAsksThenClosesEveryWindow names a new anchor in the Map window
+// without saving, then presses Cmd+Q in the project browser: the browser
+// asks whether the editor should quit, naming the unsaved anchor, and Save
+// and quit saves the name and closes every window, so the editor exits.
+func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "quit.png")
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		keys("A"), click("cell:4,6"), wait(30), typed("Well"), wait(1200), quit(),
+	)
+	browserScript := script(
+		expect("row:Notes", 600), wait(300), keys("Cmd+Q"), must("ui:quit-save", 300),
+		step{Repeat: 2, Screenshot: shot}, click("ui:quit-save"), wait(1200), quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	ground, _ := readFloor(t, project, "ground-floor")
+	well, found := ground.AnchorAt(4, 6)
+	if !found || well.Name != "Well" {
+		t.Fatalf("Save and quit saved the anchor's name: %+v %v", well, found)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}
+
 // TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
-// inspector by typing a name and clicking Rename, deletes the text document
+// inspector by typing a name and clicking Save, deletes the text document
 // after confirming, and undoes the deletion.
 func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "browser.png")
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
 		click("ui:new-zone"), expect("row:Zone 1", 300), click("row:Zone 1"),
-		click("ui:name"), keys("Cmd+A"), typed("Harbour"), click("ui:rename"), expect("row:Harbour", 300),
+		click("ui:name"), keys("Cmd+A"), typed("Harbour"), step{Repeat: 2, Screenshot: shot}, click("ui:save"),
+		must("row:Harbour", 300),
 		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
 		keys("Cmd+Z"), expect("row:Notes", 300), wait(10), quit(),
 	)
@@ -420,6 +455,8 @@ func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	}
 	readFloor(t, project, "floor-1")
 	readEnvelope(t, project, "texts/notes--*.json")
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
 }
 
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes
@@ -486,7 +523,7 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	shot := shotPath(t, "workflow.png")
+	shot, unsaved := shotPath(t, "workflow.png"), shotPath(t, "workflow-unsaved.png")
 	browserScript := script(
 		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60), quit(),
 	)
@@ -500,6 +537,8 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 		click("ui:pick"), expect("state:destination", 1800), wait(5),
 		click("palette:wait"), wait(10),
 		click("node:time-switch:1"), wait(5), click("palette:wait"), wait(10),
+		click("ui:param-duration"), keys("Cmd+A"), typed("45"), step{Repeat: 2, Screenshot: unsaved},
+		keys("Cmd+S"), wait(20),
 		expect("state:nodes:6", 300), click("ui:arrange"), wait(20),
 		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
 	)
@@ -542,7 +581,11 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 	if err != nil || !found || destination.Floor != groundEnvelope.ID || destination.Anchor != desk.ID {
 		t.Fatalf("destination %+v, want the desk anchor", destination)
 	}
-	t.Logf("screenshot: %s", shot)
+	if wait, _ := outer.Duration("duration"); wait.Amount != 45 {
+		t.Fatalf("Cmd+S saved the typed amount: %+v", wait)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s", shot, unsaved)
 }
 
 // TestWorkflowRandomWalk builds the test routine "move up or down at
@@ -621,7 +664,7 @@ func TestNPCPlacedWithBehaviour(t *testing.T) {
 	browserScript := script(
 		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:new-npc"), wait(30),
 		click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5), click("ui:use"), wait(30),
-		click("ui:notes"), wait(5), typed("Opens the shop at eight."), keys("Enter"), wait(30),
+		click("ui:notes"), wait(5), typed("Opens the shop at eight."), keys("Cmd+S"), wait(30),
 		step{Repeat: 2, Screenshot: browserShot}, wait(10), quit(),
 	)
 	mapScript := script(
@@ -654,12 +697,13 @@ func TestNPCPlacedWithBehaviour(t *testing.T) {
 // TestNPCFollowsItsWorkflow builds the random walk, makes it an NPC's
 // behaviour, places the NPC and starts a preview at 08:00: the NPC must
 // leave its cell. Clicking it watches it, and the Watch window shows it on
-// its workflow and pauses the NPCs.
+// its workflow, pauses the NPCs and steps to its next node.
 func TestNPCFollowsItsWorkflow(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	mapShot, watchShot := shotPath(t, "npc-preview-map.png"), shotPath(t, "npc-preview-watch.png")
+	stepShot := shotPath(t, "npc-preview-step.png")
 	retype := func(field, text string) []step {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
@@ -685,7 +729,8 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 	)
 	watchScript := script(
 		must("state:previewing", 1800), must("state:watching:NPC 1", 600), wait(60),
-		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10), quit(),
+		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10),
+		click("ui:step"), must("state:stepped", 300), wait(10), step{Repeat: 2, Screenshot: stepShot}, wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "watch": {watchScript},
@@ -705,7 +750,7 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 	if placement, found := ground.PlacementAt(1, 1); !found || placement.NPC != saved.ID {
 		t.Fatal("the preview must not move the NPC's placement")
 	}
-	t.Logf("screenshots: %s %s", mapShot, watchShot)
+	t.Logf("screenshots: %s %s %s", mapShot, watchShot, stepShot)
 }
 
 // TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process

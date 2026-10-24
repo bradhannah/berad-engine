@@ -63,12 +63,17 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if ok {
 		area.Fill(ui.ColorCanvas())
 		s.drawFloors(area, docs, grid)
+		if !s.floor.IsZero() {
+			s.zoom.layout(grid, s.camera)
+			s.zoom.draw(area, s.theme)
+		}
 	}
 	s.drawPanel(screen, docs)
 	s.drawInspector(screen, docs)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	s.guard.Draw(screen, s.theme)
 }
 
 func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
@@ -405,14 +410,10 @@ func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor
 	}
 	s.theme.Heading(screen, "ANCHOR NAME", textX, inspectorFieldTop-ui.LineHeight)
 	s.nameField.Draw(screen)
-	hint := "Enter saves, Escape reverts"
-	if s.nameField.Field.Dirty() {
-		hint = "Unsaved. " + hint
-	}
 	top := inspectorFieldTop + ui.ButtonH + ui.Gap
-	s.theme.DrawText(screen, hint, textX, top, ui.ColorMuted())
-	s.theme.DrawText(screen, fmt.Sprintf("at %d, %d", anchor.Col, anchor.Row), textX, top+ui.LineHeight, ui.ColorInk())
-	s.theme.DrawText(screen, "ID "+anchor.ID.String(), textX, top+2*ui.LineHeight, ui.ColorSubdued())
+	s.theme.DrawText(screen, fmt.Sprintf("at %d, %d", anchor.Col, anchor.Row), textX, top, ui.ColorInk())
+	s.theme.DrawText(screen, "ID "+anchor.ID.String(), textX, top+ui.LineHeight, ui.ColorSubdued())
+	s.save.Draw(screen, s.theme)
 	s.deleteBtn.Draw(screen, s.theme)
 	*textY = s.deleteBtn.Rect.Max.Y + ui.LineHeight
 }
@@ -489,6 +490,7 @@ func helpLines() []string {
 		"P: preview   Arrow keys: walk",
 		"Cmd+Z / Cmd+Shift+Z: undo / redo",
 		"Cmd+N: new view   Cmd+W: close",
+		"Cmd+S: save   Cmd+Q: quit the editor",
 	}
 }
 

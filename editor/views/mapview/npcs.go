@@ -51,9 +51,9 @@ func (s *State) npcRows() []ui.Row {
 		if number < numberedTiles {
 			detail = strconv.Itoa(number + 1)
 		}
-		rows = append(rows, ui.Row{
-			ID: entry.ID.String(), Label: entry.Name, Detail: detail, Indent: 0, Swatch: nil, Heading: false, Marked: false,
-		})
+		row := ui.NewRow(entry.ID.String(), entry.Name)
+		row.Detail = detail
+		rows = append(rows, row)
 	}
 
 	return rows

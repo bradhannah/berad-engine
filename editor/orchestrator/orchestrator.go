@@ -65,6 +65,8 @@ type window struct {
 	group string
 	conn  *protocol.Conn
 	out   chan protocol.Message
+	// unsaved is what the window last reported of its unsaved changes.
+	unsaved protocol.Unsaved
 }
 
 type inbound struct {
@@ -96,6 +98,9 @@ type Orchestrator struct {
 	seq      uint64
 	stopping bool
 	quit     bool
+	// quitting is set once a window asks to quit: the orchestrator stops
+	// when its last window closes.
+	quitting bool
 
 	inbound chan inbound
 	joins   chan *window
@@ -148,6 +153,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		seq:        0,
 		stopping:   false,
 		quit:       false,
+		quitting:   false,
 		inbound:    make(chan inbound),
 		joins:      make(chan *window),
 		leaves:     make(chan *window),
@@ -387,7 +393,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 func (o *Orchestrator) shutdown() error {
 	o.stopping = true
 	for _, connected := range o.windows {
-		o.send(connected, mustMessage(protocol.KindShutdown, 0, protocol.Shutdown{Reason: "the editor is closing"}))
+		o.send(connected, mustMessage(protocol.KindShutdown, 0, protocol.Shutdown{
+			Reason: "the editor is closing", Save: false,
+		}))
 	}
 	for _, connected := range slices.Collect(maps.Values(o.windows)) {
 		o.leave(connected)

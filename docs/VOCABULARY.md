@@ -63,7 +63,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Stand-in** | A typed placeholder tile (ground, wall, door, stairs, pickup) used until real art exists |
 | **Wall family** | A kind of wall (for example "old brick"); art for a family supplies one variant per neighbour arrangement |
 | **Ground** / **on top** | The two layers of a cell: its ground tile, and at most one tile sitting on it |
-| **Draft** | A text field's unsaved text; Enter saves it as an ordinary edit |
+| **Draft** | A text field's unsaved text; Save, Cmd+S, or Enter in a one-line field saves it as an ordinary edit |
+| **Save bar** | The strip at the foot of an inspector, or of the Text window, that says how many changes are unsaved and holds Revert and Save |
+| **Section** | A group of one document type in the project browser, such as Zones or NPCs, with a count and a [+] |
 | **Pick** | Choosing something in a Map window for another window, through the orchestrator |
 | **Preview** | Playing a zone inside the editor, run by the Map window that started it (D15); it never changes the project |
 | **Run** | One play of a zone from its start; a preview is a run, and each has its own ID |

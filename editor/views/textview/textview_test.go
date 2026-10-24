@@ -84,26 +84,48 @@ func (f *fixture) typed(text string) {
 	f.frame(input)
 }
 
-// TestBodySavesOnEnter types a new line and text, presses Enter, and checks
-// one command saves the whole body.
-func TestBodySavesOnEnter(t *testing.T) {
+// TestBodySavesWithTheSaveBar types new lines with Ctrl+J and Enter, then
+// saves with the save bar: one command saves the whole body.
+func TestBodySavesWithTheSaveBar(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("ui:body")
 	f.keys("Cmd+Down")
 	f.keys("Ctrl+J")
 	f.typed("Second line")
-	if len(f.requests.Of(textdoc.SetBodyEdit)) != 0 {
-		t.Fatal("saved before Enter")
-	}
 	f.keys("Enter")
+	f.typed("Third line")
+	if len(f.requests.Of(textdoc.SetBodyEdit)) != 0 || f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatal("Enter starts a new line; nothing is saved yet")
+	}
+	f.click("ui:save")
 	saves := f.requests.Of(textdoc.SetBodyEdit)
 	if len(saves) != 1 {
 		t.Fatalf("saves %d", len(saves))
 	}
 	var args textdoc.SetBodyArgs
-	if err := saves[0].Decode(&args); err != nil || args.Body != "First line\nSecond line" {
+	if err := saves[0].Decode(&args); err != nil || args.Body != "First line\nSecond line\nThird line" {
 		t.Fatalf("body %q %v", args.Body, err)
+	}
+}
+
+// TestClosingWithAnUnsavedBodyAsks asks before the window closes with an
+// unsaved body: Cancel keeps it, Don't save drops it and closes.
+func TestClosingWithAnUnsavedBodyAsks(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("ui:body")
+	f.typed(" more")
+	closed := false
+	f.state.Leave(f.ctx, func() { closed = true })
+	f.click("ui:cancel")
+	if closed || f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatal("Cancel keeps the window and the body")
+	}
+	f.state.Leave(f.ctx, func() { closed = true })
+	f.click("ui:discard-changes")
+	if !closed || f.state.Unsaved(f.ctx.Docs) != 0 || len(f.requests.Of(textdoc.SetBodyEdit)) != 0 {
+		t.Fatal("Don't save drops the body and closes")
 	}
 }
 

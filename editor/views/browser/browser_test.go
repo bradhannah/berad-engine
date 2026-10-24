@@ -166,13 +166,10 @@ func TestRenameInTheInspector(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("row:Notes", false)
-	f.click("ui:rename", false)
-	typed := ui.NewInput(image.Pt(0, 0))
-	typed.Text = "Ideas"
-	f.state.Update(&typed, f.ctx)
-	enter := ui.NewInput(image.Pt(0, 0))
-	enter.Presses = []ui.Press{ui.ParsePress("Enter")}
-	f.state.Update(&enter, f.ctx)
+	f.click("ui:name", false)
+	f.keys("Cmd+A")
+	f.typeText("Ideas")
+	f.keys("Enter")
 	renames := f.requests.Of(project.RenameEdit)
 	if len(renames) != 1 {
 		t.Fatalf("renames %d", len(renames))
@@ -183,31 +180,39 @@ func TestRenameInTheInspector(t *testing.T) {
 	}
 }
 
-// TestRenameButtonSavesTheTypedName types a new name into the field, then
-// clicks Rename instead of pressing Enter: the button saves the name.
-func TestRenameButtonSavesTheTypedName(t *testing.T) {
+// TestSaveBarSavesAndReverts types a new name, then saves it with the save
+// bar's Save, and reverts a second change with Revert.
+func TestSaveBarSavesAndReverts(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("row:Notes", false)
-	f.click("ui:name", false)
-	selectAll := ui.NewInput(image.Pt(0, 0))
-	selectAll.Presses = []ui.Press{ui.ParsePress("Cmd+A")}
-	f.state.Update(&selectAll, f.ctx)
-	typed := ui.NewInput(image.Pt(0, 0))
-	typed.Text = "Ideas"
-	f.state.Update(&typed, f.ctx)
-	f.click("ui:rename", false)
-	renames := f.requests.Of(project.RenameEdit)
-	if len(renames) != 1 {
-		t.Fatalf("renames %d", len(renames))
+	if f.state.Unsaved(f.ctx.Docs) != 0 {
+		t.Fatal("nothing typed yet")
 	}
+	f.click("ui:name", false)
+	f.keys("Cmd+A")
+	f.typeText("Ideas")
+	if f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatalf("unsaved %d", f.state.Unsaved(f.ctx.Docs))
+	}
+	f.click("ui:save", false)
+	renames := f.requests.Of(project.RenameEdit)
 	var args project.RenameArgs
-	if err := renames[0].Decode(&args); err != nil || args.Name != "Ideas" {
-		t.Fatalf("rename %+v %v", args, err)
+	if len(renames) != 1 || renames[0].Decode(&args) != nil || args.Name != "Ideas" {
+		t.Fatalf("rename %d %+v", len(renames), args)
+	}
+	if f.state.Unsaved(f.ctx.Docs) != 0 {
+		t.Fatal("a name on its way is no longer unsaved")
 	}
 	renames[0].Succeed(ids.ULID{})
 	if message, _ := f.ctx.Frame.Message(); message != "Renamed to “Ideas”" {
 		t.Fatalf("status %q", message)
+	}
+	f.click("ui:name", false)
+	f.typeText(" more")
+	f.click("ui:revert", false)
+	if f.state.Unsaved(f.ctx.Docs) != 0 || len(f.requests.Of(project.RenameEdit)) != 1 {
+		t.Fatal("Revert drops the change and saves nothing")
 	}
 }
 
@@ -219,8 +224,15 @@ func (f *fixture) keys(names ...string) {
 	f.state.Update(&input, f.ctx)
 }
 
+func (f *fixture) typeText(text string) {
+	typed := ui.NewInput(image.Pt(0, 0))
+	typed.Text = text
+	f.state.Update(&typed, f.ctx)
+}
+
 // TestNPCInspector creates an NPC, then gives the selected NPC a behaviour
-// from the workflows in a dialog and saves notes typed into the inspector.
+// from the workflows in a dialog and saves notes typed into the inspector;
+// Enter starts a new line in them.
 func TestNPCInspector(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -242,16 +254,128 @@ func TestNPCInspector(t *testing.T) {
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
 	f.click("ui:notes", false)
-	typed := ui.NewInput(image.Pt(0, 0))
-	typed.Text = "Opens the shop"
-	f.state.Update(&typed, f.ctx)
-	f.keys("Cmd+Enter")
-	typed.Text = "at eight."
-	f.state.Update(&typed, f.ctx)
+	f.typeText("Opens the shop")
 	f.keys("Enter")
+	f.typeText("at eight.")
+	if len(f.requests.Of(npcplugin.SetNotesEdit)) != 0 {
+		t.Fatal("Enter in the notes starts a new line rather than saving")
+	}
+	f.state.Save(f.ctx)
 	notes := f.requests.Of(npcplugin.SetNotesEdit)
 	var saved npcplugin.SetNotesArgs
 	if len(notes) != 1 || notes[0].Decode(&saved) != nil || saved.Notes != "Opens the shop\nat eight." {
 		t.Fatalf("notes %d %+v", len(notes), saved)
+	}
+}
+
+// TestTreeShowsTypesAndHidesRows lists sections with counts, icons and
+// details, and hides a zone's floors or a whole section when toggled.
+func TestTreeShowsTypesAndHidesRows(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	rows := map[string]ui.Row{}
+	for _, row := range f.state.Rows(f.ctx.Docs) {
+		rows[row.Label] = row
+	}
+	if zones := rows["Zones"]; !zones.Section || zones.Detail != "1" || !zones.Add {
+		t.Fatalf("zones section %+v", zones)
+	}
+	if town := rows["Town"]; town.Icon != ui.IconZone || !town.Strong || town.Toggle != ui.DisclosureOpen ||
+		town.Detail != "1 floor" {
+		t.Fatalf("zone row %+v", town)
+	}
+	if ground := rows["Ground"]; ground.Icon != ui.IconFloor || ground.Guide != ui.GuideLast || ground.Indent != 1 {
+		t.Fatalf("floor row %+v", ground)
+	}
+	if clerk := rows["Ada Clerk"]; clerk.Icon != ui.IconNPC || clerk.Detail != "no behaviour" {
+		t.Fatalf("NPC row %+v", clerk)
+	}
+	f.click("toggle:Town", false)
+	if _, shown := f.state.Locate("row:Ground", f.ctx.Docs); shown {
+		t.Fatal("a closed zone hides its floors")
+	}
+	f.keys("Right")
+	f.click("row:Town", false)
+	f.keys("Right")
+	if _, shown := f.state.Locate("row:Ground", f.ctx.Docs); !shown {
+		t.Fatal("Right opens the selected zone")
+	}
+	f.click("section:text", false)
+	if _, shown := f.state.Locate("row:Notes", f.ctx.Docs); shown {
+		t.Fatal("a closed section hides its rows")
+	}
+	f.click("row:Ground", false)
+	f.keys("Left")
+	if row, _ := f.state.SelectedRow(); row.Label != "Town" {
+		t.Fatalf("Left on a floor selects its zone, not %q", row.Label)
+	}
+}
+
+// TestNewMenuAndSectionAdd create a workflow from New ▾ and a text document
+// from its section's [+]; a floor needs a zone selected.
+func TestNewMenuAndSectionAdd(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("ui:new", false)
+	f.click("menu:new-floor", false)
+	if len(f.requests.Of(project.CreateEdit)) != 0 {
+		t.Fatal("no zone is selected, so New floor is greyed out")
+	}
+	f.click("ui:new", false)
+	f.click("menu:new-workflow", false)
+	f.click("ui:new-text", false)
+	created := f.requests.Of(project.CreateEdit)
+	formats := []string{}
+	for _, create := range created {
+		var args project.DocumentArgs
+		if err := create.Decode(&args); err != nil {
+			t.Fatal(err)
+		}
+		formats = append(formats, args.Format)
+	}
+	if len(formats) != 2 || formats[0] != flow.FormatName || formats[1] != textdoc.FormatName {
+		t.Fatalf("created %v", formats)
+	}
+	f.click("row:Ground", false)
+	f.click("ui:move-up", false)
+	if len(f.requests.Of(zoneplugin.MoveFloorEdit)) != 0 {
+		t.Fatal("the only floor cannot move up")
+	}
+}
+
+// TestSelectingAwayAsksAboutUnsavedChanges types a name, then selects
+// another document: Cancel stays, Save saves then moves, and Don't save
+// moves without saving.
+func TestSelectingAwayAsksAboutUnsavedChanges(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("row:Notes", false)
+	f.click("ui:name", false)
+	f.typeText(" two")
+	f.click("row:Town", false)
+	f.click("ui:cancel", false)
+	if row, _ := f.state.SelectedRow(); row.Label != "Notes" || f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatalf("Cancel stays on Notes with the change: %q", row.Label)
+	}
+	f.click("row:Town", false)
+	f.click("ui:save-changes", false)
+	renames := f.requests.Of(project.RenameEdit)
+	if row, _ := f.state.SelectedRow(); row.Label != "Town" || len(renames) != 1 {
+		t.Fatalf("Save saves, then selects Town: %q, %d renames", row.Label, len(renames))
+	}
+	f.click("ui:name", false)
+	f.typeText(" centre")
+	f.click("row:Notes", false)
+	f.click("ui:discard-changes", false)
+	if row, _ := f.state.SelectedRow(); row.Label != "Notes" || len(f.requests.Of(project.RenameEdit)) != 1 {
+		t.Fatalf("Don't save selects Notes and saves nothing: %q", row.Label)
+	}
+	f.click("ui:name", false)
+	f.typeText("!")
+	closed := false
+	f.state.Leave(f.ctx, func() { closed = true })
+	f.click("ui:cancel", false)
+	if closed {
+		t.Fatal("Cancel keeps the window open")
 	}
 }

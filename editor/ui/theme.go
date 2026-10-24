@@ -68,6 +68,15 @@ const (
 	shadeAlpha    = 0x66
 )
 
+// Muted colours that tell document types apart, always beside an icon, never
+// alone. None is blue (selection), orange (live) or red (warnings).
+const (
+	hexZone     = 0x3d7a4b
+	hexWorkflow = 0x6a4f9e
+	hexNPC      = 0x4c6377
+	hexText     = 0x7a6248
+)
+
 // Embedded IBM Plex fonts (SIL Open Font License; see fonts/OFL.txt).
 var (
 	//go:embed fonts/IBMPlexSans-Regular.ttf
@@ -131,6 +140,18 @@ func ColorWarn() color.RGBA { return Hex(hexWarn) }
 
 // ColorHover is the background of a hovered button or row.
 func ColorHover() color.RGBA { return Hex(hexHover) }
+
+// ColorZone tints the icons of zones and floors.
+func ColorZone() color.RGBA { return Hex(hexZone) }
+
+// ColorWorkflow tints workflow icons.
+func ColorWorkflow() color.RGBA { return Hex(hexWorkflow) }
+
+// ColorNPC tints NPC icons.
+func ColorNPC() color.RGBA { return Hex(hexNPC) }
+
+// ColorText tints text document icons.
+func ColorText() color.RGBA { return Hex(hexText) }
 
 // ColorLive is the colour of anything happening now in a preview.
 func ColorLive() color.RGBA { return Hex(hexLive) }
@@ -297,6 +318,28 @@ func (t *Theme) DrawTextIn(screen *ebiten.Image, value string, rect image.Rectan
 // Heading draws a small muted panel heading.
 func (t *Theme) Heading(screen *ebiten.Image, value string, x, y int) {
 	t.DrawLabel(screen, value, x, y, ColorMuted())
+}
+
+// DrawSection draws a section heading: uppercase semi-bold ink with spread
+// letters, larger than a panel heading so a list's groups stand out.
+func (t *Theme) DrawSection(screen *ebiten.Image, value string, x, y int) {
+	left := float64(x)
+	for _, letter := range strings.ToUpper(value) {
+		draw(screen, string(letter), t.Strong, left, float64(y), ColorInk())
+		width, _ := etext.Measure(string(letter), t.Strong, LineHeight)
+		left += width + letterSpacing
+	}
+}
+
+// SectionWidth measures a heading drawn with DrawSection.
+func (t *Theme) SectionWidth(value string) int {
+	width := 0.0
+	for _, letter := range strings.ToUpper(value) {
+		advance, _ := etext.Measure(string(letter), t.Strong, LineHeight)
+		width += advance + letterSpacing
+	}
+
+	return int(width)
 }
 
 // FillRect fills a rectangle.

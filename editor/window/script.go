@@ -91,7 +91,12 @@ func loadScript(view string) (*inputScript, error) {
 
 // next returns this frame's input. When the script runs out it returns no
 // input, leaving the window idle.
-func (s *inputScript) next(view frame.View, docs frame.Docs) ui.Input {
+// locator finds named parts of a window for input scripts.
+type locator interface {
+	Locate(name string, docs frame.Docs) (image.Point, bool)
+}
+
+func (s *inputScript) next(view locator, docs frame.Docs) ui.Input {
 	input := ui.NewInput(s.cursor)
 	if s.index >= len(s.steps) {
 		input.Cursor = s.cursor
@@ -142,7 +147,7 @@ func (s *inputScript) next(view frame.View, docs frame.Docs) ui.Input {
 
 // expect waits a frame for an expectation, and moves on once it is met or
 // its frames run out; a Must expectation that is not met crashes the window.
-func (s *inputScript) expect(step scriptStep, view frame.View, docs frame.Docs) {
+func (s *inputScript) expect(step scriptStep, view locator, docs frame.Docs) {
 	_, found := view.Locate(step.Expect.Locate, docs)
 	if !found && s.frame < max(step.Repeat, 1) {
 		s.frame++

@@ -109,13 +109,20 @@ type Frame struct {
 	now         func() time.Time
 	// Quit is set by a view to close the window.
 	Quit bool
+	// Closing asks to close the window, from Cmd+W or the window's close
+	// button. A Saver is asked about unsaved changes first; any other view
+	// closes.
+	Closing bool
 	// Crash asks the window to crash on purpose, to show failure handling.
 	Crash bool
 }
 
 // NewFrame returns an empty frame.
 func NewFrame(now func() time.Time) *Frame {
-	return &Frame{status: "", statusUntil: time.Time{}, notice: "", latencies: nil, now: now, Quit: false, Crash: false}
+	return &Frame{
+		status: "", statusUntil: time.Time{}, notice: "", latencies: nil, now: now, Quit: false, Closing: false,
+		Crash: false,
+	}
 }
 
 // Status shows a message in the status bar for a few seconds.
@@ -136,7 +143,7 @@ func (f *Frame) Message() (string, bool) {
 		return "Notice: " + f.notice, true
 	}
 
-	return "Ready. Every change is saved automatically.", false
+	return "Ready. Typing waits for Save; everything else saves as you go.", false
 }
 
 // Report shows the outcome of a request: its reason when refused.
@@ -236,7 +243,7 @@ func CommonKeys(input *ui.Input, ctx *Context) bool {
 	case input.Consume(ui.KeyZ, ui.CmdShift()):
 		ctx.Requests.Redo(ctx.Frame.Report("Redone"))
 	case input.Consume(ui.KeyW, ui.Cmd()):
-		ctx.Frame.Quit = true
+		ctx.Frame.Closing = true
 	case input.Consume(ui.KeyK, ui.CmdShift()):
 		ctx.Frame.Crash = true
 	default:

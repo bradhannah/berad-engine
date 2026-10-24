@@ -47,18 +47,20 @@ const (
 	defaultWidth  = 32
 	defaultHeight = 24
 	toolbarHeight = 44
-	buttonWidth   = 96
+	newWidth      = 96
 	buttonGap     = 6
-	nameFieldTop  = ui.Inset + 2*ui.LineHeight
-	inspectorRows = 4
 )
 
+// npcLabel names the NPC type wherever the browser shows it.
+const npcLabel = "NPC"
+
+// Menu item IDs, which a section's [+] shares.
 const (
-	headingZones     = "heading:zones"
-	headingWorkflows = "heading:workflows"
-	headingNPCs      = "heading:npcs"
-	headingText      = "heading:text"
-	headingLoose     = "heading:loose"
+	newZone     = "new-zone"
+	newFloor    = "new-floor"
+	newWorkflow = "new-workflow"
+	newNPC      = "new-npc"
+	newText     = "new-text"
 )
 
 type dialogKind int
@@ -76,11 +78,18 @@ type State struct {
 	size   image.Point
 	subs   map[ids.ULID]bool
 	list   *ui.List
+	// closed holds the sections and zones whose rows are hidden; it is this
+	// window's session state, never saved.
+	closed map[string]bool
 	focus  ui.Focus
 	name   *ui.TextField
 	named  ids.ULID
 
-	newZone, newFloor, newText, newWorkflow, newNPC, rename, remove, up, down, open *ui.Button
+	newMenu                             *ui.Button
+	menu                                ui.Menu
+	open, floorButton, up, down, remove *ui.Button
+	save                                *ui.SaveBar
+	guard                               frame.Guard
 
 	npc *npcPanel
 
@@ -96,20 +105,32 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		list:    &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: ""},
+		closed:  map[string]bool{},
 		focus:   ui.Focus{},
 		name:    ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
 		named:   ids.ULID{},
-		newZone: button("new-zone", "New zone"), newFloor: button("new-floor", "New floor"),
-		newText: button("new-text", "New text"), newWorkflow: button("new-workflow", "New workflow"),
-		newNPC: button("new-npc", "New NPC"), rename: button("rename", "Rename"),
-		remove: button("delete", "Delete"), up: button("move-up", "Move up"),
-		down: button("move-down", "Move down"), open: button("open", "Open"),
+		newMenu: button("new", "New"), menu: ui.Menu{Items: menuItems()},
+		open: button("open", "Open"), floorButton: button(newFloor, "Add floor"), up: button("move-up", "Move up"),
+		down: button("move-down", "Move down"), remove: button("delete", "Delete"), save: ui.NewSaveBar(),
+		guard:  frame.Guard{},
 		npc:    newNPCPanel(theme),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 	}
+	view.remove.Danger, view.newMenu.Caret = true, true
 	view.focus.Register(view.name, view.npc.notes)
 
 	return view
+}
+
+// menuItems lists what New ▾ creates.
+func menuItems() []ui.MenuItem {
+	return []ui.MenuItem{
+		{ID: newZone, Label: "Zone", Icon: ui.IconZone, Disabled: false},
+		{ID: newFloor, Label: "Floor in the selected zone", Icon: ui.IconFloor, Disabled: false},
+		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false},
+		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false},
+		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false},
+	}
 }
 
 // Title is the window title.
@@ -135,12 +156,13 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 	})
 }
 
-// Changed subscribes to every zone, so their floors can be listed.
+// Changed subscribes to every zone, so their floors can be listed, and to
+// every NPC, so the list can say which workflow each follows.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.Event == nil && update.Snapshot == nil {
 		return
 	}
-	for _, entry := range s.entries(ctx.Docs, zone.FormatName) {
+	for _, entry := range append(s.entries(ctx.Docs, zone.FormatName), s.entries(ctx.Docs, npc.FormatName)...) {
 		s.subscribe(entry.ID, ctx)
 	}
 }
@@ -171,55 +193,6 @@ func (s *State) floorsOf(docs frame.Docs, zoneID ids.ULID) []ids.ULID {
 	return floors
 }
 
-// rows lists zones with their floors (top floor first), text documents, and
-// floors not in any zone.
-func (s *State) rows(docs frame.Docs) []ui.Row {
-	index := s.index(docs)
-	row := func(id ids.ULID, label, detail string, indent int) ui.Row {
-		return ui.Row{
-			ID: id.String(), Label: label, Detail: detail, Indent: indent, Swatch: nil, Heading: false, Marked: false,
-		}
-	}
-	heading := func(id, label string) ui.Row {
-		return ui.Row{ID: id, Label: label, Detail: "", Indent: 0, Swatch: nil, Heading: true, Marked: false}
-	}
-	rows := []ui.Row{heading(headingZones, "ZONES")}
-	listed := map[ids.ULID]bool{}
-	for _, entry := range index.OfFormat(zone.FormatName) {
-		floors := s.floorsOf(docs, entry.ID)
-		count := fmt.Sprintf("%d %s", len(floors), plural(len(floors), "floor", "floors"))
-		rows = append(rows, row(entry.ID, entry.Name, count, 0))
-		for position := len(floors) - 1; position >= 0; position-- {
-			listed[floors[position]] = true
-			rows = append(rows, row(floors[position], index.Name(floors[position], "missing floor"), "", 1))
-		}
-	}
-	rows = append(rows, heading(headingWorkflows, "WORKFLOWS"))
-	for _, entry := range index.OfFormat(flow.FormatName) {
-		rows = append(rows, row(entry.ID, entry.Name, "", 0))
-	}
-	rows = append(rows, heading(headingNPCs, "NPCS"))
-	for _, entry := range index.OfFormat(npc.FormatName) {
-		rows = append(rows, row(entry.ID, entry.Name, "", 0))
-	}
-	rows = append(rows, heading(headingText, "TEXT DOCUMENTS"))
-	for _, entry := range index.OfFormat(textdoc.FormatName) {
-		rows = append(rows, row(entry.ID, entry.Name, "", 0))
-	}
-	var loose []ui.Row
-	for _, entry := range index.OfFormat(floor.FormatName) {
-		if !listed[entry.ID] {
-			loose = append(loose, row(entry.ID, entry.Name, "", 0))
-		}
-	}
-	if len(loose) > 0 {
-		rows = append(rows, heading(headingLoose, "FLOORS IN NO ZONE"))
-		rows = append(rows, loose...)
-	}
-
-	return rows
-}
-
 func plural(count int, one, many string) string {
 	if count == 1 {
 		return one
@@ -228,32 +201,14 @@ func plural(count int, one, many string) string {
 	return many
 }
 
+// layout places the toolbar, the list and the inspector.
 func (s *State) layout(docs frame.Docs) {
 	content := frame.Content(s.size)
-	x := ui.Inset
-	for _, button := range s.toolbar() {
-		button.Rect = image.Rect(x, ui.Inset/ui.Half+ui.Gap, x+buttonWidth, ui.Inset/ui.Half+ui.Gap+ui.ButtonH)
-		x += buttonWidth + buttonGap
-	}
+	top := (toolbarHeight - ui.ButtonH) / ui.Half
+	s.newMenu.Rect = image.Rect(content.Max.X-ui.Inset-newWidth, top, content.Max.X-ui.Inset, top+ui.ButtonH)
 	s.list.Rect = image.Rect(0, toolbarHeight, content.Max.X, content.Max.Y)
 	s.list.Rows = s.rows(docs)
-	inspector := frame.Inspector(s.size)
-	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
-	selected, hasSelection := s.selected(docs)
-	s.name.Rect, s.rename.Rect, s.remove.Rect = ui.Zero(), ui.Zero(), ui.Zero()
-	if hasSelection {
-		s.name.Rect = image.Rect(left, nameFieldTop, left+width, nameFieldTop+ui.ButtonH)
-		buttons := nameFieldTop + ui.ButtonH + inspectorRows*ui.LineHeight
-		half := (width - buttonGap) / ui.Half
-		s.rename.Rect = image.Rect(left, buttons, left+half, buttons+ui.ButtonH)
-		s.remove.Rect = image.Rect(left+half+buttonGap, buttons, left+width, buttons+ui.ButtonH)
-	}
-	s.layoutNPC(docs, left, width)
-	_, inZone := s.zoneOf(docs, selected.ID)
-	s.up.Disabled = !hasSelection || selected.Format != floor.FormatName || !inZone
-	s.down.Disabled = s.up.Disabled
-	s.open.Disabled = !hasSelection
-	s.newFloor.Disabled = !hasSelection || (selected.Format != zone.FormatName && !inZone)
+	s.layoutInspector(docs)
 }
 
 // selected returns the selected document's entry.
@@ -281,29 +236,43 @@ func (s *State) zoneOf(docs frame.Docs, floorID ids.ULID) (ids.ULID, bool) {
 	return ids.ULID{}, false
 }
 
-// Update handles one frame of input.
+// Update handles one frame of input. The guard, a dialog or the New menu,
+// while showing, takes all of it.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout(ctx.Docs)
-	if s.dialog != nil {
+	switch {
+	case s.guard.Active():
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
+
+		return
+	case s.dialog != nil:
 		s.updateDialog(input, ctx)
 
 		return
+	case s.menu.IsOpen():
+		s.create(ctx, s.menu.Update(input))
+
+		return
 	}
+	s.guardSelection(ctx)
 	s.syncName(ctx.Docs)
 	s.syncNPC(ctx)
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); outcome == textedit.OutcomeCommit {
-		switch field {
-		case s.name:
-			s.commitName(ctx)
-		case s.npc.notes:
-			s.commitNotes(ctx)
-		}
+	if field, outcome := s.focus.Update(input, ctx.Clipboard); outcome == textedit.OutcomeCommit && field == s.name {
+		s.commitName(ctx)
 	}
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
 	}
 	frame.CommonKeys(input, ctx)
+	s.updateList(input, ctx)
+	s.buttons(input, ctx)
+	s.guardSelection(ctx)
+}
+
+// updateList handles the list: selecting, opening, showing and hiding rows,
+// and a section's [+].
+func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 	result := s.list.Update(input)
 	if result.Changed {
 		s.focus.Set(nil)
@@ -311,7 +280,12 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if result.Activated {
 		s.openSelected(ctx)
 	}
-	s.buttons(input, ctx)
+	if result.Toggled != "" {
+		s.closed[result.Toggled] = !s.closed[result.Toggled]
+	}
+	if result.Added != "" {
+		s.create(ctx, sectionNew(result.Added))
+	}
 }
 
 func (s *State) keys(input *ui.Input, ctx *frame.Context) {
@@ -325,6 +299,10 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.step(-1)
 	case input.Consume(ui.KeyDown, plain):
 		s.step(1)
+	case input.Consume(ui.KeyLeft, plain):
+		s.fold(ctx.Docs, true)
+	case input.Consume(ui.KeyRight, plain):
+		s.fold(ctx.Docs, false)
 	}
 }
 
@@ -352,26 +330,49 @@ func (s *State) step(delta int) {
 	}
 }
 
+// fold hides or shows a selected zone's floors, as Left and Right do in an
+// outline; Left on a floor selects its zone.
+func (s *State) fold(docs frame.Docs, hide bool) {
+	entry, ok := s.selected(docs)
+	if !ok {
+		return
+	}
+	switch entry.Format {
+	case zone.FormatName:
+		s.closed[entry.ID.String()] = hide
+	case floor.FormatName:
+		if zoneID, inZone := s.zoneOf(docs, entry.ID); inZone && hide {
+			s.list.Selected = zoneID.String()
+		}
+	}
+}
+
+// buttons handles the toolbar and the inspector's buttons.
 func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
+	if s.newMenu.Update(input) {
+		s.openMenu(ctx.Docs)
+
+		return
+	}
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+
+		return
+	case ui.RevertID:
+		s.discard()
+
+		return
+	}
 	switch {
-	case s.newZone.Update(input):
-		s.createZone(ctx)
-	case s.newFloor.Update(input):
-		s.createFloor(ctx)
-	case s.newText.Update(input):
-		s.createText(ctx)
-	case s.newWorkflow.Update(input):
-		s.createWorkflow(ctx)
-	case s.newNPC.Update(input):
-		s.createNPC(ctx)
 	case s.open.Update(input):
 		s.openSelected(ctx)
+	case s.floorButton.Update(input):
+		s.createFloor(ctx)
 	case s.up.Update(input):
 		s.moveFloor(ctx, 1)
 	case s.down.Update(input):
 		s.moveFloor(ctx, -1)
-	case s.rename.Update(input):
-		s.renameSelected(ctx)
 	case s.remove.Update(input):
 		s.deleteSelected(ctx)
 	default:
@@ -379,56 +380,31 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 	}
 }
 
-// syncName keeps the name field showing the selected document's name.
-func (s *State) syncName(docs frame.Docs) {
-	entry, ok := s.selected(docs)
-	if !ok {
-		if !s.named.IsZero() {
-			s.focus.Set(nil)
-			s.name.Field.Revert()
-			s.named = ids.ULID{}
+// openMenu shows New ▾; a floor needs a zone, or a floor of one, selected.
+func (s *State) openMenu(docs frame.Docs) {
+	_, hasZone := s.selectedZone(docs)
+	for index := range s.menu.Items {
+		if s.menu.Items[index].ID == newFloor {
+			s.menu.Items[index].Disabled = !hasZone
 		}
-
-		return
 	}
-	if entry.ID != s.named {
-		s.focus.Set(nil)
-		s.name.Field.Revert()
-		s.named = entry.ID
-	}
-	s.name.Field.SetSaved(entry.Name)
+	s.menu.Open(s.newMenu.Rect, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 }
 
-// renameSelected saves a name typed into the name field, as Enter does. With
-// nothing typed yet, it selects the name so typing replaces it.
-func (s *State) renameSelected(ctx *frame.Context) {
-	if s.name.Field.Dirty() {
-		s.commitName(ctx)
-
-		return
+// create makes what a New ▾ item or a section's [+] names.
+func (s *State) create(ctx *frame.Context, item string) {
+	switch item {
+	case newZone:
+		s.createZone(ctx)
+	case newFloor:
+		s.createFloor(ctx)
+	case newWorkflow:
+		s.createWorkflow(ctx)
+	case newNPC:
+		s.createNPC(ctx)
+	case newText:
+		s.createText(ctx)
 	}
-	s.focus.Set(s.name)
-	if buffer := s.name.Field.Buffer(); buffer != nil {
-		buffer.SelectAll()
-	}
-	ctx.Frame.Status("Type a new name, then press Enter or click Rename")
-}
-
-func (s *State) commitName(ctx *frame.Context) {
-	name, changed := s.name.Field.Commit()
-	if !changed {
-		s.focus.Set(nil)
-
-		return
-	}
-	name = strings.TrimSpace(name)
-	rename := project.RenameArgs{ID: s.named, Name: name}
-	s.command(ctx, project.IndexID(), project.RenameEdit, "", rename,
-		func(protocol.Result, error) {
-			s.focus.Set(nil)
-			ctx.Frame.Status("Renamed to “" + name + "”")
-		},
-		func() { s.name.Field.Failed() })
 }
 
 // command sends an edit; done runs on success, failed on refusal.
@@ -528,15 +504,9 @@ func (s *State) createZone(ctx *frame.Context) {
 // createFloor adds a floor on top of the selected zone (or the zone of the
 // selected floor), with the same bounds as the floor below it.
 func (s *State) createFloor(ctx *frame.Context) {
-	entry, found := s.selected(ctx.Docs)
+	zoneID, found := s.selectedZone(ctx.Docs)
 	if !found {
 		return
-	}
-	zoneID := entry.ID
-	if entry.Format != zone.FormatName {
-		if zoneID, found = s.zoneOf(ctx.Docs, entry.ID); !found {
-			return
-		}
 	}
 	floors := s.floorsOf(ctx.Docs, zoneID)
 	floorNames := make([]string, 0, len(floors))
@@ -556,6 +526,19 @@ func (s *State) createFloor(ctx *frame.Context) {
 	}
 	name := uniqueName("Floor", floorNames)
 	s.addFloor(ctx, zoneID, name, bounds, ground, len(floors), s.gesture())
+}
+
+// selectedZone returns the selected zone, or the zone of the selected floor.
+func (s *State) selectedZone(docs frame.Docs) (ids.ULID, bool) {
+	entry, found := s.selected(docs)
+	switch {
+	case !found:
+		return ids.ULID{}, false
+	case entry.Format == zone.FormatName:
+		return entry.ID, true
+	default:
+		return s.zoneOf(docs, entry.ID)
+	}
 }
 
 // addFloor creates a floor document and inserts it into a zone, in one
@@ -604,11 +587,6 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 	}, nil)
-}
-
-// toolbar lists the buttons along the top, in order.
-func (s *State) toolbar() []*ui.Button {
-	return []*ui.Button{s.newZone, s.newFloor, s.newText, s.newWorkflow, s.newNPC, s.open, s.up, s.down}
 }
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
@@ -772,35 +750,76 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 }
 
 // Locate finds a named part of the window for input scripts: "row:<name>"
-// for a document by name, "ui:<button id>", "ui:name", "ui:notes", or a
-// dialog button or list row.
+// for a document by name, "toggle:<name>" for its disclosure triangle,
+// "section:<zones|workflows|npcs|text>" for a section heading,
+// "ui:<button id>", "ui:name", "ui:notes", a New ▾ item while the menu is
+// open, or a dialog button or list row. "ui:new-zone", "ui:new-workflow",
+// "ui:new-npc" and "ui:new-text" are their section's [+].
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
-	if s.dialog != nil {
+	switch {
+	case s.guard.Active():
+		return s.guard.Locate(value, s.size)
+	case s.dialog != nil:
 		return s.locateInDialog(kind, value)
+	case s.menu.IsOpen():
+		return s.menu.Locate(value)
 	}
 	switch kind {
-	case "row":
-		for _, row := range s.list.Rows {
-			if row.Label == value && !row.Heading {
-				return s.list.Locate(row.ID)
-			}
-		}
+	case "row", "toggle":
+		return s.locateRow(kind, value)
+	case "section":
+		return s.list.Locate(sectionPrefix + value)
 	case "ui":
-		for _, field := range []*ui.TextField{s.name, s.npc.notes} {
-			if value == field.ID && !field.Rect.Empty() {
-				return field.Center(), true
-			}
+		return s.locateWidget(value)
+	}
+
+	return image.Pt(0, 0), false
+}
+
+// locateRow finds a document row by its name, or its disclosure triangle.
+func (s *State) locateRow(kind, label string) (image.Point, bool) {
+	for _, row := range s.list.Rows {
+		if row.Label != label || row.Heading {
+			continue
 		}
-		for _, button := range append(s.toolbar(), s.rename, s.remove, s.npc.choose, s.npc.open) {
-			if button.ID == value {
-				return image.Pt(button.Rect.Min.X+button.Rect.Dx()/2, button.Rect.Min.Y+button.Rect.Dy()/2), true
-			}
+		if kind == "toggle" {
+			return s.list.LocateToggle(row.ID)
+		}
+
+		return s.list.Locate(row.ID)
+	}
+
+	return image.Pt(0, 0), false
+}
+
+// locateWidget finds a field, a button, a section's [+] or the save bar's
+// buttons.
+func (s *State) locateWidget(widget string) (image.Point, bool) {
+	if section := newSection(widget); section != "" {
+		return s.list.LocateAdd(section)
+	}
+	if point, found := s.save.Locate(widget); found {
+		return point, true
+	}
+	for _, field := range []*ui.TextField{s.name, s.npc.notes} {
+		if widget == field.ID && !field.Rect.Empty() {
+			return field.Center(), true
+		}
+	}
+	for _, button := range s.allButtons() {
+		if button.ID == widget && !button.Rect.Empty() {
+			return ui.Center(button.Rect), true
 		}
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// allButtons lists the window's buttons outside dialogs.
+func (s *State) allButtons() []*ui.Button {
+	return []*ui.Button{s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.npc.choose, s.npc.open}
 }
 
 // locateInDialog finds a dialog button, or a dialog list row by its name.
@@ -816,52 +835,21 @@ func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
 	return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 }
 
-// Draw renders the window.
+// Draw renders the window: the toolbar, the list, the inspector and anything
+// showing over them.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout(docs)
 	screen.Fill(ui.ColorBackground())
-	ui.FillRect(screen, image.Rect(0, 0, frame.Content(s.size).Max.X, toolbarHeight), ui.ColorBackground())
 	width := frame.Content(s.size).Max.X
+	s.theme.DrawTitle(screen, "Project", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
-	for _, button := range s.toolbar() {
-		button.Draw(screen, s.theme)
-	}
+	s.newMenu.Draw(screen, s.theme)
 	s.list.Draw(screen, s.theme)
 	s.drawInspector(screen, docs)
+	s.menu.Draw(screen, s.theme)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
-}
-
-func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
-	frame.DrawInspector(screen)
-	panel := frame.Inspector(s.size)
-	textX, textY := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset
-	s.theme.Heading(screen, "INSPECTOR", textX, textY)
-	entry, ok := s.selected(docs)
-	if !ok {
-		s.theme.DrawText(screen, "Select a document.", textX, textY+ui.LineHeight, ui.ColorMuted())
-		s.theme.DrawText(screen, "Double-click or Enter opens it.", textX, textY+2*ui.LineHeight, ui.ColorMuted())
-
-		return
-	}
-	s.theme.Heading(screen, "NAME", textX, nameFieldTop-ui.LineHeight)
-	s.name.Draw(screen)
-	textY = nameFieldTop + ui.ButtonH + ui.Gap
-	hint := "Enter saves, Escape reverts"
-	if s.name.Field.Dirty() {
-		hint = "Unsaved. " + hint
-	}
-	s.theme.DrawText(screen, hint, textX, textY, ui.ColorMuted())
-	kinds := map[string]string{
-		zone.FormatName: "Zone", floor.FormatName: "Floor", textdoc.FormatName: "Text document",
-		flow.FormatName: "Workflow", npc.FormatName: "NPC",
-	}
-	kind := kinds[entry.Format]
-	s.theme.DrawText(screen, kind, textX, textY+ui.LineHeight, ui.ColorInk())
-	s.theme.DrawText(screen, "ID "+entry.ID.String(), textX, textY+2*ui.LineHeight, ui.ColorSubdued())
-	s.rename.Draw(screen, s.theme)
-	s.remove.Draw(screen, s.theme)
-	s.drawNPC(screen, docs, textX)
+	s.guard.Draw(screen, s.theme)
 }

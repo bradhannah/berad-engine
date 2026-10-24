@@ -45,7 +45,7 @@ const (
 // previewRun is the preview this window runs (D15). The run, its clock and
 // its NPCs are simulated in this process; its state goes to the zone's other
 // views through the orchestrator. NPCs can be paused, or stepped until the
-// watched NPC changes node.
+// watched NPC changes node; step is the changes it made in the latest step.
 type previewRun struct {
 	id       ids.ULID
 	run      *play.Run
@@ -56,7 +56,7 @@ type previewRun struct {
 	watched  ids.ULID
 	paused   bool
 	stepping bool
-	stepFrom uint64
+	step     []protocol.PreviewChange
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -136,7 +136,7 @@ func (s *State) updateChoosing(input *ui.Input, ctx *frame.Context, floorData *f
 		}
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
-			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, stepFrom: 0,
+			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
 		}
 		s.remote = nil
 		s.subscribeFloors(ctx)
@@ -259,7 +259,7 @@ func (s *State) sendState(ctx *frame.Context) {
 	state := s.previewState()
 	if sent := s.preview.sent; sent != nil && slices.Equal(sent.Entities, state.Entities) && sent.Clock == state.Clock &&
 		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
-		sent.Watched == state.Watched {
+		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) {
 		return
 	}
 	s.preview.sent = &state
@@ -272,7 +272,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 	return protocol.PreviewEntity{
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
-		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0}, Changes: 0,
+		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""}, Changes: 0,
 	}
 }
 

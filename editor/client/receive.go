@@ -41,7 +41,7 @@ func (c *Client) dispatch(message protocol.Message) {
 			update.Shutdown = &shutdown
 			c.emit(update)
 		}
-	case protocol.KindAnswer:
+	case protocol.KindAnswer, protocol.KindQuitAsk:
 		c.deliver(message)
 	case protocol.KindAttention:
 		update := newUpdate()
@@ -53,7 +53,8 @@ func (c *Client) dispatch(message protocol.Message) {
 		protocol.KindPreviewControl:
 		c.dispatchPreview(message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
-		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery:
+		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindUnsaved,
+		protocol.KindQuit:
 		return
 	default:
 		return
@@ -91,7 +92,8 @@ func (c *Client) dispatchPick(message protocol.Message) {
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
 		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPreviewStart, protocol.KindPreviewState,
-		protocol.KindPreviewStop, protocol.KindPreviewControl:
+		protocol.KindPreviewStop, protocol.KindPreviewControl, protocol.KindUnsaved, protocol.KindQuitAsk,
+		protocol.KindQuit:
 		return
 	default:
 		return
@@ -125,7 +127,8 @@ func (c *Client) dispatchPreview(message protocol.Message) {
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindSnapshot,
 		protocol.KindResult, protocol.KindEvent, protocol.KindSession, protocol.KindShutdown,
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPickAsk, protocol.KindPickStart,
-		protocol.KindPickAnswer, protocol.KindPickCancel:
+		protocol.KindPickAnswer, protocol.KindPickCancel, protocol.KindUnsaved, protocol.KindQuitAsk,
+		protocol.KindQuit:
 		return
 	default:
 		return
