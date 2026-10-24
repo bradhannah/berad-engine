@@ -161,13 +161,20 @@ func (s *State) deleteFolder(ctx *frame.Context, folder project.Folder) {
 	}, nil)
 }
 
-// openMoveMenu lists where the selected document or folder can move: the
-// top of its section or any folder of its type, but not where it already
-// is, nor into a folder it holds.
+// openMoveMenu opens Move to… below its button.
 func (s *State) openMoveMenu(docs frame.Docs) {
+	if s.moveItems(docs) {
+		s.moveMenu.Open(s.moveBn.Rect, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	}
+}
+
+// moveItems lists where the selected document or folder can move: the top
+// of its section or any folder of its type, but not where it already is,
+// nor into a folder it holds. It reports whether anything is selected.
+func (s *State) moveItems(docs frame.Docs) bool {
 	format, current, ok := s.placeOf(docs)
 	if !ok {
-		return
+		return false
 	}
 	moving, isFolder := s.selectedFolder()
 	if isFolder {
@@ -182,7 +189,8 @@ func (s *State) openMoveMenu(docs frame.Docs) {
 		items = append(items, moveItem(section, path, strings.EqualFold(path, current)))
 	}
 	s.moveMenu.Items, s.moveMenu.Width = items, ui.MenuWidth(items, s.theme)
-	s.moveMenu.Open(s.moveBn.Rect, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+
+	return true
 }
 
 func moveItem(section, path string, here bool) ui.MenuItem {

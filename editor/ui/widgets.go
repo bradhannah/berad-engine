@@ -247,6 +247,11 @@ type ListResult struct {
 	// Dragged is the row dropped on the row Dropped.
 	Dragged string
 	Dropped string
+	// Context is true when the list was right-clicked, and ContextRow is the
+	// row under the pointer, or "" below the rows. The list leaves choosing
+	// what a right-click selects to its window.
+	Context    bool
+	ContextRow string
 }
 
 // RowRect returns the screen rectangle of a row, which may lie outside the
@@ -291,9 +296,13 @@ func (l *List) LocateAdd(id string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// Update handles scrolling, clicks and dragging a row onto another.
+// Update handles scrolling, clicks, right-clicks and dragging a row onto
+// another.
 func (l *List) Update(input *Input) ListResult {
-	result := ListResult{Changed: false, Activated: false, Toggled: "", Added: "", Dragged: "", Dropped: ""}
+	result := ListResult{
+		Changed: false, Activated: false, Toggled: "", Added: "", Dragged: "", Dropped: "", Context: false,
+		ContextRow: "",
+	}
 	inside := input.Cursor.In(l.Rect)
 	if inside && input.WheelY != 0 {
 		l.scroll -= int(input.WheelY * RowHeight)
@@ -304,9 +313,14 @@ func (l *List) Update(input *Input) ListResult {
 	if l.updateDrag(input, &result) || !inside {
 		return result
 	}
+	onRow := false
 	for index, row := range l.Rows {
 		rect := l.RowRect(index)
-		if !input.Cursor.In(rect) || (row.Heading && !row.Section) {
+		if !input.Cursor.In(rect) {
+			continue
+		}
+		onRow = true
+		if row.Heading && !row.Section {
 			continue
 		}
 		l.hover = row.ID
@@ -314,6 +328,12 @@ func (l *List) Update(input *Input) ListResult {
 		if input.Pressed {
 			l.press(input, row, rect, &result)
 		}
+		if input.Secondary {
+			result.Context, result.ContextRow = true, row.ID
+		}
+	}
+	if input.Secondary && !onRow {
+		result.Context = true
 	}
 
 	return result
