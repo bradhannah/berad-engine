@@ -92,6 +92,8 @@ func Run(args Args, registry *plugin.Registry) error {
 	// The Clock window stays on top of the others until its author turns
 	// that off.
 	game.frame.OnTop.On = args.View == clockview.ViewName
+	game.floating = game.frame.OnTop.On
+	ebiten.SetWindowFloating(game.floating)
 	// The close button asks the view first, so unsaved changes are not lost.
 	ebiten.SetWindowClosingHandled(true)
 	// A window driven by an input script needs no keyboard, so it opens
