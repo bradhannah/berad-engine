@@ -158,6 +158,13 @@ NPCs; the orchestrator passes it only to that window, and only from a window
 that shows the preview. Watch windows of the zone receive starts, states and
 stops as its Map windows do.
 
+**As built (protocol version 7):** a change of node also says why the node it
+left carried on without doing its work, if it did, and an NPC's status says
+only what keeps it from following its workflow now. A state says whether a
+step is running, and carries the watched NPC's changes in the latest step.
+The window running the preview runs a step as fast as it can, up to a minute
+of ticks a frame, until the watched NPC changes node.
+
 ## D8 — Large data
 
 Art is served by the orchestrator. Windows cache assets by content fingerprint

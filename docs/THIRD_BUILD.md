@@ -307,6 +307,18 @@ Open:
   Cancel. Quitting closes every window, saving first when asked, and a
   window that cannot save stays open and says why. Cmd+W still closes just
   its window.
+- **Stepping** (protocol version 7). Decided with its author on
+  2026-10-24, after a step past a blocked Move came back round to the Wait
+  it started from and looked as if nothing had happened. Step to next
+  change goes straight to the watched NPC's next node, however long its
+  node takes: the preview runs as fast as it can, the clock and the other
+  NPCs moving on with it, then pauses. The lines taken in the step stay
+  orange, and a STEP line lists the way it went, with the choice taken and
+  what was blocked, until the NPCs resume or step again; while they run, a
+  LAST line shows the latest change. NOW always shows what the current
+  node is doing: why a node carried on goes with the change it carried on
+  by, rather than staying until a later node finishes. "Stepping…" shows
+  while a step runs.
 
 ## Not in this build
 

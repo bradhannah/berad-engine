@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 6
+const Version = 7
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -260,8 +260,8 @@ type PreviewEntity struct {
 	// Face is the direction the entity faces, one cell.
 	Face [2]int `json:"face"`
 	// An NPC also says which NPC it is, the workflow it follows, the node it
-	// is on, what it is doing there, why a node could not do its work, its
-	// latest change of node and how many changes it has made.
+	// is on, what it is doing there, what keeps it from following its
+	// workflow, its latest change of node and how many changes it has made.
 	NPC      ids.ULID      `json:"npc,omitzero"`
 	Workflow ids.ULID      `json:"workflow,omitzero"`
 	Node     ids.ULID      `json:"node,omitzero"`
@@ -272,12 +272,14 @@ type PreviewEntity struct {
 }
 
 // PreviewChange is an NPC's change from one node to another: the output it
-// took and the tick.
+// took, the tick, and, when the node it left could not do its work and
+// carried on, why.
 type PreviewChange struct {
 	From   ids.ULID `json:"from,omitzero"`
 	Output string   `json:"output,omitempty"`
 	To     ids.ULID `json:"to,omitzero"`
 	Tick   uint64   `json:"tick,omitempty"`
+	Status string   `json:"status,omitempty"`
 }
 
 // PreviewState is a preview's latest live state, sent at a limited rate; the
@@ -296,6 +298,11 @@ type PreviewState struct {
 	// NPC being watched, if any.
 	NPCsPaused bool     `json:"npcsPaused,omitempty"`
 	Watched    ids.ULID `json:"watched,omitzero"`
+	// Stepping says a step is running. Step is the changes the watched NPC
+	// made in the latest step, oldest first, kept until the NPCs resume or
+	// another step starts.
+	Stepping bool            `json:"stepping,omitempty"`
+	Step     []PreviewChange `json:"step,omitempty"`
 }
 
 // Preview controls.
@@ -307,8 +314,8 @@ const (
 )
 
 // PreviewControl asks the window running a preview to watch an NPC, by its
-// placement, or to pause, resume or step its NPCs: a step runs them until the
-// watched NPC changes node. It comes from a Watch window or another Map
+// placement, or to pause, resume or step its NPCs: a step runs them, as fast
+// as it can, until the watched NPC changes node, then pauses them. It comes from a Watch window or another Map
 // window of the zone, and the orchestrator passes it to the window running
 // the preview.
 type PreviewControl struct {

@@ -697,12 +697,13 @@ func TestNPCPlacedWithBehaviour(t *testing.T) {
 // TestNPCFollowsItsWorkflow builds the random walk, makes it an NPC's
 // behaviour, places the NPC and starts a preview at 08:00: the NPC must
 // leave its cell. Clicking it watches it, and the Watch window shows it on
-// its workflow and pauses the NPCs.
+// its workflow, pauses the NPCs and steps to its next node.
 func TestNPCFollowsItsWorkflow(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	mapShot, watchShot := shotPath(t, "npc-preview-map.png"), shotPath(t, "npc-preview-watch.png")
+	stepShot := shotPath(t, "npc-preview-step.png")
 	retype := func(field, text string) []step {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
@@ -728,7 +729,8 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 	)
 	watchScript := script(
 		must("state:previewing", 1800), must("state:watching:NPC 1", 600), wait(60),
-		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10), quit(),
+		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10),
+		click("ui:step"), must("state:stepped", 300), wait(10), step{Repeat: 2, Screenshot: stepShot}, wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "watch": {watchScript},
@@ -748,7 +750,7 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 	if placement, found := ground.PlacementAt(1, 1); !found || placement.NPC != saved.ID {
 		t.Fatal("the preview must not move the NPC's placement")
 	}
-	t.Logf("screenshots: %s %s", mapShot, watchShot)
+	t.Logf("screenshots: %s %s %s", mapShot, watchShot, stepShot)
 }
 
 // TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process

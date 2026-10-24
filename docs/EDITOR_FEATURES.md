@@ -215,6 +215,10 @@ under consideration), **open** (undecided).
   behaviour rather than preserving their place in a changed workflow.
 - **Agreed:** a workflow view can show the step each NPC is on and its inputs,
   ideally with the surrounding steps visible.
+- **Agreed:** Step to next change goes straight to the watched NPC's next
+  node, however long its node takes, and shows the way it went (each node
+  passed, the choice taken, what was blocked) until the NPCs resume or step
+  again.
 - **Tentative:** loadable test scenarios set just enough state (conditions true
   or false) to test something without replaying the game. Later: prepared save
   states and jumping straight to a location.
