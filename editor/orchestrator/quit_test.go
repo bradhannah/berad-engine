@@ -22,6 +22,12 @@ func TestQuitNamesUnsavedChangesThenClosesEveryWindow(t *testing.T) {
 	if err := editing.Unsaved(protocol.Unsaved{Count: 2, Name: "the anchor Desk"}); err != nil {
 		t.Fatal(err)
 	}
+	// Asked on the same connection, this is answered after the unsaved
+	// changes are recorded; the other window's question is not ordered
+	// after them.
+	if _, err := editing.QuitAsk(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	ask, err := quitting.QuitAsk(context.Background())
 	if err != nil {
 		t.Fatal(err)
