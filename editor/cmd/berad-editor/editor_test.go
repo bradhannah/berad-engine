@@ -284,12 +284,14 @@ func closeBrowser() []step {
 // the chosen family, undo takes the walls back in one step, and the result is
 // in the saved file. Then the Resize tool adds a row on top with its button,
 // drags the bottom edge down two rows, and undo takes the drag back. Last, a
-// right-click on a cell adds an anchor there from its menu.
+// right-click on a cell adds an anchor there from its menu, and the Keys
+// button lists the keys.
 func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	zoomed, menuShot := shotPath(t, "map-zoom.png"), shotPath(t, "map-menu.png")
+	keysShot := shotPath(t, "map-keys.png")
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
 		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
@@ -301,7 +303,9 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 		click("ui:zoom-in"), must("state:zoom:150", 60), click("ui:zoom-fit"), wait(5),
 		step{Repeat: 2, Screenshot: zoomed}, wait(5),
 		rightClick("cell:-10,5"), must("menu:add-anchor", 60), step{Repeat: 2, Screenshot: menuShot},
-		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30), quit(),
+		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30),
+		click("ui:keys"), must("state:keys", 60), step{Repeat: 2, Screenshot: keysShot}, keys("Escape"), wait(5),
+		quit(),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
 
@@ -326,7 +330,7 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 		t.Fatalf("anchor added from the right-click menu: %+v %v", gate, found)
 	}
 	noCrashes(t, project)
-	t.Logf("screenshots: %s %s", zoomed, menuShot)
+	t.Logf("screenshots: %s %s %s", zoomed, menuShot, keysShot)
 }
 
 // TestWallFamiliesForARoomAndARun selects a room by double-clicking inside it

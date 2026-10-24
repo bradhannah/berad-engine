@@ -76,6 +76,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.menu != nil {
 		s.menu.Draw(screen, s.theme)
 	}
+	s.keySheet.Draw(screen, s.theme)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
@@ -431,10 +432,10 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	if !loaded {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
-	helpTop := panel.Max.Y - len(helpLines())*ui.LineHeight
-	s.drawPreviewInspector(screen, docs, textX, helpTop)
-	s.drawNPCPreview(screen, textX, helpTop)
-	s.drawHelp(screen, textX, helpTop)
+	foot := footTop(panel)
+	s.drawPreviewInspector(screen, docs, textX, foot)
+	s.drawNPCPreview(screen, textX, foot)
+	s.keysBn.Draw(screen, s.theme)
 }
 
 func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
@@ -524,27 +525,24 @@ func yesNo(value bool) string {
 	return "no"
 }
 
-func helpLines() []string {
-	return []string{
-		"KEYS",
-		"G W O E A N S R: tools   1-9: tile",
-		"PageUp/PageDown: floor   F: floor below",
-		"Scroll: pan   Cmd+scroll or Cmd+=/-: zoom",
-		"Space+drag: pan   Cmd+0: reset view",
-		"P: preview   Arrow keys: walk",
-		"Cmd+Z / Cmd+Shift+Z: undo / redo",
-		"Cmd+N: new view   Cmd+W: close",
-		"Cmd+S: save   Cmd+Q: quit the editor",
-	}
-}
-
-func (s *State) drawHelp(screen *ebiten.Image, left, top int) {
-	for index, text := range helpLines() {
-		if index == 0 {
-			s.theme.Heading(screen, text, left, top)
-
-			continue
-		}
-		s.theme.DrawText(screen, text, left, top+index*ui.LineHeight, ui.ColorInk())
+// keyRows lists the keys of the Map window for its key sheet.
+func keyRows() []ui.KeyRow {
+	return []ui.KeyRow{
+		{Label: "Tools", Keys: []string{"G", "W", "O", "E", "A", "N", "S", "R"}},
+		{Label: "Tile", Keys: []string{"1\u20139"}},
+		{Label: "Floor above, below", Keys: []string{"PageUp", "PageDown"}},
+		{Label: "Show floor below", Keys: []string{"F"}},
+		{Label: "Pan", Keys: []string{"Scroll", "Space+drag", "Middle-drag"}},
+		{Label: "Zoom", Keys: []string{"Cmd+scroll", "Cmd+=", "Cmd+-"}},
+		{Label: "Reset view", Keys: []string{"Cmd+0"}},
+		{Label: "Menu for a cell", Keys: []string{"Right-click", "Ctrl+click"}},
+		{Label: "Preview, walk", Keys: []string{"P", "Arrows"}},
+		{Label: "Delete selected", Keys: []string{"Backspace"}},
+		{Label: "Undo, redo", Keys: []string{"Cmd+Z", "Cmd+Shift+Z"}},
+		{Label: "New view of the zone", Keys: []string{"Cmd+N"}},
+		{Label: "Save", Keys: []string{"Cmd+S"}},
+		{Label: "Close window", Keys: []string{"Cmd+W"}},
+		{Label: "Quit the editor", Keys: []string{"Cmd+Q"}},
+		{Label: "This list", Keys: []string{"?"}},
 	}
 }

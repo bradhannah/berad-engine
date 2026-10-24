@@ -425,14 +425,14 @@ func (s *State) drawLiveNPCs(area *ebiten.Image, grid image.Rectangle) {
 
 // layoutPreview places the preview's controls above the keys: the start time
 // before a preview, and the clock and Watch while this window runs one.
-func (s *State) layoutPreview(left, width, helpTop int) {
+func (s *State) layoutPreview(left, width, foot int) {
 	for _, button := range slices.Concat(s.rateBns, []*ui.Button{s.stopBn, s.jumpBn, s.watchBn}) {
 		button.Rect = ui.Zero()
 	}
 	s.startField.Rect, s.jumpField.Rect = ui.Zero(), ui.Zero()
 	switch {
 	case s.preview != nil:
-		rowY := clockTop(helpTop) + ui.Half*ui.LineHeight
+		rowY := clockTop(foot) + ui.Half*ui.LineHeight
 		gaps := (len(s.rateBns) - 1) * ui.Gap
 		for index, button := range s.rateBns {
 			from := left + index*(width-gaps)/len(s.rateBns) + index*ui.Gap
@@ -452,15 +452,15 @@ func (s *State) layoutPreview(left, width, helpTop int) {
 		rowY += ui.ButtonH + ui.Gap + ui.Half*ui.LineHeight
 		s.watchBn.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
 	case s.remote == nil:
-		top := helpTop - idleRows*ui.LineHeight - ui.ButtonH - ui.Gap
+		top := foot - idleRows*ui.LineHeight - ui.ButtonH - ui.Gap
 		s.startField.Rect = image.Rect(left+width/ui.Half, top+ui.LineHeight, left+width, top+ui.LineHeight+ui.ButtonH)
 	}
 }
 
 // clockTop is where the clock and watch part of the inspector starts, a line
 // above the keys.
-func clockTop(helpTop int) int {
-	return helpTop - (previewRows+1)*ui.LineHeight - previewButtons*ui.ButtonH - ui.Half*ui.Gap
+func clockTop(foot int) int {
+	return foot - (previewRows+1)*ui.LineHeight - previewButtons*ui.ButtonH - ui.Half*ui.Gap
 }
 
 // updatePreviewControls handles the clock's buttons and fields and Watch.
@@ -520,10 +520,10 @@ func (s *State) jumpClock(ctx *frame.Context) {
 // drawNPCPreview draws the preview's part of the inspector: before a
 // preview, the start time; while one runs, the clock, its controls and the
 // watched NPC.
-func (s *State) drawNPCPreview(screen *ebiten.Image, left, helpTop int) {
+func (s *State) drawNPCPreview(screen *ebiten.Image, left, foot int) {
 	switch {
 	case s.preview != nil:
-		top := clockTop(helpTop)
+		top := clockTop(foot)
 		game := s.preview.clock
 		s.theme.DrawLabel(screen, "CLOCK", left, top, ui.ColorLive())
 		state := clock.Format(game.Seconds()) + " · " + clock.RateLabel(game.Rate())
@@ -543,7 +543,7 @@ func (s *State) drawNPCPreview(screen *ebiten.Image, left, helpTop int) {
 		s.theme.DrawText(screen, s.watchedLine(), left, watchTop+ui.LineHeight, ui.ColorInk())
 		s.watchBn.Draw(screen, s.theme)
 	case s.remote == nil:
-		top := helpTop - idleRows*ui.LineHeight - ui.ButtonH - ui.Gap
+		top := foot - idleRows*ui.LineHeight - ui.ButtonH - ui.Gap
 		s.theme.DrawLabel(screen, "PREVIEW", left, top, ui.ColorMuted())
 		s.theme.DrawText(screen, "Clock starts at", left, top+ui.LineHeight+(ui.ButtonH-ui.TextSize)/ui.Half-1,
 			ui.ColorInk())

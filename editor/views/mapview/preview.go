@@ -369,9 +369,9 @@ func (s *State) drawDisc(area *ebiten.Image, grid image.Rectangle, x, y float64,
 
 // drawPreviewInspector describes the preview above its controls and the
 // keys.
-func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left, helpTop int) {
+func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left, foot int) {
 	lines := []string{}
-	top := helpTop - (idleRows+previewLines)*ui.LineHeight - ui.ButtonH - ui.Gap
+	top := foot - (idleRows+previewLines)*ui.LineHeight - ui.ButtonH - ui.Gap
 	switch {
 	case s.choosing || s.starting:
 		lines = append(lines, "Click the cell where the player starts.", "Escape cancels.")
@@ -379,10 +379,10 @@ func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left
 		player := s.preview.run.Player()
 		lines = append(lines, fmt.Sprintf("Player on %s, cell %d, %d", s.floorName(docs, player.Floor),
 			player.Cell.X, player.Cell.Y), "Arrows walk · click an NPC · P stops")
-		top = clockTop(helpTop) - (len(lines)+1)*ui.LineHeight - ui.Gap
+		top = clockTop(foot) - (len(lines)+1)*ui.LineHeight - ui.Gap
 	case s.remote != nil:
 		lines = append(lines, "Running in another view of this zone.", s.remoteClock())
-		top = helpTop - previewLines*ui.LineHeight
+		top = foot - previewLines*ui.LineHeight
 	default:
 		return
 	}

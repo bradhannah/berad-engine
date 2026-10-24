@@ -29,7 +29,7 @@ func keyNames() map[ebiten.Key]ui.Key {
 		ebiten.KeySpace: ui.KeySpace, ebiten.KeyArrowLeft: ui.KeyLeft, ebiten.KeyArrowRight: ui.KeyRight,
 		ebiten.KeyArrowUp: ui.KeyUp, ebiten.KeyArrowDown: ui.KeyDown, ebiten.KeyHome: ui.KeyHome,
 		ebiten.KeyEnd: ui.KeyEnd, ebiten.KeyPageUp: ui.KeyPageUp, ebiten.KeyPageDown: ui.KeyPageDown,
-		ebiten.KeyEqual: ui.KeyEqual, ebiten.KeyMinus: ui.KeyMinus,
+		ebiten.KeyEqual: ui.KeyEqual, ebiten.KeyMinus: ui.KeyMinus, ebiten.KeySlash: ui.KeySlash,
 	}
 	for offset := range 26 {
 		names[ebiten.KeyA+ebiten.Key(offset)] = ui.Key(string(rune('A' + offset)))

@@ -35,6 +35,7 @@ const (
 	KeyPageDown  Key = "PageDown"
 	KeyEqual     Key = "Equal"
 	KeyMinus     Key = "Minus"
+	KeySlash     Key = "Slash"
 	KeyA         Key = "A"
 	KeyC         Key = "C"
 	KeyF         Key = "F"

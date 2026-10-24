@@ -188,8 +188,11 @@ type State struct {
 	deleteBtn *ui.Button
 	replace   *ui.Button
 	previewBn *ui.Button
-	openBn    *ui.Button
-	removeBn  *ui.Button
+	// keysBn opens keySheet, the list of the window's keys.
+	keysBn   *ui.Button
+	keySheet ui.KeySheet
+	openBn   *ui.Button
+	removeBn *ui.Button
 	// The preview's start time, clock controls and Watch.
 	startField *ui.TextField
 	jumpField  *ui.TextField
@@ -225,9 +228,10 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
 		nameField: ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
 		named:     ids.ULID{}, save: ui.NewSaveBar(), guard: frame.Guard{}, zoom: newZoomControl(),
-		deleteBtn:  ui.NewButton("delete-anchor", "Delete anchor"),
-		replace:    ui.NewButton("replace-family", "Replace family everywhere…"),
-		previewBn:  ui.NewButton("preview", "Preview"),
+		deleteBtn: ui.NewButton("delete-anchor", "Delete anchor"),
+		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
+		previewBn: ui.NewButton("preview", "Preview"),
+		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
 		openBn:     ui.NewButton("open-behaviour", "Open behaviour"),
 		removeBn:   ui.NewButton("remove-npc", "Remove"),
 		startField: ui.NewTextField("start-time", textedit.NewField("", false, clockFieldBytes), false, theme),
@@ -471,13 +475,22 @@ func (s *State) layoutInspector() {
 	if len(s.selected) > 0 {
 		s.replace.Rect = image.Rect(left, replaceTop, left+width, replaceTop+ui.ButtonH)
 	}
-	s.layoutPreview(left, width, inspector.Max.Y-len(helpLines())*ui.LineHeight)
+	s.keysBn.Rect = image.Rect(left+width-keysWidth, inspector.Max.Y-ui.Inset-ui.ButtonH, left+width,
+		inspector.Max.Y-ui.Inset)
+	s.layoutPreview(left, width, footTop(inspector))
 	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero() &&
 		s.placement.IsZero())
 }
 
+// footTop is where the inspector's sections at its foot end, above the
+// Keys button.
+func footTop(inspector image.Rectangle) int {
+	return inspector.Max.Y - ui.Inset - ui.ButtonH - ui.Inset
+}
+
 // Inspector layout, from the top of the panel.
 const (
+	keysWidth         = 72
 	inspectorFieldTop = 6*ui.LineHeight + ui.Inset
 	replaceTop        = inspectorFieldTop + ui.LineHeight*2
 	familyListTop     = replaceTop + ui.ButtonH + ui.LineHeight
@@ -524,19 +537,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.layoutWidgets(ctx.Docs)
-	if s.guard.Active() {
-		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
-
-		return
-	}
-	if s.dialog != nil {
-		s.updateDialog(input, ctx)
-
-		return
-	}
-	if s.menu != nil {
-		s.updateMenu(input, ctx)
-
+	if s.updateOver(input, ctx) {
 		return
 	}
 	s.guardAnchor()
@@ -577,6 +578,26 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.hovering, s.outside = false, false
 	}
 	s.guardAnchor()
+}
+
+// updateOver gives a frame of input to whatever lies over the window: the
+// unsaved changes guard, a dialog, the right-click menu or the key sheet. It
+// reports whether one took it.
+func (s *State) updateOver(input *ui.Input, ctx *frame.Context) bool {
+	switch {
+	case s.guard.Active():
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
+	case s.dialog != nil:
+		s.updateDialog(input, ctx)
+	case s.menu != nil:
+		s.updateMenu(input, ctx)
+	case s.keySheet.IsOpen():
+		s.keySheet.Update(input)
+	default:
+		return false
+	}
+
+	return true
 }
 
 // updateFields handles the text fields and the anchor's save bar: Enter
@@ -636,6 +657,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.below.On = !s.below.On
 	case input.Consume(ui.KeyP, plain):
 		s.togglePreview(ctx)
+	case input.Consume(ui.KeySlash, ui.Mods{Shortcut: false, Shift: true, Alt: false, Control: false}):
+		s.keySheet.Open(image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, s.theme)
 	case s.choosing && input.Consume(ui.KeyEscape, plain):
 		s.togglePreview(ctx)
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
@@ -723,6 +746,9 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 // updateInspectorButtons handles the buttons for what is selected.
 func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 	s.updatePreviewControls(input, ctx)
+	if s.keysBn.Update(input) {
+		s.keySheet.Open(image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, s.theme)
+	}
 	if s.deleteBtn.Update(input) && !s.anchor.IsZero() {
 		s.deleteAnchor(ctx)
 	}
@@ -1374,19 +1400,19 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
 // is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
+	simple := map[string]bool{"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen()}
+	if value, isSimple := simple[state]; isSimple {
+		return value
+	}
 	switch {
 	case state == "loaded":
 		return !s.floor.IsZero() && s.framed && docs.View(s.floor, func(client.Document) {})
 	case strings.HasPrefix(state, "bounds:"):
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
-	case state == "picking":
-		return s.pick != nil
 	case strings.HasPrefix(state, "zoom:"):
 		s.zoom.layout(s.Grid(), s.camera)
 
 		return s.zoom.reset.Label == strings.TrimPrefix(state, "zoom:")+"%"
-	case state == "previewing":
-		return s.preview != nil
 	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"):
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
@@ -1455,6 +1481,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return center(s.openBn.Rect), true
 	case s.removeBn.ID:
 		return center(s.removeBn.Rect), true
+	case s.keysBn.ID:
+		return center(s.keysBn.Rect), true
 	}
 	if at, found := s.locatePreviewWidget(widget); found {
 		return at, true
