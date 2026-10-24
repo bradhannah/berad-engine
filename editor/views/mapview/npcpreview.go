@@ -157,12 +157,30 @@ func (s *State) refreshWorkflow(ctx *frame.Context, run *npcRun) {
 		if restart {
 			run.npc.Restart()
 		}
+		if cues := cuesOf(run.workflow); len(cues) > 0 {
+			ctx.Sounds.Prepare(cues)
+		}
 	})
+}
+
+// cuesOf lists the cues a workflow's Play sounds play, so they can be
+// fetched before an NPC reaches them.
+func cuesOf(workflow *flow.Workflow) []string {
+	var cues []string
+	for _, node := range workflow.Nodes() {
+		if cue, err := node.Cue("cue"); node.Kind == flow.KindPlaySound && err == nil && cue != "" {
+			cues = append(cues, cue)
+		}
+	}
+
+	return cues
 }
 
 // stepNPCs runs every NPC for one tick, unless they are paused. During a
 // step it runs them as fast as it can, up to stepBudget ticks a frame, until
-// the watched NPC changes node, then pauses them.
+// the watched NPC changes node, then pauses them. The cues the NPCs' Play
+// sounds asked for in the tick they ran, or the tick a step ended in, play;
+// those of the ticks a step hurries through do not.
 func (s *State) stepNPCs(ctx *frame.Context) {
 	s.syncRunners(ctx.Docs)
 	if s.preview.paused {
@@ -177,14 +195,35 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	if s.preview.stepping {
 		ticks = stepBudget
 	}
+	var asked []string
 	for range ticks {
 		passed := s.preview.clock.Advance()
+		asked = asked[:0]
 		for _, run := range runners {
 			world := npcrun.World{Zone: zone, Workflow: run.workflow, Clock: s.preview.clock, Passed: passed}
 			run.npc.Step(world, s.preview.run.Tick())
+			asked = append(asked, run.npc.Sounds...)
 		}
 		if s.preview.stepping && s.stepped() {
+			s.hear(ctx, asked)
+
 			return
+		}
+	}
+	if !s.preview.stepping {
+		s.hear(ctx, asked)
+	}
+}
+
+// hear plays the cues NPCs asked for in one tick, each once however many
+// NPCs asked for it.
+func (s *State) hear(ctx *frame.Context, cues []string) {
+	played := map[string]bool{}
+	for _, cue := range cues {
+		if !played[cue] {
+			played[cue] = true
+			s.preview.heard[cue]++
+			ctx.Sounds.Play(cue)
 		}
 	}
 }
@@ -507,10 +546,12 @@ func (s *State) watchedLine() string {
 }
 
 // hasNPCState answers "npcs-moved" once an NPC has left its placement,
-// "watching" while an NPC is watched, and "npc:<name>=C,R" when the named NPC
-// stands on that cell.
+// "watching" while an NPC is watched, "npc:<name>=C,R" when the named NPC
+// stands on that cell, and "heard:<cue>" once the preview has played a cue.
 func (s *State) hasNPCState(state string, docs frame.Docs) bool {
 	switch {
+	case strings.HasPrefix(state, "heard:"):
+		return s.preview != nil && s.preview.heard[strings.TrimPrefix(state, "heard:")] > 0
 	case state == "watching":
 		return !s.watched().IsZero()
 	case state == "npcs-moved":

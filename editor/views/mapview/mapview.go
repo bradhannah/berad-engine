@@ -1407,7 +1407,7 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		s.zoom.layout(s.Grid(), s.camera)
 
 		return s.zoom.reset.Label == strings.TrimPrefix(state, "zoom:")+"%"
-	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"):
+	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"), strings.HasPrefix(state, "heard:"):
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
