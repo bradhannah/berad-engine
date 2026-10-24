@@ -47,6 +47,7 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Workflow** | Behaviour authored as typed nodes and the connections between them, starting at its start node |
 | **Node** | One step of a workflow; its kind declares its parameters and outputs |
 | **Output** | One way out of a node, connected to the node it leads to; an output with nothing connected ends the branch |
+| **Entry** | One link coming into a node, shown as its own dot on the node's left edge; any number of links can come in. ("Input" is kept for the values passed into a reusable workflow.) |
 | **Time-bound container** | A group of nodes that repeats while its time lasts, then leaves by its exit |
 
 ## Editor terms

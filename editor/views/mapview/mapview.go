@@ -35,7 +35,7 @@ const ViewName = "map"
 // Panel sizes, in screen pixels.
 const (
 	PanelWidth   = 190
-	toolRows     = 7
+	toolRows     = 8
 	floorRows    = 5
 	panelGap     = 10
 	headingSpace = 22
@@ -55,6 +55,7 @@ const (
 	ToolObjects Tool = "objects"
 	ToolErase   Tool = "erase"
 	ToolAnchor  Tool = "anchor"
+	ToolNPC     Tool = "npc"
 	ToolSelect  Tool = "select"
 	ToolResize  Tool = "resize"
 )
@@ -73,6 +74,7 @@ func tools() []toolInfo {
 		{ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup."},
 		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
 		{ToolAnchor, "Anchors", "A", "Click to add an anchor; drag one to move it."},
+		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left; drag one to move it."},
 		{ToolSelect, "Select walls", "S", "Click a wall for its run, double-click a room, or drag an area."},
 		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor."},
 	}
@@ -142,13 +144,21 @@ type State struct {
 	drag     *anchorDrag
 	selected []Cell
 	anchor   ids.ULID
-	pick     *protocol.PickStart
-	wheel    float64
-	lastPan  image.Point
-	panning  bool
-	framed   bool
-	resizing *resizeDrag
-	cursor   image.Point
+	// placement is the selected NPC placement; placing drags one. names is
+	// this frame's copy of the project index, placedNPC the selected
+	// placement's NPC and behaviour its behaviour workflow.
+	placement ids.ULID
+	placing   *placementDrag
+	names     *project.Index
+	placedNPC ids.ULID
+	behaviour ids.ULID
+	pick      *protocol.PickStart
+	wheel     float64
+	lastPan   image.Point
+	panning   bool
+	framed    bool
+	resizing  *resizeDrag
+	cursor    image.Point
 	// choosing waits for the cell where a preview's player starts; starting
 	// waits for the orchestrator to agree. preview is this window's own
 	// preview, remote another window's preview of the zone.
@@ -165,8 +175,16 @@ type State struct {
 	deleteBtn *ui.Button
 	replace   *ui.Button
 	previewBn *ui.Button
-	sides     []sideButtons
-	focus     ui.Focus
+	openBn    *ui.Button
+	removeBn  *ui.Button
+	// The preview's start time, clock controls and Watch.
+	startField *ui.TextField
+	jumpField  *ui.TextField
+	rateBns    []*ui.Button
+	stopBn     *ui.Button
+	watchBn    *ui.Button
+	sides      []sideButtons
+	focus      ui.Focus
 
 	dialog        *ui.Dialog
 	dialogKind    dialogKind
@@ -176,28 +194,37 @@ type State struct {
 
 // New returns the Map window for a zone.
 func New(window, zone ids.ULID, theme *ui.Theme) *State {
+	rateBns, stopBn, watchBn := newPreviewButtons()
 	view := &State{
 		window: window, zone: zone, theme: theme, floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
-		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{},
+		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
+		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{},
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
-		toolList:  &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
-		tileList:  &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
-		floorList: &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
-		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
-		nameField: ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
-		deleteBtn: ui.NewButton("delete-anchor", "Delete anchor"),
-		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
-		previewBn: ui.NewButton("preview", "Preview"),
-		sides:     newSideButtons(),
-		focus:     ui.Focus{},
-		dialog:    nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
+		toolList:   &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
+		tileList:   &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
+		floorList:  &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
+		below:      &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
+		nameField:  ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
+		deleteBtn:  ui.NewButton("delete-anchor", "Delete anchor"),
+		replace:    ui.NewButton("replace-family", "Replace family everywhere…"),
+		previewBn:  ui.NewButton("preview", "Preview"),
+		openBn:     ui.NewButton("open-behaviour", "Open behaviour"),
+		removeBn:   ui.NewButton("remove-npc", "Remove"),
+		startField: ui.NewTextField("start-time", textedit.NewField("", false, clockFieldBytes), false, theme),
+		jumpField:  ui.NewTextField("jump-time", textedit.NewField("", false, clockFieldBytes), false, theme),
+		rateBns:    rateBns, stopBn: stopBn, watchBn: watchBn,
+		sides:  newSideButtons(),
+		focus:  ui.Focus{},
+		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
-	view.focus.Register(view.nameField)
+	view.startField.Field.SetSaved(defaultStart)
+	view.jumpField.Placeholder = "Jump to…"
+	view.focus.Register(view.nameField, view.startField, view.jumpField)
 	for _, info := range tools() {
 		view.toolList.Rows = append(view.toolList.Rows, ui.Row{
 			ID: string(info.tool), Label: info.label, Detail: string(info.key), Indent: 0,
@@ -222,6 +249,9 @@ func (s *State) Selected() []Cell { return s.selected }
 
 // SelectedAnchor returns the selected anchor's ID.
 func (s *State) SelectedAnchor() ids.ULID { return s.anchor }
+
+// SelectedPlacement returns the selected NPC placement, if any.
+func (s *State) SelectedPlacement() ids.ULID { return s.placement }
 
 // Picking reports whether the window is answering a pick.
 func (s *State) Picking() bool { return s.pick != nil }
@@ -253,6 +283,8 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	switch {
 	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
 		s.previewChanged(update, ctx)
+	case update.PreviewControl != nil:
+		s.control(*update.PreviewControl, ctx)
 	case update.PickStart != nil:
 		start := *update.PickStart
 		s.pick = &start
@@ -368,6 +400,7 @@ func (s *State) Grid() image.Rectangle {
 
 // layoutWidgets places the panel widgets for the window size.
 func (s *State) layoutWidgets(docs frame.Docs) {
+	s.refreshNPCs(docs)
 	rowY := ui.Inset + headingSpace
 	s.toolList.Rect = image.Rect(0, rowY, PanelWidth, rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
@@ -376,6 +409,9 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.tileList.Selected = ""
 	}
 	tilesHeight := max(len(s.tileList.Rows), 1) * ui.RowHeight
+	if s.tool == ToolNPC {
+		tilesHeight = min(max(len(s.tileList.Rows), 1), npcRows) * ui.RowHeight
+	}
 	s.tileList.Rect = image.Rect(0, rowY, PanelWidth, rowY+tilesHeight)
 	rowY = s.tileList.Rect.Max.Y + panelGap + headingSpace
 	s.floorList.Rows = s.floorRows(docs)
@@ -394,9 +430,20 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.previewBn.Label = "Preview (P)"
 	}
 
+	s.layoutInspector()
+}
+
+// layoutInspector places the inspector's widgets for what is selected.
+func (s *State) layoutInspector() {
 	inspector := frame.Inspector(s.size)
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
 	s.nameField.Rect, s.deleteBtn.Rect, s.replace.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	s.openBn.Rect, s.removeBn.Rect = ui.Zero(), ui.Zero()
+	if !s.placement.IsZero() {
+		half := (width - ui.Gap) / ui.Half
+		s.openBn.Rect = image.Rect(left, placementButtonsTop, left+half, placementButtonsTop+ui.ButtonH)
+		s.removeBn.Rect = image.Rect(left+half+ui.Gap, placementButtonsTop, left+width, placementButtonsTop+ui.ButtonH)
+	}
 	if !s.anchor.IsZero() {
 		s.nameField.Rect = image.Rect(left, inspectorFieldTop, left+width, inspectorFieldTop+ui.ButtonH)
 		deleteTop := inspectorFieldTop + ui.ButtonH + anchorRows*ui.LineHeight
@@ -405,7 +452,9 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	if len(s.selected) > 0 {
 		s.replace.Rect = image.Rect(left, replaceTop, left+width, replaceTop+ui.ButtonH)
 	}
-	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero())
+	s.layoutPreview(left, width, inspector.Max.Y-len(helpLines())*ui.LineHeight)
+	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero() &&
+		s.placement.IsZero())
 }
 
 // Inspector layout, from the top of the panel.
@@ -416,6 +465,9 @@ const (
 )
 
 func (s *State) tileRows() []ui.Row {
+	if s.tool == ToolNPC {
+		return s.npcRows()
+	}
 	offered := tilesFor(s.tool)
 	rows := make([]ui.Row, 0, len(offered))
 	for index, definition := range offered {
@@ -460,8 +512,13 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.nameField {
+	switch field, outcome := s.focus.Update(input, ctx.Clipboard); {
+	case field == s.nameField:
 		s.nameOutcome(outcome, ctx)
+	case field == s.jumpField && outcome == textedit.OutcomeCommit:
+		s.jumpClock(ctx)
+	case field == s.startField && outcome == textedit.OutcomeCommit:
+		s.setStart(ctx)
 	}
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -472,6 +529,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	frame.CommonKeys(input, ctx)
 	s.updatePanels(input, ctx)
+	s.subscribeNPC(ctx)
 	if s.preview != nil {
 		s.stepPreview(input, ctx)
 	} else {
@@ -487,6 +545,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 				s.framed = true
 			}
 			s.syncAnchorField(floorDoc.Floor)
+			s.syncPlacement(floorDoc.Floor)
 			s.updateGrid(input, ctx, floorDoc.Floor)
 			s.updateSides(input, ctx, floorDoc.Floor)
 		}
@@ -523,11 +582,19 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case s.choosing && input.Consume(ui.KeyEscape, plain):
 		s.togglePreview(ctx)
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
-		if !s.anchor.IsZero() {
-			s.deleteAnchor(ctx)
-		}
+		s.deleteSelection(ctx)
 	case s.pick == nil && input.Consume(ui.KeyEscape, plain):
-		s.selected, s.anchor, s.rect = nil, ids.ULID{}, nil
+		s.selected, s.anchor, s.placement, s.rect = nil, ids.ULID{}, ids.ULID{}, nil
+	}
+}
+
+// deleteSelection deletes the selected anchor or removes the selected NPC.
+func (s *State) deleteSelection(ctx *frame.Context) {
+	switch {
+	case !s.anchor.IsZero():
+		s.deleteAnchor(ctx)
+	case !s.placement.IsZero():
+		s.removePlacement(ctx)
 	}
 }
 
@@ -540,7 +607,7 @@ func (s *State) toolAndTileKeys(input *ui.Input, ctx *frame.Context) {
 	}
 	for number := 1; number <= numberedTiles; number++ {
 		if input.Consume(ui.Key(strconv.Itoa(number)), ui.Plain()) {
-			offered := tilesFor(s.tool)
+			offered := s.tileRows()
 			if number <= len(offered) {
 				s.chooseTile(offered[number-1].ID, ctx)
 			}
@@ -552,7 +619,7 @@ func (s *State) setTool(tool Tool) {
 	s.tool = tool
 	s.toolList.Selected = string(tool)
 	s.tileList.Selected = s.tile[tool]
-	s.stroke.active, s.rect, s.drag, s.resizing = false, nil, nil, nil
+	s.stroke.active, s.rect, s.drag, s.resizing, s.placing = false, nil, nil, nil, nil
 }
 
 func (s *State) stepFloor(delta int, ctx *frame.Context) {
@@ -590,14 +657,26 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 		}
 	}
 	s.below.Update(input)
+	if s.previewBn.Update(input) {
+		s.togglePreview(ctx)
+	}
+	s.updateInspectorButtons(input, ctx)
+}
+
+// updateInspectorButtons handles the buttons for what is selected.
+func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
+	s.updatePreviewControls(input, ctx)
 	if s.deleteBtn.Update(input) && !s.anchor.IsZero() {
 		s.deleteAnchor(ctx)
 	}
 	if s.replace.Update(input) && len(s.selected) > 0 {
 		s.openReplace(ctx)
 	}
-	if s.previewBn.Update(input) {
-		s.togglePreview(ctx)
+	if s.openBn.Update(input) && !s.placement.IsZero() {
+		s.openBehaviour(ctx)
+	}
+	if s.removeBn.Update(input) && !s.placement.IsZero() {
+		s.removePlacement(ctx)
 	}
 }
 
@@ -621,11 +700,16 @@ func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor
 
 		return
 	}
+	if s.watchClicked(input, ctx, cell, onFloor) {
+		return
+	}
 	switch s.tool {
 	case ToolGround, ToolWalls, ToolObjects, ToolErase:
 		s.updatePaint(input, ctx, floorData, cell, onFloor)
 	case ToolAnchor:
 		s.updateAnchor(input, ctx, floorData, cell, onFloor)
+	case ToolNPC:
+		s.updateNPCTool(input, ctx, floorData, cell, onFloor)
 	case ToolSelect:
 		s.updateSelect(input, ctx, floorData, cell, onFloor)
 	case ToolResize:
@@ -666,7 +750,7 @@ func (s *State) paintValue() (string, string) {
 		return tilefloor.LayerTop, s.tile[ToolWalls]
 	case ToolObjects:
 		return tilefloor.LayerTop, s.tile[ToolObjects]
-	case ToolErase, ToolAnchor, ToolSelect, ToolResize:
+	case ToolErase, ToolAnchor, ToolNPC, ToolSelect, ToolResize:
 		return tilefloor.LayerTop, ""
 	}
 
@@ -790,7 +874,7 @@ func (s *State) selectAnchor(anchorID ids.ULID, floorData *floor.Floor) {
 		s.focus.Set(nil)
 	}
 	s.anchor = anchorID
-	s.selected = nil
+	s.selected, s.placement = nil, ids.ULID{}
 	if anchor, _, ok := floorData.Anchor(anchorID); ok {
 		s.nameField.Field.SetSaved(anchor.Name)
 	}
@@ -1138,15 +1222,14 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.toolList.Locate(value)
 	case "tile":
 		return s.tileList.Locate(value)
+	case "npc":
+		return s.locateNPC(value)
 	case "floor":
-		number, err := strconv.Atoi(value)
-		if err != nil || number < 1 || number > len(s.floors) {
-			return image.Pt(0, 0), false
-		}
-
-		return s.floorList.Locate(s.floors[number-1].String())
+		return s.locateFloor(value)
 	case "ui":
 		return s.locateWidget(value)
+	case "live-npc":
+		return s.locateLiveNPC(value)
 	case "player":
 		return s.locatePlayer()
 	}
@@ -1158,8 +1241,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // current floor has arrived and is in view, "picking" while answering a pick,
 // "floor:N" when the Nth floor from the bottom is shown,
 // "bounds:C,R,W,H" when the current floor has those bounds, "previewing"
-// while this window runs a preview, and "player:C,R" or "remote-player:C,R"
-// when this window's or another window's player stands on that cell.
+// while this window runs a preview, "player:C,R" or "remote-player:C,R"
+// when this window's or another window's player stands on that cell, and
+// "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
+// is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	switch {
 	case state == "loaded":
@@ -1170,6 +1255,10 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.pick != nil
 	case state == "previewing":
 		return s.preview != nil
+	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"):
+		return s.hasNPCState(state, docs)
+	case strings.HasPrefix(state, "placement:"):
+		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
 	case strings.HasPrefix(state, "player:"):
 		return s.hasPlayer(strings.TrimPrefix(state, "player:"), false)
 	case strings.HasPrefix(state, "remote-player:"):
@@ -1181,6 +1270,16 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	}
 
 	return false
+}
+
+// locateFloor finds the Nth floor from the bottom in the floor list.
+func (s *State) locateFloor(value string) (image.Point, bool) {
+	number, err := strconv.Atoi(value)
+	if err != nil || number < 1 || number > len(s.floors) {
+		return image.Pt(0, 0), false
+	}
+
+	return s.floorList.Locate(s.floors[number-1].String())
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
@@ -1198,6 +1297,13 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return center(s.below.Rect), true
 	case s.previewBn.ID:
 		return center(s.previewBn.Rect), true
+	case s.openBn.ID:
+		return center(s.openBn.Rect), true
+	case s.removeBn.ID:
+		return center(s.removeBn.Rect), true
+	}
+	if at, found := s.locatePreviewWidget(widget); found {
+		return at, true
 	}
 	for _, side := range s.sides {
 		for _, button := range []*ui.Button{side.grow, side.shrink} {

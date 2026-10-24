@@ -1,6 +1,7 @@
 // Package browser is the project browser window: the project's zones with
-// their floors, and its text documents. Authors create, rename, delete and
-// open documents here, and reorder a zone's floors.
+// their floors, its workflows, NPCs and text documents. Authors create,
+// rename, delete and open documents here, reorder a zone's floors, and choose
+// each NPC's behaviour and write its notes.
 package browser
 
 import (
@@ -23,6 +24,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/zone"
@@ -54,6 +56,7 @@ const (
 const (
 	headingZones     = "heading:zones"
 	headingWorkflows = "heading:workflows"
+	headingNPCs      = "heading:npcs"
 	headingText      = "heading:text"
 	headingLoose     = "heading:loose"
 )
@@ -63,6 +66,7 @@ type dialogKind int
 const (
 	dialogNone dialogKind = iota
 	dialogDelete
+	dialogBehaviour
 )
 
 // State is the project browser.
@@ -76,7 +80,9 @@ type State struct {
 	name   *ui.TextField
 	named  ids.ULID
 
-	newZone, newFloor, newText, newWorkflow, rename, remove, up, down, open *ui.Button
+	newZone, newFloor, newText, newWorkflow, newNPC, rename, remove, up, down, open *ui.Button
+
+	npc *npcPanel
 
 	dialog     *ui.Dialog
 	dialogKind dialogKind
@@ -95,12 +101,13 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		named:   ids.ULID{},
 		newZone: button("new-zone", "New zone"), newFloor: button("new-floor", "New floor"),
 		newText: button("new-text", "New text"), newWorkflow: button("new-workflow", "New workflow"),
-		rename: button("rename", "Rename"),
+		newNPC: button("new-npc", "New NPC"), rename: button("rename", "Rename"),
 		remove: button("delete", "Delete"), up: button("move-up", "Move up"),
 		down: button("move-down", "Move down"), open: button("open", "Open"),
+		npc:    newNPCPanel(theme),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 	}
-	view.focus.Register(view.name)
+	view.focus.Register(view.name, view.npc.notes)
 
 	return view
 }
@@ -191,6 +198,10 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 	for _, entry := range index.OfFormat(flow.FormatName) {
 		rows = append(rows, row(entry.ID, entry.Name, "", 0))
 	}
+	rows = append(rows, heading(headingNPCs, "NPCS"))
+	for _, entry := range index.OfFormat(npc.FormatName) {
+		rows = append(rows, row(entry.ID, entry.Name, "", 0))
+	}
 	rows = append(rows, heading(headingText, "TEXT DOCUMENTS"))
 	for _, entry := range index.OfFormat(textdoc.FormatName) {
 		rows = append(rows, row(entry.ID, entry.Name, "", 0))
@@ -237,6 +248,7 @@ func (s *State) layout(docs frame.Docs) {
 		s.rename.Rect = image.Rect(left, buttons, left+half, buttons+ui.ButtonH)
 		s.remove.Rect = image.Rect(left+half+buttonGap, buttons, left+width, buttons+ui.ButtonH)
 	}
+	s.layoutNPC(docs, left, width)
 	_, inZone := s.zoneOf(docs, selected.ID)
 	s.up.Disabled = !hasSelection || selected.Format != floor.FormatName || !inZone
 	s.down.Disabled = s.up.Disabled
@@ -279,8 +291,14 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.syncName(ctx.Docs)
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.name && outcome == textedit.OutcomeCommit {
-		s.commitName(ctx)
+	s.syncNPC(ctx)
+	if field, outcome := s.focus.Update(input, ctx.Clipboard); outcome == textedit.OutcomeCommit {
+		switch field {
+		case s.name:
+			s.commitName(ctx)
+		case s.npc.notes:
+			s.commitNotes(ctx)
+		}
 	}
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -344,6 +362,8 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 		s.createText(ctx)
 	case s.newWorkflow.Update(input):
 		s.createWorkflow(ctx)
+	case s.newNPC.Update(input):
+		s.createNPC(ctx)
 	case s.open.Update(input):
 		s.openSelected(ctx)
 	case s.up.Update(input):
@@ -354,6 +374,8 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 		s.renameSelected(ctx)
 	case s.remove.Update(input):
 		s.deleteSelected(ctx)
+	default:
+		s.updateNPC(input, ctx)
 	}
 }
 
@@ -586,11 +608,12 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 
 // toolbar lists the buttons along the top, in order.
 func (s *State) toolbar() []*ui.Button {
-	return []*ui.Button{s.newZone, s.newFloor, s.newText, s.newWorkflow, s.open, s.up, s.down}
+	return []*ui.Button{s.newZone, s.newFloor, s.newText, s.newWorkflow, s.newNPC, s.open, s.up, s.down}
 }
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
-// document in a Text window and a workflow in a Workflow window.
+// document in a Text window, and a workflow, or an NPC's behaviour workflow,
+// in a Workflow window.
 func (s *State) openSelected(ctx *frame.Context) {
 	entry, ok := s.selected(ctx.Docs)
 	if !ok {
@@ -611,6 +634,13 @@ func (s *State) openSelected(ctx *frame.Context) {
 		ctx.Requests.Open(textView, entry.ID, false)
 	case flow.FormatName:
 		ctx.Requests.Open(workflowView, entry.ID, false)
+	case npc.FormatName:
+		if found, loaded := s.npcOf(ctx.Docs, entry.ID); loaded && !found.Behaviour.IsZero() {
+			ctx.Requests.Open(workflowView, found.Behaviour, false)
+
+			return
+		}
+		ctx.Frame.Status("This NPC has no behaviour yet. Choose one in the inspector.")
 	}
 }
 
@@ -703,9 +733,13 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	if choice == "" {
 		return
 	}
+	kind, list := s.dialogKind, s.dialog.List
 	s.dialog, s.dialogKind = nil, dialogNone
-	if choice == "delete" {
+	switch {
+	case kind == dialogDelete && choice == "delete":
 		s.deleteDocument(ctx, s.deleting)
+	case kind == dialogBehaviour && choice == "use" && list != nil:
+		s.setBehaviour(ctx, list.Selected)
 	}
 }
 
@@ -738,12 +772,13 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 }
 
 // Locate finds a named part of the window for input scripts: "row:<name>"
-// for a document by name, "ui:<button id>", "ui:name", or a dialog button.
+// for a document by name, "ui:<button id>", "ui:name", "ui:notes", or a
+// dialog button or list row.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
 	if s.dialog != nil {
-		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+		return s.locateInDialog(kind, value)
 	}
 	switch kind {
 	case "row":
@@ -753,10 +788,12 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 			}
 		}
 	case "ui":
-		if value == s.name.ID {
-			return s.name.Center(), true
+		for _, field := range []*ui.TextField{s.name, s.npc.notes} {
+			if value == field.ID && !field.Rect.Empty() {
+				return field.Center(), true
+			}
 		}
-		for _, button := range append(s.toolbar(), s.rename, s.remove) {
+		for _, button := range append(s.toolbar(), s.rename, s.remove, s.npc.choose, s.npc.open) {
 			if button.ID == value {
 				return image.Pt(button.Rect.Min.X+button.Rect.Dx()/2, button.Rect.Min.Y+button.Rect.Dy()/2), true
 			}
@@ -764,6 +801,19 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateInDialog finds a dialog button, or a dialog list row by its name.
+func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
+	if kind == "row" && s.dialog.List != nil {
+		for _, row := range s.dialog.List.Rows {
+			if row.Label == value {
+				value = row.ID
+			}
+		}
+	}
+
+	return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 }
 
 // Draw renders the window.
@@ -804,10 +854,14 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		hint = "Unsaved. " + hint
 	}
 	s.theme.DrawText(screen, hint, textX, textY, ui.ColorMuted())
-	kinds := map[string]string{zone.FormatName: "Zone", floor.FormatName: "Floor", textdoc.FormatName: "Text document"}
+	kinds := map[string]string{
+		zone.FormatName: "Zone", floor.FormatName: "Floor", textdoc.FormatName: "Text document",
+		flow.FormatName: "Workflow", npc.FormatName: "NPC",
+	}
 	kind := kinds[entry.Format]
 	s.theme.DrawText(screen, kind, textX, textY+ui.LineHeight, ui.ColorInk())
 	s.theme.DrawText(screen, "ID "+entry.ID.String(), textX, textY+2*ui.LineHeight, ui.ColorSubdued())
 	s.rename.Draw(screen, s.theme)
 	s.remove.Draw(screen, s.theme)
+	s.drawNPC(screen, docs, textX)
 }

@@ -4,6 +4,9 @@ import (
 	"image"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
@@ -13,13 +16,17 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
 var (
 	textID  = frametest.ID(1)
 	zoneID  = frametest.ID(2)
 	floorID = frametest.ID(3)
+	clerkID = frametest.ID(4)
+	dayID   = frametest.ID(5)
 )
 
 type fixture struct {
@@ -48,9 +55,11 @@ func newFixture(t *testing.T) *fixture {
 	docs.Put(zoneID, "Town", zone)
 	docs.Put(floorID, "Ground", ground)
 	docs.Put(textID, "Notes", textdoc.NewDocument())
+	docs.Put(clerkID, "Ada Clerk", npcplugin.NewDocument())
 	docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
 		{ID: textID, Name: "Notes", Format: textdoc.FormatName}, {ID: zoneID, Name: "Town", Format: "zone"},
-		{ID: floorID, Name: "Ground", Format: floor.FormatName},
+		{ID: floorID, Name: "Ground", Format: floor.FormatName}, {ID: clerkID, Name: "Ada Clerk", Format: npc.FormatName},
+		{ID: dayID, Name: "Clerk day", Format: flow.FormatName},
 	}))
 	requests := &frametest.Requests{}
 	ctx := frametest.Context(docs, requests, image.Pt(1200, 800))
@@ -199,5 +208,50 @@ func TestRenameButtonSavesTheTypedName(t *testing.T) {
 	renames[0].Succeed(ids.ULID{})
 	if message, _ := f.ctx.Frame.Message(); message != "Renamed to “Ideas”" {
 		t.Fatalf("status %q", message)
+	}
+}
+
+func (f *fixture) keys(names ...string) {
+	input := ui.NewInput(image.Pt(0, 0))
+	for _, name := range names {
+		input.Presses = append(input.Presses, ui.ParsePress(name))
+	}
+	f.state.Update(&input, f.ctx)
+}
+
+// TestNPCInspector creates an NPC, then gives the selected NPC a behaviour
+// from the workflows in a dialog and saves notes typed into the inspector.
+func TestNPCInspector(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("ui:new-npc", false)
+	created := f.requests.Of(project.CreateEdit)
+	var args project.DocumentArgs
+	if len(created) != 1 || created[0].Decode(&args) != nil || args.Format != npc.FormatName || args.Name != "NPC 1" {
+		t.Fatalf("create %d %+v", len(created), args)
+	}
+	f.click("row:Ada Clerk", false)
+	f.click("ui:choose-behaviour", false)
+	f.click("row:Clerk day", false)
+	f.click("ui:use", false)
+	set := f.requests.Of(npcplugin.SetBehaviourEdit)
+	var behaviour npcplugin.SetBehaviourArgs
+	if len(set) != 1 || set[0].Command.Document != clerkID || set[0].Decode(&behaviour) != nil ||
+		behaviour.Behaviour != dayID {
+		t.Fatalf("set behaviour %d %+v", len(set), behaviour)
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	f.click("ui:notes", false)
+	typed := ui.NewInput(image.Pt(0, 0))
+	typed.Text = "Opens the shop"
+	f.state.Update(&typed, f.ctx)
+	f.keys("Cmd+Enter")
+	typed.Text = "at eight."
+	f.state.Update(&typed, f.ctx)
+	f.keys("Enter")
+	notes := f.requests.Of(npcplugin.SetNotesEdit)
+	var saved npcplugin.SetNotesArgs
+	if len(notes) != 1 || notes[0].Decode(&saved) != nil || saved.Notes != "Opens the shop\nat eight." {
+		t.Fatalf("notes %d %+v", len(notes), saved)
 	}
 }

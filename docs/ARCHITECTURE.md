@@ -149,6 +149,15 @@ running the preview, or from the orchestrator when that window closes. States
 are kept out of a crash report's recent traffic, which they would crowd out,
 but stay in the wire tap.
 
+**As built (protocol version 5):** a state also carries every NPC (its NPC,
+workflow, node, what it is doing, why a node could not do its work, its
+latest change of node and a count of changes), the game clock (time of day,
+rate, stopped) and the watched NPC. A fourth message, *Control*, asks the
+window running the preview to watch an NPC, or pause, resume or step its
+NPCs; the orchestrator passes it only to that window, and only from a window
+that shows the preview. Watch windows of the zone receive starts, states and
+stops as its Map windows do.
+
 ## D8 — Large data
 
 Art is served by the orchestrator. Windows cache assets by content fingerprint
@@ -193,10 +202,12 @@ browser, art as PNG. File names combine the name and a short ID
 deleted or renamed documents move to `.berad/backups/removed` rather than being
 destroyed. Two files holding one document, which a crash during a rename can
 leave, resolve to the newer one on load. For now, folders follow the kind of
-document (`tilefloors`, `zones`, `texts`) rather than the project browser.
+document (`tilefloors`, `zones`, `texts`, `workflows`, `npcs`) rather than the
+project browser.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
-changes only when the layout does (D17). *Open:* chunking very large floors.
+changes only when the layout does (D17). A workflow's layout holds where
+each node sits and the bends of lines moved by hand. *Open:* chunking very large floors.
 
 ## D12 — Testing
 

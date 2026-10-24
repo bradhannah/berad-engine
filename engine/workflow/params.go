@@ -8,7 +8,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
-// Number returns a whole-number parameter: minutes or a percentage.
+// Number returns a whole-number parameter, such as a Move's tiles.
 func (n Node) Number(name string) (int, error) {
 	var number int
 
@@ -27,6 +27,27 @@ func (n Node) Anchor(name string) (tilefloor.AnchorRef, error) {
 	var ref tilefloor.AnchorRef
 
 	return ref, n.decode(name, &ref)
+}
+
+// Choice returns a choice parameter's value.
+func (n Node) Choice(name string) (string, error) {
+	var chosen string
+
+	return chosen, n.decode(name, &chosen)
+}
+
+// Duration returns a duration parameter.
+func (n Node) Duration(name string) (Duration, error) {
+	var wait Duration
+
+	return wait, n.decode(name, &wait)
+}
+
+// Shares returns a random choice's options.
+func (n Node) Shares(name string) ([]Share, error) {
+	var options []Share
+
+	return options, n.decode(name, &options)
 }
 
 // TimeRange returns a time range parameter.

@@ -46,9 +46,11 @@ type scriptStep struct {
 
 // scriptExpection makes a step wait, up to Repeat frames, until a named part
 // of the view exists, so scripts can wait for documents to load or dialogs to
-// open.
+// open. A Must expectation that is not met by then crashes the window, so the
+// crash report fails the test that ran it.
 type scriptExpection struct {
 	Locate string `json:"locate"`
+	Must   bool   `json:"must"`
 }
 
 type inputScript struct {
@@ -66,6 +68,9 @@ func (s *inputScript) takeScreenshot() string {
 
 	return shot
 }
+
+// scripted reports whether input scripts drive the editor's windows.
+func scripted() bool { return os.Getenv(scriptEnv) != "" }
 
 func loadScript(view string) (*inputScript, error) {
 	path := claimScript(os.Getenv(scriptEnv), view)
@@ -95,13 +100,7 @@ func (s *inputScript) next(view frame.View, docs frame.Docs) ui.Input {
 	}
 	step := s.steps[s.index]
 	if step.Expect != nil {
-		if _, found := view.Locate(step.Expect.Locate, docs); !found && s.frame < max(step.Repeat, 1) {
-			s.frame++
-			input.Cursor = s.cursor
-
-			return input
-		}
-		s.advance()
+		s.expect(step, view, docs)
 		input.Cursor = s.cursor
 
 		return input
@@ -139,6 +138,21 @@ func (s *inputScript) next(view frame.View, docs frame.Docs) ui.Input {
 	}
 
 	return input
+}
+
+// expect waits a frame for an expectation, and moves on once it is met or
+// its frames run out; a Must expectation that is not met crashes the window.
+func (s *inputScript) expect(step scriptStep, view frame.View, docs frame.Docs) {
+	_, found := view.Locate(step.Expect.Locate, docs)
+	if !found && s.frame < max(step.Repeat, 1) {
+		s.frame++
+
+		return
+	}
+	if !found && step.Expect.Must {
+		panic(fmt.Sprintf("input script: %q was not met in %d frames", step.Expect.Locate, step.Repeat))
+	}
+	s.advance()
 }
 
 func (s *inputScript) advance() {

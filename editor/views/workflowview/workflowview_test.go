@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
@@ -132,6 +134,7 @@ func (f *fixture) carryOut(command frametest.Command) {
 			created = ids.ULID{1}
 		}
 	})
+	f.docs.Touch(workflowID)
 	if created != (ids.ULID{1}) {
 		command.Succeed(created)
 	}
@@ -325,12 +328,17 @@ func TestInspectorEditsParameters(t *testing.T) {
 	f := newFixture(t)
 	f.click("node:start:1")
 	f.click("palette:" + flow.KindWait)
-	f.typeInto("param-minutes", "45")
-	if minutes, _ := f.nth(flow.KindWait, 1).Number("minutes"); minutes != 45 {
-		t.Fatalf("minutes %d", minutes)
+	f.typeInto("param-duration", "45")
+	if wait, _ := f.nth(flow.KindWait, 1).Duration("duration"); wait.Amount != 45 || wait.Unit != flow.UnitMinutes {
+		t.Fatalf("wait %+v", wait)
+	}
+	f.click("ui:duration-seconds")
+	f.click("ui:duration-real")
+	if wait, _ := f.nth(flow.KindWait, 1).Duration("duration"); wait.Unit != flow.UnitSeconds || wait.Clock != flow.ClockReal {
+		t.Fatalf("unit and clock %+v", wait)
 	}
 	replaces := len(f.requests.Of(workflowplugin.ReplaceEdit))
-	f.typeInto("param-minutes", "lots")
+	f.typeInto("param-duration", "lots")
 	if len(f.requests.Of(workflowplugin.ReplaceEdit)) != replaces || !strings.Contains(f.status(), "whole number") {
 		t.Fatalf("a wrong value is refused: %q", f.status())
 	}
@@ -405,4 +413,287 @@ func TestDeleteAndArrange(t *testing.T) {
 	if len(arranged.Boxes) != 2 || arranged.Boxes[startID].X >= arranged.Boxes[f.nth(flow.KindWait, 1).ID].X {
 		t.Fatalf("arranged %+v", arranged.Boxes)
 	}
+}
+
+// TestRandomWalk builds the test routine "move up or down at random, wait
+// two seconds, repeat": a random choice with two named options, a Move for
+// each, both leading into one Wait, which then has an entry dot per link.
+// "+ option" on the node adds a third option with an equal share.
+func TestRandomWalk(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindRandom)
+	f.typeInto("options-1-label", "up")
+	f.typeInto("options-2-label", "down")
+	f.click("palette:" + flow.KindMove)
+	f.click("node:random:1")
+	f.click("palette:" + flow.KindMove)
+	f.click("ui:direction-down")
+	f.click("node:move:1")
+	f.click("palette:" + flow.KindWait)
+	f.typeInto("param-duration", "2")
+	f.click("ui:duration-seconds")
+	if !f.has("entries:wait:1=1") {
+		t.Fatal("the wait has one link in")
+	}
+	f.drag(f.at("port:move:2:next"), f.at("entry:wait:1"))
+	if !f.has("entries:wait:1=2") {
+		t.Fatal("a second link into the wait gets its own entry dot")
+	}
+	random, wait := f.nth(flow.KindRandom, 1), f.nth(flow.KindWait, 1)
+	up, down := f.nth(flow.KindMove, 1), f.nth(flow.KindMove, 2)
+	options, _ := random.Shares("options")
+	direction, _ := down.Choice("direction")
+	duration, _ := wait.Duration("duration")
+	if len(options) != 2 || options[0].Label != "up" || options[1].Label != "down" ||
+		random.Next[options[0].Port] != up.ID || random.Next[options[1].Port] != down.ID ||
+		up.Next[flow.OutputNext] != wait.ID || down.Next[flow.OutputNext] != wait.ID || direction != flow.DirectionDown ||
+		duration != (flow.Duration{Amount: 2, Unit: flow.UnitSeconds, Clock: flow.ClockGame}) {
+		t.Fatalf("the routine is not built as asked: %+v", f.workflow().Nodes())
+	}
+	f.click("add-option:random:1")
+	options, _ = f.nth(flow.KindRandom, 1).Shares("options")
+	if len(options) != 3 || options[2].Share != options[1].Share || options[2].Label != "option 3" {
+		t.Fatalf("+ option adds an equal option: %+v", options)
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestLinesCanBeSelectedAndDeleted lights a node's lines while it is
+// selected, selects a line by clicking it and removes it with Backspace.
+func TestLinesCanBeSelectedAndDeleted(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	if !f.has("lit:start:1:next") {
+		t.Fatal("the selected node's lines are lit")
+	}
+	f.click("line:start:1:next")
+	if !f.has("line-selected") || !f.has("lit:start:1:next") {
+		t.Fatal("clicking a line selects it")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.keys("Backspace")
+	if len(f.nth(flow.KindStart, 1).Next) != 0 || f.has("line-selected") || !strings.Contains(f.status(), "Line removed") {
+		t.Fatalf("Backspace removes the selected line: %+v %q", f.nth(flow.KindStart, 1).Next, f.status())
+	}
+	if len(f.nth(flow.KindWait, 1).Next) != 0 {
+		t.Fatal("only the selected line goes")
+	}
+}
+
+// TestProblemMarks marks a Go to with no destination and clears the mark
+// once it has one; a node nothing links to is marked too, and so is a
+// destination whose anchor was deleted.
+func TestProblemMarks(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindGoTo)
+	if !f.has("problem:go-to:1") || !f.has("problems:1") {
+		t.Fatal("a Go to with no destination is marked")
+	}
+	f.click("ui:pick")
+	f.requests.PickAsks[0]([]protocol.PickMap{{Window: frametest.ID(50), Zone: frametest.ID(51), Shows: true}}, nil)
+	pick := f.requests.PickStarts[0]
+	f.state.Changed(client.Update{PickAnswer: &protocol.PickAnswer{Pick: pick.Pick, Floor: floorID, Item: deskID.String()}}, f.ctx)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("problems:0") {
+		t.Fatal("a destination clears the mark")
+	}
+	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:500,500"))
+	if !f.has("problem:wait:1") {
+		t.Fatal("a node nothing links to is marked")
+	}
+	office, err := tilefloor.NewDocument(10, 10, "floor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(floorID, "Office", office)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("problem:go-to:1") {
+		t.Fatal("a deleted destination anchor is marked")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestLayoutIsNotRedoneWhenIdle lays the workflow out only when it changes.
+func TestLayoutIsNotRedoneWhenIdle(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	laidOut := f.state.LayoutCount()
+	for range 5 {
+		f.frame(ui.NewInput(image.Pt(0, 0)))
+	}
+	if f.state.LayoutCount() != laidOut {
+		t.Fatalf("laid out %d times while idle", f.state.LayoutCount()-laidOut)
+	}
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if f.state.LayoutCount() == laidOut {
+		t.Fatal("a change lays the workflow out again")
+	}
+}
+
+// TestPickingUpALineByItsArrowEnd moves a line to another node by its entry
+// dot, without moving the node, leaves it alone when dropped back where it
+// was, refuses the start node, and removes it when dropped on empty canvas.
+func TestPickingUpALineByItsArrowEnd(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:520,420"))
+	first, second := f.nth(flow.KindWait, 1), f.nth(flow.KindWait, 2)
+	firstBox, _ := f.workflow().Box(first.ID)
+	from, onto := f.at("entry:wait:1:1"), f.at("node:wait:2")
+	f.press(from)
+	f.hold(onto)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.release(onto)
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != second.ID {
+		t.Fatalf("the line moves to the second wait: %+v", f.nth(flow.KindStart, 1).Next)
+	}
+	if box, _ := f.workflow().Box(first.ID); box != firstBox {
+		t.Fatal("picking up a line does not drag the node")
+	}
+	sent := len(f.requests.Commands)
+	f.drag(f.at("entry:wait:2:1"), f.at("node:wait:2"))
+	if len(f.requests.Commands) != sent {
+		t.Fatal("dropping a line back where it was changes nothing")
+	}
+	f.drag(f.at("entry:wait:2:1"), f.at("node:start:1"))
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != second.ID || !strings.Contains(f.status(), "back to the start") {
+		t.Fatalf("a line cannot go into the start: %q", f.status())
+	}
+	f.drag(f.at("entry:wait:2:1"), f.at("canvas:900,40"))
+	if len(f.nth(flow.KindStart, 1).Next) != 0 {
+		t.Fatal("dropping a line on empty canvas removes it")
+	}
+}
+
+// TestDroppingOnALineAddsASeparateNode drops a Wait from the palette on the
+// line from the start to a Move: the Wait is added on its own and the line
+// stays as it was.
+func TestDroppingOnALineAddsASeparateNode(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindMove)
+	f.drag(f.at("palette:"+flow.KindWait), f.at("line:start:1:next"))
+	wait, move := f.nth(flow.KindWait, 1), f.nth(flow.KindMove, 1)
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != move.ID || len(wait.Next) != 0 {
+		t.Fatalf("the line is unchanged and the wait stands alone: %+v", f.workflow().Nodes())
+	}
+}
+
+// nodeInset is how far inside a node's top-left corner "node:<kind>:<n>"
+// points.
+const nodeInset = 18
+
+// loopFixture builds start → random choice → Wait, with a line from the Wait
+// back to the random choice, and auto-arranges it.
+func loopFixture(t *testing.T) *fixture {
+	t.Helper()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindRandom)
+	f.click("palette:" + flow.KindWait)
+	f.drag(f.at("port:wait:1:next"), f.at("node:random:1"))
+	f.click("ui:arrange")
+
+	return f
+}
+
+// lastLines returns the line bends the last move edit sent.
+func (f *fixture) lastLines() map[string]flow.Bend {
+	f.t.Helper()
+	moves := f.requests.Of(workflowplugin.MoveEdit)
+	if len(moves) == 0 {
+		f.t.Fatal("no move sent")
+	}
+	var args workflowplugin.MoveArgs
+	if err := moves[len(moves)-1].Decode(&args); err != nil {
+		f.t.Fatal(err)
+	}
+
+	return args.Lines
+}
+
+// TestMovingALineByHand drags the loop's run up above the nodes, moves the
+// Wait and sees the run follow, then resets the line, bends it again and
+// auto-arranges, which resets it too.
+func TestMovingALineByHand(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	key := flow.LineKey(f.nth(flow.KindWait, 1).ID, flow.OutputNext)
+	grip := f.at("bend:wait:1:next")
+	top := f.at("node:random:1").Y - nodeInset
+	f.drag(grip, image.Pt(grip.X, top-30))
+	if !f.has("bent:wait:1:next") || !f.has("line-selected") {
+		t.Fatal("dragging the middle bends the line and selects it")
+	}
+	if bend := f.lastLines()[key]; bend.Depth == nil || *bend.Depth >= 0 {
+		t.Fatalf("the run moves above the wait's output: %+v", bend)
+	}
+	run := f.at("bend:wait:1:next")
+	if run.Y >= top {
+		t.Fatalf("the loop now runs above the nodes: %d, nodes start at %d", run.Y, top)
+	}
+	wait := f.at("node:wait:1")
+	f.drag(wait, wait.Add(image.Pt(0, 40)))
+	if moved := f.at("bend:wait:1:next"); moved.Y != run.Y+40 {
+		t.Fatalf("the run follows its node: %d, was %d", moved.Y, run.Y)
+	}
+	f.click("bend:wait:1:next")
+	f.click("ui:reset-line")
+	if f.has("bent:wait:1:next") {
+		t.Fatal("Reset line puts the line back")
+	}
+	grip = f.at("bend:wait:1:next")
+	f.drag(grip, image.Pt(grip.X, top-30))
+	f.click("ui:arrange")
+	if f.has("bent:wait:1:next") {
+		t.Fatal("auto-arrange resets lines moved by hand")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestMovingAForwardLineSideways drags the upright part of a line going
+// forward.
+func TestMovingAForwardLineSideways(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindRandom)
+	f.click("palette:" + flow.KindWait)
+	f.click("node:random:1")
+	f.click("palette:" + flow.KindWait)
+	f.click("ui:arrange")
+	grip := f.at("bend:random:1:o2")
+	f.drag(grip, grip.Add(image.Pt(20, 0)))
+	if !f.has("bent:random:1:o2") {
+		t.Fatal("dragging the upright part bends the line")
+	}
+	if moved := f.at("bend:random:1:o2"); moved.X != grip.X+20 {
+		t.Fatalf("the upright part follows the pointer: %d, was %d", moved.X, grip.X)
+	}
+}
+
+// TestLinesRunOverNotes puts a note on top of a line: clicking the line
+// there selects the line, not the note.
+func TestLinesRunOverNotes(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.drag(f.at("palette:"+flow.KindNote), f.at("line:start:1:next"))
+	f.click("line:start:1:next")
+	if !f.has("line-selected") || f.has("selected:note") {
+		t.Fatal("a line over a note is clicked, not the note")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 }

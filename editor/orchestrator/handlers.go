@@ -68,7 +68,8 @@ func (o *Orchestrator) handle(message inbound) {
 		o.query(message.from, message.message)
 	case protocol.KindPickAsk, protocol.KindPickStart, protocol.KindPickAnswer, protocol.KindPickCancel:
 		o.handlePick(message.from, message.message)
-	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop:
+	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop,
+		protocol.KindPreviewControl:
 		o.handlePreview(message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention:

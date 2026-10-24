@@ -20,13 +20,30 @@ type preview struct {
 	latest *protocol.Message
 }
 
-// handlePreview routes one of the three preview messages.
+// WatchView is the Watch window's view name; its target is a zone.
+const WatchView = "watch"
+
+// handlePreview routes one of the preview messages.
 func (o *Orchestrator) handlePreview(from *window, message protocol.Message) {
 	o.route(from, message, map[protocol.Kind]handler{
-		protocol.KindPreviewStart: o.previewStart,
-		protocol.KindPreviewState: o.previewState,
-		protocol.KindPreviewStop:  o.previewStop,
+		protocol.KindPreviewStart:   o.previewStart,
+		protocol.KindPreviewState:   o.previewState,
+		protocol.KindPreviewStop:    o.previewStop,
+		protocol.KindPreviewControl: o.previewControl,
 	})
+}
+
+// previewControl passes a control from a window showing the preview to the
+// window running it; controls for any other run are ignored.
+func (o *Orchestrator) previewControl(from *window, message protocol.Message) {
+	control, err := protocol.DecodePayload[protocol.PreviewControl](message)
+	if err != nil || o.preview == nil || o.preview.run != control.Run || !o.showsPreview(from) {
+		return
+	}
+	if owner, ok := o.windows[o.preview.owner]; ok {
+		message.Request = 0
+		o.send(owner, message)
+	}
 }
 
 // previewStart starts the project's preview for a Map window and tells the
@@ -126,6 +143,9 @@ func (o *Orchestrator) toZoneViews(message protocol.Message, latestWins bool) {
 	}
 }
 
+// showsPreview reports whether a window other than the one running the
+// preview shows it: a Map window or a Watch window of its zone.
 func (o *Orchestrator) showsPreview(open *window) bool {
-	return open.id != o.preview.owner && open.hello.View == MapView && open.hello.Target == o.preview.zone
+	return open.id != o.preview.owner && (open.hello.View == MapView || open.hello.View == WatchView) &&
+		open.hello.Target == o.preview.zone
 }

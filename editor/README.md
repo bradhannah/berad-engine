@@ -15,12 +15,14 @@ It uses the engine module; games never use this module.
 | `model` | Document and edit-kind seams, and the shared undo contract |
 | `plugin` | The explicit plug-in registry |
 | `plugins/project` | The project index and the create, rename and delete edits |
-| `plugins/tilefloor` | Floors: paint either layer; resize on any side; add, change and remove anchors |
+| `plugins/tilefloor` | Floors: paint either layer; resize on any side; add, change and remove anchors and NPC placements |
 | `plugins/zone` | Zones and the edits that add, remove and reorder floors |
 | `plugins/textdoc` | A placeholder text document for proving text editing and picks |
 | `plugins/workflow` | Workflows: add, remove, change and move nodes; the layout kept in its own file |
-| `ui`, `ui/textedit` | Widgets in the plain white look; the text editing core |
+| `plugins/npc` | NPCs and the edits that choose the behaviour and change the notes |
+| `ui`, `ui/textedit` | Widgets in the wireframe look; the text editing core |
 | `views/frame` | What every window shares: requests, status bar, inspector |
 | `views/browser`, `views/mapview`, `views/textview`, `views/workflowview` | The four windows, testable without a screen; the Map window also runs previews |
 | `views/picker` | Pick on map for any window that needs an anchor |
+| `views/watchview` | The Watch window: where the watched NPC is in its workflow during a preview |
 | `window` | Ebitengine host: input and input method, requests, test scripts |

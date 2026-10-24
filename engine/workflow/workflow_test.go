@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -227,23 +229,115 @@ func TestParamsAreChecked(t *testing.T) {
 		}
 	}
 	wait := node(t, 6, workflow.KindWait, ids.ULID{})
-	bad := map[string]any{
-		"minutes": -1, "chance": 101,
+	with := func(base workflow.Node, name string, value any) workflow.Node {
+		t.Helper()
+		changed, err := base.WithParam(name, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return changed
 	}
-	tooLong, _ := wait.WithParam("minutes", workflow.MaxMinutes+1)
+	duration := func(amount int, unit, clock string) workflow.Duration {
+		return workflow.Duration{Amount: amount, Unit: unit, Clock: clock}
+	}
 	random := node(t, 8, workflow.KindRandom, ids.ULID{})
-	overChance, _ := random.WithParam("chance", bad["chance"])
+	move := node(t, 9, workflow.KindMove, ids.ULID{})
 	timeSwitch := node(t, 2, workflow.KindTimeSwitch, ids.ULID{})
-	sharedPort, _ := timeSwitch.WithParam("ranges", []workflow.TimeRange{{Port: "a", From: 1, To: 2}, {Port: "a", From: 3, To: 4}})
-	emptyRange, _ := timeSwitch.WithParam("ranges", []workflow.TimeRange{{Port: "a", From: 5, To: 5}})
 	extra := wait.Clone()
 	extra.Params["colour"] = json.RawMessage(`"red"`)
+	share := func(port string, amount int) workflow.Share {
+		return workflow.Share{Port: port, Label: port, Share: amount}
+	}
 	for name, candidate := range map[string]workflow.Node{
-		"wait too long": tooLong, "chance over 100": overChance, "shared output": sharedPort,
-		"empty range": emptyRange, "unknown parameter": extra,
+		"wait too long":     with(wait, "duration", duration(169, workflow.UnitHours, workflow.ClockGame)),
+		"negative wait":     with(wait, "duration", duration(-1, workflow.UnitSeconds, workflow.ClockGame)),
+		"unknown unit":      with(wait, "duration", duration(1, "days", workflow.ClockGame)),
+		"unknown clock":     with(wait, "duration", duration(1, workflow.UnitSeconds, "sundial")),
+		"no options":        with(random, "options", []workflow.Share{}),
+		"no shares":         with(random, "options", []workflow.Share{share("a", 0), share("b", 0)}),
+		"share over 100":    with(random, "options", []workflow.Share{share("a", 101)}),
+		"shared option":     with(random, "options", []workflow.Share{share("a", 1), share("a", 1)}),
+		"unknown direction": with(move, "direction", "north"),
+		"no tiles":          with(move, "tiles", 0),
+		"too many tiles":    with(move, "tiles", workflow.MaxTiles+1),
+		"shared output": with(timeSwitch, "ranges",
+			[]workflow.TimeRange{{Port: "a", From: 1, To: 2}, {Port: "a", From: 3, To: 4}}),
+		"empty range":       with(timeSwitch, "ranges", []workflow.TimeRange{{Port: "a", From: 5, To: 5}}),
+		"unknown parameter": extra,
 	} {
 		if err := workflow.CheckParams(candidate); !errors.Is(err, workflow.ErrNode) {
 			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if err := workflow.CheckParams(with(wait, "duration", duration(168, workflow.UnitHours, workflow.ClockReal))); err != nil {
+		t.Fatalf("a week on a real clock is allowed: %v", err)
+	}
+}
+
+// TestRandomChoiceOptions gives a random choice one output per option and
+// works out each option's share as a percentage.
+func TestRandomChoiceOptions(t *testing.T) {
+	t.Parallel()
+	options := []workflow.Share{
+		{Port: "o1", Label: "up", Share: 1}, {Port: "o2", Label: "down", Share: 1}, {Port: "o3", Label: "stay", Share: 2},
+	}
+	random, err := node(t, 8, workflow.KindRandom, ids.ULID{}).WithParam("options", options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs := workflow.Outputs(random)
+	if len(outputs) != 3 || outputs[0].Name != "o1" || outputs[2].Label != "stay" {
+		t.Fatalf("outputs %+v", outputs)
+	}
+	if got := workflow.Percentages(options); got[0] != 25 || got[1] != 25 || got[2] != 50 {
+		t.Fatalf("percentages %v", got)
+	}
+	if got := workflow.Percentages(options[:1]); got[0] != 100 {
+		t.Fatalf("one option is taken every time: %v", got)
+	}
+	if seconds := (workflow.Duration{Amount: 2, Unit: workflow.UnitHours, Clock: workflow.ClockGame}).Seconds(); seconds != 7200 {
+		t.Fatalf("two hours are %d seconds", seconds)
+	}
+}
+
+// TestUpgradeFromVersion1 turns a chance into two options that keep their
+// outputs and links, and minutes into a wait on the game clock.
+func TestUpgradeFromVersion1(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.Format()); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"start":"` + id(1).String() + `","nodes":[` +
+		`{"id":"` + id(1).String() + `","kind":"start","next":{"next":"` + id(2).String() + `"}},` +
+		`{"id":"` + id(2).String() + `","kind":"random","params":{"chance":30},"next":{"yes":"` + id(3).String() +
+		`","otherwise":"` + id(3).String() + `"}},` +
+		`{"id":"` + id(3).String() + `","kind":"wait","params":{"minutes":45}}]}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.FormatName, Version: 1, ID: id(9), Name: "Old", Revision: 1, Data: json.RawMessage(old),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.FormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	decoded, err := workflow.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	random, _ := decoded.Node(id(2))
+	options, err := random.Shares("options")
+	if err != nil || len(options) != 2 || options[0].Share != 30 || options[1].Share != 70 ||
+		random.Next["yes"] != id(3) || random.Next["otherwise"] != id(3) {
+		t.Fatalf("random choice %+v %+v %v", options, random.Next, err)
+	}
+	wait, _ := decoded.Node(id(3))
+	duration, err := wait.Duration("duration")
+	if err != nil || duration != (workflow.Duration{Amount: 45, Unit: workflow.UnitMinutes, Clock: workflow.ClockGame}) {
+		t.Fatalf("wait %+v %v", duration, err)
+	}
+	for _, upgradedNode := range decoded.Nodes() {
+		if err := workflow.CheckParams(upgradedNode); err != nil {
+			t.Fatalf("an upgraded %s does not fit its kind: %v", upgradedNode.Kind, err)
 		}
 	}
 }
@@ -274,5 +368,87 @@ func TestLayoutDropsBoxesOfMissingNodes(t *testing.T) {
 	}
 	if box, ok := flow.Box(id(2)); !ok || box.Y != 2 {
 		t.Fatalf("box %v %v", box, ok)
+	}
+}
+
+// TestBends moves a line by hand: the bend is saved with the layout, stops
+// applying when the line is relinked and is left out of the saved layout,
+// applies again when the line leads back, and setting the previous bends
+// undoes it.
+func TestBends(t *testing.T) {
+	t.Parallel()
+	flow, err := workflow.New(id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.Insert([]workflow.Node{node(t, 2, workflow.KindWait, ids.ULID{}), node(t, 3, workflow.KindWait, ids.ULID{})},
+		nil, []workflow.Link{{From: id(1), Output: workflow.OutputNext, To: id(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	key := workflow.LineKey(id(1), workflow.OutputNext)
+	depth := -40
+	previous, err := flow.SetBends(map[string]workflow.Bend{key: {To: id(2), Lane: nil, Depth: &depth}})
+	if err != nil || !previous[key].To.IsZero() {
+		t.Fatalf("set bends: %v %v", previous, err)
+	}
+	if bend, ok := flow.Bend(id(1), workflow.OutputNext); !ok || *bend.Depth != -40 {
+		t.Fatalf("the bend applies: %+v %v", bend, ok)
+	}
+	layout, err := flow.EncodeLayout()
+	if err != nil || !strings.Contains(string(layout), `"lines"`) {
+		t.Fatalf("the layout holds the bend: %s %v", layout, err)
+	}
+	reread := flow.Clone()
+	if err := reread.DecodeLayout(layout); err != nil || !reread.Equal(flow) {
+		t.Fatalf("the bend round-trips: %v", err)
+	}
+	start, _ := flow.Node(id(1))
+	if _, err := flow.Replace(start.WithLink(workflow.OutputNext, id(3))); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := flow.Bend(id(1), workflow.OutputNext); ok {
+		t.Fatal("a relinked line loses its bend")
+	}
+	if layout, _ := flow.EncodeLayout(); strings.Contains(string(layout), `"lines"`) {
+		t.Fatalf("a bend that no longer applies is not saved: %s", layout)
+	}
+	if _, err := flow.Replace(start); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := flow.Bend(id(1), workflow.OutputNext); !ok {
+		t.Fatal("leading back again brings the bend back")
+	}
+	if _, err := flow.SetBends(previous); err != nil {
+		t.Fatal(err)
+	}
+	if len(flow.Bends()) != 0 {
+		t.Fatal("setting the previous bends undoes them")
+	}
+	if _, err := flow.SetBends(map[string]workflow.Bend{"nonsense": {To: id(2), Lane: nil, Depth: nil}}); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("a key that names no line is refused: %v", err)
+	}
+}
+
+// TestLayoutUpgradeFromVersion1 reads a layout from before lines could be
+// moved by hand.
+func TestLayoutUpgradeFromVersion1(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.LayoutFormat()); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"boxes":{"` + id(2).String() + `":{"x":10,"y":20}}}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.LayoutFormatName, Version: 1, ID: id(9), Name: "Old", Revision: 0, Data: json.RawMessage(old),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.LayoutFormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	flow := routine(t)
+	if err := flow.DecodeLayout(upgraded.Data); err != nil {
+		t.Fatal(err)
+	}
+	if box, ok := flow.Box(id(2)); !ok || box.Y != 20 || len(flow.Bends()) != 0 {
+		t.Fatalf("box %v %v, bends %v", box, ok, flow.Bends())
 	}
 }

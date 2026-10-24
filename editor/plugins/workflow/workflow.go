@@ -172,6 +172,9 @@ type ReplaceArgs struct {
 // place, letting the window place it.
 type MoveArgs struct {
 	Boxes map[ids.ULID]flow.Box `json:"boxes"`
+	// Lines sets the bends of lines moved by hand, by line key; a bend with
+	// no To removes it.
+	Lines map[string]flow.Bend `json:"lines,omitempty"`
 }
 
 // Add is the edit kind that adds nodes.
@@ -300,23 +303,40 @@ func (Move) Name() string { return MoveEdit }
 // Format names the document format the edit applies to.
 func (Move) Format() string { return flow.FormatName }
 
-// Apply places the nodes.
+// Apply places the nodes and bends the lines, all or nothing; its inverse
+// puts both back.
 func (Move) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
 	var move MoveArgs
 
 	return change(document, args, &move, func(workflow *flow.Workflow) (string, any, []string, error) {
-		previous, err := workflow.Move(move.Boxes)
+		working := workflow.Clone()
+		previous, err := working.Move(move.Boxes)
 		if err != nil {
 			return "", nil, nil, fmt.Errorf("move nodes: %w", err)
 		}
-		items := make([]string, 0, len(previous))
+		previousLines, err := working.SetBends(move.Lines)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("move lines: %w", err)
+		}
+		*workflow = *working
+		items := make([]string, 0, len(previous)+len(previousLines))
 		for _, id := range slices.SortedFunc(maps.Keys(previous), ids.ULID.Compare) {
 			items = append(items, BoxItem(id))
 		}
+		for _, key := range slices.Sorted(maps.Keys(previousLines)) {
+			items = append(items, LineItem(key))
+		}
+		inverse := MoveArgs{Boxes: previous, Lines: nil}
+		if len(previousLines) > 0 {
+			inverse.Lines = previousLines
+		}
 
-		return "", MoveArgs{Boxes: previous}, items, nil
+		return "", inverse, items, nil
 	})
 }
+
+// LineItem names a line's bend for undo-clash detection.
+func LineItem(key string) string { return "line:" + key }
 
 // NodeItem names a node's logic for undo-clash detection.
 func NodeItem(id ids.ULID) string { return "node:" + id.String() }

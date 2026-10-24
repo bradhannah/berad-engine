@@ -29,8 +29,8 @@ const (
 	timeWidth    = 64
 	dashWidth    = 16
 	removeWidth  = 76
+	shareWidth   = 48
 	maxTextField = 200
-	percent      = 100
 	hoursPerDay  = 24
 	minuteDigits = 2
 	clockDigits  = 4
@@ -44,26 +44,44 @@ type rangeRow struct {
 	remove *ui.Button
 }
 
+// optionRow is one option of a random choice: its name, its share and its
+// Remove button.
+type optionRow struct {
+	port   string
+	label  *ui.TextField
+	share  *ui.TextField
+	remove *ui.Button
+}
+
 // control edits one parameter, built from its declared type.
 type control struct {
 	param flow.Param
 	label int
-	// field edits a number or text; from and to a time range; rows a list
-	// of times; pick and clear an anchor.
-	field    *ui.TextField
-	from, to *ui.TextField
-	rows     []rangeRow
-	addRange *ui.Button
-	pick     *ui.Button
-	clear    *ui.Button
-	anchor   image.Rectangle
+	// field edits text, tiles or a wait's amount; from and to a time range;
+	// rows a list of times; pick and clear an anchor; choices a choice;
+	// units and clocks a wait's unit and clock; options a random choice's
+	// options.
+	field     *ui.TextField
+	from, to  *ui.TextField
+	rows      []rangeRow
+	addRange  *ui.Button
+	pick      *ui.Button
+	clear     *ui.Button
+	anchor    image.Rectangle
+	choices   []*ui.Button
+	units     []*ui.Button
+	clocks    []*ui.Button
+	options   []optionRow
+	addOption *ui.Button
 }
 
-// form is the inspector for the selected node.
+// form is the inspector for the selected node. rows counts a time switch's
+// times or a random choice's options, so the form is rebuilt when they
+// change.
 type form struct {
 	node     ids.ULID
 	kind     flow.Kind
-	ranges   int
+	rows     int
 	controls []control
 	remove   *ui.Button
 }
@@ -80,7 +98,7 @@ func (s *State) syncForm(ctx *frame.Context) {
 
 		return
 	}
-	if s.form == nil || s.form.node != node.ID || s.form.ranges != rangeCount(node) {
+	if s.form == nil || s.form.node != node.ID || s.form.rows != rowCount(node) {
 		s.form = s.buildForm(node)
 	}
 	for index := range s.form.controls {
@@ -98,22 +116,32 @@ func (s *State) selectedNode() (flow.Node, bool) {
 	return s.workflow.Node(s.selected)
 }
 
-func rangeCount(node flow.Node) int {
-	if node.Kind != flow.KindTimeSwitch {
-		return 0
-	}
-	ranges, err := node.TimeRanges("ranges")
-	if err != nil {
-		return 0
-	}
+// rowCount counts a time switch's times or a random choice's options.
+func rowCount(node flow.Node) int {
+	switch node.Kind {
+	case flow.KindTimeSwitch:
+		ranges, err := node.TimeRanges("ranges")
+		if err != nil {
+			return 0
+		}
 
-	return len(ranges)
+		return len(ranges)
+	case flow.KindRandom:
+		options, err := node.Shares("options")
+		if err != nil {
+			return 0
+		}
+
+		return len(options)
+	default:
+		return 0
+	}
 }
 
 // buildForm makes a control for each of a node's parameters.
 func (s *State) buildForm(node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
-	built := &form{node: node.ID, kind: kind, ranges: rangeCount(node), controls: nil, remove: nil}
+	built := &form{node: node.ID, kind: kind, rows: rowCount(node), controls: nil, remove: nil}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
 		built.remove = ui.NewButton("delete-node", "Delete node")
@@ -126,16 +154,32 @@ func (s *State) buildForm(node flow.Node) *form {
 	}
 	for _, param := range kind.Params {
 		made := control{param: param, label: 0, field: nil, from: nil, to: nil, rows: nil, addRange: nil, pick: nil,
-			clear: nil, anchor: ui.Zero()}
+			clear: nil, anchor: ui.Zero(), choices: nil, units: nil, clocks: nil, options: nil, addOption: nil}
 		switch param.Type {
-		case flow.TypeMinutes, flow.TypePercent:
+		case flow.TypeTiles:
 			made.field = text("param-"+param.Name, false)
+		case flow.TypeChoice:
+			for _, choice := range param.Choices {
+				made.choices = append(made.choices, ui.NewButton(param.Name+"-"+choice.Value, choice.Label))
+			}
+		case flow.TypeDuration:
+			made.field = text("param-"+param.Name, false)
+			made.units, made.clocks = durationButtons(param.Name)
+		case flow.TypeShares:
+			for index := range built.rows {
+				prefix := param.Name + "-" + strconv.Itoa(index+1)
+				made.options = append(made.options, optionRow{
+					port: "", label: text(prefix+"-label", false), share: text(prefix+"-share", false),
+					remove: ui.NewButton(prefix+"-remove", "Remove"),
+				})
+			}
+			made.addOption = ui.NewButton("add-option", "Add option")
 		case flow.TypeText:
 			made.field = text("param-"+param.Name, node.Kind == flow.KindNote)
 		case flow.TypeTimeRange:
 			made.from, made.to = text(param.Name+"-from", false), text(param.Name+"-to", false)
 		case flow.TypeTimeRanges:
-			for index := range built.ranges {
+			for index := range built.rows {
 				prefix := param.Name + "-" + strconv.Itoa(index+1)
 				made.rows = append(made.rows, rangeRow{
 					port: "", from: text(prefix+"-from", false), to: text(prefix+"-to", false),
@@ -157,10 +201,12 @@ func (s *State) buildForm(node flow.Node) *form {
 // setSaved shows a parameter's saved value in its fields.
 func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 	switch made.param.Type {
-	case flow.TypeMinutes, flow.TypePercent:
+	case flow.TypeTiles:
 		if number, err := node.Number(made.param.Name); err == nil {
 			made.field.Field.SetSaved(strconv.Itoa(number))
 		}
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+		setSavedChoices(made, node)
 	case flow.TypeText:
 		if value, err := node.Text(made.param.Name); err == nil {
 			made.field.Field.SetSaved(value)
@@ -200,7 +246,9 @@ func (s *State) layoutForm(frame.Docs) {
 		made.label = top
 		top += ui.LineHeight
 		switch made.param.Type {
-		case flow.TypeMinutes, flow.TypePercent, flow.TypeText:
+		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+			top = layoutChoices(made, left, width, top)
+		case flow.TypeTiles, flow.TypeText:
 			height := ui.ButtonH
 			if made.field.Multiline {
 				height = noteField
@@ -260,7 +308,11 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 			s.updateRanges(input, ctx, made, node)
 		case flow.TypeAnchor:
 			s.updateAnchor(input, ctx, made, node)
-		case flow.TypeMinutes, flow.TypePercent, flow.TypeText, flow.TypeTimeRange:
+		case flow.TypeChoice, flow.TypeDuration:
+			s.updateChoices(input, ctx, made, node)
+		case flow.TypeShares:
+			s.updateOptions(input, ctx, made, node)
+		case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange:
 		}
 	}
 }
@@ -394,12 +446,18 @@ func (s *State) saveField(field *ui.TextField, ctx *frame.Context) {
 // the text.
 func parseFor(made *control, field *ui.TextField, value string, node flow.Node) (any, bool, string) {
 	switch made.param.Type {
-	case flow.TypeMinutes, flow.TypePercent:
+	case flow.TypeTiles:
 		if field != made.field {
 			return nil, false, ""
 		}
 
-		return parseNumber(made.param.Type, value)
+		return parseWhole(value, 1, flow.MaxTiles)
+	case flow.TypeDuration:
+		return parseAmount(made, field, value, node)
+	case flow.TypeShares:
+		return parseOptionField(made, field, value, node)
+	case flow.TypeChoice:
+		return nil, false, ""
 	case flow.TypeText:
 		if field != made.field {
 			return nil, false, ""
@@ -455,15 +513,11 @@ func parseRangesField(made *control, field *ui.TextField, value string, node flo
 	return nil, false, ""
 }
 
-// parseNumber reads minutes or a percentage.
-func parseNumber(kind flow.ParamType, value string) (any, bool, string) {
-	limit := flow.MaxMinutes
-	if kind == flow.TypePercent {
-		limit = percent
-	}
+// parseWhole reads a whole number from low to high.
+func parseWhole(value string, low, high int) (any, bool, string) {
 	number, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil || number < 0 || number > limit {
-		return nil, true, fmt.Sprintf("Enter a whole number from 0 to %d", limit)
+	if err != nil || number < low || number > high {
+		return nil, true, fmt.Sprintf("Enter a whole number from %d to %d", low, high)
 	}
 
 	return number, true, ""

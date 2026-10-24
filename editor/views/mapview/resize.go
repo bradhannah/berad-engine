@@ -59,6 +59,8 @@ type pendingResize struct {
 	floor  ids.ULID
 	bounds image.Rectangle
 	ground string
+	// npcs counts the NPCs the resize takes off the map.
+	npcs int
 }
 
 // sideButtons removes or adds one row or column on one side of the floor.
@@ -212,7 +214,12 @@ func (s *State) dragBounds(cursor image.Point) image.Rectangle {
 // requestResize resizes the current floor. When anchors would be removed it
 // first shows where they are used and asks (D4).
 func (s *State) requestResize(ctx *frame.Context, floorData *floor.Floor, next image.Rectangle) {
-	resize := pendingResize{floor: s.floor, bounds: next, ground: s.newCellGround(floorData)}
+	resize := pendingResize{floor: s.floor, bounds: next, ground: s.newCellGround(floorData), npcs: 0}
+	for _, placement := range floorData.Placements() {
+		if !image.Pt(placement.Col, placement.Row).In(next) {
+			resize.npcs++
+		}
+	}
 	var lost []floor.Anchor
 	for _, anchor := range floorData.Anchors() {
 		if !image.Pt(anchor.Col, anchor.Row).In(next) {
@@ -264,10 +271,15 @@ func (s *State) confirmResize(resize pendingResize, lost []floor.Anchor, uses []
 
 func (s *State) sendResize(ctx *frame.Context, resize pendingResize) {
 	args := tilefloor.ResizeArgs{
-		Bounds: tilefloor.BoundsOf(resize.bounds), Ground: resize.ground, Cells: nil, Anchors: nil,
+		Bounds: tilefloor.BoundsOf(resize.bounds), Ground: resize.ground, Cells: nil, Anchors: nil, Placements: nil,
 	}
 	s.command(ctx, resize.floor, tilefloor.ResizeEdit, "", args, func(protocol.Result) {
-		ctx.Frame.Status(fmt.Sprintf("The floor is now %d × %d. Undo puts it back.", resize.bounds.Dx(), resize.bounds.Dy()))
+		removed := ""
+		if resize.npcs > 0 {
+			removed = fmt.Sprintf(" It took %d %s off the map.", resize.npcs, plural(resize.npcs, "NPC", "NPCs"))
+		}
+		ctx.Frame.Status(fmt.Sprintf("The floor is now %d × %d.%s Undo puts it back.",
+			resize.bounds.Dx(), resize.bounds.Dy(), removed))
 	})
 }
 

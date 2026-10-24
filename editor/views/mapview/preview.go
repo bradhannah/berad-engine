@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -14,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -40,21 +42,30 @@ const (
 	previewLines = 4
 )
 
-// previewRun is the preview this window runs (D15). The run is simulated in
-// this process; its state goes to the zone's other views through the
-// orchestrator.
+// previewRun is the preview this window runs (D15). The run, its clock and
+// its NPCs are simulated in this process; its state goes to the zone's other
+// views through the orchestrator. NPCs can be paused, or stepped until the
+// watched NPC changes node.
 type previewRun struct {
-	id   ids.ULID
-	run  *play.Run
-	held play.Direction
-	sent *protocol.PreviewEntity
+	id       ids.ULID
+	run      *play.Run
+	held     play.Direction
+	sent     *protocol.PreviewState
+	clock    *clock.Clock
+	npcs     map[ids.ULID]*npcRun
+	watched  ids.ULID
+	paused   bool
+	stepping bool
+	stepFrom uint64
 }
 
-// remotePreview is a preview another window runs in this zone.
+// remotePreview is a preview another window runs in this zone, and its
+// latest state.
 type remotePreview struct {
 	id     ids.ULID
 	tick   uint64
 	player *protocol.PreviewEntity
+	state  *protocol.PreviewState
 }
 
 // docsZone gives a run the window's copies of the zone's floors.
@@ -123,10 +134,14 @@ func (s *State) updateChoosing(input *ui.Input, ctx *frame.Context, floorData *f
 
 			return
 		}
-		s.preview = &previewRun{id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil}
+		s.preview = &previewRun{
+			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
+			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, stepFrom: 0,
+		}
 		s.remote = nil
 		s.subscribeFloors(ctx)
-		ctx.Frame.Status("Preview running. Arrow keys walk; P stops.")
+		ctx.Frame.Status("Preview running from " + clock.Format(s.preview.clock.Seconds()) +
+			". Arrow keys walk; click an NPC to watch it; P stops.")
 	})
 }
 
@@ -194,6 +209,7 @@ func (s *State) stepPreview(input *ui.Input, ctx *frame.Context) {
 	if player.Moving() || outcome == play.Climbed {
 		s.follow(player)
 	}
+	s.stepNPCs(ctx)
 	s.sendState(ctx)
 }
 
@@ -233,21 +249,21 @@ func (s *State) follow(player play.Player) {
 	s.camera.pan(delta)
 }
 
-// sendState sends the player's position to the zone's other views, at most
-// every streamTicks ticks and only when it has changed.
+// sendState sends the preview's state, the player, the NPCs and the clock,
+// to the zone's other views, at most every streamTicks ticks and only when
+// it has changed.
 func (s *State) sendState(ctx *frame.Context) {
-	run := s.preview.run
-	if run.Tick()%streamTicks != 0 {
+	if s.preview.run.Tick()%streamTicks != 0 {
 		return
 	}
-	entity := entityOf(run.Player())
-	if s.preview.sent != nil && *s.preview.sent == entity {
+	state := s.previewState()
+	if sent := s.preview.sent; sent != nil && slices.Equal(sent.Entities, state.Entities) && sent.Clock == state.Clock &&
+		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
+		sent.Watched == state.Watched {
 		return
 	}
-	s.preview.sent = &entity
-	ctx.Requests.PreviewState(protocol.PreviewState{
-		Run: s.preview.id, Tick: run.Tick(), Entities: []protocol.PreviewEntity{entity},
-	})
+	s.preview.sent = &state
+	ctx.Requests.PreviewState(state)
 }
 
 func entityOf(player play.Player) protocol.PreviewEntity {
@@ -255,6 +271,8 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 
 	return protocol.PreviewEntity{
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
+		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
+		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0}, Changes: 0,
 	}
 }
 
@@ -268,7 +286,7 @@ func (s *State) stopPreview(ctx *frame.Context, message string) {
 func (s *State) previewChanged(update client.Update, ctx *frame.Context) {
 	switch {
 	case update.PreviewStart != nil:
-		s.remote = &remotePreview{id: update.PreviewStart.Run, tick: 0, player: nil}
+		s.remote = &remotePreview{id: update.PreviewStart.Run, tick: 0, player: nil, state: nil}
 		ctx.Frame.Status("A preview started in another view of this zone")
 	case s.remote == nil:
 	case update.PreviewState != nil && update.PreviewState.Run == s.remote.id:
@@ -276,7 +294,7 @@ func (s *State) previewChanged(update client.Update, ctx *frame.Context) {
 		if state.Tick <= s.remote.tick {
 			return
 		}
-		s.remote.tick = state.Tick
+		s.remote.tick, s.remote.state = state.Tick, state
 		for index := range state.Entities {
 			if state.Entities[index].ID == protocol.EntityPlayer {
 				s.remote.player = &state.Entities[index]
@@ -339,18 +357,22 @@ func (s *State) drawDisc(area *ebiten.Image, grid image.Rectangle, x, y float64,
 	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), blue, true)
 }
 
-// drawPreviewInspector describes the preview above the keys.
-func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left, top int) {
+// drawPreviewInspector describes the preview above its controls and the
+// keys.
+func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left, helpTop int) {
 	lines := []string{}
+	top := helpTop - (idleRows+previewLines)*ui.LineHeight - ui.ButtonH - ui.Gap
 	switch {
 	case s.choosing || s.starting:
 		lines = append(lines, "Click the cell where the player starts.", "Escape cancels.")
 	case s.preview != nil:
 		player := s.preview.run.Player()
 		lines = append(lines, fmt.Sprintf("Player on %s, cell %d, %d", s.floorName(docs, player.Floor),
-			player.Cell.X, player.Cell.Y), "Arrow keys walk.  P stops.")
+			player.Cell.X, player.Cell.Y), "Arrows walk · click an NPC · P stops")
+		top = clockTop(helpTop) - (len(lines)+1)*ui.LineHeight - ui.Gap
 	case s.remote != nil:
-		lines = append(lines, "Running in another view of this zone.")
+		lines = append(lines, "Running in another view of this zone.", s.remoteClock())
+		top = helpTop - previewLines*ui.LineHeight
 	default:
 		return
 	}

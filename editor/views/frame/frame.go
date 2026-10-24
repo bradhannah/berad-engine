@@ -59,11 +59,13 @@ type Picks interface {
 
 // Previews are the requests for a preview (D7, D15). PreviewStart starts one
 // for a zone, and the result's Created is the run's ID; PreviewState sends
-// its latest state and PreviewStop ends it.
+// its latest state and PreviewStop ends it; PreviewControl asks the window
+// running it to watch, pause, resume or step its NPCs.
 type Previews interface {
 	PreviewStart(zone ids.ULID, done func(protocol.Result, error))
 	PreviewState(state protocol.PreviewState)
 	PreviewStop(stop protocol.PreviewStop)
+	PreviewControl(control protocol.PreviewControl)
 }
 
 // Context is what a view's Update receives each frame.

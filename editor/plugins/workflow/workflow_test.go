@@ -111,7 +111,7 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		}
 	}
 	apply(t, document, workflow.Add{}, add)
-	longer, err := inner.WithParam("minutes", 90)
+	longer, err := inner.WithParam("duration", flow.Duration{Amount: 90, Unit: flow.UnitMinutes, Clock: flow.ClockGame})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +128,27 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	} {
 		if err := model.VerifyUndo(document, check.kind, check.args, registry.Edit); err != nil {
 			t.Fatalf("%s: %v", check.kind.Name(), err)
+		}
+	}
+	key, depth := flow.LineKey(id(1), flow.OutputNext), -60
+	bend := encode(t, workflow.MoveArgs{
+		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: id(3), Lane: nil, Depth: &depth}},
+	})
+	if err := model.VerifyUndo(document, workflow.Move{}, bend, registry.Edit); err != nil {
+		t.Fatalf("moving a line: %v", err)
+	}
+	apply(t, document, workflow.Move{}, bend)
+	for _, check := range []struct {
+		kind model.EditKind
+		args json.RawMessage
+	}{
+		{workflow.Move{}, encode(t, workflow.MoveArgs{
+			Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: ids.ULID{}, Lane: nil, Depth: nil}},
+		})},
+		{workflow.Remove{}, encode(t, workflow.RemoveArgs{Nodes: []ids.ULID{id(3)}})},
+	} {
+		if err := model.VerifyUndo(document, check.kind, check.args, registry.Edit); err != nil {
+			t.Fatalf("%s with a moved line: %v", check.kind.Name(), err)
 		}
 	}
 }
@@ -161,8 +182,8 @@ func TestEditsRefuseNodesThatDoNotFit(t *testing.T) {
 	document := newDocument(t)
 	wait := newNode(t, flow.KindWait, 2, ids.ULID{})
 	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{wait}, Boxes: nil, Links: nil}))
-	badMinutes, _ := wait.WithParam("minutes", -5)
-	wrongOutput := wait.WithLink(flow.OutputYes, id(2))
+	badMinutes, _ := wait.WithParam("duration", flow.Duration{Amount: -5, Unit: flow.UnitMinutes, Clock: flow.ClockGame})
+	wrongOutput := wait.WithLink(flow.OutputOtherwise, id(2))
 	for name, args := range map[string]json.RawMessage{
 		"bad parameter": encode(t, workflow.ReplaceArgs{Node: badMinutes}),
 		"wrong output":  encode(t, workflow.ReplaceArgs{Node: wrongOutput}),

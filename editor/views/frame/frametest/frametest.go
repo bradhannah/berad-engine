@@ -20,27 +20,48 @@ const windowSeed = 99
 
 // Docs holds documents in memory.
 type Docs struct {
-	docs map[ids.ULID]*client.Document
+	docs    map[ids.ULID]*client.Document
+	viewing bool
 }
 
 // NewDocs returns an empty document store.
 func NewDocs() *Docs {
-	return &Docs{docs: map[ids.ULID]*client.Document{}}
+	return &Docs{docs: map[ids.ULID]*client.Document{}, viewing: false}
 }
 
-// Put adds or replaces a document.
+// Put adds or replaces a document; a replaced document's revision goes up,
+// as it would after an edit.
 func (d *Docs) Put(id ids.ULID, name string, document model.Document) {
-	d.docs[id] = &client.Document{ID: id, Name: name, Format: document.Format(), Revision: 0, Model: document}
+	revision := uint64(0)
+	if previous, exists := d.docs[id]; exists {
+		revision = previous.Revision + 1
+	}
+	d.docs[id] = &client.Document{ID: id, Name: name, Format: document.Format(), Revision: revision, Model: document}
 }
 
-// View calls fn with a document, as a window's client does.
-func (d *Docs) View(document ids.ULID, fn func(client.Document)) bool {
-	found, ok := d.docs[document]
-	if ok {
-		fn(*found)
+// Touch raises a document's revision, as an edit applied to it in place
+// does.
+func (d *Docs) Touch(id ids.ULID) {
+	if found, exists := d.docs[id]; exists {
+		found.Revision++
+	}
+}
+
+// View calls visit with a document, as a window's client does. Like the
+// client's, it is not re-entrant: viewing a document from inside visit would
+// deadlock a real window, so here it panics.
+func (d *Docs) View(document ids.ULID, visit func(client.Document)) bool {
+	if d.viewing {
+		panic("frametest: View called inside View; a real window would deadlock")
+	}
+	found, exists := d.docs[document]
+	if exists {
+		d.viewing = true
+		defer func() { d.viewing = false }()
+		visit(*found)
 	}
 
-	return ok
+	return exists
 }
 
 // Command is a recorded command and its reply callback.
@@ -74,9 +95,10 @@ type Requests struct {
 	PickAnswers []protocol.PickAnswer
 	PickCancels []protocol.PickCancel
 	// Previews are preview starts waiting for the test to answer.
-	Previews      []func(protocol.Result, error)
-	PreviewStates []protocol.PreviewState
-	PreviewStops  []protocol.PreviewStop
+	Previews        []func(protocol.Result, error)
+	PreviewStates   []protocol.PreviewState
+	PreviewStops    []protocol.PreviewStop
+	PreviewControls []protocol.PreviewControl
 }
 
 // Command records a command.
@@ -144,6 +166,11 @@ func (r *Requests) PreviewState(state protocol.PreviewState) {
 // PreviewStop records the end of a preview.
 func (r *Requests) PreviewStop(stop protocol.PreviewStop) {
 	r.PreviewStops = append(r.PreviewStops, stop)
+}
+
+// PreviewControl records a preview control.
+func (r *Requests) PreviewControl(control protocol.PreviewControl) {
+	r.PreviewControls = append(r.PreviewControls, control)
 }
 
 // Of returns the commands of one edit kind.

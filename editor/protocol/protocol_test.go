@@ -41,8 +41,14 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindPreviewStart: protocol.PreviewStart{Zone: testID, Run: testID, Window: testID},
 		protocol.KindPreviewState: protocol.PreviewState{Run: testID, Tick: 12, Entities: []protocol.PreviewEntity{
 			{ID: protocol.EntityPlayer, Floor: testID, X: 1.5, Y: -2, Face: [2]int{1, -1}},
-		}},
-		protocol.KindPreviewStop: protocol.PreviewStop{Run: testID, Reason: "r"},
+			{
+				ID: testID.String(), Floor: testID, X: 3, Y: 4, Face: [2]int{0, 1}, NPC: testID, Workflow: testID,
+				Node: testID, Activity: "Wait 1 s of 2 s (game time)", Status: "s",
+				Last: protocol.PreviewChange{From: testID, Output: "next", To: testID, Tick: 9}, Changes: 3,
+			},
+		}, Clock: 8 * 3600, Rate: 60, ClockStopped: true, NPCsPaused: true, Watched: testID},
+		protocol.KindPreviewStop:    protocol.PreviewStop{Run: testID, Reason: "r"},
+		protocol.KindPreviewControl: protocol.PreviewControl{Run: testID, Action: protocol.ControlStep, Placement: testID},
 	}
 	messages := make([]protocol.Message, 0, len(payloads))
 	for kind, payload := range payloads {
@@ -107,6 +113,8 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.PreviewState](message)
 		case protocol.KindPreviewStop:
 			check = roundTrip[protocol.PreviewStop](message)
+		case protocol.KindPreviewControl:
+			check = roundTrip[protocol.PreviewControl](message)
 		case protocol.KindHello:
 			check = roundTrip[protocol.Hello](message)
 		case protocol.KindEvent:

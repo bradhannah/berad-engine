@@ -94,6 +94,11 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawFloorEdges(area, floorDoc.Floor, grid)
 		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
+		if s.preview != nil || s.remote != nil {
+			s.drawLiveNPCs(area, grid)
+		} else {
+			s.drawPlacements(area, floorDoc.Floor, grid)
+		}
 		s.drawSelection(area, grid)
 		s.drawPlayer(area, grid)
 		s.drawStartCell(area, floorDoc.Floor, grid)
@@ -311,6 +316,13 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 		tileHeading = "WALL FAMILY"
 	case ToolSelect:
 		tileHeading = "CHANGE SELECTED WALLS TO"
+	case ToolNPC:
+		tileHeading = "NPC TO PLACE"
+		if len(s.tileList.Rows) == 0 {
+			s.theme.DrawText(screen, "No NPCs yet. Use New NPC", ui.Inset, s.tileList.Rect.Min.Y+ui.Gap, ui.ColorMuted())
+			s.theme.DrawText(screen, "in the project browser.", ui.Inset, s.tileList.Rect.Min.Y+ui.Gap+ui.LineHeight,
+				ui.ColorMuted())
+		}
 	case ToolErase, ToolAnchor, ToolResize:
 		tileHeading = ""
 	case ToolGround, ToolObjects:
@@ -363,6 +375,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			line("Escape cancels.", ui.ColorMuted())
 		case !s.anchor.IsZero():
 			s.drawAnchorInspector(screen, floorData, textX, &textY)
+		case !s.placement.IsZero():
+			s.drawPlacementInspector(screen, floorData, textX, &textY)
 		case len(s.selected) > 0:
 			line(fmt.Sprintf("%d walls selected", len(s.selected)), ui.ColorInk())
 			s.replace.Draw(screen, s.theme)
@@ -379,7 +393,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
 	helpTop := panel.Max.Y - len(helpLines())*ui.LineHeight
-	s.drawPreviewInspector(screen, docs, textX, helpTop-previewLines*ui.LineHeight)
+	s.drawPreviewInspector(screen, docs, textX, helpTop)
+	s.drawNPCPreview(screen, textX, helpTop)
 	s.drawHelp(screen, textX, helpTop)
 }
 
@@ -467,7 +482,7 @@ func yesNo(value bool) string {
 func helpLines() []string {
 	return []string{
 		"KEYS",
-		"G W O E A S R: tools   1-9: tile",
+		"G W O E A N S R: tools   1-9: tile",
 		"PageUp/PageDown: floor   F: floor below",
 		"Scroll: pan   Cmd+scroll or Cmd+=/-: zoom",
 		"Space+drag: pan   Cmd+0: reset view",
