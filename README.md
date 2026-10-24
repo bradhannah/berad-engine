@@ -115,7 +115,9 @@ once, for visual checks.
 
 ## Dependencies
 
-The editor uses Ebitengine v2.10.5 and berad-sdk's berad-text. Its widgets are
+The editor uses Ebitengine v2.10.5 and berad-sdk's berad-text and berad-audio:
+berad-audio's authoring package reads a project's audio files and its runtime
+plays them. Its widgets are
 its own (`editor/ui`): ebitenui was not used, because its text input is
 single-line and has no input method support. The two modules are joined by
 `go.work` for development.

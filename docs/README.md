@@ -8,5 +8,6 @@
 | [First build](FIRST_BUILD.md) | The first implementation's steps and results |
 | [Second build](SECOND_BUILD.md) | Walking the map: the preview's decisions, steps and results |
 | [Third build](THIRD_BUILD.md) | NPC workflows and the wireframe look: decisions, steps and results |
+| [Fourth build](FOURTH_BUILD.md) | Sounds in workflows: choosing and hearing cues, decisions, steps and results |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
