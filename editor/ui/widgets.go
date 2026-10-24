@@ -153,13 +153,16 @@ type Row struct {
 	// cannot be selected; a click toggles them.
 	Section bool
 	Add     bool
+	// Aside is drawn subdued just after a tree row's label, such as its
+	// tags.
+	Aside string
 }
 
 // NewRow returns a plain selectable row; set its other fields as needed.
 func NewRow(id, label string) Row {
 	return Row{
 		ID: id, Label: label, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false, Icon: IconNone,
-		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false,
+		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false, Aside: "",
 	}
 }
 
@@ -201,16 +204,34 @@ const (
 	sectionCount = 6
 )
 
-// List is a scrolling list of rows with one selected row.
+// List is a scrolling list of rows with one selected row. With CanDrop
+// set, a row can be dragged onto another row CanDrop accepts.
 type List struct {
 	ID       string
 	Rect     image.Rectangle
 	Rows     []Row
 	Selected string
+	CanDrop  func(dragged, target string) bool
 	scroll   int
 	hover    string
 	hoverAdd bool
+	drag     listDrag
 }
+
+// listDrag follows a row pressed in a list that allows dragging: it becomes
+// a drag once the pointer moves far enough, and over is the row it would
+// drop on.
+type listDrag struct {
+	row      string
+	from     image.Point
+	at       image.Point
+	dragging bool
+	over     string
+}
+
+// dragDistance is how far the pointer moves, in screen pixels, before a
+// press on a row becomes a drag.
+const dragDistance = 5
 
 // ListResult reports what happened to a list this frame.
 type ListResult struct {
@@ -223,6 +244,9 @@ type ListResult struct {
 	// heading, was clicked; Added is the section whose [+] was clicked.
 	Toggled string
 	Added   string
+	// Dragged is the row dropped on the row Dropped.
+	Dragged string
+	Dropped string
 }
 
 // RowRect returns the screen rectangle of a row, which may lie outside the
@@ -267,9 +291,9 @@ func (l *List) LocateAdd(id string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// Update handles scrolling and clicks.
+// Update handles scrolling, clicks and dragging a row onto another.
 func (l *List) Update(input *Input) ListResult {
-	result := ListResult{Changed: false, Activated: false, Toggled: "", Added: ""}
+	result := ListResult{Changed: false, Activated: false, Toggled: "", Added: "", Dragged: "", Dropped: ""}
 	inside := input.Cursor.In(l.Rect)
 	if inside && input.WheelY != 0 {
 		l.scroll -= int(input.WheelY * RowHeight)
@@ -277,7 +301,7 @@ func (l *List) Update(input *Input) ListResult {
 	}
 	l.scroll = min(max(l.scroll, 0), max(len(l.Rows)*RowHeight-l.Rect.Dy(), 0))
 	l.hover, l.hoverAdd = "", false
-	if !inside {
+	if l.updateDrag(input, &result) || !inside {
 		return result
 	}
 	for index, row := range l.Rows {
@@ -287,27 +311,80 @@ func (l *List) Update(input *Input) ListResult {
 		}
 		l.hover = row.ID
 		l.hoverAdd = row.Add && input.Cursor.In(addRect(rect))
-		if !input.Pressed {
-			continue
-		}
-		double := input.DoubleClick
-		input.ClearPointer()
-		switch {
-		case l.hoverAdd:
-			result.Added = row.ID
-		case row.Section:
-			result.Toggled = row.ID
-		case row.Toggle != DisclosureNone && input.Cursor.In(toggleRect(rect, row)):
-			result.Toggled = row.ID
-		default:
-			result.Changed = l.Selected != row.ID
-			l.Selected = row.ID
-			result.Activated = double
+		if input.Pressed {
+			l.press(input, row, rect, &result)
 		}
 	}
 
 	return result
 }
+
+// press handles a press on a row: its [+], its triangle or heading, or the
+// row itself, which it selects and, when dragging is allowed, may drag.
+func (l *List) press(input *Input, row Row, rect image.Rectangle, result *ListResult) {
+	double := input.DoubleClick
+	input.ClearPointer()
+	switch {
+	case l.hoverAdd:
+		result.Added = row.ID
+	case row.Section:
+		result.Toggled = row.ID
+	case row.Toggle != DisclosureNone && input.Cursor.In(toggleRect(rect, row)):
+		result.Toggled = row.ID
+	default:
+		result.Changed = l.Selected != row.ID
+		l.Selected = row.ID
+		result.Activated = double
+		if l.CanDrop != nil {
+			l.drag = listDrag{row: row.ID, from: input.Cursor, at: input.Cursor, dragging: false, over: ""}
+		}
+	}
+}
+
+// noDrag is a list with no row pressed.
+func noDrag() listDrag {
+	return listDrag{row: "", from: image.Pt(0, 0), at: image.Pt(0, 0), dragging: false, over: ""}
+}
+
+// updateDrag follows a pressed row: once the pointer has moved far enough
+// it is dragged, over whichever row CanDrop accepts, and releasing it there
+// reports the drop. It reports whether a drag took the input.
+func (l *List) updateDrag(input *Input, result *ListResult) bool {
+	if l.drag.row == "" {
+		return false
+	}
+	l.drag.at = input.Cursor
+	moved := input.Cursor.Sub(l.drag.from)
+	if input.Down && max(moved.X, -moved.X, moved.Y, -moved.Y) >= dragDistance {
+		l.drag.dragging = true
+	}
+	if !l.drag.dragging {
+		if !input.Down {
+			l.drag = noDrag()
+		}
+
+		return false
+	}
+	l.drag.over = ""
+	for index, row := range l.Rows {
+		if input.Cursor.In(l.Rect) && input.Cursor.In(l.RowRect(index)) && row.ID != l.drag.row &&
+			l.CanDrop(l.drag.row, row.ID) {
+			l.drag.over = row.ID
+		}
+	}
+	if !input.Down {
+		if l.drag.over != "" {
+			result.Dragged, result.Dropped = l.drag.row, l.drag.over
+		}
+		l.drag = noDrag()
+	}
+	input.ClearPointer()
+
+	return true
+}
+
+// Dragging reports whether a row is being dragged.
+func (l *List) Dragging() bool { return l.drag.dragging }
 
 // SelectedRow returns the selected row.
 func (l *List) SelectedRow() (Row, bool) {
@@ -377,11 +454,34 @@ func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
 			FillRound(area, highlight(rect), rowRadius, ColorHover())
 		}
 		if treeRow(row) {
-			l.drawTreeRow(area, theme, row, rect)
+			guided := index+1 < len(l.Rows) && l.Rows[index+1].Guide != GuideNone
+			l.drawTreeRow(area, theme, row, rect, guided)
 		} else {
 			l.drawPlainRow(area, theme, row, rect)
 		}
 	}
+	l.drawDrag(area, theme)
+}
+
+// drawDrag outlines the row a dragged row would drop on, and shows what is
+// being dragged beside the pointer.
+func (l *List) drawDrag(area *ebiten.Image, theme *Theme) {
+	if !l.drag.dragging {
+		return
+	}
+	label := ""
+	for index, row := range l.Rows {
+		if row.ID == l.drag.over {
+			StrokeRound(area, highlight(l.RowRect(index)), rowRadius, Outline, ColorSelect())
+		}
+		if row.ID == l.drag.row {
+			label = row.Label
+		}
+	}
+	box := image.Rect(0, 0, theme.TextWidth(label)+Half*Inset, RowHeight).Add(l.drag.at.Add(image.Pt(Inset, Gap)))
+	FillRound(area, box, rowRadius, ColorSelectWash())
+	StrokeRound(area, box, rowRadius, Hairline, ColorSelect())
+	theme.DrawText(area, label, box.Min.X+Inset, box.Min.Y+(RowHeight-TextSize)/Half-1, ColorInk())
 }
 
 // drawPlainRow draws a row's swatch, label, mark and detail in a line.
@@ -410,8 +510,9 @@ func (l *List) drawPlainRow(area *ebiten.Image, theme *Theme, row Row, rect imag
 }
 
 // drawTreeRow draws a tree row: its guide, triangle, icon, label and the
-// detail at the right edge.
-func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image.Rectangle) {
+// detail at the right edge. childGuided says the row below hangs from it on
+// a tree line, which the row's stub joins.
+func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image.Rectangle, childGuided bool) {
 	left := treeLeft(rect, row)
 	middle := rect.Min.Y + rect.Dy()/Half
 	iconTop := rect.Min.Y + (rect.Dy()-IconSize)/Half
@@ -428,7 +529,7 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 	if row.Toggle != DisclosureNone {
 		drawTriangle(area, toggleRect(rect, row), row.Toggle == DisclosureOpen, ColorMuted())
 	}
-	if row.Toggle == DisclosureOpen {
+	if row.Toggle == DisclosureOpen && childGuided {
 		// A short stub joins the icon to its first child's guide.
 		stub := left + treeToggle + IconSize/Half
 		Line(area, image.Pt(stub, iconTop+IconSize+Hairline), image.Pt(stub, rect.Max.Y), Hairline, ColorRule())
@@ -440,6 +541,9 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 		theme.DrawStrong(area, row.Label, labelLeft, labelTop, ColorInk())
 	} else {
 		theme.DrawText(area, row.Label, labelLeft, labelTop, ColorInk())
+	}
+	if row.Aside != "" {
+		theme.DrawText(area, row.Aside, labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSubdued())
 	}
 	if row.Marked {
 		theme.DrawText(area, "●", labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSelect())
