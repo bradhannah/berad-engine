@@ -86,11 +86,13 @@ func (p *project) close() error {
 }
 
 // loadDocuments reads every document envelope in the project, skipping the
-// state folder and hidden folders. Old documents are backed up, then upgraded
-// in memory; the caller saves the upgraded form. Two files holding the same
-// document (left by a crash during a rename) resolve to the newer one.
-func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]storedDocument, error) {
+// state folder and hidden folders, and lists the project's directories, for
+// its folders. Old documents are backed up, then upgraded in memory; the
+// caller saves the upgraded form. Two files holding the same document (left
+// by a crash during a rename) resolve to the newer one.
+func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]storedDocument, []string, error) {
 	var documents []storedDocument
+	var dirs []string
 	layouts := map[string]storedDocument{}
 	seen := map[ids.ULID]int{}
 	walk := func(path string, entry fs.DirEntry, walkErr error) error {
@@ -100,6 +102,9 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 		if entry.IsDir() {
 			if path != "." && strings.HasPrefix(entry.Name(), ".") {
 				return fs.SkipDir
+			}
+			if path != "." {
+				dirs = append(dirs, path)
 			}
 
 			return nil
@@ -129,10 +134,10 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 		return nil
 	}
 	if err := fs.WalkDir(p.root.FS(), ".", walk); err != nil {
-		return nil, fmt.Errorf("load documents: %w", err)
+		return nil, nil, fmt.Errorf("load documents: %w", err)
 	}
 
-	return documents, p.attachLayouts(documents, layouts, now)
+	return documents, dirs, p.attachLayouts(documents, layouts, now)
 }
 
 // attachLayouts gives each document the layout file beside it. A layout file
@@ -262,9 +267,10 @@ func (p *project) backup(path string, original []byte, version int, now time.Tim
 	return nil
 }
 
-// documentPath returns "<format>s/<name>--<short id>.json".
-func documentPath(format, name string, id ids.ULID) string {
-	return filepath.Join(format+"s", slug(name)+"--"+id.Short(shortIDChars)+".json")
+// documentPath returns "<format>s/<folder>/<name>--<short id>.json", the
+// folder left out at the top.
+func documentPath(format, folder, name string, id ids.ULID) string {
+	return filepath.Join(format+"s", filepath.FromSlash(folder), slug(name)+"--"+id.Short(shortIDChars)+".json")
 }
 
 func slug(name string) string {

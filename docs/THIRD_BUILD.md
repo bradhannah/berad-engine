@@ -331,6 +331,14 @@ Open:
   preview it sets the time the next one starts at, shared by every window;
   during one it jumps the clock an hour back or on or to a typed time,
   stops and starts it, and sets its rate.
+- **Folders, tags and search** (protocol version 9). Decided with its
+  author on 2026-10-24: all three, with folders of one type each, nesting
+  to any depth, kept as real folders on disk. The project browser gains a
+  search box over the list, folder rows in each section, dragging and Move
+  to… for documents and folders, a folder inspector, and a Tags field with
+  a button per tag that searches for it. Three new project index edits move
+  a document, change a folder and set tags; files move at the next save, as
+  on a rename, and tags are saved in each document's envelope.
 
 ## Not in this build
 

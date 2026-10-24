@@ -42,6 +42,12 @@ under consideration), **open** (undecided).
   toggle at the right of its status bar. The Clock window starts on top.
 - **Agreed:** a window's keys are listed on a sheet opened with its Keys
   button or ?, rather than always on screen.
+- **Agreed:** the project browser keeps a growing project findable with
+  folders, tags and a search box. Folders sit inside each type's section,
+  hold documents of that type, nest to any depth, and are real folders on
+  disk. Tags group documents across types. The search box matches names,
+  folder names and tags, and "#" searches tags only. Documents and folders
+  move by dragging or with Move to….
 
 ## Maps and tiles
 

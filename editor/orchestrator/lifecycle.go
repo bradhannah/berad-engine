@@ -21,20 +21,17 @@ var ErrNoProjectPlugin = errors.New("the plug-in list must include the project i
 // isIndex reports whether an ID is the project index.
 func isIndex(id ids.ULID) bool { return id == projectindex.IndexID() }
 
-// buildIndex creates the in-memory project index from the loaded documents.
+// buildIndex creates the in-memory project index from the loaded documents
+// and folders.
 func (o *Orchestrator) buildIndex() {
-	entries := make([]projectindex.Entry, 0, len(o.docs))
-	for id, entry := range o.docs {
-		if !isIndex(id) {
-			entries = append(entries, projectindex.Entry{ID: id, Name: entry.info.Name, Format: entry.info.Format})
-		}
-	}
+	index := o.indexNow()
 	o.docs[projectindex.IndexID()] = &documentEntry{
 		info: DocumentInfo{
 			ID: projectindex.IndexID(), Name: "Project", Format: projectindex.FormatName, Revision: 0, Path: "",
+			Folder: "", Tags: nil,
 		},
 		version:  1,
-		document: projectindex.NewIndex(entries),
+		document: index,
 		dirty:    false,
 	}
 }
@@ -64,6 +61,8 @@ func (o *Orchestrator) prepareLifecycle(edit string, args json.RawMessage) (json
 		}
 
 		return args, ids.ULID{}, nil
+	case projectindex.MoveEdit, projectindex.FolderEdit:
+		return args, ids.ULID{}, o.prepareFolders(edit, args)
 	default:
 		return args, ids.ULID{}, nil
 	}
@@ -100,6 +99,9 @@ func (o *Orchestrator) prepareCreate(args json.RawMessage) (json.RawMessage, ids
 	if err := o.checkName(create.Format, create.Name, create.ID, create.Scope); err != nil {
 		return nil, ids.ULID{}, err
 	}
+	if create.Folder != "" && !create.Scope.IsZero() {
+		return nil, ids.ULID{}, fmt.Errorf("%w: it stays with the document it is part of", projectindex.ErrFolder)
+	}
 	create.Version = documentType.Format.Current
 	prepared, err := json.Marshal(create)
 	if err != nil {
@@ -128,7 +130,8 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 	}
 	deletion = projectindex.DocumentArgs{
 		ID: deletion.ID, Format: entry.info.Format, Name: entry.info.Name, Version: entry.version,
-		Revision: entry.info.Revision, Scope: o.containerOf(deletion.ID), Data: data, Layout: layout,
+		Revision: entry.info.Revision, Scope: o.containerOf(deletion.ID), Folder: entry.info.Folder,
+		Tags: entry.info.Tags, Data: data, Layout: layout,
 	}
 	prepared, err := json.Marshal(deletion)
 	if err != nil {
@@ -176,9 +179,14 @@ func (o *Orchestrator) containerOf(documentID ids.ULID) ids.ULID {
 }
 
 // applyLifecycle carries out a journaled project index edit: it creates,
-// removes or renames the document itself. Files change at the next save.
+// removes, renames, moves or tags the document itself, or changes a folder.
+// Files change at the next save.
 func (o *Orchestrator) applyLifecycle(edit string, args json.RawMessage, live bool) error {
 	switch edit {
+	case projectindex.MoveEdit, projectindex.FolderEdit, projectindex.TagsEdit:
+		if index, built := o.liveIndex(); built {
+			o.syncFromIndex(index)
+		}
 	case projectindex.CreateEdit, projectindex.DeleteEdit:
 		var change projectindex.DocumentArgs
 		if err := json.Unmarshal(args, &change); err != nil {
@@ -208,11 +216,12 @@ func (o *Orchestrator) createDocument(create projectindex.DocumentArgs) error {
 	if err != nil {
 		return fmt.Errorf("recreate %s: %w", create.Name, err)
 	}
-	path := documentPath(create.Format, create.Name, create.ID)
+	path := documentPath(create.Format, create.Folder, create.Name, create.ID)
 	o.keepFiles(path)
 	o.docs[create.ID] = &documentEntry{
 		info: DocumentInfo{
 			ID: create.ID, Name: create.Name, Format: create.Format, Revision: create.Revision, Path: path,
+			Folder: create.Folder, Tags: create.Tags,
 		},
 		version:  documentType.Format.Current,
 		document: document,
@@ -251,13 +260,7 @@ func (o *Orchestrator) renameDocument(documentID ids.ULID, name string) {
 		return
 	}
 	entry.info.Name = name
-	path := documentPath(entry.info.Format, name, documentID)
-	if path != entry.info.Path {
-		o.retireFiles(entry.info.Path)
-		o.keepFiles(path)
-		entry.info.Path = path
-	}
-	entry.dirty = true
+	o.repath(entry)
 }
 
 // retireFiles marks a document's file, and its layout file if it has one, to
@@ -288,6 +291,8 @@ func (o *Orchestrator) replayLifecycle(entry journalEntry) error {
 			return nil
 		}
 	case projectindex.DeleteEdit, projectindex.RenameEdit:
+	case projectindex.MoveEdit, projectindex.FolderEdit, projectindex.TagsEdit:
+		return o.replayFolders(entry)
 	default:
 		return fmt.Errorf("replay: %w: %s", ErrUnknownEdit, entry.Edit)
 	}

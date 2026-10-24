@@ -69,6 +69,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **On top** | A window kept above every other window, set with the toggle at the right of its status bar; session state for each window |
 | **Clock window** | The preview's clock and its controls, on top by default; before a preview it sets the time the next one starts at |
 | **Keys sheet** | The list of a window's keys, opened with its Keys button or ? |
+| **Folder** | A folder in a section of the project browser, holding documents of that type and other folders; a real folder on disk |
+| **Tag** | A word an author gives a document to find it by, such as "town"; tags group documents across types and mean nothing to a game |
+| **Search** | The project browser's box that shows only the documents whose name, folder or tag holds what is typed; "#town" looks at tags only |
 | **Pick** | Choosing something in a Map window for another window, through the orchestrator |
 | **Preview** | Playing a zone inside the editor, run by the Map window that started it (D15); it never changes the project |
 | **Run** | One play of a zone from its start; a preview is a run, and each has its own ID |

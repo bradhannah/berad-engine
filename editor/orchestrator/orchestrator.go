@@ -50,6 +50,10 @@ type DocumentInfo struct {
 	Format   string
 	Revision uint64
 	Path     string
+	// Folder is the folder holding the document within its type, and Tags
+	// the tags an author gave it.
+	Folder string
+	Tags   []string
 }
 
 type documentEntry struct {
@@ -92,12 +96,16 @@ type Orchestrator struct {
 	children   map[ids.ULID]*child
 	picks      *picks
 	preview    *preview
-	// removed holds files of deleted or renamed documents, moved to the
-	// backups at the next save.
-	removed  map[string]bool
-	seq      uint64
-	stopping bool
-	quit     bool
+	// removed holds files of deleted, renamed or moved documents, moved to
+	// the backups at the next save.
+	removed map[string]bool
+	// folders are the folders of each document type, and removedDirs the
+	// directories of folders that went, removed at the next save if empty.
+	folders     map[projectindex.Folder]bool
+	removedDirs map[string]bool
+	seq         uint64
+	stopping    bool
+	quit        bool
 	// quitting is set once a window asks to quit: the orchestrator stops
 	// when its last window closes.
 	quitting bool
@@ -150,16 +158,17 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		picks:      newPicks(),
 		preview:    nil,
 		removed:    map[string]bool{},
-		seq:        0,
-		stopping:   false,
-		quit:       false,
-		quitting:   false,
-		inbound:    make(chan inbound),
-		joins:      make(chan *window),
-		leaves:     make(chan *window),
-		exits:      make(chan childExit),
-		stopped:    make(chan struct{}),
-		running:    atomic.Bool{},
+		folders:    map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
+		seq:      0,
+		stopping: false,
+		quit:     false,
+		quitting: false,
+		inbound:  make(chan inbound),
+		joins:    make(chan *window),
+		leaves:   make(chan *window),
+		exits:    make(chan childExit),
+		stopped:  make(chan struct{}),
+		running:  atomic.Bool{},
 	}
 }
 
@@ -181,10 +190,11 @@ func (o *Orchestrator) open(ctx context.Context) error {
 }
 
 func (o *Orchestrator) load() error {
-	stored, err := o.project.loadDocuments(o.cfg.Registry.Formats(), o.cfg.Clock())
+	stored, dirs, err := o.project.loadDocuments(o.cfg.Registry.Formats(), o.cfg.Clock())
 	if err != nil {
 		return err
 	}
+	o.folders = o.foldersOnDisk(dirs)
 	for _, document := range stored {
 		documentType, ok := o.cfg.Registry.Document(document.envelope.Format)
 		if !ok {
@@ -205,6 +215,8 @@ func (o *Orchestrator) load() error {
 				Format:   document.envelope.Format,
 				Revision: document.envelope.Revision,
 				Path:     document.path,
+				Folder:   folderOf(document.envelope.Format, document.path),
+				Tags:     document.envelope.Tags,
 			},
 			version:  document.envelope.Version,
 			document: decoded,
@@ -315,9 +327,11 @@ func (o *Orchestrator) CreateDocument(name string, document model.Document) (ids
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("document id: %w", err)
 	}
-	path := documentPath(document.Format(), name, documentID)
+	path := documentPath(document.Format(), "", name, documentID)
 	entry := &documentEntry{
-		info:     DocumentInfo{ID: documentID, Name: name, Format: document.Format(), Revision: 0, Path: path},
+		info: DocumentInfo{
+			ID: documentID, Name: name, Format: document.Format(), Revision: 0, Path: path, Folder: "", Tags: nil,
+		},
 		version:  documentType.Format.Current,
 		document: document,
 		dirty:    true,
@@ -458,6 +472,9 @@ func (o *Orchestrator) flush() error {
 		}
 		delete(o.removed, path)
 	}
+	if err := o.flushFolders(); err != nil {
+		errs = append(errs, err)
+	}
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
@@ -482,6 +499,7 @@ func (o *Orchestrator) save(entry *documentEntry) error {
 		ID:       entry.info.ID,
 		Name:     entry.info.Name,
 		Revision: entry.info.Revision,
+		Tags:     entry.info.Tags,
 		Data:     data,
 	}
 	if err := o.project.writeDocument(entry.info.Path, envelope); err != nil {
@@ -512,7 +530,7 @@ func (o *Orchestrator) saveLayout(entry *documentEntry) error {
 	}
 	envelope := content.Envelope{
 		Format: documentType.Layout.Name, Version: documentType.Layout.Current, ID: entry.info.ID,
-		Name: entry.info.Name, Revision: 0, Data: layout,
+		Name: entry.info.Name, Revision: 0, Tags: nil, Data: layout,
 	}
 
 	return o.project.writeDocument(layoutPath(entry.info.Path), envelope)

@@ -1,5 +1,7 @@
 // Package project is the project index: the list of a project's documents,
-// and the edits that create, rename and delete them.
+// the folders that hold them within each type and the tags they carry, and
+// the edits that create, rename, delete, move and tag them and make, rename
+// and delete folders.
 //
 // The orchestrator holds the index in memory under the well-known ID
 // IndexID and never saves it: it is rebuilt from the document files on
@@ -49,32 +51,48 @@ var ErrNotIndex = errors.New("document is not the project index")
 // ErrName reports an empty, untrimmed or overlong document name.
 var ErrName = errors.New("invalid document name")
 
-// Entry describes one document in the project.
+// Entry describes one document in the project. Folder is the folder holding
+// it within its type, folder names joined by "/", or "" at the top; Tags are
+// the tags an author gave it.
 type Entry struct {
 	ID     ids.ULID `json:"id"`
 	Name   string   `json:"name"`
 	Format string   `json:"format"`
+	Folder string   `json:"folder,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
 }
 
-// Index lists a project's documents, ordered by ID.
+// Index lists a project's documents, ordered by ID, and the folders of each
+// type, empty ones included.
 type Index struct {
 	entries []Entry
+	folders []Folder
 }
 
 type wireIndex struct {
-	Entries []Entry `json:"entries"`
+	Entries []Entry  `json:"entries"`
+	Folders []Folder `json:"folders,omitempty"`
 }
 
-// NewIndex returns an index of the given documents.
-func NewIndex(entries []Entry) *Index {
-	sorted := slices.Clone(entries)
-	slices.SortFunc(sorted, func(a, b Entry) int { return a.ID.Compare(b.ID) })
+// NewIndex returns an index of the given documents, with no folders.
+func NewIndex(entries []Entry) *Index { return NewIndexWithFolders(entries, nil) }
 
-	return &Index{entries: sorted}
+// NewIndexWithFolders returns an index of the given documents and folders.
+func NewIndexWithFolders(entries []Entry, folders []Folder) *Index {
+	sorted := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		entry.Tags = slices.Clone(entry.Tags)
+		sorted = append(sorted, entry)
+	}
+	slices.SortFunc(sorted, func(a, b Entry) int { return a.ID.Compare(b.ID) })
+	held := slices.Clone(folders)
+	slices.SortFunc(held, compareFolders)
+
+	return &Index{entries: sorted, folders: slices.Compact(held)}
 }
 
 // Entries returns the documents ordered by ID.
-func (x *Index) Entries() []Entry { return slices.Clone(x.entries) }
+func (x *Index) Entries() []Entry { return NewIndex(x.entries).entries }
 
 // Entry returns one document's entry.
 func (x *Index) Entry(id ids.ULID) (Entry, bool) {
@@ -127,7 +145,7 @@ func (x *Index) Format() string { return FormatName }
 
 // Encode returns the index's data, sent to windows in snapshots.
 func (x *Index) Encode() (json.RawMessage, error) {
-	data, err := json.Marshal(wireIndex{Entries: x.entries})
+	data, err := json.Marshal(wireIndex{Entries: x.entries, Folders: x.folders})
 	if err != nil {
 		return nil, fmt.Errorf("project index: %w", err)
 	}
@@ -139,7 +157,7 @@ func (x *Index) Encode() (json.RawMessage, error) {
 //
 //nolint:ireturn // Documents are polymorphic; callers hold them as model.Document.
 func (x *Index) Clone() model.Document {
-	return &Index{entries: slices.Clone(x.entries)}
+	return NewIndexWithFolders(x.entries, x.folders)
 }
 
 // Decode reads index data from a snapshot.
@@ -154,7 +172,7 @@ func Decode(data json.RawMessage) (model.Document, error) {
 		wire.Entries = []Entry{}
 	}
 
-	return NewIndex(wire.Entries), nil
+	return NewIndexWithFolders(wire.Entries, wire.Folders), nil
 }
 
 // Format returns the index's format registration, so windows can read
@@ -173,10 +191,11 @@ func CheckName(name string) error {
 }
 
 // DocumentArgs creates or deletes a document. A window creating a document
-// sends Format, Name and Data, and Scope when the name only needs to be unique
-// within a zone; the orchestrator adds the ID. A window deleting a document
-// sends only the ID; the orchestrator adds the rest, so the inverse can
-// recreate exactly what was deleted.
+// sends Format, Name and Data, Scope when the name only needs to be unique
+// within a zone, and Folder to create it in a folder; the orchestrator adds
+// the ID. A window deleting a document sends only the ID; the orchestrator
+// adds the rest, so the inverse can recreate exactly what was deleted, in
+// its folder and with its tags.
 type DocumentArgs struct {
 	ID       ids.ULID        `json:"id"`
 	Format   string          `json:"format"`
@@ -184,6 +203,8 @@ type DocumentArgs struct {
 	Version  int             `json:"version,omitempty"`
 	Revision uint64          `json:"revision,omitempty"`
 	Scope    ids.ULID        `json:"scope"`
+	Folder   string          `json:"folder,omitempty"`
+	Tags     []string        `json:"tags,omitempty"`
 	Data     json.RawMessage `json:"data,omitempty"`
 	// Layout is the document's layout, for documents that keep one (D17).
 	Layout json.RawMessage `json:"layout,omitempty"`
@@ -225,7 +246,13 @@ func (Create) Apply(document model.Document, args json.RawMessage) (model.Applie
 	if exists {
 		return model.Applied{}, fmt.Errorf("%w: document %s already exists", model.ErrArgs, created.ID)
 	}
-	entry := Entry{ID: created.ID, Name: created.Name, Format: created.Format}
+	if created.Folder != "" && !index.HasFolder(created.Format, created.Folder) {
+		return model.Applied{}, fmt.Errorf("%w: no folder %q", model.ErrArgs, created.Folder)
+	}
+	entry := Entry{
+		ID: created.ID, Name: created.Name, Format: created.Format, Folder: created.Folder,
+		Tags: slices.Clone(created.Tags),
+	}
 	index.entries = slices.Insert(index.entries, position, entry)
 
 	return lifecycle(args, DeleteEdit, created.ID)
@@ -314,6 +341,6 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{Create{}, Delete{}, Rename{}},
+		Edits:     []model.EditKind{Create{}, Delete{}, Rename{}, Move{}, FolderChange{}, Retag{}},
 	}
 }

@@ -129,7 +129,7 @@ func (s *State) chooseBehaviour(ctx *frame.Context) {
 	if found, loaded := s.npcOf(ctx.Docs, s.npc.npc); loaded && !found.Behaviour.IsZero() {
 		current = found.Behaviour.String()
 	}
-	list := &ui.List{ID: "workflows", Rect: ui.Zero(), Rows: nil, Selected: current}
+	list := &ui.List{ID: "workflows", Rect: ui.Zero(), Rows: nil, Selected: current, CanDrop: nil}
 	list.Rows = append(list.Rows, ui.NewRow(noBehaviour, "No behaviour"))
 	for _, entry := range s.index(ctx.Docs).OfFormat(flow.FormatName) {
 		row := ui.NewRow(entry.ID.String(), entry.Name)
@@ -179,6 +179,7 @@ func (s *State) createNPC(ctx *frame.Context) {
 		return
 	}
 	args := newDocument(npc.FormatName, name, ids.ULID{}, data)
+	args.Folder = s.targetFolder(ctx.Docs, npc.FormatName)
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 	}, nil)
