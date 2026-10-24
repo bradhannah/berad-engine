@@ -127,18 +127,21 @@ const (
 
 // State is one Map window.
 type State struct {
-	window   ids.ULID
-	zone     ids.ULID
-	theme    *ui.Theme
-	floors   []ids.ULID
-	floor    ids.ULID
-	subs     map[ids.ULID]bool
-	tool     Tool
-	tile     map[Tool]string
-	camera   camera
-	size     image.Point
+	window ids.ULID
+	zone   ids.ULID
+	theme  *ui.Theme
+	floors []ids.ULID
+	floor  ids.ULID
+	subs   map[ids.ULID]bool
+	tool   Tool
+	tile   map[Tool]string
+	camera camera
+	size   image.Point
+	// hover is the cell under the cursor: hovering when it is on the floor,
+	// outside when it is beyond the floor bounds.
 	hover    Cell
 	hovering bool
+	outside  bool
 	stroke   stroke
 	rect     *rectDrag
 	drag     *anchorDrag
@@ -205,7 +208,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, theme: theme, floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
-		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
+		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false, outside: false,
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{},
@@ -561,7 +564,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 	})
 	if !loaded {
-		s.hovering = false
+		s.hovering, s.outside = false, false
 	}
 	s.guardAnchor()
 }
@@ -728,9 +731,9 @@ func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor.Floor) {
 	grid := s.Grid()
 	s.panAndZoom(input, grid)
-	cell, onFloor := s.camera.cellAt(input.Cursor, grid)
-	onFloor = onFloor && floorData.In(cell.X, cell.Y)
-	s.hover, s.hovering = cell, onFloor
+	cell, inGrid := s.camera.cellAt(input.Cursor, grid)
+	onFloor := inGrid && floorData.In(cell.X, cell.Y)
+	s.hover, s.hovering, s.outside = cell, onFloor, inGrid && !onFloor && !s.zoom.contains(input.Cursor)
 	if s.panning || input.Space {
 		return
 	}

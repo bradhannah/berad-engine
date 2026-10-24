@@ -19,15 +19,18 @@ import (
 )
 
 const (
-	belowAlpha  = 0x40
-	gridAlpha   = 0x22
-	minGridSize = 12
-	minLabel    = 18
-	wallShare   = 2 // a wall's core is half a cell wide
-	minCore     = 2
-	dotSize     = 2
-	fullAlpha   = 0xff
-	hexWhite    = 0xffffff
+	belowAlpha = 0x40
+	gridAlpha  = 0x22
+	// outsideGridAlpha keeps the grid beyond the floor bounds quieter than
+	// the floor's own.
+	outsideGridAlpha = 0x12
+	minGridSize      = 12
+	minLabel         = 18
+	wallShare        = 2 // a wall's core is half a cell wide
+	minCore          = 2
+	dotSize          = 2
+	fullAlpha        = 0xff
+	hexWhite         = 0xffffff
 	// Insets, in eighths of a cell: pickups and anchors are drawn smaller
 	// than a cell so the ground shows around them.
 	eighths      = 8
@@ -83,6 +86,11 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 
 		return
 	}
+	docs.View(s.floor, func(document client.Document) {
+		if floorDoc, isFloor := document.Model.(*tilefloor.Document); isFloor {
+			s.drawOutside(area, floorDoc.Floor.Bounds(), grid)
+		}
+	})
 	if below, ok := s.floorBelow(); ok && s.below.On {
 		docs.View(below, func(document client.Document) {
 			if floorDoc, isFloor := document.Model.(*tilefloor.Document); isFloor {
@@ -110,6 +118,29 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 	})
 	if !loaded {
 		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())
+	}
+}
+
+// drawOutside shades the zone beyond the floor bounds and draws a fainter
+// grid over it, so the space around the floor can be pictured, then clears
+// the floor's own rectangle for the floors drawn over it.
+func (s *State) drawOutside(area *ebiten.Image, bounds, grid image.Rectangle) {
+	ui.FillRect(area, grid, ui.ColorOutside())
+	if s.camera.cellSize() >= minGridSize {
+		ink := ui.HexAlpha(0, outsideGridAlpha)
+		cells := s.camera.inView(grid)
+		for col := cells.Min.X; col <= cells.Max.X; col++ {
+			left := s.camera.cellRect(Cell{X: col, Y: 0}, grid).Min.X
+			ui.FillRect(area, image.Rect(left, grid.Min.Y, left+ui.Hairline, grid.Max.Y), ink)
+		}
+		for row := cells.Min.Y; row <= cells.Max.Y; row++ {
+			top := s.camera.cellRect(Cell{X: 0, Y: row}, grid).Min.Y
+			ui.FillRect(area, image.Rect(grid.Min.X, top, grid.Max.X, top+ui.Hairline), ink)
+		}
+	}
+	ui.FillRect(area, s.camera.rectOf(bounds, grid), ui.ColorBackground())
+	if s.outside {
+		ui.StrokeRect(area, s.camera.cellRect(s.hover, grid), ui.Hairline, ui.ColorSubdued())
 	}
 }
 
@@ -429,7 +460,7 @@ func (s *State) drawCellInspector(screen *ebiten.Image, floorData *floor.Floor, 
 			line(info.help, ui.ColorMuted())
 		}
 	}
-	if floorData == nil || !s.hovering {
+	if floorData == nil || (!s.hovering && !s.outside) {
 		return
 	}
 	*textY += ui.LineHeight / ui.Half
@@ -438,12 +469,17 @@ func (s *State) drawCellInspector(screen *ebiten.Image, floorData *floor.Floor, 
 
 // drawHover describes the cell under the cursor.
 func (s *State) drawHover(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
-	if !s.hovering {
-		return
-	}
 	line := func(text string, ink color.Color) {
 		s.theme.DrawText(screen, text, textX, *textY, ink)
 		*textY += ui.LineHeight
+	}
+	if s.outside {
+		line(outsideLine(s.hover), ui.ColorMuted())
+
+		return
+	}
+	if !s.hovering {
+		return
 	}
 	ground, _ := floorData.Ground(s.hover.X, s.hover.Y) //nolint:errcheck // The hover cell is on the floor.
 	top, _ := floorData.Top(s.hover.X, s.hover.Y)       //nolint:errcheck // The hover cell is on the floor.
@@ -459,6 +495,11 @@ func (s *State) drawHover(screen *ebiten.Image, floorData *floor.Floor, textX in
 		line(properties, ui.ColorMuted())
 		line("can be picked up "+yesNo(definition.Gettable), ui.ColorMuted())
 	}
+}
+
+// outsideLine describes a cell beyond the floor bounds.
+func outsideLine(cell Cell) string {
+	return fmt.Sprintf("Cell %d, %d · outside the floor", cell.X, cell.Y)
 }
 
 func tileName(tileID string) string {

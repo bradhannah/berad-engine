@@ -356,7 +356,7 @@ func (s *State) hasBounds(value string, docs frame.Docs) bool {
 func (s *State) drawFloorEdges(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle) {
 	bounds := floorData.Bounds()
 	rect := s.camera.rectOf(bounds, grid)
-	ui.StrokeRect(area, rect, ui.Hairline, ui.ColorMuted())
+	ui.StrokeRect(area, rect, ui.Outline, ui.ColorInk())
 	if s.tool != ToolResize || s.pick != nil {
 		return
 	}

@@ -65,10 +65,15 @@ func (c camera) rectOf(cells, grid image.Rectangle) image.Rectangle {
 
 // visible returns the cells of bounds that show in the grid area.
 func (c camera) visible(bounds, grid image.Rectangle) image.Rectangle {
+	return bounds.Intersect(c.inView(grid))
+}
+
+// inView returns every cell that shows, at least in part, in the grid area.
+func (c camera) inView(grid image.Rectangle) image.Rectangle {
 	first, _ := c.cellAt(grid.Min, grid)
 	last, _ := c.cellAt(grid.Max.Sub(image.Pt(1, 1)), grid)
 
-	return bounds.Intersect(image.Rectangle{Min: first, Max: last.Add(image.Pt(1, 1))})
+	return image.Rectangle{Min: first, Max: last.Add(image.Pt(1, 1))}
 }
 
 // zoomBy changes the zoom level, keeping the point under focus still.

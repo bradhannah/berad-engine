@@ -70,10 +70,13 @@ func (z *zoomControl) update(input *ui.Input, view *camera, grid, bounds image.R
 		view.zoomBy(defaultZoom-view.zoom, centre, grid)
 	case z.fit.Update(input):
 		view.fit(bounds, grid)
-	case input.Pressed && input.Cursor.In(z.card.Rect):
+	case input.Pressed && z.contains(input.Cursor):
 		input.ClearPointer()
 	}
 }
+
+// contains reports whether a point is on the control's card.
+func (z *zoomControl) contains(point image.Point) bool { return point.In(z.card.Rect) }
 
 // locate finds a button of the control, for input scripts.
 func (z *zoomControl) locate(id string) (image.Point, bool) {

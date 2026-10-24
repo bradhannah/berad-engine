@@ -58,6 +58,7 @@ const (
 	hexSelectWash = 0xe8eef8
 	hexPanel      = 0xf7f7f5
 	hexCanvas     = 0xfafaf8
+	hexOutside    = 0xebece8
 	hexRule       = 0xc9cbc5
 	hexRuleSoft   = 0xe4e5e1
 	hexWarn       = 0xb3261e
@@ -128,6 +129,9 @@ func ColorPanel() color.RGBA { return Hex(hexPanel) }
 
 // ColorCanvas is the background of a map or workflow canvas.
 func ColorCanvas() color.RGBA { return Hex(hexCanvas) }
+
+// ColorOutside is the shade of a map beyond the floor bounds.
+func ColorOutside() color.RGBA { return Hex(hexOutside) }
 
 // ColorRule is the colour of light dividing lines and canvas dots.
 func ColorRule() color.RGBA { return Hex(hexRule) }
