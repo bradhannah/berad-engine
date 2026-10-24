@@ -812,6 +812,57 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 	t.Logf("screenshots: %s %s %s", mapShot, watchShot, stepShot)
 }
 
+// TestSoundsInWorkflows chooses the sample's chime for a Play sound from
+// the cue chooser and plays it, follows it with a one-second Wait, gives the
+// workflow to an NPC and previews the zone: the Map window running the
+// preview plays the chime when the NPC reaches it. The saved node keeps the
+// cue's ID.
+func TestSoundsInWorkflows(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	chooserShot, chosenShot := shotPath(t, "sound-chooser.png"), shotPath(t, "sound-chosen.png")
+	previewShot := shotPath(t, "sound-preview.png")
+	browserScript := script(
+		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
+		click("ui:use"), wait(30), quit(),
+	)
+	workflowScript := script(
+		must("state:loaded", 600), wait(5),
+		click("node:start:1"), wait(5), click("palette:play-sound"), must("state:cues", 300), wait(5),
+		click("ui:cue"), must("cue:sample/chime", 300), wait(5), step{Repeat: 2, Screenshot: chooserShot},
+		click("cue:sample/chime"), must("state:cue=sample/chime", 300), wait(5),
+		click("ui:listen"), wait(30), step{Repeat: 2, Screenshot: chosenShot},
+		click("palette:wait"), wait(10), click("ui:param-duration"), wait(3), keys("Cmd+A"), typed("1"),
+		keys("Enter"), wait(10), click("ui:duration-seconds"), wait(10), quit(),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(5), keys("N"), must("npc:NPC 1", 1800), click("npc:NPC 1"), wait(5),
+		click("cell:1,1"), must("state:placement:1,1=NPC 1", 300), wait(400),
+		keys("P"), click("cell:2,-2"), must("state:previewing", 300), must("state:heard:sample/chime", 900),
+		wait(30), step{Repeat: 2, Screenshot: previewShot}, keys("P"), wait(30), quit(),
+	)
+	clockScript := script(must("state:running", 2400), wait(30), quit())
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "clock": {clockScript},
+	})
+	noCrashes(t, project)
+
+	logic := readEnvelope(t, project, "workflows/workflow-1--*[^t].json")
+	decoded, err := workflowplugin.Decode(logic.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routine := decoded.(*workflowplugin.Document).Workflow
+	start, _ := routine.Node(routine.Start())
+	sound, found := routine.Node(start.Next[flow.OutputNext])
+	if cue, err := sound.Cue("cue"); !found || err != nil || sound.Kind != flow.KindPlaySound || cue != "sample/chime" {
+		t.Fatalf("the Play sound keeps the chime's ID: %+v", sound)
+	}
+	t.Logf("screenshots: %s %s %s", chooserShot, chosenShot, previewShot)
+}
+
 // TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process
 // outright (no chance to say goodbye) and checks its windows notice the lost
 // connection and close themselves instead of lingering (D10).
