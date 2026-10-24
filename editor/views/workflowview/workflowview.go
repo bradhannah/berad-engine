@@ -137,6 +137,13 @@ type State struct {
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
+	// audio is the project's audio library as last listed, audioRevision
+	// counts listings, and audioAsking is set while a question is out.
+	// sounds plays cues in this window, as last seen in Update.
+	audio         *protocol.AudioLibrary
+	audioRevision int
+	audioAsking   bool
+	sounds        frame.Sounds
 }
 
 // New returns the Workflow window for a workflow.
@@ -151,6 +158,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
+		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil,
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -298,7 +306,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.size = ctx.Size
 	s.cursor = input.Cursor
+	s.sounds = ctx.Sounds
 	s.load(ctx.Docs)
+	s.listAudio(ctx)
 	if s.guard.Active() {
 		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discardForm)
 
@@ -353,9 +363,23 @@ func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
 	}
 }
 
-// keys handles the window's own keys while no text field has focus.
+// listAudio asks for the audio library once a workflow with a Play sound
+// is shown, for its cues' names and problems.
+func (s *State) listAudio(ctx *frame.Context) {
+	if s.workflow != nil && s.audio == nil && s.playsSounds() {
+		s.askAudio(ctx)
+	}
+}
+
+// keys handles the window's own keys while no text field has focus. Escape
+// closes an open cue chooser before anything else.
 func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	plain := ui.Plain()
+	if made, open := s.openChooser(); open && input.Consume(ui.KeyEscape, plain) {
+		s.closeChooser(made)
+
+		return
+	}
 	switch {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
 		s.picker.Cancel(ctx, "cancelled in the workflow window")
