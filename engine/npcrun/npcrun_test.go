@@ -364,3 +364,50 @@ func TestRandomWalkRepeats(t *testing.T) {
 		t.Fatal("the random walk moves")
 	}
 }
+
+// TestPlaySoundAsksForItsCue asks for the cue in the tick it reaches a Play
+// sound and carries on at once, without a cue says why it carried on, and
+// asks again only when it comes round again.
+func TestPlaySoundAsksForItsCue(t *testing.T) {
+	t.Parallel()
+	nodes := []flow.Node{
+		node(t, 2, flow.KindPlaySound, map[string]any{"cue": "door/open"}),
+		node(t, 3, flow.KindPlaySound, nil),
+		node(t, 4, flow.KindWait, map[string]any{"duration": waitFor(1, flow.UnitSeconds, flow.ClockReal)}),
+	}
+	workflow := workflowOf(t, nodes, link(1, flow.OutputNext, 2), link(2, flow.OutputNext, 3), link(3, flow.OutputNext, 4))
+	run := newRunner(t, workflow, image.Pt(1, 1), eight, clock.MinutePerSecond)
+	run.run(1)
+	if strings.Join(run.npc.Sounds, ",") != "door/open" || run.npc.Node != id(4) {
+		t.Fatalf("one tick plays the cue and reaches the Wait: %v at %v", run.npc.Sounds, run.npc.Node)
+	}
+	if run.npc.Last.From != id(3) || run.npc.Last.Status != npcrun.StatusNoCue {
+		t.Fatalf("a Play sound with no cue carries on and says why: %+v", run.npc.Last)
+	}
+	run.run(1)
+	if len(run.npc.Sounds) != 0 {
+		t.Fatalf("the cue is asked for once, not every tick: %v", run.npc.Sounds)
+	}
+	asked := 0
+	for range clock.TicksPerSecond {
+		run.run(1)
+		if strings.Join(run.npc.Sounds, ",") == "door/open" {
+			asked++
+		}
+	}
+	if asked != 1 {
+		t.Fatalf("after the Wait the branch comes round and asks once more, not %d times", asked)
+	}
+}
+
+// TestLoopingPlaysNothing plays nothing from a loop that never waits, which
+// would otherwise ask for its sound every tick.
+func TestLoopingPlaysNothing(t *testing.T) {
+	t.Parallel()
+	nodes := []flow.Node{node(t, 2, flow.KindPlaySound, map[string]any{"cue": "bell"})}
+	run := newRunner(t, workflowOf(t, nodes, link(1, flow.OutputNext, 2)), image.Pt(1, 1), eight, clock.MinutePerSecond)
+	run.run(1)
+	if run.npc.Status != npcrun.StatusLooping || len(run.npc.Sounds) != 0 {
+		t.Fatalf("a loop without a wait plays nothing: %q %v", run.npc.Status, run.npc.Sounds)
+	}
+}

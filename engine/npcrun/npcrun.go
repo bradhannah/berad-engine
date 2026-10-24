@@ -3,8 +3,11 @@
 // a run repeats exactly.
 //
 // An NPC follows its workflow from the start node. Nodes that take no time,
-// the start, a time switch, a random choice or a container being entered,
-// are followed in the same tick; a Wait, a Move and a Go to take time. A
+// the start, a time switch, a random choice, a container being entered or a
+// Play sound, are followed in the same tick; a Wait, a Move and a Go to take
+// time. A Play sound only asks for its cue: the host plays what an NPC's
+// Sounds lists after each Step, so a run stays the same with or without
+// sound. An NPC looping without waiting plays nothing. A
 // branch with nothing connected goes back to the start, or, inside a
 // time-bound container, back to the container's first step; when the
 // container's time is up the NPC leaves by its exit at once, even partway
@@ -39,6 +42,7 @@ const (
 	StatusNoRoute     = "No way there, so it carried on"
 	StatusNoAnchor    = "No destination, so it carried on"
 	StatusOtherFloor  = "Can't reach it: the destination is on another floor"
+	StatusNoCue       = "No sound chosen, so it carried on"
 )
 
 // Change is a move from one node to another: the output taken, the tick,
@@ -81,6 +85,9 @@ type NPC struct {
 	Last    Change
 	Changes uint64
 	Taken   []Change
+	// Sounds are the cues the latest Step's Play sounds asked for, in order,
+	// until the next Step.
+	Sounds []string
 	// Status says what keeps the NPC from following its workflow now: it has
 	// none, or it is looping without waiting.
 	Status string
@@ -153,7 +160,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
-		Changes: 0, Taken: nil, Status: "", work: idle(), jumps: 0,
+		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0,
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
@@ -181,7 +188,7 @@ func (n *NPC) Restart() {
 // Step runs the NPC for one tick: it finishes or continues a step between
 // cells, leaves a container whose time is up, and follows its workflow.
 func (n *NPC) Step(world World, tick uint64) {
-	n.Taken = n.Taken[:0]
+	n.Taken, n.Sounds = n.Taken[:0], n.Sounds[:0]
 	if world.Workflow == nil {
 		n.Node, n.Container, n.Status = ids.ULID{}, ids.ULID{}, StatusNoBehaviour
 		n.walk()
@@ -244,7 +251,8 @@ func (n *NPC) wait(world World) {
 }
 
 // follow does the current node's work, following nodes that take no time
-// until one takes time or MaxInstant is reached.
+// until one takes time or MaxInstant is reached. A loop that never waits
+// would ask for its sounds every tick, so it plays none.
 func (n *NPC) follow(world World, tick uint64) {
 	n.Status = ""
 	for range MaxInstant {
@@ -260,7 +268,7 @@ func (n *NPC) follow(world World, tick uint64) {
 		}
 		n.take(world.Workflow, output, tick)
 	}
-	n.Status = StatusLooping
+	n.Status, n.Sounds = StatusLooping, n.Sounds[:0]
 }
 
 // act does a node's work for this tick. It returns the output to leave by
@@ -279,9 +287,25 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 		return n.actMove(world, node)
 	case flow.KindGoTo:
 		return n.actGoTo(world, node)
+	case flow.KindPlaySound:
+		n.actPlaySound(node)
+
+		return flow.OutputNext, true
 	default:
 		return flow.OutputNext, true
 	}
+}
+
+// actPlaySound asks for a Play sound's cue and carries on at once; with no
+// cue chosen it carries on and says why.
+func (n *NPC) actPlaySound(node flow.Node) {
+	cue, err := node.Cue("cue")
+	if err != nil || cue == "" {
+		n.work.skipped = StatusNoCue
+
+		return
+	}
+	n.Sounds = append(n.Sounds, cue)
 }
 
 // timeSwitch takes the output of the first time that holds the minute, or

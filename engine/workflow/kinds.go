@@ -24,6 +24,9 @@ const (
 	TypeTimeRange  ParamType = "time-range"
 	TypeTimeRanges ParamType = "time-ranges"
 	TypeText       ParamType = "text"
+	// TypeCue names a cue of the project's audio library by its ID, as the
+	// library spells it; "" means none is chosen.
+	TypeCue ParamType = "cue"
 )
 
 // Limits on parameter values.
@@ -41,7 +44,9 @@ const (
 	// MaxTiles bounds how far one Move goes.
 	MaxTiles = 64
 	// MaxText bounds a text parameter, in characters.
-	MaxText          = 2000
+	MaxText = 2000
+	// MaxCue bounds a cue parameter's ID, in characters.
+	MaxCue           = 200
 	percent          = 100
 	hour             = 60
 	secondsPerMinute = 60
@@ -79,6 +84,7 @@ const (
 	GroupFlow     = "Flow"
 	GroupMovement = "Movement"
 	GroupAction   = "Action"
+	GroupAudio    = "Audio"
 	GroupAnnotate = "Annotate"
 )
 
@@ -91,6 +97,7 @@ const (
 	KindGoTo       = "go-to"
 	KindMove       = "move"
 	KindWait       = "wait"
+	KindPlaySound  = "play-sound"
 	KindNote       = "note"
 )
 
@@ -161,7 +168,7 @@ type Output struct {
 type Kind struct {
 	Name  string
 	Label string
-	// Group places the kind in the palette: Flow, Movement, Action or
+	// Group places the kind in the palette: Flow, Movement, Action, Audio or
 	// Annotate. Kinds with no group are not offered.
 	Group   string
 	Params  []Param
@@ -227,6 +234,11 @@ func Kinds() []Kind {
 				Name: "duration", Label: "How long", Type: TypeDuration, Choices: nil,
 				Default: mustJSON(Duration{Amount: defaultWait, Unit: UnitMinutes, Clock: ClockGame}),
 			}},
+			Outputs: next,
+		},
+		{
+			Name: KindPlaySound, Label: "Play sound", Group: GroupAudio,
+			Params:  []Param{{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil}},
 			Outputs: next,
 		},
 		{
@@ -389,18 +401,25 @@ func checkValue(param Param, value json.RawMessage) error {
 	case TypeTimeRanges:
 		return checkRanges(value)
 	case TypeText:
-		var text string
-		if err := json.Unmarshal(value, &text); err != nil {
-			return err //nolint:wrapcheck // Wrapped by the caller.
-		}
-		if utf8.RuneCountInString(text) > MaxText {
-			return fmt.Errorf("%w: longer than %d characters", ErrNode, MaxText)
-		}
-
-		return nil
+		return checkText(value, MaxText)
+	case TypeCue:
+		return checkText(value, MaxCue)
 	default:
 		return fmt.Errorf("%w: unknown parameter type %q", ErrNode, param.Type)
 	}
+}
+
+// checkText reads a string of at most limit characters.
+func checkText(value json.RawMessage, limit int) error {
+	var text string
+	if err := json.Unmarshal(value, &text); err != nil {
+		return err //nolint:wrapcheck // Wrapped by the caller.
+	}
+	if utf8.RuneCountInString(text) > limit {
+		return fmt.Errorf("%w: longer than %d characters", ErrNode, limit)
+	}
+
+	return nil
 }
 
 func checkDuration(value json.RawMessage) error {
