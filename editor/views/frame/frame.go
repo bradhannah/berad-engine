@@ -175,21 +175,22 @@ func Inspector(size image.Point) image.Rectangle {
 	return image.Rect(size.X-InspectorWidth, 0, size.X, size.Y-StatusHeight)
 }
 
-// DrawStatus draws the status bar.
+// DrawStatus draws the status bar: the wireframes' monospaced strip along
+// the bottom of the window.
 func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	bounds := screen.Bounds()
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
 	ui.FillRect(screen, bar, ui.ColorPanel())
-	ui.FillRect(screen, image.Rect(0, bar.Min.Y, bar.Max.X, bar.Min.Y+ui.Hairline), ui.ColorRule())
+	ui.Divider(screen, image.Pt(0, bar.Min.Y), image.Pt(bar.Max.X, bar.Min.Y))
 	message, notice := f.Message()
-	ink := ui.ColorMuted()
+	ink := ui.ColorInk()
 	if notice {
 		ink = ui.ColorSelect()
 	}
-	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/2-1, ink)
+	textY := bar.Min.Y + (StatusHeight-ui.MonoSize)/ui.Half - 1
+	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
 	speed := "command to event: last " + formatLatency(f.last()) + ", median " + formatLatency(f.median())
-	textY := bar.Min.Y + (StatusHeight-ui.TextSize)/ui.Half - 1
-	theme.DrawText(screen, speed, bar.Max.X-ui.Inset-theme.TextWidth(speed), textY, ui.ColorSubdued())
+	theme.DrawMono(screen, speed, bar.Max.X-ui.Inset-theme.MonoWidth(speed), textY, ui.ColorMuted())
 }
 
 func (f *Frame) last() time.Duration {
@@ -218,10 +219,10 @@ func formatLatency(latency time.Duration) string {
 	return strconv.FormatFloat(float64(latency)/float64(time.Microsecond), 'f', 0, 64) + " µs"
 }
 
-// DrawInspector draws the inspector panel's background and divider.
+// DrawInspector draws the inspector panel's divider.
 func DrawInspector(screen *ebiten.Image) {
 	panel := Inspector(screen.Bounds().Size())
-	ui.FillRect(screen, image.Rect(panel.Min.X, panel.Min.Y, panel.Min.X+ui.Hairline, panel.Max.Y), ui.ColorRule())
+	ui.Divider(screen, panel.Min, image.Pt(panel.Min.X, panel.Max.Y))
 }
 
 // CommonKeys handles the shortcuts every window shares: undo, redo, close and

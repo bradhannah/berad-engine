@@ -185,6 +185,8 @@ type DocumentArgs struct {
 	Revision uint64          `json:"revision,omitempty"`
 	Scope    ids.ULID        `json:"scope"`
 	Data     json.RawMessage `json:"data,omitempty"`
+	// Layout is the document's layout, for documents that keep one (D17).
+	Layout json.RawMessage `json:"layout,omitempty"`
 }
 
 // RenameArgs renames a document.
@@ -311,7 +313,7 @@ func decode[T any](document model.Document, args json.RawMessage) (*Index, T, er
 func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
-		Documents: []model.DocumentType{{Format: Format(), Decode: Decode}},
+		Documents: []model.DocumentType{{Format: Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits:     []model.EditKind{Create{}, Delete{}, Rename{}},
 	}
 }

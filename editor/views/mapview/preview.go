@@ -26,9 +26,10 @@ const (
 	// followMargin is how many cells the view keeps between a walking
 	// player and its edge.
 	followMargin = 3
-	// The player is a blue disc with a white dot towards where they face.
-	hexPlayer    = 0x1d4ed8
+	// The player is a white token with a blue ring and a blue dot towards
+	// where they face.
 	playerRadius = 0.36
+	playerRing   = 2.5
 	faceOffset   = 0.5
 	faceRadius   = 0.3
 	cellCentre   = 0.5
@@ -320,22 +321,22 @@ func (s *State) drawStartCell(area *ebiten.Image, floorData *floor.Floor, grid i
 	s.drawDisc(area, grid, float64(s.hover.X), float64(s.hover.Y), [2]int{0, 1}, startAlpha)
 }
 
-// drawDisc draws the player at a position in cells: a disc with a dot towards
-// where they face.
+// drawDisc draws the player at a position in cells: the wireframes' player
+// token, a white disc with a blue ring, and a dot towards where they face.
 func (s *State) drawDisc(area *ebiten.Image, grid image.Rectangle, x, y float64, face [2]int, alpha uint8) {
 	size := float64(s.camera.cellSize())
 	origin := grid.Min.Add(s.camera.offset)
 	centreX := float64(origin.X) + (x+cellCentre)*size
 	centreY := float64(origin.Y) + (y+cellCentre)*size
 	radius := size * playerRadius
-	white := ui.HexAlpha(hexWhite, alpha)
-	vector.FillCircle(area, float32(centreX), float32(centreY), float32(radius), ui.HexAlpha(hexPlayer, alpha), true)
-	vector.StrokeCircle(area, float32(centreX), float32(centreY), float32(radius), ui.Outline, white, true)
+	blue := ui.HexAlpha(hexBlue, alpha)
+	vector.FillCircle(area, float32(centreX), float32(centreY), float32(radius), ui.HexAlpha(hexWhite, alpha), true)
+	vector.StrokeCircle(area, float32(centreX), float32(centreY), float32(radius), playerRing, blue, true)
 	faceX, faceY := float64(face[0]), float64(face[1])
 	if length := math.Hypot(faceX, faceY); length > 0 {
 		faceX, faceY = faceX/length*radius*faceOffset, faceY/length*radius*faceOffset
 	}
-	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), white, true)
+	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), blue, true)
 }
 
 // drawPreviewInspector describes the preview above the keys.
@@ -353,7 +354,7 @@ func (s *State) drawPreviewInspector(screen *ebiten.Image, docs frame.Docs, left
 	default:
 		return
 	}
-	s.theme.DrawText(screen, "PREVIEW", left, top, ui.ColorSelect())
+	s.theme.DrawLabel(screen, "PREVIEW", left, top, ui.ColorLive())
 	for index, text := range lines {
 		s.theme.DrawText(screen, text, left, top+(index+1)*ui.LineHeight, ui.ColorInk())
 	}

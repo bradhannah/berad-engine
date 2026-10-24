@@ -21,7 +21,10 @@ under consideration), **open** (undecided).
 - **Agreed:** apply SOLID deliberately so views, layouts and configuration can
   change without large rewrites; avoid reuse infrastructure for hypothetical
   needs.
-- **Agreed:** a plain white look, keeping attention on the content.
+- **Agreed:** a plain white look, keeping attention on the content, in the
+  style of the editor wireframes for every window: IBM Plex Sans and Mono,
+  dark outlines and rounded boxes, small uppercase labels, blue for selection
+  and orange for anything live.
 
 ## Maps and tiles
 
@@ -154,8 +157,13 @@ under consideration), **open** (undecided).
   is one comparison among many, or both.
 - **Tentative:** a **time-bound container** of nodes has a known exit; when its
   time is up, flow leaves through the exit to wherever the author wires it.
-  Explicit checks inside a branch also work. *Open:* nesting containers, and
-  whether an NPC entering a branch mid-window is placed or walks.
+  Explicit checks inside a branch also work. **Agreed:** the NPC leaves at once
+  when the time is up, even partway through a node. *Open:* nesting
+  containers.
+- **Agreed:** when the flow reaches the end of a branch with nothing connected
+  after it, it goes back to the start, so a time switch there picks the
+  branch for the time now; inside a time-bound container it repeats the
+  container's contents.
 - **Agreed:** reusable workflows with input parameters, assigned to many NPCs.
   **Tentative:** changes to a shared workflow apply to every NPC using it; a
   derived workflow inherits parent steps it has not overridden. **Candidate:**
@@ -186,7 +194,8 @@ under consideration), **open** (undecided).
 - **Agreed:** the editor plays a map: walking around, NPCs running their
   routines, interactions, and talking to NPCs (D15 covers preview behaviour).
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
-  new time immediately rather than simulating the gap.
+  new time immediately rather than simulating the gap: each restarts its
+  workflow from the start and walks to wherever its new branch sends it.
 - **Agreed (early compromise):** editing during preview restarts affected NPCs'
   behaviour rather than preserving their place in a changed workflow.
 - **Agreed:** a workflow view can show the step each NPC is on and its inputs,

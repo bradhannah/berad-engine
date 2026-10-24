@@ -181,7 +181,7 @@ func change(
 func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
-		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode}},
+		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits:     []model.EditKind{InsertFloor{}, RemoveFloor{}, MoveFloor{}},
 	}
 }

@@ -31,10 +31,58 @@ type Document interface {
 	Clone() Document
 }
 
-// DocumentType registers a document format and how to read it.
+// DocumentType registers a document format and how to read it. Layout, when
+// set, is the format of the layout file a Layered document keeps beside its
+// own.
 type DocumentType struct {
 	Format content.Format
 	Decode func(data json.RawMessage) (Document, error)
+	Layout *content.Format
+	// Prepare, when set, completes a new document's data before it is
+	// created, such as giving its parts permanent IDs (D4).
+	Prepare func(data json.RawMessage, newID IDSource) (json.RawMessage, error)
+}
+
+// Layered is implemented by documents that save their layout, such as where
+// a workflow's nodes sit, in a file of its own beside the document, so moving
+// things never shows up as a change to the logic (D17).
+type Layered interface {
+	EncodeLayout() (json.RawMessage, error)
+	DecodeLayout(data json.RawMessage) error
+}
+
+// LayoutOf returns a document's layout data, or nil for a document that has
+// none.
+func LayoutOf(document Document) (json.RawMessage, error) {
+	layered, ok := document.(Layered)
+	if !ok {
+		return nil, nil
+	}
+	data, err := layered.EncodeLayout()
+	if err != nil {
+		return nil, fmt.Errorf("encode layout: %w", err)
+	}
+
+	return data, nil
+}
+
+// DecodeWithLayout reads a document and, when given, its layout.
+//
+//nolint:ireturn // Documents are polymorphic.
+func (t DocumentType) DecodeWithLayout(data, layout json.RawMessage) (Document, error) {
+	document, err := t.Decode(data)
+	if err != nil {
+		return nil, err
+	}
+	layered, ok := document.(Layered)
+	if !ok || len(layout) == 0 {
+		return document, nil
+	}
+	if err := layered.DecodeLayout(layout); err != nil {
+		return nil, fmt.Errorf("decode layout: %w", err)
+	}
+
+	return document, nil
 }
 
 // Applied describes what an applied edit changed.
@@ -115,7 +163,7 @@ type Lookup func(name string) (EditKind, bool)
 // edit and then applying its inverse restores exactly the same data. The
 // document itself is not modified.
 func VerifyUndo(document Document, kind EditKind, args json.RawMessage, lookup Lookup) error {
-	before, err := document.Encode()
+	before, err := encodeAll(document)
 	if err != nil {
 		return fmt.Errorf("encode before: %w", err)
 	}
@@ -135,7 +183,7 @@ func VerifyUndo(document Document, kind EditKind, args json.RawMessage, lookup L
 	if _, err := inverse.Apply(working, applied.Inverse); err != nil {
 		return fmt.Errorf("apply inverse of %s: %w", kind.Name(), err)
 	}
-	after, err := working.Encode()
+	after, err := encodeAll(working)
 	if err != nil {
 		return fmt.Errorf("encode after: %w", err)
 	}
@@ -144,4 +192,19 @@ func VerifyUndo(document Document, kind EditKind, args json.RawMessage, lookup L
 	}
 
 	return nil
+}
+
+// encodeAll returns a document's data followed by its layout, if it has one,
+// so the undo contract covers both.
+func encodeAll(document Document) ([]byte, error) {
+	data, err := document.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	layout, err := LayoutOf(document)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(append(data, '\n'), layout...), nil
 }

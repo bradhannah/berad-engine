@@ -13,9 +13,19 @@ type Button struct {
 	Label    string
 	Rect     image.Rectangle
 	Disabled bool
-	// Primary buttons are drawn filled, for the default choice in a dialog.
+	// Primary buttons are drawn filled in blue, for the default choice in a
+	// dialog. On buttons are drawn filled in ink, for the chosen one of a
+	// set.
 	Primary bool
+	On      bool
 	hover   bool
+}
+
+// NewButton returns a plain button, placed later by setting Rect.
+func NewButton(id, label string) *Button {
+	return &Button{
+		ID: id, Label: label, Rect: image.Rect(0, 0, 0, 0), Disabled: false, Primary: false, On: false, hover: false,
+	}
 }
 
 // Update reports whether the button was clicked this frame.
@@ -29,19 +39,21 @@ func (b *Button) Update(input *Input) bool {
 	return true
 }
 
-// Draw renders the button.
+// Draw renders the button: a rounded box with an ink outline.
 func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
-	fill, ink, edge := ColorBackground(), ColorInk(), ColorRule()
+	fill, ink, edge := ColorBackground(), ColorInk(), ColorInk()
 	switch {
 	case b.Disabled:
-		ink = ColorSubdued()
+		ink, edge = ColorSubdued(), ColorRule()
 	case b.Primary:
 		fill, ink, edge = ColorSelect(), ColorBackground(), ColorSelect()
+	case b.On:
+		fill, ink = ColorInk(), ColorBackground()
 	case b.hover:
 		fill = ColorHover()
 	}
-	FillRect(screen, b.Rect, fill)
-	StrokeRect(screen, b.Rect, Hairline, edge)
+	FillRound(screen, b.Rect, Radius, fill)
+	StrokeRound(screen, b.Rect, Radius, Border, edge)
 	width := theme.TextWidth(b.Label)
 	theme.DrawText(screen, b.Label, b.Rect.Min.X+(b.Rect.Dx()-width)/2, b.Rect.Min.Y+(b.Rect.Dy()-TextSize)/2-1, ink)
 }
@@ -70,12 +82,25 @@ func (t *Toggle) Draw(screen *ebiten.Image, theme *Theme) {
 	const box = 14
 	boxTop := t.Rect.Min.Y + (t.Rect.Dy()-box)/Half
 	square := image.Rect(t.Rect.Min.X, boxTop, t.Rect.Min.X+box, boxTop+box)
-	FillRect(screen, square, ColorBackground())
-	StrokeRect(screen, square, Hairline, ColorMuted())
+	FillRound(screen, square, toggleInset, ColorBackground())
+	StrokeRound(screen, square, toggleInset, Border, ColorInk())
 	if t.On {
-		FillRect(screen, square.Inset(toggleInset), ColorSelect())
+		FillRound(screen, square.Inset(toggleInset), Half, ColorInk())
 	}
 	theme.DrawText(screen, t.Label, square.Max.X+labelGap, t.Rect.Min.Y+(t.Rect.Dy()-TextSize)/Half-1, ColorInk())
+}
+
+// A selected or hovered row is a rounded box just inside the row.
+const (
+	rowInset     = 1
+	rowRadius    = 5
+	swatchRadius = 3
+)
+
+// highlight is the box drawn behind a selected or hovered row, clear of the
+// list's edges so its outline is never clipped.
+func highlight(row image.Rectangle) image.Rectangle {
+	return image.Rect(row.Min.X+Gap, row.Min.Y+rowInset, row.Max.X-Gap, row.Max.Y-rowInset)
 }
 
 // Row is one row of a List.
@@ -194,22 +219,24 @@ func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
 
 			continue
 		case row.ID == l.Selected:
-			FillRect(area, rect, ColorSelectWash())
+			FillRound(area, highlight(rect), rowRadius, ColorSelectWash())
+			StrokeRound(area, highlight(rect), rowRadius, Outline, ColorSelect())
 		case row.ID == l.hover:
-			FillRect(area, rect, ColorHover())
+			FillRound(area, highlight(rect), rowRadius, ColorHover())
 		}
 		if row.Swatch != nil {
 			swatch := image.Rect(left, rect.Min.Y+swatchTop, left+swatchSize, rect.Min.Y+swatchTop+swatchSize)
-			FillRect(area, swatch, *row.Swatch)
-			StrokeRect(area, swatch, Hairline, ColorRule())
+			FillRound(area, swatch, swatchRadius, *row.Swatch)
+			StrokeRound(area, swatch, swatchRadius, Border, ColorInk())
 			left += 20
 		}
-		ink := ColorInk()
+		labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
 		if row.ID == l.Selected {
-			ink = ColorSelect()
+			theme.DrawStrong(area, row.Label, left, labelTop, ColorInk())
+		} else {
+			theme.DrawText(area, row.Label, left, labelTop, ColorInk())
 		}
-		theme.DrawText(area, row.Label, left, rect.Min.Y+(RowHeight-TextSize)/2-1, ink)
-		after := left + theme.TextWidth(row.Label) + labelGap
+		after := left + max(theme.TextWidth(row.Label), theme.StrongWidth(row.Label)) + labelGap
 		if row.Marked {
 			theme.DrawText(area, "●", after, rect.Min.Y+(RowHeight-TextSize)/2-1, ColorSelect())
 			after += 14

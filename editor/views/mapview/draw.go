@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
@@ -33,14 +34,18 @@ const (
 	smallPickup  = 3
 	mediumPickup = 2
 	otherObject  = 1
-	markerInset  = 2
-	markerCore   = 3
+	// An anchor is a ring a third of a cell across, at least a few pixels.
+	anchorRadius    = 0.3
+	minAnchorRadius = 3
+	anchorRing      = 2.5
 	// labelBacking is the opacity behind an anchor name, so it reads over
 	// whatever lies under it.
 	labelBacking = 0xd0
 	// hexOrigin marks the zone origin and its axes; axisAlpha keeps the axes
 	// quieter than the origin cell's outline.
 	hexOrigin = 0xc2410c
+	// hexBlue is the selection blue, for marks drawn with partial alpha.
+	hexBlue   = 0x1f5fbf
 	axisAlpha = 0x99
 	// A stairs chevron spans a third of the cell's width and a sixth of its
 	// height either side of the centre.
@@ -56,6 +61,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	grid := s.Grid()
 	area, ok := screen.SubImage(grid).(*ebiten.Image)
 	if ok {
+		area.Fill(ui.ColorCanvas())
 		s.drawFloors(area, docs, grid)
 	}
 	s.drawPanel(screen, docs)
@@ -246,30 +252,34 @@ func (s *State) drawStairs(area *ebiten.Image, rect image.Rectangle, fill color.
 	ui.Line(area, image.Pt(centre.X, tip), image.Pt(centre.X+width, foot), ui.Outline, ink)
 }
 
-// drawAnchors marks each anchor; while picking, every anchor is highlighted.
+// drawAnchors marks each anchor with a blue ring and its name; the selected
+// anchor's ring is filled, and while picking every anchor's cell is
+// outlined.
 func (s *State) drawAnchors(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle) {
 	size := s.camera.cellSize()
+	blue := ui.ColorSelect()
 	for _, anchor := range floorData.Anchors() {
 		rect := s.camera.cellRect(Cell{X: anchor.Col, Y: anchor.Row}, grid)
 		if !rect.Overlaps(grid) {
 			continue
 		}
-		marker := rect.Inset(max(size*markerInset/eighths, 1))
-		ink := ui.ColorInk()
-		if anchor.ID == s.anchor || s.pick != nil {
-			ink = ui.ColorSelect()
+		centreX, centreY := float32(rect.Min.X)+float32(size)/ui.Half, float32(rect.Min.Y)+float32(size)/ui.Half
+		radius := max(float32(size)*anchorRadius, minAnchorRadius)
+		fill := ui.ColorBackground()
+		if anchor.ID == s.anchor {
+			fill = blue
 		}
-		ui.StrokeRect(area, marker, ui.Outline, ink)
-		ui.FillRect(area, marker.Inset(max(marker.Dx()*markerCore/eighths, 1)), ink)
+		vector.FillCircle(area, centreX, centreY, radius, fill, true)
+		vector.StrokeCircle(area, centreX, centreY, radius, anchorRing, blue, true)
 		if s.pick != nil {
-			ui.StrokeRect(area, rect, ui.Outline, ui.ColorSelect())
+			ui.StrokeRect(area, rect, ui.Outline, blue)
 		}
 		if size >= minLabel {
-			labelX, labelY := rect.Max.X+ui.Half, rect.Min.Y+(size-ui.TextSize)/ui.Half-1
-			width := s.theme.TextWidth(anchor.Name)
-			backing := image.Rect(labelX-1, labelY, labelX+width+ui.Half, labelY+ui.TextSize+ui.Gap)
+			labelX, labelY := rect.Max.X+ui.Half, rect.Min.Y+(size-ui.LabelSize)/ui.Half-ui.Half
+			width := s.theme.SmallWidth(anchor.Name)
+			backing := image.Rect(labelX-1, labelY, labelX+width+ui.Half, labelY+ui.LabelSize+ui.Gap+ui.Half)
 			ui.FillRect(area, backing, ui.HexAlpha(hexWhite, labelBacking))
-			s.theme.DrawText(area, anchor.Name, labelX, labelY, ink)
+			s.theme.DrawSmall(area, anchor.Name, labelX, labelY, blue)
 		}
 	}
 }
@@ -288,8 +298,8 @@ func (s *State) drawSelection(area *ebiten.Image, grid image.Rectangle) {
 // drawPanel draws the tools, tiles and floors on the left.
 func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	height := s.size.Y - frame.StatusHeight
-	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorPanel())
-	ui.FillRect(screen, image.Rect(PanelWidth-ui.Hairline, 0, PanelWidth, height), ui.ColorRule())
+	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorBackground())
+	ui.Divider(screen, image.Pt(PanelWidth-ui.Outline, 0), image.Pt(PanelWidth-ui.Outline, height))
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}
@@ -331,7 +341,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			zoneName, floorName = index.Name(s.zone, ""), index.Name(s.floor, "")
 		}
 	})
-	line("INSPECTOR", ui.ColorMuted())
+	s.theme.Heading(screen, "INSPECTOR", textX, textY)
+	textY += ui.LineHeight
 	line("Zone: "+zoneName, ui.ColorInk())
 	loaded := docs.View(s.floor, func(document client.Document) {
 		floorDoc, ok := document.Model.(*tilefloor.Document)
@@ -345,7 +356,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		textY += ui.LineHeight / ui.Half
 		switch {
 		case s.pick != nil:
-			line("PICKING", ui.ColorSelect())
+			s.theme.DrawLabel(screen, "PICKING", textX, textY, ui.ColorSelect())
+			textY += ui.LineHeight
 			line("Click an anchor for", ui.ColorInk())
 			line(labelOr(s.pick.Label, "the other window")+".", ui.ColorInk())
 			line("Escape cancels.", ui.ColorMuted())
@@ -376,7 +388,7 @@ func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor
 	if !ok {
 		return
 	}
-	s.theme.DrawText(screen, "ANCHOR NAME", textX, inspectorFieldTop-ui.LineHeight, ui.ColorMuted())
+	s.theme.Heading(screen, "ANCHOR NAME", textX, inspectorFieldTop-ui.LineHeight)
 	s.nameField.Draw(screen)
 	hint := "Enter saves, Escape reverts"
 	if s.nameField.Field.Dirty() {
@@ -467,10 +479,11 @@ func helpLines() []string {
 
 func (s *State) drawHelp(screen *ebiten.Image, left, top int) {
 	for index, text := range helpLines() {
-		ink := ui.ColorInk()
 		if index == 0 {
-			ink = ui.ColorMuted()
+			s.theme.Heading(screen, text, left, top)
+
+			continue
 		}
-		s.theme.DrawText(screen, text, left, top+index*ui.LineHeight, ink)
+		s.theme.DrawText(screen, text, left, top+index*ui.LineHeight, ui.ColorInk())
 	}
 }

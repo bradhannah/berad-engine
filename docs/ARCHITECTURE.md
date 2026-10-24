@@ -194,7 +194,9 @@ deleted or renamed documents move to `.berad/backups/removed` rather than being
 destroyed. Two files holding one document, which a crash during a rename can
 leave, resolve to the newer one on load. For now, folders follow the kind of
 document (`tilefloors`, `zones`, `texts`) rather than the project browser.
-*Open:* chunking very large floors.
+A document may keep its layout in a second file beside its own,
+`<name>--<id>.layout.json`, whose envelope carries no revision, so the file
+changes only when the layout does (D17). *Open:* chunking very large floors.
 
 ## D12 — Testing
 
@@ -296,5 +298,9 @@ From the [first-pass review](FIRST_PASS_REVIEW.md):
 - **Shared plug-in tests:** every edit kind passes the apply-then-undo test;
   every codec round-trips every message.
 - **Workflow layout apart from logic:** node positions are saved separately from
-  workflow logic, keeping diffs readable.
+  workflow logic, keeping diffs readable. *As built:* a workflow's layout lives
+  in its own file (D11); the orchestrator reads and writes the two together,
+  moves both on renames and deletions, and sends the layout with snapshots
+  (protocol version 4) and with a deleted document's contents, so undo brings
+  it back.
 - **Orchestrator from small services** behind small interfaces, not one object.

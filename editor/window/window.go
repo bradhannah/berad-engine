@@ -22,6 +22,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/editor/views/textview"
+	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -47,15 +48,19 @@ type Args struct {
 // from the main goroutine, as Ebitengine requires.
 func Run(args Args, registry *plugin.Registry) error {
 	switch args.View {
-	case mapview.ViewName, browser.ViewName, textview.ViewName:
+	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName:
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
+	// Views of one map, or of one workflow, share an undo list (D3).
 	group := ""
-	if args.View == mapview.ViewName {
+	switch args.View {
+	case mapview.ViewName:
 		group = "map:" + args.Target.String()
+	case workflowview.ViewName:
+		group = "workflow:" + args.Target.String()
 	}
 	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
 		Protocol: protocol.Version, Build: args.Build, Window: args.Window, View: args.View,
@@ -80,7 +85,11 @@ func Run(args Args, registry *plugin.Registry) error {
 	ebiten.SetWindowTitle(game.view.Title(conn))
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	runErr := ebiten.RunGame(game)
+	// A window driven by an input script needs no keyboard, so it opens
+	// without taking focus from whatever the person at the computer is using.
+	var options ebiten.RunGameOptions
+	options.InitUnfocused = game.script != nil
+	runErr := ebiten.RunGameWithOptions(game, &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil
 	}
@@ -95,6 +104,8 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return browser.New(window, theme)
 	case textview.ViewName:
 		return textview.New(window, args.Target, theme)
+	case workflowview.ViewName:
+		return workflowview.New(window, args.Target, theme)
 	default:
 		return mapview.New(window, args.Target, theme)
 	}
