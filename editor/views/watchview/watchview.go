@@ -3,7 +3,9 @@
 // workflow drawn read-only with the node it is on outlined in orange and the
 // line it just took flashing, what it is doing now, where it stands, and the
 // clock. Pause and Step to next change control the preview's NPCs, so each
-// change from one node to the next can be checked.
+// change from one node to the next can be checked: a step goes straight to
+// the watched NPC's next node, and the way it went stays lit until the NPCs
+// resume or step again.
 package watchview
 
 import (
@@ -31,10 +33,21 @@ const ViewName = "watch"
 // Layout, in screen pixels.
 const (
 	headerHeight = 44
-	footerHeight = 92
+	footerHeight = 92 + ui.LineHeight
 	buttonWidth  = 170
 	buttonGap    = 8
 	shortID      = 6
+)
+
+// Footer labels and the step button's labels.
+const (
+	labelNow      = "NOW"
+	labelStep     = "STEP"
+	labelLast     = "LAST"
+	labelAt       = "AT"
+	textStep      = "Step to next change"
+	textStepping  = "Stepping…"
+	pathSeparator = " → "
 )
 
 // Messages shown in place of a workflow.
@@ -65,7 +78,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, zone: zone, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, run: ids.ULID{},
 		tick: 0, state: nil, flow: nil, shown: ids.ULID{},
-		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", "Step to next change"),
+		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep),
 	}
 }
 
@@ -144,11 +157,15 @@ func (s *State) layout() {
 	s.pause.Rect = image.Rect(ui.Inset, bottom-ui.ButtonH, ui.Inset+buttonWidth, bottom)
 	s.step.Rect = image.Rect(ui.Inset+buttonWidth+buttonGap, bottom-ui.ButtonH, ui.Inset+ui.Half*buttonWidth+buttonGap,
 		bottom)
-	s.pause.Label = "Pause NPCs"
+	s.pause.Label, s.step.Label = "Pause NPCs", textStep
 	if s.state != nil && s.state.NPCsPaused {
 		s.pause.Label = "Resume NPCs"
 	}
-	s.pause.Disabled, s.step.Disabled = s.state == nil, s.state == nil || s.state.Watched.IsZero()
+	stepping := s.state != nil && s.state.Stepping
+	if stepping {
+		s.step.Label = textStepping
+	}
+	s.pause.Disabled, s.step.Disabled = s.state == nil, s.state == nil || s.state.Watched.IsZero() || stepping
 }
 
 // Update follows the watched NPC's workflow and sends the buttons' controls.
@@ -166,6 +183,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.flow != nil {
 		s.flow.SetArea(s.canvas())
 		s.flow.SetLive(entity.Node, entity.Last.From, entity.Last.Output, entity.Changes)
+		s.flow.SetStep(s.state.Step)
 		s.flow.Update(input, ctx)
 	}
 	frame.CommonKeys(input, ctx)
@@ -229,6 +247,9 @@ func (s *State) drawHeader(screen *ebiten.Image, docs frame.Docs, entity protoco
 		if s.state.ClockStopped {
 			clockText += " · clock stopped"
 		}
+		if s.state.Stepping {
+			clockText += " · stepping"
+		}
 		if s.state.NPCsPaused {
 			clockText += " · paused"
 		}
@@ -238,6 +259,9 @@ func (s *State) drawHeader(screen *ebiten.Image, docs frame.Docs, entity protoco
 	ui.Divider(screen, image.Pt(0, headerHeight-ui.Outline), image.Pt(width, headerHeight-ui.Outline))
 }
 
+// drawFooter draws what the watched NPC is doing now, the way its latest
+// step went (or its latest change while it runs), where it stands, and the
+// buttons.
 func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protocol.PreviewEntity, watching bool) {
 	top := s.canvas().Max.Y
 	ui.Divider(screen, image.Pt(0, top), image.Pt(s.size.X, top))
@@ -246,15 +270,49 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 		if entity.Status != "" {
 			now = entity.Status
 		}
-		s.theme.DrawLabel(screen, "NOW", ui.Inset, top+ui.Gap*ui.Half, ui.ColorMuted())
-		s.theme.DrawText(screen, now, ui.Inset+s.theme.LabelWidth("NOW")+ui.Inset, top+ui.Gap, ui.ColorInk())
 		at := fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
 			s.name(docs, entity.Floor, "a floor"))
-		s.theme.DrawLabel(screen, "AT", ui.Inset, top+ui.Gap*ui.Half+ui.LineHeight, ui.ColorMuted())
-		s.theme.DrawText(screen, at, ui.Inset+s.theme.LabelWidth("NOW")+ui.Inset, top+ui.Gap+ui.LineHeight, ui.ColorInk())
+		label, path := s.way(docs, entity)
+		column := ui.Inset + max(s.theme.LabelWidth(labelStep), s.theme.LabelWidth(labelLast)) + ui.Inset
+		rows := []struct{ label, text string }{{labelNow, now}, {label, s.fit(path, s.size.X-column-ui.Inset)}, {labelAt, at}}
+		for index, row := range rows {
+			if row.text == "" {
+				continue
+			}
+			y := top + index*ui.LineHeight
+			s.theme.DrawLabel(screen, row.label, ui.Inset, y+ui.Gap*ui.Half, ui.ColorMuted())
+			s.theme.DrawText(screen, row.text, column, y+ui.Gap, ui.ColorInk())
+		}
 	}
 	s.pause.Draw(screen, s.theme)
 	s.step.Draw(screen, s.theme)
+}
+
+// way is the way the watched NPC went: its latest step's changes, under
+// STEP, or while it runs its latest change, under LAST.
+func (s *State) way(docs frame.Docs, entity protocol.PreviewEntity) (string, []string) {
+	if s.flow == nil {
+		return labelLast, nil
+	}
+	if len(s.state.Step) > 0 {
+		return labelStep, s.flow.Path(s.state.Step, docs)
+	}
+	if entity.Last.From.IsZero() {
+		return labelLast, nil
+	}
+
+	return labelLast, s.flow.Path([]protocol.PreviewChange{entity.Last}, docs)
+}
+
+// fit joins a path's parts, leaving out the earliest when they are too wide.
+func (s *State) fit(parts []string, width int) string {
+	text := strings.Join(parts, pathSeparator)
+	for len(parts) > 1 && s.theme.TextWidth(text) > width {
+		parts = parts[1:]
+		text = "…" + pathSeparator + strings.Join(parts, pathSeparator)
+	}
+
+	return text
 }
 
 // name returns a document's name from the project index.
@@ -290,7 +348,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 // hasState answers input scripts: "previewing" while a preview runs,
 // "watching:<name>" while the named NPC is watched, "live:<kind>" while it is
-// on a node of that kind, and "paused" while its NPCs are paused.
+// on a node of that kind, "paused" while its NPCs are paused, and "stepped"
+// while they are paused after a step that changed node.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	entity, watching := s.watched()
 	switch {
@@ -298,6 +357,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.state != nil
 	case state == "paused":
 		return s.state != nil && s.state.NPCsPaused
+	case state == "stepped":
+		return s.state != nil && s.state.NPCsPaused && len(s.state.Step) > 0
 	case strings.HasPrefix(state, "watching:"):
 		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):

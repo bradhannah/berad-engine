@@ -27,14 +27,12 @@ const (
 func (n *NPC) actGoTo(world World, node flow.Node) (string, bool) {
 	if !n.work.started {
 		if status := n.plan(world.Zone, node); status != "" {
-			n.Status = status
+			n.work.skipped = status
 
 			return flow.OutputNext, true
 		}
 	}
 	if len(n.work.route) == 0 {
-		n.Status = ""
-
 		return flow.OutputNext, true
 	}
 	next := n.work.route[0]
@@ -44,7 +42,7 @@ func (n *NPC) actGoTo(world World, node flow.Node) (string, bool) {
 		return "", false
 	}
 	if status := n.plan(world.Zone, node); status != "" {
-		n.Status = status
+		n.work.skipped = status
 
 		return flow.OutputNext, true
 	}

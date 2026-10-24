@@ -45,6 +45,9 @@ const (
 	jumpWidth = 52
 	// clockFieldBytes bounds what can be typed into a time field.
 	clockFieldBytes = 8
+	// stepBudget is how many ticks a step runs in one frame: a minute of
+	// real time, so most steps end in the frame they start.
+	stepBudget = 60 * clock.TicksPerSecond
 )
 
 // npcRun is one NPC in this window's preview: its runner, and a copy of its
@@ -213,24 +216,50 @@ func (s *State) refreshWorkflow(ctx *frame.Context, run *npcRun) {
 	})
 }
 
-// stepNPCs runs every NPC for one tick, unless they are paused, and pauses
-// them again once the watched NPC has changed node during a step.
+// stepNPCs runs every NPC for one tick, unless they are paused. During a
+// step it runs them as fast as it can, up to stepBudget ticks a frame, until
+// the watched NPC changes node, then pauses them.
 func (s *State) stepNPCs(ctx *frame.Context) {
 	s.syncRunners(ctx.Docs)
 	if s.preview.paused {
 		return
 	}
-	passed := s.preview.clock.Advance()
-	zone := docsZone{floors: s.floors, docs: ctx.Docs}
-	for _, run := range s.runners() {
+	runners := s.runners()
+	for _, run := range runners {
 		s.refreshWorkflow(ctx, run)
-		world := npcrun.World{Zone: zone, Workflow: run.workflow, Clock: s.preview.clock, Passed: passed}
-		run.npc.Step(world, s.preview.run.Tick())
 	}
-	if watched, ok := s.preview.npcs[s.preview.watched]; ok && s.preview.stepping &&
-		watched.npc.Changes != s.preview.stepFrom {
-		s.preview.paused, s.preview.stepping = true, false
+	zone := docsZone{floors: s.floors, docs: ctx.Docs}
+	ticks := 1
+	if s.preview.stepping {
+		ticks = stepBudget
 	}
+	for range ticks {
+		passed := s.preview.clock.Advance()
+		for _, run := range runners {
+			world := npcrun.World{Zone: zone, Workflow: run.workflow, Clock: s.preview.clock, Passed: passed}
+			run.npc.Step(world, s.preview.run.Tick())
+		}
+		if s.preview.stepping && s.stepped() {
+			return
+		}
+	}
+}
+
+// stepped keeps the watched NPC's changes during a step, and pauses the NPCs
+// once it has changed node, or has gone. It reports whether the step is over.
+func (s *State) stepped() bool {
+	watched, ok := s.preview.npcs[s.preview.watched]
+	if ok && len(watched.npc.Taken) == 0 {
+		return false
+	}
+	if ok {
+		for _, change := range watched.npc.Taken {
+			s.preview.step = append(s.preview.step, previewChange(change))
+		}
+	}
+	s.preview.paused, s.preview.stepping = true, false
+
+	return true
 }
 
 // control carries out a preview control from another window, or this one.
@@ -240,17 +269,16 @@ func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 	}
 	switch control.Action {
 	case protocol.ControlWatch:
-		s.preview.watched = control.Placement
+		s.preview.watched, s.preview.step = control.Placement, nil
 	case protocol.ControlPause:
 		s.preview.paused, s.preview.stepping = true, false
 		ctx.Frame.Status("NPCs paused")
 	case protocol.ControlResume:
-		s.preview.paused, s.preview.stepping = false, false
+		s.preview.paused, s.preview.stepping, s.preview.step = false, false, nil
 		ctx.Frame.Status("NPCs running")
 	case protocol.ControlStep:
-		s.preview.paused, s.preview.stepping = false, true
-		if watched, ok := s.preview.npcs[s.preview.watched]; ok {
-			s.preview.stepFrom = watched.npc.Changes
+		if _, ok := s.preview.npcs[s.preview.watched]; ok {
+			s.preview.paused, s.preview.stepping, s.preview.step = false, true, nil
 		}
 	}
 }
@@ -283,17 +311,22 @@ func (s *State) liveNPCOf(placement ids.ULID) ids.ULID {
 	return ids.ULID{}
 }
 
+// previewChange is a change of node as the preview's state carries it.
+func previewChange(change npcrun.Change) protocol.PreviewChange {
+	return protocol.PreviewChange{
+		From: change.From, Output: change.Output, To: change.To, Tick: change.Tick, Status: change.Status,
+	}
+}
+
 // npcEntity is an NPC as the preview's state carries it.
 func npcEntity(run *npcRun) protocol.PreviewEntity {
 	x, y := run.npc.At()
-	last := run.npc.Last
 
 	return protocol.PreviewEntity{
 		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: x, Y: y,
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: run.source,
 		Node: run.npc.Node, Activity: run.npc.Activity(run.workflow), Status: run.npc.Status,
-		Last:    protocol.PreviewChange{From: last.From, Output: last.Output, To: last.To, Tick: last.Tick},
-		Changes: run.npc.Changes,
+		Last: previewChange(run.npc.Last), Changes: run.npc.Changes,
 	}
 }
 
@@ -310,6 +343,7 @@ func (s *State) previewState() protocol.PreviewState {
 	return protocol.PreviewState{
 		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
 		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
+		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step),
 	}
 }
 

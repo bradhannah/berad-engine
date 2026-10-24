@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
+	"github.com/bradhannah/berad-engine/engine/npcrun"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -100,6 +101,12 @@ func (f *fixture) click(name string) {
 
 // send gives the window a preview state watching the clerk on its Wait.
 func (f *fixture) send(tick uint64, paused bool) {
+	f.sendStep(tick, paused, false, nil)
+}
+
+// sendStep gives the window a preview state watching the clerk on its Wait,
+// stepping or after a step.
+func (f *fixture) sendStep(tick uint64, paused, stepping bool, step []protocol.PreviewChange) {
 	clerk := protocol.PreviewEntity{
 		ID: placementID.String(), Floor: floorID, X: 4, Y: 2, Face: [2]int{0, 1}, NPC: clerkID, Workflow: routineID,
 		Node: waitID, Activity: "Wait 12 min of 30 min (game time)", Status: "",
@@ -107,7 +114,7 @@ func (f *fixture) send(tick uint64, paused bool) {
 	}
 	state := protocol.PreviewState{
 		Run: runID, Tick: tick, Entities: []protocol.PreviewEntity{clerk}, Clock: 9 * 3600, Rate: 60,
-		ClockStopped: false, NPCsPaused: paused, Watched: placementID,
+		ClockStopped: false, NPCsPaused: paused, Watched: placementID, Stepping: stepping, Step: step,
 	}
 	f.state.Changed(client.Update{PreviewState: &state}, f.ctx)
 	f.frame(ui.NewInput(image.Pt(0, 0)))
@@ -154,5 +161,39 @@ func TestWatchFollowsTheWatchedNPC(t *testing.T) {
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if f.has("previewing") || f.has("watching:Ada Clerk") {
 		t.Fatal("the stop clears the window")
+	}
+}
+
+// TestStepShowsTheWayItWent shows a step running, with Step disabled, then
+// the way the step went under STEP, with why a node carried on, until the
+// NPCs run again and LAST shows the latest change.
+func TestStepShowsTheWayItWent(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: ids.ULID{}}}, f.ctx)
+	f.sendStep(5, false, true, nil)
+	f.click("ui:step")
+	if len(f.requests.PreviewControls) != 0 || f.has("stepped") {
+		t.Fatalf("Step is disabled while a step runs: %+v", f.requests.PreviewControls)
+	}
+	f.state.Draw(ebiten.NewImage(1000, 700), f.docs)
+	step := []protocol.PreviewChange{
+		{From: waitID, Output: flow.OutputNext, To: startID, Tick: 9, Status: npcrun.StatusBlocked},
+		{From: startID, Output: flow.OutputNext, To: waitID, Tick: 9, Status: ""},
+	}
+	f.sendStep(9, true, false, step)
+	if !f.has("stepped") {
+		t.Fatal("paused after a step")
+	}
+	if label, way := f.state.Way(f.docs, 1000); label != "STEP" || way != "Wait · 30 min: blocked → Start → Wait · 30 min" {
+		t.Fatalf("the way the step went: %s %q", label, way)
+	}
+	if _, way := f.state.Way(f.docs, 100); way != "… → Wait · 30 min" {
+		t.Fatalf("a narrow window leaves out the earliest nodes: %q", way)
+	}
+	f.state.Draw(ebiten.NewImage(1000, 700), f.docs)
+	f.send(12, false)
+	if label, way := f.state.Way(f.docs, 1000); f.has("stepped") || label != "LAST" || way != "Start → Wait · 30 min" {
+		t.Fatalf("running, the latest change: %s %q", label, way)
 	}
 }
