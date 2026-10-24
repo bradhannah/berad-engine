@@ -86,6 +86,8 @@ func Run(args Args, registry *plugin.Registry) error {
 	ebiten.SetWindowTitle(game.view.Title(conn))
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	// The close button asks the view first, so unsaved changes are not lost.
+	ebiten.SetWindowClosingHandled(true)
 	// A window driven by an input script needs no keyboard, so it opens
 	// without taking focus from whatever the person at the computer is using.
 	// So does every other window opened while scripts drive the editor, as

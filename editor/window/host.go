@@ -90,7 +90,14 @@ func (h *host) Update() error {
 	} else {
 		input = h.reader.read(h.view.Focused())
 	}
+	if ebiten.IsWindowBeingClosed() {
+		h.frame.Closing = true
+	}
+	if input.Consume(ui.KeyS, ui.Cmd()) {
+		h.save()
+	}
 	h.view.Update(&input, &h.ctx)
+	h.close()
 	h.flush()
 	if h.script != nil {
 		if shot := h.script.takeScreenshot(); shot != "" {
@@ -109,6 +116,32 @@ func (h *host) Update() error {
 	}
 
 	return nil
+}
+
+// save saves a Saver's typed changes for Cmd+S, or says there is nothing
+// waiting to be saved.
+func (h *host) save() {
+	if saver, ok := h.view.(frame.Saver); ok && saver.Unsaved(h.conn) > 0 {
+		saver.Save(&h.ctx)
+
+		return
+	}
+	h.frame.Status("Nothing to save: every other change saves as you make it")
+}
+
+// close carries out a request to close: a Saver asks about unsaved changes
+// first, and any other view closes.
+func (h *host) close() {
+	if !h.frame.Closing {
+		return
+	}
+	h.frame.Closing = false
+	if saver, ok := h.view.(frame.Saver); ok {
+		saver.Leave(&h.ctx, func() { h.frame.Quit = true })
+
+		return
+	}
+	h.frame.Quit = true
 }
 
 // drainUpdates applies what the orchestrator sent and reports whether the

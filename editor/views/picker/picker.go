@@ -170,9 +170,9 @@ func (p *Picker) chooseZone(ctx *frame.Context) {
 	}
 	list := &ui.List{ID: "zones", Rect: ui.Zero(), Rows: nil, Selected: zones[0].ID.String()}
 	for _, entry := range zones {
-		list.Rows = append(list.Rows, ui.Row{
-			ID: entry.ID.String(), Label: entry.Name, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false,
-		})
+		row := ui.NewRow(entry.ID.String(), entry.Name)
+		row.Icon = ui.IconZone
+		list.Rows = append(list.Rows, row)
 	}
 	p.dialog = ui.NewDialog("No map is open. Open which zone to pick from?", nil,
 		ui.DialogButton("open", "Open map"), ui.DialogButton(ui.DialogCancel, "Cancel"))
@@ -188,10 +188,9 @@ func (p *Picker) chooseMap(ctx *frame.Context, maps []protocol.PickMap) {
 		if !option.Shows {
 			detail += ", no anchors"
 		}
-		list.Rows = append(list.Rows, ui.Row{
-			ID: option.Window.String(), Label: strconv.Itoa(number+1) + ". " + index.Name(option.Zone, "zone"),
-			Detail: detail, Indent: 0, Swatch: nil, Heading: false, Marked: option.Shows,
-		})
+		row := ui.NewRow(option.Window.String(), strconv.Itoa(number+1)+". "+index.Name(option.Zone, "zone"))
+		row.Detail, row.Marked = detail, option.Shows
+		list.Rows = append(list.Rows, row)
 		if list.Selected == "" && option.Shows {
 			list.Selected = option.Window.String()
 		}

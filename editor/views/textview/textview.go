@@ -1,8 +1,8 @@
 // Package textview is the Text window: a placeholder document with a body of
 // text and a location, used to judge text editing and to prove pick on map.
-// The body keeps a draft; Enter saves it, Cmd+Enter or Ctrl+J adds a new line
-// and Escape reverts. The location is chosen by picking an anchor in a Map
-// window (D13).
+// The body keeps a draft; Save or Cmd+S saves it, Enter starts a new line and
+// Escape reverts. The location is chosen by picking an anchor in a Map window
+// (D13).
 package textview
 
 import (
@@ -48,6 +48,8 @@ type State struct {
 	size     image.Point
 	body     *ui.TextField
 	focus    ui.Focus
+	save     *ui.SaveBar
+	guard    frame.Guard
 	pickBtn  *ui.Button
 	clearBtn *ui.Button
 	subs     map[ids.ULID]bool
@@ -60,12 +62,14 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		window: window, document: document, theme: theme, size: image.Pt(0, 0),
 		body:     ui.NewTextField("body", textedit.NewField("", true, textdoc.MaxBody), true, theme),
 		focus:    ui.Focus{},
+		save:     ui.NewSaveBar(),
+		guard:    frame.Guard{},
 		pickBtn:  ui.NewButton("pick", "Pick on map"),
 		clearBtn: ui.NewButton("clear", "Clear"),
 		subs:     map[ids.ULID]bool{},
 		picker:   picker.New(window),
 	}
-	view.body.Placeholder = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."
+	view.body.Placeholder = "Write here. Save or Cmd+S saves; Escape reverts."
 	view.focus.Register(view.body)
 
 	return view
@@ -154,8 +158,12 @@ func (s *State) command(ctx *frame.Context, edit string, args any, success strin
 
 func (s *State) layout() {
 	content := frame.Content(s.size)
-	bottom := content.Max.Y - locationSpace - ui.Inset
+	width := content.Max.X - ui.Half*ui.Inset
+	barHeight := ui.SaveBarHeight(width)
+	bottom := content.Max.Y - locationSpace - ui.Inset - barHeight - ui.Gap
 	s.body.Rect = image.Rect(ui.Inset, bodyTop, content.Max.X-ui.Inset, max(bottom, bodyTop+ui.ButtonH))
+	barTop := s.body.Rect.Max.Y + ui.Gap
+	s.save.Rect = image.Rect(ui.Inset, barTop, content.Max.X-ui.Inset, barTop+barHeight)
 	buttons := content.Max.Y - ui.Inset - ui.ButtonH
 	s.pickBtn.Rect = image.Rect(ui.Inset, buttons, ui.Inset+pickWidth, buttons+ui.ButtonH)
 	clearLeft := s.pickBtn.Rect.Max.X + buttonGap
@@ -174,18 +182,29 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.body.Field.SetSaved(document.Body)
 		s.clearBtn.Disabled = document.Location.IsZero()
 	}
+	s.save.Unsaved = s.Unsaved(ctx.Docs)
+	if s.guard.Active() {
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.body.Field.Revert)
+
+		return
+	}
 	if s.picker.Dialog() != nil {
 		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 
 		return
 	}
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.body && outcome == textedit.OutcomeCommit {
-		s.saveBody(ctx)
-	}
+	s.focus.Update(input, ctx.Clipboard)
 	if s.focus.Current() == nil && s.picker.Picking() && input.Consume(ui.KeyEscape, ui.Plain()) {
 		s.picker.Cancel(ctx, cancelledHere)
 	}
 	frame.CommonKeys(input, ctx)
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+	case ui.RevertID:
+		s.focus.Set(nil)
+		s.body.Field.Revert()
+	}
 	switch {
 	case s.pickBtn.Update(input):
 		if s.picker.Picking() {
@@ -198,6 +217,21 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		cleared := textdoc.SetLocationArgs{Location: floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}}
 		s.command(ctx, textdoc.SetLocationEdit, cleared, "Location cleared")
 	}
+}
+
+// Unsaved counts the body's unsaved draft.
+func (s *State) Unsaved(frame.Docs) int { return frame.UnsavedFields(s.body) }
+
+// Save saves the body, from the save bar or Cmd+S.
+func (s *State) Save(ctx *frame.Context) bool {
+	s.saveBody(ctx)
+
+	return true
+}
+
+// Leave asks about an unsaved body before then, such as closing the window.
+func (s *State) Leave(ctx *frame.Context, then func()) {
+	s.guard.Ask(s.Unsaved(ctx.Docs), s.zoneNames(ctx.Docs).Name(s.document, "this text"), then)
 }
 
 func (s *State) saveBody(ctx *frame.Context) {
@@ -268,6 +302,12 @@ func (s *State) location(docs frame.Docs, ref floor.AnchorRef) string {
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout()
 	_, value, _ := strings.Cut(name, ":")
+	if s.guard.Active() {
+		return s.guard.Locate(value, s.size)
+	}
+	if point, found := s.save.Locate(value); found && strings.HasPrefix(name, "ui:") {
+		return point, true
+	}
 	if s.picker.Dialog() != nil {
 		return s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	}
@@ -312,16 +352,11 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	screen.Fill(ui.ColorBackground())
 	s.theme.Heading(screen, "BODY", ui.Inset, ui.Inset)
 	s.body.Draw(screen)
-	hint := "Enter saves · Cmd+Enter or Ctrl+J: new line · Escape reverts"
-	ink := ui.ColorMuted()
-	switch {
-	case s.body.Field.Conflict():
-		hint = "Changed in another window since you started. Enter keeps your version; Escape takes theirs."
-		ink = ui.ColorWarn()
-	case s.body.Field.Dirty():
-		hint, ink = "Unsaved. "+hint, ui.ColorWarn()
+	s.save.Draw(screen, s.theme)
+	if s.body.Field.Conflict() {
+		s.theme.DrawText(screen, "Changed in another window since you started. Save keeps your version; Escape takes theirs.",
+			ui.Inset, s.save.Rect.Max.Y+ui.Gap, ui.ColorWarn())
 	}
-	s.theme.DrawText(screen, hint, ui.Inset, s.body.Rect.Max.Y+ui.Gap, ink)
 	document, loaded := s.text(docs)
 	locationTop := s.pickBtn.Rect.Min.Y - ui.LineHeight - ui.Gap
 	s.theme.Heading(screen, "LOCATION", ui.Inset, locationTop-ui.LineHeight)
@@ -334,6 +369,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if dialog := s.picker.Dialog(); dialog != nil {
 		dialog.Draw(screen, s.theme)
 	}
+	s.guard.Draw(screen, s.theme)
 }
 
 func (s *State) drawInspector(screen *ebiten.Image, document textdoc.Document, loaded bool) {

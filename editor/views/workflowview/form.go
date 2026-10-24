@@ -1,6 +1,7 @@
 package workflowview
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"slices"
@@ -87,7 +88,8 @@ type form struct {
 }
 
 // syncForm keeps the inspector built for the selected node and showing its
-// saved values.
+// saved values. A form rebuilt for the same node, because a time or an
+// option was added or removed, keeps what was typed into it.
 func (s *State) syncForm(ctx *frame.Context) {
 	node, ok := s.selectedNode()
 	if !ok {
@@ -98,12 +100,80 @@ func (s *State) syncForm(ctx *frame.Context) {
 
 		return
 	}
-	if s.form == nil || s.form.node != node.ID || s.form.rows != rowCount(node) {
+	var drafts map[string]string
+	rebuild := s.form == nil || s.form.node != node.ID || s.form.rows != rowCount(node)
+	if rebuild {
+		if s.form != nil && s.form.node == node.ID {
+			drafts = s.form.drafts()
+		}
 		s.form = s.buildForm(node)
 	}
 	for index := range s.form.controls {
 		s.setSaved(&s.form.controls[index], node, ctx)
 	}
+	for key, field := range s.form.keyed() {
+		if draft, kept := drafts[key]; kept {
+			field.Field.Restore(draft)
+		}
+	}
+}
+
+// fields lists the form's text fields, in order.
+func (f *form) fields() []*ui.TextField {
+	var fields []*ui.TextField
+	for key := range f.keyedInOrder() {
+		fields = append(fields, key)
+	}
+
+	return fields
+}
+
+// keyedInOrder yields each text field of the form, in order, with a key that
+// stays the same when the form is rebuilt: the field's ID, or for a row of
+// times or options, its output's name.
+func (f *form) keyedInOrder() func(yield func(*ui.TextField, string) bool) {
+	return func(yield func(*ui.TextField, string) bool) {
+		for _, made := range f.controls {
+			for _, field := range []*ui.TextField{made.field, made.from, made.to} {
+				if field != nil && !yield(field, field.ID) {
+					return
+				}
+			}
+			for _, row := range made.rows {
+				if !yield(row.from, made.param.Name+"/"+row.port+"/from") || !yield(row.to, made.param.Name+"/"+row.port+"/to") {
+					return
+				}
+			}
+			for _, option := range made.options {
+				if !yield(option.label, made.param.Name+"/"+option.port+"/label") ||
+					!yield(option.share, made.param.Name+"/"+option.port+"/share") {
+					return
+				}
+			}
+		}
+	}
+}
+
+// keyed maps each field's lasting key to the field.
+func (f *form) keyed() map[string]*ui.TextField {
+	fields := map[string]*ui.TextField{}
+	for field, key := range f.keyedInOrder() {
+		fields[key] = field
+	}
+
+	return fields
+}
+
+// drafts keeps the unsaved text of each field by its lasting key.
+func (f *form) drafts() map[string]string {
+	kept := map[string]string{}
+	for field, key := range f.keyedInOrder() {
+		if field.Field.Unsaved() {
+			kept[key] = field.Field.Value()
+		}
+	}
+
+	return kept
 }
 
 func (s *State) selectedNode() (flow.Node, bool) {
@@ -144,7 +214,7 @@ func (s *State) buildForm(node flow.Node) *form {
 	built := &form{node: node.ID, kind: kind, rows: rowCount(node), controls: nil, remove: nil}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
-		built.remove = ui.NewButton("delete-node", "Delete node")
+		built.remove = deleteNodeButton()
 	}
 	text := func(id string, multiline bool) *ui.TextField {
 		field := ui.NewTextField(id, textedit.NewField("", multiline, maxTextField), multiline, s.theme)
@@ -196,6 +266,15 @@ func (s *State) buildForm(node flow.Node) *form {
 	}
 
 	return built
+}
+
+// deleteNodeButton returns the inspector's Delete node button, drawn as a
+// destructive action.
+func deleteNodeButton() *ui.Button {
+	button := ui.NewButton("delete-node", "Delete node")
+	button.Danger = true
+
+	return button
 }
 
 // setSaved shows a parameter's saved value in its fields.
@@ -275,9 +354,19 @@ func (s *State) layoutForm(frame.Docs) {
 			top += ui.ButtonH + fieldSpace
 		}
 	}
+	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
+}
+
+// layoutFooter places Delete node at the foot of the inspector and the save
+// bar above it, when the node has fields to type into.
+func (s *State) layoutFooter(bottom, left, width int) {
 	if s.form.remove != nil {
-		bottom := panel.Max.Y - ui.Inset
 		s.form.remove.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
+		bottom = s.form.remove.Rect.Min.Y - ui.Half*ui.Gap
+	}
+	s.save.Rect = ui.Zero()
+	if len(s.form.fields()) > 0 {
+		s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
 	}
 }
 
@@ -290,6 +379,17 @@ func placeTimes(from, to *ui.TextField, left, top int) {
 // updateForm handles the inspector's buttons.
 func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 	if s.form == nil {
+		return
+	}
+	s.save.Unsaved = s.Unsaved(ctx.Docs)
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+
+		return
+	case ui.RevertID:
+		s.discardForm()
+
 		return
 	}
 	if s.form.remove != nil && s.form.remove.Update(input) {
@@ -335,7 +435,7 @@ func (s *State) updateRanges(input *ui.Input, ctx *frame.Context, made *control,
 			from = spans[len(spans)-1].To
 		}
 		spans = append(spans, flow.TimeRange{Port: newPort(spans), From: from, To: (from + hour) % flow.MinutesPerDay})
-		s.saveParam(ctx, node, made.param.Name, spans, nil)
+		s.saveParam(ctx, node, made.param.Name, spans)
 
 		return
 	}
@@ -345,7 +445,7 @@ func (s *State) updateRanges(input *ui.Input, ctx *frame.Context, made *control,
 		}
 		changed := node.WithLink(spans[index].Port, ids.ULID{})
 		spans = slices.Delete(spans, index, index+1)
-		s.saveParam(ctx, changed, made.param.Name, spans, nil)
+		s.saveParam(ctx, changed, made.param.Name, spans)
 
 		return
 	}
@@ -390,10 +490,10 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, made *control,
 				return
 			}
 			s.subscribe(answer.Floor, ctx)
-			s.saveParam(ctx, current, param, floor.AnchorRef{Floor: answer.Floor, Anchor: anchor}, nil)
+			s.saveParam(ctx, current, param, floor.AnchorRef{Floor: answer.Floor, Anchor: anchor})
 		})
 	case made.clear.Update(input):
-		s.saveParam(ctx, node, made.param.Name, floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}, nil)
+		s.saveParam(ctx, node, made.param.Name, floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}})
 	}
 }
 
@@ -411,34 +511,132 @@ func (s *State) currentNode(docs frame.Docs, nodeID ids.ULID) (flow.Node, bool) 
 	return found, loaded
 }
 
-// saveField saves the parameter a field edits when Enter is pressed in it.
-func (s *State) saveField(field *ui.TextField, ctx *frame.Context) {
+// Unsaved counts the selected node's typed changes not saved yet.
+func (s *State) Unsaved(frame.Docs) int {
+	if s.form == nil {
+		return 0
+	}
+
+	return frame.UnsavedFields(s.form.fields()...)
+}
+
+// Save saves every typed change to the selected node as one changed node: a
+// single command, so one undo step. If a field cannot be read, nothing is
+// saved, that field takes focus and the status says why.
+func (s *State) Save(ctx *frame.Context) bool {
 	node, ok := s.selectedNode()
 	if !ok || s.form == nil {
-		return
+		return true
 	}
-	value, changed := field.Field.Commit()
-	if !changed {
+	changed, saving := node, []*ui.TextField{}
+	for _, field := range s.form.fields() {
+		if !field.Field.Unsaved() {
+			continue
+		}
+		next, problem := s.applyField(changed, field)
+		if problem != "" {
+			s.focus.Set(field)
+			ctx.Frame.Status(problem)
+
+			return false
+		}
+		changed, saving = next, append(saving, field)
+	}
+	if len(saving) == 0 {
 		s.focus.Set(nil)
 
-		return
+		return true
 	}
+	for _, field := range saving {
+		field.Field.Commit()
+	}
+	data, err := json.Marshal(workflowplugin.ReplaceArgs{Node: changed})
+	if err != nil {
+		ctx.Frame.Status(err.Error())
+
+		return false
+	}
+	command := protocol.Command{Document: s.document, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data}
+	ctx.Requests.Command(command, func(result protocol.Result, err error) {
+		if err != nil {
+			for _, field := range saving {
+				field.Field.Failed()
+			}
+			ctx.Frame.Report("")(result, err)
+
+			return
+		}
+		s.focus.Set(nil)
+	})
+
+	return true
+}
+
+// applyField reads a field's typed value into a node, or says what is wrong
+// with it.
+func (s *State) applyField(node flow.Node, field *ui.TextField) (flow.Node, string) {
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
-		saved, handled, problem := parseFor(made, field, value, node)
+		value, handled, problem := parseFor(made, field, field.Field.Value(), node)
 		if !handled {
 			continue
 		}
 		if problem != "" {
-			field.Field.Failed()
-			ctx.Frame.Status(problem)
-
-			return
+			return node, problem
 		}
-		s.saveParam(ctx, node, made.param.Name, saved, field)
+		changed, err := node.WithParam(made.param.Name, value)
+		if err != nil {
+			return node, err.Error()
+		}
 
+		return changed, ""
+	}
+
+	return node, ""
+}
+
+// Leave asks about unsaved typed changes before then, such as closing the
+// window.
+func (s *State) Leave(ctx *frame.Context, then func()) {
+	s.guard.Ask(s.Unsaved(ctx.Docs), s.formName(), then)
+}
+
+// formName names the node the form edits, for the guard.
+func (s *State) formName() string {
+	if s.form == nil {
+		return "this node"
+	}
+
+	return s.form.kind.Label
+}
+
+// discardForm drops the selected node's typed changes.
+func (s *State) discardForm() {
+	s.focus.Set(nil)
+	if s.form == nil {
 		return
 	}
+	for _, field := range s.form.fields() {
+		field.Field.Revert()
+	}
+}
+
+// guardSelection asks about unsaved typed changes before the inspector moves
+// to another node, a line or nothing: the selection goes back until the
+// author decides, and moves on after Save or Don't save.
+func (s *State) guardSelection(ctx *frame.Context) {
+	if s.form == nil || s.workflow == nil || s.selected == s.form.node {
+		return
+	}
+	unsaved := s.Unsaved(ctx.Docs)
+	if _, exists := s.workflow.Node(s.form.node); unsaved == 0 || !exists {
+		return
+	}
+	wanted, wantedLink := s.selected, s.selectedLink
+	s.selected, s.selectedLink = s.form.node, noRoute()
+	s.drag, s.link, s.adding, s.resize, s.bending = nil, nil, nil, nil, nil
+	s.focus.Set(nil)
+	s.guard.Ask(unsaved, s.formName(), func() { s.selected, s.selectedLink = wanted, wantedLink })
 }
 
 // parseFor reads a typed value from a field of a control: the new parameter
@@ -561,20 +759,16 @@ func parseTime(value string) (int, bool) {
 	return hour*60 + minute, true
 }
 
-// saveParam sends a node with one parameter changed; field, when given, is
-// marked as failed if the change is refused.
-func (s *State) saveParam(ctx *frame.Context, node flow.Node, name string, value any, field *ui.TextField) {
+// saveParam sends a node with one parameter changed, for the inspector's
+// buttons, which apply at once.
+func (s *State) saveParam(ctx *frame.Context, node flow.Node, name string, value any) {
 	changed, err := node.WithParam(name, value)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
 		return
 	}
-	s.command(ctx, workflowplugin.ReplaceEdit, "", workflowplugin.ReplaceArgs{Node: changed}, func(protocol.Result) {
-		if field != nil {
-			s.focus.Set(nil)
-		}
-	})
+	s.command(ctx, workflowplugin.ReplaceEdit, "", workflowplugin.ReplaceArgs{Node: changed}, nil)
 }
 
 // floorName returns a floor's name, or "" for a floor the project no longer

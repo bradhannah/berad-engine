@@ -123,7 +123,7 @@ func layoutChoices(made *control, left, width, top int) int {
 func (s *State) updateChoices(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
 	for index, button := range made.choices {
 		if button.Update(input) && !button.On {
-			s.saveParam(ctx, node, made.param.Name, made.param.Choices[index].Value, nil)
+			s.saveParam(ctx, node, made.param.Name, made.param.Choices[index].Value)
 		}
 	}
 	if made.param.Type != flow.TypeDuration {
@@ -152,7 +152,7 @@ func (s *State) updateChoices(input *ui.Input, ctx *frame.Context, made *control
 
 		return
 	}
-	s.saveParam(ctx, node, made.param.Name, changed, nil)
+	s.saveParam(ctx, node, made.param.Name, changed)
 }
 
 // updateOptions adds an option to a random choice, or removes one with the
@@ -173,7 +173,7 @@ func (s *State) updateOptions(input *ui.Input, ctx *frame.Context, made *control
 		}
 		changed := node.WithLink(options[index].Port, ids.ULID{})
 		options = slices.Delete(options, index, index+1)
-		s.saveParam(ctx, changed, made.param.Name, options, nil)
+		s.saveParam(ctx, changed, made.param.Name, options)
 
 		return
 	}
@@ -196,7 +196,7 @@ func (s *State) addOption(ctx *frame.Context, node flow.Node) {
 		share = max(options[len(options)-1].Share, 1)
 	}
 	options = append(options, flow.Share{Port: newOptionPort(options), Label: newOptionLabel(options), Share: share})
-	s.saveParam(ctx, node, "options", options, nil)
+	s.saveParam(ctx, node, "options", options)
 }
 
 // newOptionPort returns an output name no option uses yet.

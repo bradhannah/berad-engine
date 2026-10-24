@@ -25,10 +25,22 @@ under consideration), **open** (undecided).
   style of the editor wireframes for every window: IBM Plex Sans and Mono,
   dark outlines and rounded boxes, small uppercase labels, blue for selection
   and orange for anything live.
+- **Agreed:** typed changes wait for an explicit save: every inspector with
+  fields to type into, and the Text window, has a save bar with Revert and
+  Save, and Cmd+S saves in any window. Enter saves a one-line field and
+  starts a new line in a field of several lines. Buttons, choices and pick
+  on map still apply at once and can be undone. Selecting something else or
+  closing a window with unsaved changes asks: Save, Don't save or Cancel.
+- **Agreed:** document types are told apart by an icon, always with a muted
+  colour beside it, never by colour alone: zones and floors green, workflows
+  purple, NPCs slate, text brown. Blue and orange stay for selection and
+  live.
 
 ## Maps and tiles
 
-- **Agreed:** a visual map editor.
+- **Agreed:** a visual map editor, with a floating zoom control in the map's
+  bottom-right corner (−, the zoom as a percentage, + and Fit). Scrolling
+  pans the Map, Workflow and Watch windows the same way.
 - **Agreed:** **stand-in tiles** let an author lay out a map before its art
   exists. Stand-ins are typed (for example ground, generic wall, generic door,
   stairs up and down, small or medium pickup) so their role is recognisable. Default behaviour and

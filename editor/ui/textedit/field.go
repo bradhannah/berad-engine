@@ -77,8 +77,8 @@ type Lines interface {
 }
 
 // Field is a text field that keeps a draft. The saved value comes from the
-// document; typing changes only the draft, and Enter asks the window to save
-// it with an ordinary command. The draft stays until the document shows the
+// document; typing changes only the draft, and Save, Cmd+S or Enter in a
+// one-line field asks the window to save it with an ordinary command. The draft stays until the document shows the
 // saved value, so the field never flickers back to old text (D1).
 type Field struct {
 	saved     string
@@ -90,8 +90,9 @@ type Field struct {
 	column    *float64
 }
 
-// NewField returns a field showing a saved value. Multi-line fields accept
-// new lines from Cmd+Enter or Ctrl+J; Enter always saves.
+// NewField returns a field showing a saved value. In a multi-line field Enter
+// starts a new line (as do Cmd+Enter and Ctrl+J); in a one-line field Enter
+// saves.
 func NewField(saved string, multiline bool, maxBytes int) *Field {
 	return &Field{
 		saved: saved, draft: nil, pending: nil, multiline: multiline, maxBytes: maxBytes, conflict: false, column: nil,
@@ -115,6 +116,21 @@ func (f *Field) Editing() bool { return f.draft != nil }
 
 // Dirty reports whether the draft differs from the saved value.
 func (f *Field) Dirty() bool { return f.draft != nil && f.draft.Text() != f.saved }
+
+// Unsaved reports whether the draft holds changes no save has been asked for
+// yet: dirty, and not the value already on its way.
+func (f *Field) Unsaved() bool {
+	return f.Dirty() && (f.pending == nil || *f.pending != f.draft.Text())
+}
+
+// Restore puts back a draft kept from before the field was rebuilt, for
+// example when a form gains a row. It does nothing when the draft is the
+// saved value.
+func (f *Field) Restore(draft string) {
+	if draft != f.saved {
+		f.draft = NewBuffer(draft)
+	}
+}
 
 // Conflict reports whether the saved value changed elsewhere while this field
 // held a draft. Saving the draft replaces that change.
@@ -226,7 +242,7 @@ func (f *Field) Key(press Press, lines Lines, clipboard Clipboard) Outcome {
 	mods := press.Mods
 	switch press.Key {
 	case KeyEnter:
-		if mods.Shortcut && f.multiline {
+		if f.multiline {
 			f.insert("\n")
 
 			return OutcomeNone

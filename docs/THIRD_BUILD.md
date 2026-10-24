@@ -279,6 +279,29 @@ Open:
   first skipped loading the project index, whose ID is the zero ID, which
   its unit test could not see.
 
+- **After step 4: the project browser and saving.** Decided with its
+  author on 2026-10-23. The project browser is a tree: a section for each
+  type with a count and a [+], each document with its type's icon and a
+  muted colour, zones in bold with their floors under tree lines (top floor
+  first, marked "top"), and a short detail at the right, such as "follows
+  Workflow 1" or "used by 1 NPC". Sections and zones open and close, with
+  Left and Right too. A New menu replaces the row of buttons, and the
+  inspector shows the type and name, the actions that type has (Open map,
+  Add floor, Move up and down for floors) and Delete, in red, at the foot.
+  Every inspector with fields to type into, and the Text window, has a save
+  bar: it says how many changes are unsaved and holds Revert and Save, and
+  Cmd+S saves in any window or says there is nothing to save. A Workflow
+  node's typed changes save as one changed node, so one undo step; a form
+  rebuilt when a time or option is added keeps what was typed. Enter starts
+  a new line in fields of several lines and still saves a one-line field.
+  Selecting something else, or closing the window, with unsaved changes
+  asks Save, Don't save or Cancel; before, the browser, the Map window's
+  anchor name and the Workflow inspector dropped what was typed without
+  asking. The Map window has a floating zoom control, and its scrolling now
+  matches the Workflow window's, through one rule shared by every canvas.
+  Not covered: a window the editor closes itself (a deleted document, or
+  the orchestrator stopping) closes without asking.
+
 ## Not in this build
 
 Reusable workflows with input parameters, workflow inheritance, nested

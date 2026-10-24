@@ -41,6 +41,8 @@ const (
 	previewRows    = 4
 	previewButtons = 3
 	idleRows       = 2
+	// jumpWidth is the width of the Jump button beside its field.
+	jumpWidth = 52
 	// clockFieldBytes bounds what can be typed into a time field.
 	clockFieldBytes = 8
 )
@@ -129,7 +131,7 @@ func (s *State) locatePreviewWidget(widget string) (image.Point, bool) {
 			return field.Center(), true
 		}
 	}
-	for _, button := range append(slices.Clone(s.rateBns), s.stopBn, s.watchBn) {
+	for _, button := range append(slices.Clone(s.rateBns), s.stopBn, s.jumpBn, s.watchBn) {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
@@ -390,7 +392,7 @@ func (s *State) drawLiveNPCs(area *ebiten.Image, grid image.Rectangle) {
 // layoutPreview places the preview's controls above the keys: the start time
 // before a preview, and the clock and Watch while this window runs one.
 func (s *State) layoutPreview(left, width, helpTop int) {
-	for _, button := range slices.Concat(s.rateBns, []*ui.Button{s.stopBn, s.watchBn}) {
+	for _, button := range slices.Concat(s.rateBns, []*ui.Button{s.stopBn, s.jumpBn, s.watchBn}) {
 		button.Rect = ui.Zero()
 	}
 	s.startField.Rect, s.jumpField.Rect = ui.Zero(), ui.Zero()
@@ -411,7 +413,8 @@ func (s *State) layoutPreview(left, width, helpTop int) {
 		if s.preview.clock.Stopped() {
 			s.stopBn.Label = "Start clock"
 		}
-		s.jumpField.Rect = image.Rect(left+half+ui.Gap, rowY, left+width, rowY+ui.ButtonH)
+		s.jumpField.Rect = image.Rect(left+half+ui.Gap, rowY, left+width-jumpWidth-ui.Gap, rowY+ui.ButtonH)
+		s.jumpBn.Rect = image.Rect(left+width-jumpWidth, rowY, left+width, rowY+ui.ButtonH)
 		rowY += ui.ButtonH + ui.Gap + ui.Half*ui.LineHeight
 		s.watchBn.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
 	case s.remote == nil:
@@ -438,6 +441,9 @@ func (s *State) updatePreviewControls(input *ui.Input, ctx *frame.Context) {
 	}
 	if s.stopBn.Update(input) {
 		s.preview.clock.Stop(!s.preview.clock.Stopped())
+	}
+	if s.jumpBn.Update(input) {
+		s.jumpClock(ctx)
 	}
 	if s.watchBn.Update(input) {
 		ctx.Requests.Open(watchView, s.zone, false)
@@ -494,7 +500,7 @@ func (s *State) drawNPCPreview(screen *ebiten.Image, left, helpTop int) {
 			state += " · NPCs paused"
 		}
 		s.theme.DrawMono(screen, state, left, top+ui.LineHeight, ui.ColorInk())
-		for _, button := range append(slices.Clone(s.rateBns), s.stopBn) {
+		for _, button := range append(slices.Clone(s.rateBns), s.stopBn, s.jumpBn) {
 			button.Draw(screen, s.theme)
 		}
 		s.jumpField.Draw(screen)

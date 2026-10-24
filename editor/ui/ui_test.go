@@ -27,7 +27,8 @@ func frame(presses ...string) *ui.Input {
 }
 
 // TestFieldTypingAndSaving drives a multi-line field the way a window does:
-// click into it, type, add a new line with Cmd+Enter, and press Enter to save.
+// click into it, type, add new lines with Cmd+Enter and Enter, and save; the
+// field leaves Cmd+S to the window.
 func TestFieldTypingAndSaving(t *testing.T) {
 	t.Parallel()
 	field := ui.NewTextField("body", textedit.NewField("", true, 0), true, theme(t))
@@ -47,9 +48,15 @@ func TestFieldTypingAndSaving(t *testing.T) {
 	typed = frame()
 	typed.Text = "second"
 	focus.Update(typed, nil)
-	acted, outcome := focus.Update(frame("Enter"), nil)
-	if acted != field || outcome != textedit.OutcomeCommit {
-		t.Fatalf("Enter: %v %v", acted, outcome)
+	if _, outcome := focus.Update(frame("Enter"), nil); outcome != textedit.OutcomeNone ||
+		field.Field.Value() != "first\nsecond\n" {
+		t.Fatalf("Enter starts a new line: %v %q", outcome, field.Field.Value())
+	}
+	focus.Update(frame("Backspace"), nil)
+	save := frame("Cmd+S")
+	focus.Update(save, nil)
+	if len(save.Presses) != 1 {
+		t.Fatal("the field passes Cmd+S on to the window")
 	}
 	if value, ok := field.Field.Commit(); !ok || value != "first\nsecond" {
 		t.Fatalf("committed %q %v", value, ok)

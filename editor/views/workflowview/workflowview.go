@@ -41,7 +41,6 @@ const (
 	groupSpace    = 26
 	arrangeWidth  = 110
 	dragStart     = 4
-	wheelPan      = 24
 	shortID       = 6
 	// newGap is the space between a node and one added after it.
 	newGap = 60
@@ -131,6 +130,8 @@ type State struct {
 	deleteLine *ui.Button
 	resetLine  *ui.Button
 	form       *form
+	save       *ui.SaveBar
+	guard      frame.Guard
 	focus      ui.Focus
 	picker     *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
@@ -149,7 +150,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
-		form: nil, focus: ui.Focus{}, picker: picker.New(window), live: nil,
+		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -298,6 +299,12 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.load(ctx.Docs)
+	if s.guard.Active() {
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discardForm)
+
+		return
+	}
+	s.guardSelection(ctx)
 	s.syncForm(ctx)
 	s.layoutWidgets(ctx.Docs)
 	if dialog := s.picker.Dialog(); dialog != nil {
@@ -306,7 +313,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
-		s.saveField(field, ctx)
+		s.Save(ctx)
 	}
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -321,19 +328,29 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			s.subscribe(floorID, ctx)
 		}
 	}
-	if s.lineSelected() && s.deleteLine.Update(input) {
-		s.removeLine(ctx)
-	}
-	if s.lineSelected() && !s.resetLine.Rect.Empty() && s.resetLine.Update(input) {
-		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, "")
-		ctx.Frame.Status("Line reset. Undo puts it back where you moved it.")
-	}
+	s.updateLineButtons(input, ctx)
 	s.updateForm(input, ctx)
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
 	}
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
+	s.guardSelection(ctx)
+}
+
+// updateLineButtons handles Delete line and Reset line for the selected
+// line.
+func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
+	if !s.lineSelected() {
+		return
+	}
+	if s.deleteLine.Update(input) {
+		s.removeLine(ctx)
+	}
+	if !s.resetLine.Rect.Empty() && s.resetLine.Update(input) {
+		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, "")
+		ctx.Frame.Status("Line reset. Undo puts it back where you moved it.")
+	}
 }
 
 // keys handles the window's own keys while no text field has focus.
@@ -430,7 +447,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 
 func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 	if input.Cursor.In(canvas) && (input.WheelX != 0 || input.WheelY != 0) {
-		s.offset = s.offset.Sub(image.Pt(int(input.WheelX*wheelPan), int(input.WheelY*wheelPan)))
+		s.offset = s.offset.Add(input.WheelPan())
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
 	if dragPan && s.panning {
@@ -831,6 +848,8 @@ func (s *State) removeSelected(ctx *frame.Context) {
 		return
 	}
 	removed := s.selected
+	// Typed changes to a node being removed go with it.
+	s.discardForm()
 	s.selected = ids.ULID{}
 	args := workflowplugin.RemoveArgs{Nodes: []ids.ULID{removed}}
 	s.command(ctx, workflowplugin.RemoveEdit, "", args, func(protocol.Result) {

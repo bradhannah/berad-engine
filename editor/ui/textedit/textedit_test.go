@@ -124,8 +124,9 @@ func TestUndoGroupsTyping(t *testing.T) {
 	}
 }
 
-// TestEnterSavesAndNewLineKeys checks the keys Brad chose: Enter saves the
-// box; Cmd+Enter or Ctrl+J add a new line in a multi-line field.
+// TestEnterSavesAndNewLineKeys checks the keys Brad chose: in a multi-line
+// field Enter, Cmd+Enter and Ctrl+J start a new line; in a one-line field
+// Enter saves.
 func TestEnterSavesAndNewLineKeys(t *testing.T) {
 	t.Parallel()
 	field := textedit.NewField("", true, 0)
@@ -137,14 +138,18 @@ func TestEnterSavesAndNewLineKeys(t *testing.T) {
 	field.Type("two")
 	press(field, textedit.KeyJ, control, nil)
 	field.Type("three")
-	if field.Value() != "one\ntwo\nthree" {
-		t.Fatalf("value %q", field.Value())
+	if got := press(field, textedit.KeyEnter, none, nil); got != textedit.OutcomeNone {
+		t.Fatalf("Enter in a multi-line field: %v", got)
 	}
-	if got := press(field, textedit.KeyEnter, none, nil); got != textedit.OutcomeCommit {
-		t.Fatalf("Enter: %v", got)
+	field.Type("four")
+	if field.Value() != "one\ntwo\nthree\nfour" {
+		t.Fatalf("value %q", field.Value())
 	}
 	single := textedit.NewField("Name", false, 0)
 	single.Focus()
+	if got := press(single, textedit.KeyEnter, none, nil); got != textedit.OutcomeCommit {
+		t.Fatalf("Enter in a one-line field: %v", got)
+	}
 	press(single, textedit.KeyEnter, command, nil)
 	press(single, textedit.KeyJ, control, nil)
 	single.Type("\nmore")
@@ -160,9 +165,15 @@ func TestDraftLifecycle(t *testing.T) {
 	field := textedit.NewField("old", true, 0)
 	field.Focus()
 	field.Type(" new")
+	if !field.Unsaved() {
+		t.Fatal("a typed change is unsaved")
+	}
 	value, ok := field.Commit()
 	if !ok || value != "old new" || !field.Pending() {
 		t.Fatalf("commit %q %v", value, ok)
+	}
+	if field.Unsaved() || !field.Dirty() {
+		t.Fatal("a change on its way is dirty but no longer unsaved")
 	}
 	if field.Value() != "old new" {
 		t.Fatal("draft disappeared before the event")
@@ -272,5 +283,19 @@ func TestMaxBytes(t *testing.T) {
 	field.Type("de")
 	if field.Value() != "abcde" {
 		t.Fatalf("value %q", field.Value())
+	}
+}
+
+// TestRestoreKeepsADraftAcrossARebuild puts a draft back into a new field.
+func TestRestoreKeepsADraftAcrossARebuild(t *testing.T) {
+	t.Parallel()
+	field := textedit.NewField("2", false, 0)
+	field.Restore("2")
+	if field.Editing() {
+		t.Fatal("restoring the saved value starts no draft")
+	}
+	field.Restore("5")
+	if !field.Unsaved() || field.Value() != "5" {
+		t.Fatalf("restored draft: %q", field.Value())
 	}
 }

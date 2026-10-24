@@ -17,9 +17,11 @@ import (
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
-// NPC inspector layout, in screen pixels.
+// NPC inspector layout, in screen pixels: the notes are at most notesHeight
+// tall, and never run into the save bar.
 const (
 	notesHeight = 160
+	notesLeast  = 60
 	panelGap    = 18
 	noBehaviour = "none"
 )
@@ -64,7 +66,8 @@ func (s *State) npcOf(docs frame.Docs, npcID ids.ULID) (npc.NPC, bool) {
 	return found, loaded
 }
 
-// syncNPC keeps the NPC panel showing the selected NPC's saved notes.
+// syncNPC keeps the NPC panel showing the selected NPC's saved notes. The
+// guard has already asked about unsaved notes before the selection moved.
 func (s *State) syncNPC(ctx *frame.Context) {
 	npcID, ok := s.selectedNPC(ctx.Docs)
 	if !ok {
@@ -86,14 +89,14 @@ func (s *State) syncNPC(ctx *frame.Context) {
 	}
 }
 
-// layoutNPC places the NPC panel below the name and its buttons.
-func (s *State) layoutNPC(docs frame.Docs, left, width int) {
+// layoutNPC places the NPC panel from top down to limit, below the name.
+func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel := s.npc
 	panel.behaviour, panel.notes.Rect, panel.choose.Rect, panel.open.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	if _, ok := s.selectedNPC(docs); !ok {
 		return
 	}
-	panel.top = s.rename.Rect.Max.Y + panelGap
+	panel.top = top
 	rowY := panel.top + ui.LineHeight
 	panel.behaviour = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
 	rowY += ui.ButtonH + ui.Gap*ui.Half
@@ -101,7 +104,7 @@ func (s *State) layoutNPC(docs frame.Docs, left, width int) {
 	panel.choose.Rect = image.Rect(left, rowY, left+half, rowY+ui.ButtonH)
 	panel.open.Rect = image.Rect(left+half+buttonGap, rowY, left+width, rowY+ui.ButtonH)
 	rowY += ui.ButtonH + panelGap + ui.LineHeight
-	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+notesHeight)
+	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
 }
 
 // updateNPC handles the NPC panel's buttons.
@@ -127,13 +130,11 @@ func (s *State) chooseBehaviour(ctx *frame.Context) {
 		current = found.Behaviour.String()
 	}
 	list := &ui.List{ID: "workflows", Rect: ui.Zero(), Rows: nil, Selected: current}
-	list.Rows = append(list.Rows, ui.Row{
-		ID: noBehaviour, Label: "No behaviour", Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false,
-	})
+	list.Rows = append(list.Rows, ui.NewRow(noBehaviour, "No behaviour"))
 	for _, entry := range s.index(ctx.Docs).OfFormat(flow.FormatName) {
-		list.Rows = append(list.Rows, ui.Row{
-			ID: entry.ID.String(), Label: entry.Name, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false,
-		})
+		row := ui.NewRow(entry.ID.String(), entry.Name)
+		row.Icon = ui.IconWorkflow
+		list.Rows = append(list.Rows, row)
 	}
 	s.dialog = ui.NewDialog("Which workflow does this NPC follow?", nil,
 		ui.DialogButton("use", "Use"), ui.DialogButton(ui.DialogCancel, "Cancel"))
@@ -152,7 +153,7 @@ func (s *State) setBehaviour(ctx *frame.Context, chosen string) {
 		func(protocol.Result, error) { ctx.Frame.Status("Behaviour set") }, nil)
 }
 
-// commitNotes saves the NPC's notes when Enter is pressed in them.
+// commitNotes saves the NPC's notes, from Save or Cmd+S.
 func (s *State) commitNotes(ctx *frame.Context) {
 	notes, changed := s.npc.notes.Field.Commit()
 	if !changed {
@@ -201,12 +202,8 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 	panel.open.Draw(screen, s.theme)
 	s.theme.Heading(screen, "NOTES", left, panel.notes.Rect.Min.Y-ui.LineHeight)
 	panel.notes.Draw(screen)
-	hint := "Enter saves · Cmd+Enter: new line"
 	if panel.notes.Field.Conflict() {
-		hint = "Changed elsewhere. Enter keeps yours"
+		s.theme.DrawText(screen, "Changed elsewhere. Saving keeps yours.", left, panel.notes.Rect.Max.Y+ui.Gap,
+			ui.ColorWarn())
 	}
-	if panel.notes.Field.Dirty() {
-		hint = "Unsaved. " + hint
-	}
-	s.theme.DrawText(screen, hint, left, panel.notes.Rect.Max.Y+ui.Gap, ui.ColorMuted())
 }

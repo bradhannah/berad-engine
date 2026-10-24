@@ -172,6 +172,12 @@ type State struct {
 	floorList *ui.List
 	below     *ui.Toggle
 	nameField *ui.TextField
+	// named is the anchor whose name the field holds; save and guard save
+	// or ask about its unsaved name.
+	named     ids.ULID
+	save      *ui.SaveBar
+	guard     frame.Guard
+	zoom      *zoomControl
 	deleteBtn *ui.Button
 	replace   *ui.Button
 	previewBn *ui.Button
@@ -180,6 +186,7 @@ type State struct {
 	// The preview's start time, clock controls and Watch.
 	startField *ui.TextField
 	jumpField  *ui.TextField
+	jumpBn     *ui.Button
 	rateBns    []*ui.Button
 	stopBn     *ui.Button
 	watchBn    *ui.Button
@@ -205,11 +212,12 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
-		toolList:   &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
-		tileList:   &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
-		floorList:  &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
-		below:      &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
-		nameField:  ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
+		toolList:  &ui.List{ID: "tools", Rect: ui.Zero(), Rows: nil, Selected: string(ToolGround)},
+		tileList:  &ui.List{ID: "tiles", Rect: ui.Zero(), Rows: nil, Selected: "grass"},
+		floorList: &ui.List{ID: "floors", Rect: ui.Zero(), Rows: nil, Selected: ""},
+		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
+		nameField: ui.NewTextField("anchor-name", textedit.NewField("", false, floor.MaxNameLength), false, theme),
+		named:     ids.ULID{}, save: ui.NewSaveBar(), guard: frame.Guard{}, zoom: newZoomControl(),
 		deleteBtn:  ui.NewButton("delete-anchor", "Delete anchor"),
 		replace:    ui.NewButton("replace-family", "Replace family everywhere…"),
 		previewBn:  ui.NewButton("preview", "Preview"),
@@ -217,19 +225,20 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		removeBn:   ui.NewButton("remove-npc", "Remove"),
 		startField: ui.NewTextField("start-time", textedit.NewField("", false, clockFieldBytes), false, theme),
 		jumpField:  ui.NewTextField("jump-time", textedit.NewField("", false, clockFieldBytes), false, theme),
+		jumpBn:     ui.NewButton("jump", "Jump"),
 		rateBns:    rateBns, stopBn: stopBn, watchBn: watchBn,
 		sides:  newSideButtons(),
 		focus:  ui.Focus{},
 		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
 	view.startField.Field.SetSaved(defaultStart)
+	view.deleteBtn.Danger = true
 	view.jumpField.Placeholder = "Jump to…"
 	view.focus.Register(view.nameField, view.startField, view.jumpField)
 	for _, info := range tools() {
-		view.toolList.Rows = append(view.toolList.Rows, ui.Row{
-			ID: string(info.tool), Label: info.label, Detail: string(info.key), Indent: 0,
-			Swatch: nil, Heading: false, Marked: false,
-		})
+		row := ui.NewRow(string(info.tool), info.label)
+		row.Detail = string(info.key)
+		view.toolList.Rows = append(view.toolList.Rows, row)
 	}
 
 	return view
@@ -444,9 +453,12 @@ func (s *State) layoutInspector() {
 		s.openBn.Rect = image.Rect(left, placementButtonsTop, left+half, placementButtonsTop+ui.ButtonH)
 		s.removeBn.Rect = image.Rect(left+half+ui.Gap, placementButtonsTop, left+width, placementButtonsTop+ui.ButtonH)
 	}
+	s.save.Rect = ui.Zero()
 	if !s.anchor.IsZero() {
 		s.nameField.Rect = image.Rect(left, inspectorFieldTop, left+width, inspectorFieldTop+ui.ButtonH)
-		deleteTop := inspectorFieldTop + ui.ButtonH + anchorRows*ui.LineHeight
+		saveTop := inspectorFieldTop + ui.ButtonH + anchorRows*ui.LineHeight
+		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
+		deleteTop := s.save.Rect.Max.Y + ui.Half*ui.Gap
 		s.deleteBtn.Rect = image.Rect(left, deleteTop, left+width, deleteTop+ui.ButtonH)
 	}
 	if len(s.selected) > 0 {
@@ -476,9 +488,9 @@ func (s *State) tileRows() []ui.Row {
 		if index < numberedTiles {
 			detail = strconv.Itoa(index + 1)
 		}
-		rows = append(rows, ui.Row{
-			ID: definition.ID, Label: definition.Name, Detail: detail, Indent: 0, Swatch: &swatch, Heading: false, Marked: false,
-		})
+		row := ui.NewRow(definition.ID, definition.Name)
+		row.Detail, row.Swatch = detail, &swatch
+		rows = append(rows, row)
 	}
 
 	return rows
@@ -494,9 +506,7 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 				name = projectIndex.Name(floorID, name)
 			}
 		})
-		rows = append(rows, ui.Row{
-			ID: floorID.String(), Label: name, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false,
-		})
+		rows = append(rows, ui.NewRow(floorID.String(), name))
 	}
 
 	return rows
@@ -507,19 +517,19 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.layoutWidgets(ctx.Docs)
+	if s.guard.Active() {
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
+
+		return
+	}
 	if s.dialog != nil {
 		s.updateDialog(input, ctx)
 
 		return
 	}
-	switch field, outcome := s.focus.Update(input, ctx.Clipboard); {
-	case field == s.nameField:
-		s.nameOutcome(outcome, ctx)
-	case field == s.jumpField && outcome == textedit.OutcomeCommit:
-		s.jumpClock(ctx)
-	case field == s.startField && outcome == textedit.OutcomeCommit:
-		s.setStart(ctx)
-	}
+	s.guardAnchor()
+	s.updateZoom(input, ctx)
+	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
 	}
@@ -553,6 +563,40 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if !loaded {
 		s.hovering = false
 	}
+	s.guardAnchor()
+}
+
+// updateFields handles the text fields and the anchor's save bar: Enter
+// saves a name, jumps the clock or sets the next preview's start.
+func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
+	switch field, outcome := s.focus.Update(input, ctx.Clipboard); {
+	case field == s.nameField && outcome == textedit.OutcomeCommit:
+		s.saveName(ctx)
+	case field == s.jumpField && outcome == textedit.OutcomeCommit:
+		s.jumpClock(ctx)
+	case field == s.startField && outcome == textedit.OutcomeCommit:
+		s.setStart(ctx)
+	}
+	s.save.Unsaved = s.Unsaved(ctx.Docs)
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+	case ui.RevertID:
+		s.discard()
+	}
+}
+
+// updateZoom handles the floating zoom control; Fit needs the floor's
+// bounds.
+func (s *State) updateZoom(input *ui.Input, ctx *frame.Context) {
+	bounds := image.Rect(0, 0, 1, 1)
+	ctx.Docs.View(s.floor, func(document client.Document) {
+		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+			bounds = floorDoc.Floor.Bounds()
+		}
+	})
+	s.zoom.layout(s.Grid(), s.camera)
+	s.zoom.update(input, &s.camera, s.Grid(), bounds)
 }
 
 // keys handles the window's own keys while no text field has focus.
@@ -730,7 +774,7 @@ func (s *State) panAndZoom(input *ui.Input, grid image.Rectangle) {
 				s.wheel++
 			}
 		} else {
-			s.camera.pan(image.Pt(int(input.WheelX*wheelPan), int(input.WheelY*wheelPan)))
+			s.camera.pan(input.WheelPan())
 		}
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
@@ -818,7 +862,7 @@ func (s *State) command(
 func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
 	if input.Pressed && onFloor {
 		if existing, found := floorData.AnchorAt(cell.X, cell.Y); found {
-			s.selectAnchor(existing.ID, floorData)
+			s.selectAnchor(existing.ID)
 			s.drag = &anchorDrag{id: existing.ID, from: cell}
 
 			return
@@ -829,12 +873,17 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 		}
 		s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
 			s.anchor = result.Created
+			if s.nameField.Field.Unsaved() {
+				// The guard asks about the other anchor's unsaved name first.
+				return
+			}
+			s.named = result.Created
 			s.nameField.Field.SetSaved(name)
 			s.focus.Set(s.nameField)
 			if buffer := s.nameField.Field.Buffer(); buffer != nil {
 				buffer.SelectAll()
 			}
-			ctx.Frame.Status("Added “" + name + "”. Type a name and press Enter.")
+			ctx.Frame.Status("Added “" + name + "”. Type a name, then press Enter or Save.")
 		})
 	}
 	if s.drag != nil && !input.Down {
@@ -869,26 +918,28 @@ func uniqueAnchorName(floorData *floor.Floor) string {
 	}
 }
 
-func (s *State) selectAnchor(anchorID ids.ULID, floorData *floor.Floor) {
+func (s *State) selectAnchor(anchorID ids.ULID) {
 	if s.anchor != anchorID {
 		s.focus.Set(nil)
 	}
 	s.anchor = anchorID
 	s.selected, s.placement = nil, ids.ULID{}
-	if anchor, _, ok := floorData.Anchor(anchorID); ok {
-		s.nameField.Field.SetSaved(anchor.Name)
-	}
 }
 
 // syncAnchorField keeps the name field showing the selected anchor, and drops
-// the selection if the anchor is gone.
+// the selection if the anchor is gone. The guard has already asked about an
+// unsaved name before the selection moved.
 func (s *State) syncAnchorField(floorData *floor.Floor) {
+	if s.anchor != s.named {
+		s.nameField.Field.Revert()
+		s.named = s.anchor
+	}
 	if s.anchor.IsZero() {
 		return
 	}
 	anchor, _, ok := floorData.Anchor(s.anchor)
 	if !ok {
-		s.anchor = ids.ULID{}
+		s.anchor, s.named = ids.ULID{}, ids.ULID{}
 		s.focus.Set(nil)
 		s.nameField.Field.Revert()
 
@@ -897,9 +948,51 @@ func (s *State) syncAnchorField(floorData *floor.Floor) {
 	s.nameField.Field.SetSaved(anchor.Name)
 }
 
-// nameOutcome saves a new anchor name when Enter is pressed in the field.
-func (s *State) nameOutcome(outcome textedit.Outcome, ctx *frame.Context) {
-	if outcome != textedit.OutcomeCommit || s.anchor.IsZero() {
+// guardAnchor asks about an unsaved anchor name before the inspector moves
+// to another anchor or none: the selection goes back until the author
+// decides.
+func (s *State) guardAnchor() {
+	if s.named.IsZero() || s.anchor == s.named || !s.nameField.Field.Unsaved() {
+		return
+	}
+	wanted := s.anchor
+	s.anchor = s.named
+	s.selected, s.drag = nil, nil
+	s.focus.Set(nil)
+	s.guard.Ask(1, s.nameField.Field.Saved(), func() { s.anchor = wanted })
+}
+
+// Unsaved counts the anchor name's unsaved change.
+func (s *State) Unsaved(frame.Docs) int {
+	if s.named.IsZero() {
+		return 0
+	}
+
+	return frame.UnsavedFields(s.nameField)
+}
+
+// Save saves the anchor's name, from the save bar or Cmd+S.
+func (s *State) Save(ctx *frame.Context) bool {
+	s.saveName(ctx)
+
+	return true
+}
+
+// Leave asks about an unsaved anchor name before then, such as closing the
+// window.
+func (s *State) Leave(ctx *frame.Context, then func()) {
+	s.guard.Ask(s.Unsaved(ctx.Docs), s.nameField.Field.Saved(), then)
+}
+
+// discard drops the anchor name's unsaved change.
+func (s *State) discard() {
+	s.focus.Set(nil)
+	s.nameField.Field.Revert()
+}
+
+// saveName saves the anchor's new name.
+func (s *State) saveName(ctx *frame.Context) {
+	if s.named.IsZero() {
 		return
 	}
 	name, changed := s.nameField.Field.Commit()
@@ -912,7 +1005,7 @@ func (s *State) nameOutcome(outcome textedit.Outcome, ctx *frame.Context) {
 	found := false
 	ctx.Docs.View(s.floor, func(document client.Document) {
 		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
-			renamed, _, found = floorDoc.Floor.Anchor(s.anchor)
+			renamed, _, found = floorDoc.Floor.Anchor(s.named)
 		}
 	})
 	if !found {
@@ -970,8 +1063,9 @@ func (s *State) removeAnchor(ctx *frame.Context, floorID, anchorID ids.ULID) {
 	s.command(ctx, floorID, tilefloor.RemoveAnchorEdit, "", removal, func(protocol.Result) {
 		ctx.Frame.Status("Anchor deleted. Undo brings it back.")
 	})
-	s.anchor = ids.ULID{}
+	s.anchor, s.named = ids.ULID{}, ids.ULID{}
 	s.focus.Set(nil)
+	s.nameField.Field.Revert()
 }
 
 func plural(count int, one, many string) string {
@@ -1085,9 +1179,9 @@ func (s *State) openReplace(ctx *frame.Context) {
 	for _, family := range tiles.WallFamilies() {
 		if family.ID != from {
 			swatch := ui.Hex(family.Color)
-			list.Rows = append(list.Rows, ui.Row{
-				ID: family.ID, Label: family.Name, Detail: "", Indent: 0, Swatch: &swatch, Heading: false, Marked: false,
-			})
+			row := ui.NewRow(family.ID, family.Name)
+			row.Swatch = &swatch
+			list.Rows = append(list.Rows, row)
 		}
 	}
 	if len(list.Rows) > 0 {
@@ -1202,6 +1296,9 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
+	if s.guard.Active() {
+		return s.guard.Locate(value, s.size)
+	}
 	if s.dialog != nil {
 		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	}
@@ -1240,7 +1337,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // hasState answers input scripts waiting for the window: "loaded" once the
 // current floor has arrived and is in view, "picking" while answering a pick,
 // "floor:N" when the Nth floor from the bottom is shown,
-// "bounds:C,R,W,H" when the current floor has those bounds, "previewing"
+// "bounds:C,R,W,H" when the current floor has those bounds, "zoom:N" when
+// the zoom control shows N%, "previewing"
 // while this window runs a preview, "player:C,R" or "remote-player:C,R"
 // when this window's or another window's player stands on that cell, and
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
@@ -1253,16 +1351,20 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
 	case state == "picking":
 		return s.pick != nil
+	case strings.HasPrefix(state, "zoom:"):
+		s.zoom.layout(s.Grid(), s.camera)
+
+		return s.zoom.reset.Label == strings.TrimPrefix(state, "zoom:")+"%"
 	case state == "previewing":
 		return s.preview != nil
 	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"):
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
-	case strings.HasPrefix(state, "player:"):
-		return s.hasPlayer(strings.TrimPrefix(state, "player:"), false)
-	case strings.HasPrefix(state, "remote-player:"):
-		return s.hasPlayer(strings.TrimPrefix(state, "remote-player:"), true)
+	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"):
+		which, cell, _ := strings.Cut(state, ":")
+
+		return s.hasPlayer(cell, which == "remote-player")
 	case strings.HasPrefix(state, "floor:"):
 		number, err := strconv.Atoi(strings.TrimPrefix(state, "floor:"))
 
@@ -1303,6 +1405,13 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return center(s.removeBn.Rect), true
 	}
 	if at, found := s.locatePreviewWidget(widget); found {
+		return at, true
+	}
+	s.zoom.layout(s.Grid(), s.camera)
+	if at, found := s.zoom.locate(widget); found {
+		return at, true
+	}
+	if at, found := s.save.Locate(widget); found {
 		return at, true
 	}
 	for _, side := range s.sides {
