@@ -31,6 +31,9 @@ under consideration), **open** (undecided).
   starts a new line in a field of several lines. Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
   closing a window with unsaved changes asks: Save, Don't save or Cancel.
+- **Agreed:** Cmd+W closes a window; Cmd+Q in any window asks whether the
+  author is done and, if so, closes every window. With unsaved changes in
+  any window it names them and offers Save and quit, Don't save or Cancel.
 - **Agreed:** document types are told apart by an icon, always with a muted
   colour beside it, never by colour alone: zones and floors green, workflows
   purple, NPCs slate, text brown. Blue and orange stay for selection and

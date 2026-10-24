@@ -80,7 +80,7 @@ func (o *Orchestrator) handshake(connection net.Conn, conn *protocol.Conn) (*win
 		return nil, fmt.Errorf("%w: expected hello", ErrHandshake)
 	}
 	if reason := o.refusal(hello); reason != "" {
-		refusal := mustMessage(protocol.KindShutdown, message.Request, protocol.Shutdown{Reason: reason})
+		refusal := mustMessage(protocol.KindShutdown, message.Request, protocol.Shutdown{Reason: reason, Save: false})
 		if err := conn.Send(refusal); err != nil {
 			o.cfg.Logger.Debug("send refusal", "error", err)
 		}
@@ -102,11 +102,12 @@ func (o *Orchestrator) handshake(connection net.Conn, conn *protocol.Conn) (*win
 	}
 
 	return &window{
-		id:    hello.Window,
-		hello: hello,
-		group: group,
-		conn:  conn,
-		out:   make(chan protocol.Message, o.cfg.OutboundQueue),
+		id:      hello.Window,
+		hello:   hello,
+		group:   group,
+		conn:    conn,
+		out:     make(chan protocol.Message, o.cfg.OutboundQueue),
+		unsaved: protocol.Unsaved{Count: 0, Name: ""},
 	}, nil
 }
 

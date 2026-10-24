@@ -301,6 +301,12 @@ Open:
   matches the Workflow window's, through one rule shared by every canvas.
   Not covered: a window the editor closes itself (a deleted document, or
   the orchestrator stopping) closes without asking.
+- **Quitting** (protocol version 6). Cmd+Q in any window asks "Quit the
+  editor?": Quit or Cancel when everything is saved; otherwise it names the
+  unsaved changes in every window and offers Save and quit, Don't save or
+  Cancel. Quitting closes every window, saving first when asked, and a
+  window that cannot save stays open and says why. Cmd+W still closes just
+  its window.
 
 ## Not in this build
 

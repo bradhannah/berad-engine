@@ -978,6 +978,11 @@ func (s *State) Save(ctx *frame.Context) bool {
 	return true
 }
 
+// UnsavedName names the anchor whose name is unsaved.
+func (s *State) UnsavedName(frame.Docs) string {
+	return "the anchor " + s.nameField.Field.Saved()
+}
+
 // Leave asks about an unsaved anchor name before then, such as closing the
 // window.
 func (s *State) Leave(ctx *frame.Context, then func()) {

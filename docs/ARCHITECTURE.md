@@ -176,6 +176,12 @@ the author draws. Pixel data is the first candidate for a binary codec.
   tools still work.
 - *Open:* how restoring a version interacts with open windows and undo.
 
+**As built (2026-10-23):** text typed into a field stays in its window as a
+draft until Save, Cmd+S or Enter in a one-line field sends it as a command;
+from then on it is saved like every other command. A draft is never project
+data, so the windows, not the orchestrator, ask about unsaved drafts before
+they are lost.
+
 ## D10 — Lifecycle and failure
 
 - One orchestrator per project, protected by a lock. *Open:* a second launch on
@@ -184,6 +190,16 @@ the author draws. Pixel data is the first candidate for a binary codec.
 - The orchestrator starts every window process; windows never start each other.
 - The editor quits when its last window closes (later: when the project browser
   closes); no orchestrator is left running without windows.
+- **As built (protocol version 6):** Cmd+W closes one window; Cmd+Q in any
+  window quits the editor. Each window tells the orchestrator how many
+  unsaved drafts it holds and what they belong to (*Unsaved*). Cmd+Q asks
+  the orchestrator what quitting would close (*Quit ask*), then asks the
+  author: Quit or Cancel, or, with unsaved drafts anywhere, which it names,
+  Save and quit, Don't save or Cancel. *Quit* tells every window to close,
+  saving its drafts first when asked; a window whose drafts cannot be saved
+  stays open and says why, and the orchestrator stops when the last window
+  has gone. On macOS, Cmd+Q reaches a window as a close request while Cmd is
+  held, which is how it is told apart from the close button.
 - **Orchestrator failure:** windows get the chance to clean up, then close
   themselves. A hard crash cannot send a signal, so a lost connection also means
   "close". Because the project is always saved, relaunching loses nothing.

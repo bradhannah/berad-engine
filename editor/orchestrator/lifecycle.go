@@ -238,6 +238,7 @@ func (o *Orchestrator) removeDocument(documentID ids.ULID, live bool) {
 	for _, connected := range o.windows {
 		if connected.hello.Target == documentID {
 			o.send(connected, mustMessage(protocol.KindShutdown, 0, protocol.Shutdown{
+				Save:   false,
 				Reason: "“" + entry.info.Name + "” was deleted",
 			}))
 		}

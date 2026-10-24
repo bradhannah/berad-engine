@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 5
+const Version = 6
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -56,6 +56,12 @@ const (
 	KindPreviewState   Kind = "preview-state"
 	KindPreviewStop    Kind = "preview-stop"
 	KindPreviewControl Kind = "preview-control"
+	// Quitting: a window reports its unsaved changes as they change, asks
+	// what quitting would close, and asks the orchestrator to quit, which
+	// closes every window.
+	KindUnsaved Kind = "unsaved"
+	KindQuitAsk Kind = "quit-ask"
+	KindQuit    Kind = "quit"
 )
 
 // Message is one framed protocol message.
@@ -319,9 +325,39 @@ type PreviewStop struct {
 	Reason string   `json:"reason,omitempty"`
 }
 
-// Shutdown tells a window to clean up and close.
+// Shutdown tells a window to clean up and close. With Save, the window first
+// saves its unsaved changes, and stays open if it cannot.
 type Shutdown struct {
 	Reason string `json:"reason"`
+	Save   bool   `json:"save,omitempty"`
+}
+
+// Unsaved is a window's typed changes not saved yet: how many, and what they
+// belong to, such as an NPC's name. A window sends it whenever it changes.
+type Unsaved struct {
+	Count int    `json:"count"`
+	Name  string `json:"name,omitempty"`
+}
+
+// UnsavedWindow is one window with unsaved changes.
+type UnsavedWindow struct {
+	Window ids.ULID `json:"window"`
+	View   string   `json:"view"`
+	Name   string   `json:"name"`
+	Count  int      `json:"count"`
+}
+
+// QuitAsk asks what quitting would close; the orchestrator replies with how
+// many windows are open and which have unsaved changes.
+type QuitAsk struct {
+	Windows int             `json:"windows"`
+	Unsaved []UnsavedWindow `json:"unsaved"`
+}
+
+// Quit asks the orchestrator to quit the editor: every window closes, saving
+// its unsaved changes first when Save is set.
+type Quit struct {
+	Save bool `json:"save,omitempty"`
 }
 
 // NewMessage encodes a payload into a message.

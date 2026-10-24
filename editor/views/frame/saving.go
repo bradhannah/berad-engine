@@ -12,8 +12,10 @@ import (
 // Saver is a view whose typed changes wait for Save. Cmd+S saves them all,
 // and closing the window with any unsaved asks first.
 type Saver interface {
-	// Unsaved counts typed changes not saved yet.
+	// Unsaved counts typed changes not saved yet, and UnsavedName names what
+	// they belong to, such as an NPC or "Wait in Workflow 1".
 	Unsaved(docs Docs) int
+	UnsavedName(docs Docs) string
 	// Save saves them, and reports false when one cannot be saved; it says
 	// why in the status bar.
 	Save(ctx *Context) bool

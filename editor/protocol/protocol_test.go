@@ -19,16 +19,21 @@ var testID = ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
 func everyMessage(t *testing.T) []protocol.Message {
 	t.Helper()
 	payloads := map[protocol.Kind]any{
-		protocol.KindHello:        protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
-		protocol.KindWelcome:      protocol.Welcome{Window: testID},
-		protocol.KindSubscribe:    protocol.Subscribe{Document: testID},
-		protocol.KindSnapshot:     protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
-		protocol.KindCommand:      protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
-		protocol.KindResult:       protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID},
-		protocol.KindEvent:        protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
-		protocol.KindSession:      protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
-		protocol.KindOpen:         protocol.Open{View: "map", Target: testID, NewView: true},
-		protocol.KindShutdown:     protocol.Shutdown{Reason: "bye"},
+		protocol.KindHello:     protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
+		protocol.KindWelcome:   protocol.Welcome{Window: testID},
+		protocol.KindSubscribe: protocol.Subscribe{Document: testID},
+		protocol.KindSnapshot:  protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
+		protocol.KindCommand:   protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
+		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID},
+		protocol.KindEvent:     protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
+		protocol.KindSession:   protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
+		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true},
+		protocol.KindShutdown:  protocol.Shutdown{Reason: "bye", Save: true},
+		protocol.KindUnsaved:   protocol.Unsaved{Count: 2, Name: "NPC 1"},
+		protocol.KindQuitAsk: protocol.QuitAsk{Windows: 3, Unsaved: []protocol.UnsavedWindow{
+			{Window: testID, View: "browser", Name: "NPC 1", Count: 2},
+		}},
+		protocol.KindQuit:         protocol.Quit{Save: true},
 		protocol.KindUndo:         nil,
 		protocol.KindRedo:         nil,
 		protocol.KindQuery:        protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
@@ -115,6 +120,14 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.PreviewStop](message)
 		case protocol.KindPreviewControl:
 			check = roundTrip[protocol.PreviewControl](message)
+		case protocol.KindShutdown:
+			check = roundTrip[protocol.Shutdown](message)
+		case protocol.KindUnsaved:
+			check = roundTrip[protocol.Unsaved](message)
+		case protocol.KindQuitAsk:
+			check = roundTrip[protocol.QuitAsk](message)
+		case protocol.KindQuit:
+			check = roundTrip[protocol.Quit](message)
 		case protocol.KindHello:
 			check = roundTrip[protocol.Hello](message)
 		case protocol.KindEvent:

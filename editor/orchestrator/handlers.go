@@ -71,6 +71,8 @@ func (o *Orchestrator) handle(message inbound) {
 	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop,
 		protocol.KindPreviewControl:
 		o.handlePreview(message.from, message.message)
+	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit:
+		o.handleQuit(message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention:
 		o.reply(message.from, request, reasonUnexpected, 0)

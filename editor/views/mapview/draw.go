@@ -490,6 +490,7 @@ func helpLines() []string {
 		"P: preview   Arrow keys: walk",
 		"Cmd+Z / Cmd+Shift+Z: undo / redo",
 		"Cmd+N: new view   Cmd+W: close",
+		"Cmd+S: save   Cmd+Q: quit the editor",
 	}
 }
 

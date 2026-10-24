@@ -51,6 +51,14 @@ type host struct {
 	frames     int
 	title      string
 	started    bool
+	// quitDialog asks whether the author is done, while quitAsking waits
+	// for the orchestrator to say what quitting would close; quitSaving is
+	// set while the window saves before closing for a quit. reported is the
+	// unsaved changes last told to the orchestrator.
+	quitDialog *ui.Dialog
+	quitAsking bool
+	quitSaving bool
+	reported   protocol.Unsaved
 }
 
 func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme) *host {
@@ -63,6 +71,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
+		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -84,20 +93,20 @@ func (h *host) Update() error {
 		return ebiten.Termination
 	}
 	h.runCallbacks()
+	if h.quitSaving && h.savedForQuit() {
+		return ebiten.Termination
+	}
 	var input ui.Input
 	if h.script != nil {
-		input = h.script.next(h.view, h.conn)
+		input = h.script.next(h, h.conn)
 	} else {
 		input = h.reader.read(h.view.Focused())
 	}
-	if ebiten.IsWindowBeingClosed() {
-		h.frame.Closing = true
-	}
-	if input.Consume(ui.KeyS, ui.Cmd()) {
-		h.save()
-	}
+	h.windowKeys(&input)
+	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
 	h.close()
+	h.reportUnsaved()
 	h.flush()
 	if h.script != nil {
 		if shot := h.script.takeScreenshot(); shot != "" {
@@ -145,13 +154,21 @@ func (h *host) close() {
 }
 
 // drainUpdates applies what the orchestrator sent and reports whether the
-// window must close.
+// window must close. A shutdown for a quit with Save first saves the
+// window's unsaved changes, and the window closes once they are saved.
 func (h *host) drainUpdates() bool {
 	for range maxUpdates {
 		select {
 		case update, open := <-h.conn.Updates():
-			if !open || update.Shutdown != nil {
+			if !open {
 				return true
+			}
+			if update.Shutdown != nil {
+				if !update.Shutdown.Save || !h.saveForQuit() {
+					return true
+				}
+
+				continue
 			}
 			h.onUpdate(update)
 		default:
@@ -384,6 +401,9 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 func (h *host) Draw(screen *ebiten.Image) {
 	h.view.Draw(screen, h.conn)
 	h.frame.DrawStatus(screen, h.theme)
+	if h.quitDialog != nil {
+		h.quitDialog.Draw(screen, h.theme)
+	}
 	h.frames++
 	if h.screenshot != "" && h.frames == screenshotFrame {
 		h.shot = h.screenshot

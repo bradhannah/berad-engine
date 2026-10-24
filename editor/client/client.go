@@ -291,6 +291,35 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 	return answer.Uses, nil
 }
 
+// Unsaved tells the orchestrator this window's unsaved changes.
+func (c *Client) Unsaved(unsaved protocol.Unsaved) error {
+	return c.notify(protocol.KindUnsaved, unsaved)
+}
+
+// QuitAsk asks what quitting would close: how many windows are open and which
+// have unsaved changes.
+func (c *Client) QuitAsk(ctx context.Context) (protocol.QuitAsk, error) {
+	reply, err := c.request(ctx, protocol.KindQuitAsk, protocol.QuitAsk{Windows: 0, Unsaved: nil})
+	if err != nil {
+		return protocol.QuitAsk{}, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return protocol.QuitAsk{}, rejected(reply)
+	}
+
+	return protocol.DecodePayload[protocol.QuitAsk](reply)
+}
+
+// Quit quits the editor: every window closes, saving first when save is set.
+func (c *Client) Quit(ctx context.Context, save bool) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindQuit, protocol.Quit{Save: save})
+	if err != nil {
+		return protocol.Result{}, err
+	}
+
+	return resultOf(reply)
+}
+
 // PickAsk asks which open Map windows a pick could use.
 func (c *Client) PickAsk(ctx context.Context, what string) ([]protocol.PickMap, error) {
 	reply, err := c.request(ctx, protocol.KindPickAsk, protocol.PickAsk{What: what, Maps: nil})

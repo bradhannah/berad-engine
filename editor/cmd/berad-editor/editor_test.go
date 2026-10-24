@@ -401,6 +401,34 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 	}
 }
 
+// TestQuitAsksThenClosesEveryWindow names a new anchor in the Map window
+// without saving, then presses Cmd+Q in the project browser: the browser
+// asks whether the editor should quit, naming the unsaved anchor, and Save
+// and quit saves the name and closes every window, so the editor exits.
+func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "quit.png")
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		keys("A"), click("cell:4,6"), wait(30), typed("Well"), wait(1200), quit(),
+	)
+	browserScript := script(
+		expect("row:Notes", 600), wait(300), keys("Cmd+Q"), must("ui:quit-save", 300),
+		step{Repeat: 2, Screenshot: shot}, click("ui:quit-save"), wait(1200), quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	ground, _ := readFloor(t, project, "ground-floor")
+	well, found := ground.AnchorAt(4, 6)
+	if !found || well.Name != "Well" {
+		t.Fatalf("Save and quit saved the anchor's name: %+v %v", well, found)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}
+
 // TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
 // inspector by typing a name and clicking Save, deletes the text document
 // after confirming, and undoes the deletion.

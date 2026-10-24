@@ -229,9 +229,14 @@ func (s *State) Save(ctx *frame.Context) bool {
 	return true
 }
 
+// UnsavedName names the text document.
+func (s *State) UnsavedName(docs frame.Docs) string {
+	return s.zoneNames(docs).Name(s.document, "this text")
+}
+
 // Leave asks about an unsaved body before then, such as closing the window.
 func (s *State) Leave(ctx *frame.Context, then func()) {
-	s.guard.Ask(s.Unsaved(ctx.Docs), s.zoneNames(ctx.Docs).Name(s.document, "this text"), then)
+	s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), then)
 }
 
 func (s *State) saveBody(ctx *frame.Context) {

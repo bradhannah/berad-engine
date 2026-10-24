@@ -143,7 +143,7 @@ func (f *Frame) Message() (string, bool) {
 		return "Notice: " + f.notice, true
 	}
 
-	return "Ready. Every change is saved automatically.", false
+	return "Ready. Typing waits for Save; everything else saves as you go.", false
 }
 
 // Report shows the outcome of a request: its reason when refused.

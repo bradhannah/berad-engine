@@ -158,9 +158,14 @@ func (s *State) Save(ctx *frame.Context) bool {
 	return true
 }
 
+// UnsavedName names the document whose name or notes are unsaved.
+func (s *State) UnsavedName(docs frame.Docs) string {
+	return s.index(docs).Name(s.named, "this document")
+}
+
 // Leave asks about unsaved changes before then, such as closing the window.
 func (s *State) Leave(ctx *frame.Context, then func()) {
-	s.guard.Ask(s.Unsaved(ctx.Docs), s.index(ctx.Docs).Name(s.named, "this document"), then)
+	s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), then)
 }
 
 // discard drops the inspector's typed changes.

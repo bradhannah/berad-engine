@@ -595,10 +595,16 @@ func (s *State) applyField(node flow.Node, field *ui.TextField) (flow.Node, stri
 	return node, ""
 }
 
+// UnsavedName names the node with unsaved changes and its workflow, such as
+// "Wait in Workflow 1".
+func (s *State) UnsavedName(docs frame.Docs) string {
+	return s.formName() + " in " + s.name(docs)
+}
+
 // Leave asks about unsaved typed changes before then, such as closing the
 // window.
 func (s *State) Leave(ctx *frame.Context, then func()) {
-	s.guard.Ask(s.Unsaved(ctx.Docs), s.formName(), then)
+	s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), then)
 }
 
 // formName names the node the form edits, for the guard.

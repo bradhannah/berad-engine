@@ -42,6 +42,7 @@ const (
 	KeyK         Key = "K"
 	KeyN         Key = "N"
 	KeyP         Key = "P"
+	KeyQ         Key = "Q"
 	KeyS         Key = "S"
 	KeyV         Key = "V"
 	KeyW         Key = "W"
