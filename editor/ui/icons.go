@@ -11,7 +11,8 @@ import (
 // Icon is a small drawing of a document type, shown before its name.
 type Icon int
 
-// Icons of the document types.
+// Icons of the document types, and of a folder, which holds documents of
+// one type.
 const (
 	IconNone Icon = iota
 	IconZone
@@ -19,6 +20,7 @@ const (
 	IconWorkflow
 	IconNPC
 	IconText
+	IconFolder
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -31,6 +33,9 @@ const (
 	iconPageGap = 2
 	iconLineGap = 3
 	iconSlab    = 4
+	// A folder's tab is this wide and its body starts this far down.
+	iconTab    = 6
+	iconTabTop = 3
 )
 
 // IconColor returns the muted colour of an icon's type.
@@ -44,6 +49,8 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorNPC()
 	case IconText:
 		return ColorText()
+	case IconFolder:
+		return ColorMuted()
 	case IconNone:
 	}
 
@@ -95,6 +102,12 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 			start, end := left+iconPageGap*Half, left+IconSize-iconPageGap*Half
 			vector.StrokeLine(screen, start, lineY, end, lineY, Hairline, ink, true)
 		}
+	case IconFolder:
+		// A folder: a tab on the back of its body.
+		tab := image.Rect(corner.X, corner.Y+1, corner.X+iconTab, corner.Y+iconTabTop+1)
+		FillRound(screen, tab, 1, ink)
+		body := image.Rect(corner.X, corner.Y+iconTabTop, corner.X+IconSize, corner.Y+IconSize-1)
+		StrokeRound(screen, body, iconPageGap, iconStroke, ink)
 	case IconNone:
 	}
 }

@@ -28,6 +28,9 @@ type TextField struct {
 	Field       *textedit.Field
 	Placeholder string
 	Multiline   bool
+	// Unmarked fields, such as a search box, never show the unsaved mark:
+	// what is typed in them is never saved.
+	Unmarked bool
 
 	theme       *Theme
 	focused     bool
@@ -46,7 +49,7 @@ type layoutCache struct {
 // NewTextField returns a field widget.
 func NewTextField(id string, field *textedit.Field, multiline bool, theme *Theme) *TextField {
 	return &TextField{
-		ID: id, Rect: image.Rect(0, 0, 0, 0), Field: field, Placeholder: "", Multiline: multiline,
+		ID: id, Rect: image.Rect(0, 0, 0, 0), Field: field, Placeholder: "", Multiline: multiline, Unmarked: false,
 		theme: theme, focused: false, dragging: false, composition: "", scroll: image.Pt(0, 0),
 		cache: layoutCache{text: "", width: -1, layout: nil},
 	}
@@ -82,6 +85,8 @@ func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit
 	clicked := input.Pressed && input.Cursor.In(w.Rect)
 	if clicked {
 		w.SetFocus(true)
+		// Escape can drop the draft while the field keeps focus.
+		w.Field.Focus()
 		w.placeCaret(input)
 		input.ClearPointer()
 	}
@@ -100,6 +105,7 @@ func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit
 		input.Replace = nil
 	}
 	if input.Text != "" {
+		w.Field.Focus()
 		w.Field.Type(input.Text)
 		input.Text = ""
 	}
@@ -392,7 +398,7 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 		w.theme.DrawText(area, w.Placeholder, w.Rect.Min.X+fieldPad, w.origin().Y, ColorSubdued())
 	}
 	w.drawText(area, value)
-	if w.Field.Dirty() {
+	if w.Field.Dirty() && !w.Unmarked {
 		mark := image.Rect(w.Rect.Max.X-unsavedMark-Gap, w.Rect.Min.Y+Gap, w.Rect.Max.X-Gap, w.Rect.Min.Y+Gap+unsavedMark)
 		FillRect(screen, mark, ColorWarn())
 	}
