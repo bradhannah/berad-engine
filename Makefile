@@ -5,7 +5,7 @@ GO ?= go
 MODULES := engine editor
 
 TOOLS_DIR := $(CURDIR)/.cache/tools
-GOLANGCI_LINT_VERSION := 2.12.2
+GOLANGCI_LINT_VERSION := 2.15.0
 GOIMPORTS_VERSION := v0.37.0
 GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
 GOIMPORTS := $(TOOLS_DIR)/goimports

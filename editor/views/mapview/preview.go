@@ -324,7 +324,7 @@ func (s *State) shownPlayer() (protocol.PreviewEntity, bool) {
 		return *s.remote.player, true
 	}
 
-	return protocol.PreviewEntity{}, false //nolint:exhaustruct // No player.
+	return protocol.PreviewEntity{}, false //nolint:exhaustruct_v5 // No player.
 }
 
 // drawPlayer draws the player on the shown floor: a disc with a dot towards

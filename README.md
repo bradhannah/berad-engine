@@ -97,7 +97,7 @@ project's `.berad/logs`.
 ## Checks
 
 Both modules follow berad-sdk's strict Go policy: the same lint configuration
-(`.golangci.yml`) and pinned tools (golangci-lint 2.12.2, goimports from
+(`.golangci.yml`) and pinned tools (golangci-lint 2.15.0, goimports from
 golang.org/x/tools v0.37.0), with zero findings and no baseline.
 
 ```sh
