@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -49,7 +50,7 @@ func (o *Orchestrator) leave(left *window) {
 	o.previewLeft(left.id)
 }
 
-func (o *Orchestrator) handle(message inbound) {
+func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 	if _, ok := o.windows[message.from.id]; !ok {
 		return
 	}
@@ -77,8 +78,9 @@ func (o *Orchestrator) handle(message inbound) {
 		o.handlePreview(message.from, message.message)
 	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit:
 		o.handleQuit(message.from, message.message)
-	case protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit:
-		o.handleAudio(message.from, message.message)
+	case protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit, protocol.KindAudioAnalysis,
+		protocol.KindAudioCheck:
+		o.handleAudio(ctx, message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention,
 		protocol.KindAudioChanged:

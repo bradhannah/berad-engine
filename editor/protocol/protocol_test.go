@@ -58,7 +58,8 @@ func everyMessage(t *testing.T) []protocol.Message {
 			ID: "door/open", Name: "Door opens", Category: protocol.CategorySFX, CategorySet: true, Gain: 0.8,
 			HowToHear: "Open a door.", SearchTerms: []string{"hinge"},
 			Recordings: []protocol.AudioRecording{{
-				ID: "door_a", Extension: ".wav", Version: "v", Size: 9, CalibrationDB: -4.5, StartMs: 10, EndMs: 900,
+				ID: "door_a", Extension: ".wav", Version: "v", Size: 9, CalibrationDB: -4.5,
+				CalibrationMode: protocol.CalibrationAuto, TargetDB: -24, Family: "wood", StartMs: 10, EndMs: 900,
 				Status: protocol.RecordingReady, File: "imported/door_a_01.wav", OriginalFile: "door A.wav",
 				Note: "first take", SearchTerms: []string{"creak"},
 				Attribution: protocol.Attribution{Creator: "c", Source: "https://example.com", License: "CC0-1.0",
@@ -70,7 +71,16 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindAudioEdit: protocol.AudioEdit{Edit: protocol.AudioAddSound, Gesture: "g",
 			Args: json.RawMessage(`{"cue":"door/open","path":"/sounds/door.wav","attribution":{"creator":"c"}}`)},
 		protocol.KindAudioChanged: protocol.AudioChanged{Revision: 3},
-		protocol.KindRecording:    protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
+		protocol.KindAudioAnalysis: protocol.AudioAnalysis{
+			Recording: "door_a", From: 10, To: 900, Columns: 3, Region: &protocol.AudioWindow{StartMs: 20, EndMs: 800},
+			Version: "v", DurationMs: 1000, Peaks: []byte{0, 128, 255},
+			Suggested: &protocol.AudioWindow{StartMs: 30, EndMs: 700},
+			Calibration: &protocol.AudioCalibration{Method: "active_rms", MeasuredDB: -26, TargetDB: -20, PeakDB: -6,
+				GainDB: 6, Limited: true},
+			Problem: "p",
+		},
+		protocol.KindAudioCheck: protocol.AudioCheck{Broken: []protocol.AudioProblem{{Recording: "door_a", Reason: "r"}}},
+		protocol.KindRecording:  protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
 		protocol.KindPreviewControl: protocol.PreviewControl{
 			Run: testID, Action: protocol.ControlJump, Placement: testID, Rate: 60, Seconds: 9 * 3600,
 		},
@@ -162,6 +172,10 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.AudioEdit](message)
 		case protocol.KindAudioChanged:
 			check = roundTrip[protocol.AudioChanged](message)
+		case protocol.KindAudioAnalysis:
+			check = roundTrip[protocol.AudioAnalysis](message)
+		case protocol.KindAudioCheck:
+			check = roundTrip[protocol.AudioCheck](message)
 		default:
 			continue
 		}
@@ -194,6 +208,13 @@ func TestAudioEditArgsRoundTrip(t *testing.T) {
 			Attribution: attribution},
 		protocol.AudioDeleteCue:       protocol.AudioItem{ID: "door/open"},
 		protocol.AudioDeleteRecording: protocol.AudioItem{ID: "door_a"},
+		protocol.AudioSetRegion: protocol.RegionChange{Recording: "door_a",
+			Region: &protocol.AudioWindow{StartMs: 1, EndMs: 2}},
+		protocol.AudioDuplicateRegion: protocol.DuplicateRegion{Recording: "door_a",
+			Region: &protocol.AudioWindow{StartMs: 1, EndMs: 2}, Cue: "door/open"},
+		protocol.AudioAcceptCalibration: protocol.AudioItem{ID: "door_a"},
+		protocol.AudioSetCalibration: protocol.CalibrationChange{Recording: "door_a", GainDB: &gain, TargetDB: &gain,
+			DefaultTarget: true},
 	} {
 		data, err := json.Marshal(args)
 		if err != nil {

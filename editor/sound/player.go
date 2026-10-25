@@ -62,6 +62,26 @@ type Player struct {
 	// still play, closed once those finish.
 	current  *player
 	retiring []*player
+	// audition is the part of a recording the Audio window plays while its
+	// region is a draft, and loops whether it plays again and again.
+	audition *protocol.AudioCue
+	loops    bool
+	// pending is the audition last asked for, kept until its recording is
+	// listed.
+	pending *audition
+}
+
+// auditionCue is the cue a Player makes to play an audition. Its slashes are
+// never in a cue ID.
+const auditionCue = "//audition"
+
+// audition is part of a recording to play: Window, nil for all of it, at a
+// calibration gain in dB, again and again when Loop is set.
+type audition struct {
+	Recording     string
+	Window        *protocol.AudioWindow
+	CalibrationDB float64
+	Loop          bool
 }
 
 // heldRecording is a recording's bytes at a version, complete when it holds
@@ -90,8 +110,57 @@ func New(requests Requests, report func(string)) *Player {
 		requests: requests, report: report, device: openDevice, decode: ebitengine.Decode, backend: nil,
 		listing: map[string]protocol.AudioCue{}, listed: false, asking: false, again: false,
 		held: map[string]heldRecording{}, fetching: map[string]bool{}, wanted: map[string]bool{}, queued: nil,
-		told: map[string]bool{}, current: nil, retiring: nil,
+		told: map[string]bool{}, current: nil, retiring: nil, audition: nil, loops: false, pending: nil,
 	}
+}
+
+// Audition plays part of a recording, nil for all of it, at a calibration
+// gain in dB, again and again when loop is set, replacing whatever played
+// before, once the recording has arrived.
+func (s *Player) Audition(recording string, window *protocol.AudioWindow, calibrationDB float64, loop bool) {
+	asked := audition{Recording: recording, Window: window, CalibrationDB: calibrationDB, Loop: loop}
+	s.Stop()
+	if s.current != nil && s.current.cues[auditionCue] {
+		s.retiring, s.current = append(s.retiring, s.current), nil
+	}
+	s.audition, s.loops = nil, asked.Loop
+	if listed, found := s.listing[recordingCue(asked.Recording)]; found {
+		s.audition = auditionOf(listed.Recordings[0], asked)
+		s.listing[auditionCue] = *s.audition
+	}
+	s.pending = &asked
+	s.Play(auditionCue)
+}
+
+// auditionOf is the cue that plays an audition of a listed recording.
+func auditionOf(recording protocol.AudioRecording, asked audition) *protocol.AudioCue {
+	recording.CalibrationDB, recording.StartMs, recording.EndMs = asked.CalibrationDB, 0, 0
+	if asked.Window != nil {
+		recording.StartMs, recording.EndMs = asked.Window.StartMs, asked.Window.EndMs
+	}
+
+	return &protocol.AudioCue{
+		ID: auditionCue, Name: recording.ID, Category: "", CategorySet: false, Gain: 1, HowToHear: "",
+		SearchTerms: nil, Recordings: []protocol.AudioRecording{recording},
+	}
+}
+
+// AuditionAt reports where the audition is, in its recording's milliseconds,
+// while it plays.
+func (s *Player) AuditionAt() (int64, bool) {
+	if s.audition == nil {
+		return 0, false
+	}
+	start := s.audition.Recordings[0].StartMs
+	for _, playing := range s.players() {
+		for _, voice := range playing.voices {
+			if status := voice.Status(); string(status.Cue) == auditionCue && sounding(status.State) {
+				return start + status.Position.Milliseconds(), true
+			}
+		}
+	}
+
+	return 0, false
 }
 
 // openDevice borrows the process's audio context, opening it the first time.
@@ -253,8 +322,10 @@ func (s *Player) refresh() {
 	})
 }
 
-// list keeps a listing's cues, and a cue for each recording on its own.
+// list keeps a listing's cues, a cue for each recording on its own, and the
+// audition, which a listing may now be able to play.
 func (s *Player) list(library protocol.AudioLibrary) {
+	defer s.listAudition()
 	alone := func(recording protocol.AudioRecording) {
 		s.listing[recordingCue(recording.ID)] = protocol.AudioCue{
 			ID: recordingCue(recording.ID), Name: recording.ID, Category: "", CategorySet: false, Gain: 1,
@@ -269,6 +340,19 @@ func (s *Player) list(library protocol.AudioLibrary) {
 	}
 	for _, recording := range library.Unused {
 		alone(recording)
+	}
+}
+
+// listAudition lists the audition waiting for its recording, or keeps the
+// one listed.
+func (s *Player) listAudition() {
+	if s.pending != nil {
+		if listed, found := s.listing[recordingCue(s.pending.Recording)]; found {
+			s.audition = auditionOf(listed.Recordings[0], *s.pending)
+		}
+	}
+	if s.audition != nil {
+		s.listing[auditionCue] = *s.audition
 	}
 }
 
@@ -394,7 +478,9 @@ func (s *Player) start(cue string) {
 			return
 		}
 	}
-	result, err := s.current.runtime.Play(audio.CueID(cue), audio.DefaultPlayOptions())
+	options := audio.DefaultPlayOptions()
+	options.Loop = cue == auditionCue && s.loops
+	result, err := s.current.runtime.Play(audio.CueID(cue), options)
 	if err != nil {
 		s.tell("play:"+cue, "Can’t play “"+s.listing[cue].Name+"”: "+err.Error())
 

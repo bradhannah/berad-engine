@@ -379,6 +379,27 @@ func (h *host) AudioEdit(edit protocol.AudioEdit, done func(protocol.Result, err
 	}()
 }
 
+// AudioAnalysis asks for a recording's waveform and suggestions. Decoding a
+// long recording can take a while, so it may wait longer than other requests.
+func (h *host) AudioAnalysis(asked protocol.AudioAnalysis, done func(protocol.AudioAnalysis, error)) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), audioEditTimeout)
+		defer cancel()
+		answer, err := h.conn.AudioAnalysis(ctx, asked)
+		h.post(func() { done(answer, err) })
+	}()
+}
+
+// AudioCheck asks for every recording to be decoded.
+func (h *host) AudioCheck(done func(protocol.AudioCheck, error)) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), audioEditTimeout)
+		defer cancel()
+		answer, err := h.conn.AudioCheck(ctx)
+		h.post(func() { done(answer, err) })
+	}()
+}
+
 // Publish sets session state every window shares.
 func (h *host) Publish(topic string, value any) {
 	encoded, err := json.Marshal(value)

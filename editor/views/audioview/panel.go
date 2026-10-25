@@ -23,7 +23,7 @@ const minRecordings = 2
 // Panel layout, in screen pixels.
 const (
 	panelButtonGap = 6
-	playedRows     = 8
+	playedRows     = 4
 )
 
 // panel is the middle of the window: the selected cue and the recordings it
@@ -42,8 +42,8 @@ func newPanel() *panel {
 
 	return &panel{
 		play: button("play", "Play"), addRecording: button("add-recording", "Add recording…"),
-		playRecording: button("play-recording", "Play recording"), up: button("recording-up", "Move up"),
-		down: button("recording-down", "Move down"), takeOut: button("take-out", "Take out"),
+		playRecording: button("play-recording", "Play recording"), up: button("recording-up", "Up"),
+		down: button("recording-down", "Down"), takeOut: button("take-out", "Take out"),
 		replace: button("replace-file", "Replace file…"), attribution: button("attribution", "Attribution…"),
 		cues: nil, listTop: 0,
 	}
@@ -78,9 +78,10 @@ func (s *State) layoutPanel() {
 		return
 	}
 	if recording, ok := s.selectedRecording(); ok {
-		top := area.Min.Y + ui.Inset + headerLines(problems(recording))*ui.LineHeight + ui.Gap
+		top := area.Min.Y + ui.Inset + headerLines(s.problems(recording))*ui.LineHeight + ui.Gap
 		s.row(left, top, pane.play, pane.replace, pane.attribution)
-		pane.listTop = top + ui.ButtonH + ui.Inset + ui.LineHeight
+		top = s.layoutTrim(left, area.Max.X-ui.Inset, top+ui.ButtonH+ui.Inset)
+		pane.listTop = top + ui.LineHeight
 		pane.cues = pane.cues[:0]
 		for index, cue := range s.usedBy(recording.ID) {
 			button := ui.NewButton(cuePrefix+cue.ID, cue.Name)
@@ -94,7 +95,7 @@ func (s *State) layoutPanel() {
 // layoutCue places a cue's buttons and its recordings.
 func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle) {
 	pane := s.panel
-	top := area.Min.Y + ui.Inset + headerLines(cueProblems(cue))*ui.LineHeight + ui.Gap
+	top := area.Min.Y + ui.Inset + headerLines(s.cueProblems(cue))*ui.LineHeight + ui.Gap
 	s.row(left, top, pane.play, pane.addRecording)
 	pane.listTop = top + ui.ButtonH + ui.Inset + ui.LineHeight
 	rows := make([]ui.Row, 0, len(cue.Recordings))
@@ -104,7 +105,7 @@ func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle)
 		if recording.File == "" {
 			row.Aside = ""
 		}
-		if found := problems(recording); len(found) > 0 {
+		if found := s.problems(recording); len(found) > 0 {
 			row.Detail = found[0]
 		} else if recording.Status == protocol.RecordingNoFile {
 			row.Detail = stateNoSound
@@ -112,6 +113,11 @@ func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle)
 		rows = append(rows, row)
 	}
 	s.played.Rows = rows
+	for _, row := range rows {
+		if row.ID == s.playedNext {
+			s.played.Selected, s.playedNext = s.playedNext, ""
+		}
+	}
 	if _, held := s.playedIndex(cue); !held && len(rows) > 0 {
 		s.played.Selected = rows[0].ID
 	}
@@ -122,6 +128,7 @@ func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle)
 	index, _ := s.playedIndex(cue)
 	pane.up.Disabled, pane.down.Disabled = index <= 0, index < 0 || index >= len(cue.Recordings)-1
 	pane.takeOut.Disabled = len(cue.Recordings) < minRecordings
+	s.layoutTrim(left, area.Max.X-ui.Inset, pane.playRecording.Rect.Max.Y+ui.Inset)
 }
 
 // row lays buttons out in a row, each as wide as its label.
@@ -168,8 +175,14 @@ func recordingIDs(cue protocol.AudioCue) []string {
 // updatePanel handles the panel's buttons and list.
 func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 	pane := s.panel
+	s.updateTrim(input, ctx)
 	if cue, ok := s.selectedCue(); ok {
-		s.played.Update(input)
+		previous := s.played.Selected
+		if s.played.Update(input).Changed {
+			chosen := s.played.Selected
+			s.played.Selected = previous
+			s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), func() { s.played.Selected = chosen })
+		}
 		s.updateCue(input, ctx, cue)
 
 		return
@@ -188,7 +201,9 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 	}
 	for _, button := range pane.cues {
 		if button.Update(input) {
-			s.mode, s.list.Selected = modeCues, button.ID
+			s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), func() {
+				s.mode, s.list.Selected = modeCues, button.ID
+			})
 		}
 	}
 }
@@ -265,10 +280,11 @@ func (s *State) drawPanel(screen *ebiten.Image) {
 			s.panel.playRecording.Label = "Play recording"
 		}
 		what := categoryLabel(cue.Category) + " · " + plays(len(cue.Recordings))
-		s.drawHeader(screen, left, top, cue.Name, cue.ID, what, cueProblems(cue))
+		s.drawHeader(screen, left, top, cue.Name, cue.ID, what, s.cueProblems(cue))
 		s.theme.DrawLabel(screen, "RECORDINGS · PLAY IN TURN", left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 		s.played.Draw(screen, s.theme)
 		s.drawButtons(screen, s.panel.all()...)
+		s.drawTrim(screen)
 
 		return
 	}
@@ -279,8 +295,9 @@ func (s *State) drawPanel(screen *ebiten.Image) {
 		return
 	}
 	s.panel.play.Label = playLabel(s.sounds != nil && s.sounds.PlayingRecording(recording.ID))
-	s.drawHeader(screen, left, top, recording.ID, recording.File, recordingWhat(recording), problems(recording))
+	s.drawHeader(screen, left, top, recording.ID, recording.File, recordingWhat(recording), s.problems(recording))
 	s.drawButtons(screen, s.panel.play, s.panel.replace, s.panel.attribution)
+	s.drawTrim(screen)
 	s.theme.DrawLabel(screen, "PLAYED BY", left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 	if len(s.panel.cues) == 0 {
 		s.theme.DrawText(screen, "No cue plays this recording.", left, s.panel.listTop, ui.ColorSubdued())
@@ -288,9 +305,12 @@ func (s *State) drawPanel(screen *ebiten.Image) {
 	s.drawButtons(screen, s.panel.cues...)
 }
 
+// labelStop is what a play button reads while what it plays is playing.
+const labelStop = "Stop"
+
 func playLabel(playing bool) string {
 	if playing {
-		return "Stop"
+		return labelStop
 	}
 
 	return "Play"

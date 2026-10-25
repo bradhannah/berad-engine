@@ -107,6 +107,26 @@ type Requests struct {
 	RecordingAsks []RecordingAsk
 	// AudioEdits are audio edits waiting for the test to answer.
 	AudioEdits []AudioEdit
+	// Analyses are waveform questions, and Checks file checks, waiting for
+	// the test to answer.
+	Analyses []Analysis
+	Checks   []func(protocol.AudioCheck, error)
+}
+
+// Analysis is a waveform question and how to answer it.
+type Analysis struct {
+	Asked protocol.AudioAnalysis
+	Done  func(protocol.AudioAnalysis, error)
+}
+
+// AudioAnalysis records a waveform question; the test answers it.
+func (r *Requests) AudioAnalysis(asked protocol.AudioAnalysis, done func(protocol.AudioAnalysis, error)) {
+	r.Analyses = append(r.Analyses, Analysis{Asked: asked, Done: done})
+}
+
+// AudioCheck records a file check; the test answers it.
+func (r *Requests) AudioCheck(done func(protocol.AudioCheck, error)) {
+	r.Checks = append(r.Checks, done)
 }
 
 // AudioEdit is a recorded audio edit and its reply callback.
@@ -179,10 +199,40 @@ func (r *Requests) Recording(recording string, offset int64, done func(protocol.
 // says are playing, and recordings played on their own under "/" and their
 // ID.
 type Sounds struct {
-	Prepared [][]string
-	Played   []string
-	Stops    int
-	Sounding map[string]bool
+	Prepared   [][]string
+	Played     []string
+	Stops      int
+	Sounding   map[string]bool
+	Auditioned []Audition
+}
+
+// Audition records an audition, as "//audition" played, and keeps it in
+// Auditioned.
+func (s *Sounds) Audition(recording string, window *protocol.AudioWindow, calibrationDB float64, loop bool) {
+	s.Auditioned = append(s.Auditioned, Audition{
+		Recording: recording, Window: window, CalibrationDB: calibrationDB, Loop: loop,
+	})
+	s.Play("//audition")
+}
+
+// AuditionAt reports the start of the latest audition while it plays.
+func (s *Sounds) AuditionAt() (int64, bool) {
+	if !s.Sounding["//audition"] || len(s.Auditioned) == 0 {
+		return 0, false
+	}
+	if window := s.Auditioned[len(s.Auditioned)-1].Window; window != nil {
+		return window.StartMs, true
+	}
+
+	return 0, true
+}
+
+// Audition is an audition a view asked for.
+type Audition struct {
+	Recording     string
+	Window        *protocol.AudioWindow
+	CalibrationDB float64
+	Loop          bool
 }
 
 // PlayRecording records a recording played on its own, as "/" and its ID.
@@ -314,7 +364,9 @@ func (r *Requests) Of(edit string) []Command {
 // given size.
 func Context(docs *Docs, requests *Requests, size image.Point) *frame.Context {
 	return &frame.Context{
-		Docs: docs, Requests: requests, Sounds: &Sounds{Prepared: nil, Played: nil, Stops: 0, Sounding: nil},
+		Docs: docs, Requests: requests, Sounds: &Sounds{
+			Prepared: nil, Played: nil, Stops: 0, Sounding: nil, Auditioned: nil,
+		},
 		Files: &Files{Chosen: "", Asked: 0}, Clipboard: nil, Window: ID(windowSeed), Size: size,
 		Frame: frame.NewFrame(time.Now),
 	}

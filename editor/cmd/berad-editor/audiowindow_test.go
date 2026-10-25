@@ -14,6 +14,32 @@ import (
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+// paddedKnockWAV is a second of generated sound: silence, a tone in the
+// middle, then silence, so there is something to trim.
+func paddedKnockWAV() []byte {
+	const rate = 22050
+	var pcm bytes.Buffer
+	for index := range rate {
+		value := int16(0)
+		if index > rate/4 && index < rate*3/4 {
+			value = int16((index%40)*500 - 10000)
+		}
+		_ = binary.Write(&pcm, binary.LittleEndian, value)
+	}
+	var wav bytes.Buffer
+	wav.WriteString("RIFF")
+	_ = binary.Write(&wav, binary.LittleEndian, uint32(36+pcm.Len()))
+	wav.WriteString("WAVEfmt ")
+	for _, value := range []any{uint32(16), uint16(1), uint16(1), uint32(rate), uint32(rate * 2), uint16(2), uint16(16)} {
+		_ = binary.Write(&wav, binary.LittleEndian, value)
+	}
+	wav.WriteString("data")
+	_ = binary.Write(&wav, binary.LittleEndian, uint32(pcm.Len()))
+	wav.Write(pcm.Bytes())
+
+	return wav.Bytes()
+}
+
 // knockWAV is a short generated mono tone for the test to add.
 func knockWAV() []byte {
 	const rate, samples = 22050, 6000
@@ -111,4 +137,51 @@ func TestAudioWindowAddsAndEditsSounds(t *testing.T) {
 		t.Fatalf("undo put the category back: %+v %v", descriptor.Targets.CueCategories, err)
 	}
 	t.Logf("screenshots: %s %s %s %s", browserShot, dialogShot, cueShot, recordingsShot)
+}
+
+// TestAudioWindowTrimsAndLevels adds a sound with silence round it, trims it
+// to the suggested region, measures its level, duplicates its region and
+// checks every file.
+func TestAudioWindowTrimsAndLevels(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	source := filepath.Join(t.TempDir(), "padded_knock.wav")
+	if err := os.WriteFile(source, paddedKnockWAV(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waveShot, levelShot := shotPath(t, "audio-waveform.png"), shotPath(t, "audio-level.png")
+	browserScript := script(must("section:audio", 600), wait(5), click("ui:new-sound"),
+		must("row:Padded knock", 1800), wait(5), quit())
+	audioScript := script(
+		must("state:dialog", 900), wait(5), click("ui:dialog-ok"),
+		must("state:selected=cue:sfx/padded_knock", 900), must("state:waveform", 900), wait(10),
+		click("ui:suggest-region"), wait(5), step{Repeat: 2, Screenshot: waveShot},
+		click("ui:apply-region"), wait(40), click("ui:use-suggestion"), wait(40),
+		click("ui:duplicate-region"), wait(40), click("ui:check-files"), wait(40),
+		step{Repeat: 2, Screenshot: levelShot}, quit(),
+	)
+	mapScript := script(must("state:loaded", 600), wait(5), quit())
+	runEditorWith(t, binary, project, scripts{
+		"browser": {browserScript}, "audio": {audioScript}, "map": {mapScript},
+	}, "BERAD_TEST_SOUND_FILE="+source)
+	noCrashes(t, project)
+
+	data, err := os.ReadFile(filepath.Join(project, "audio", "library.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	library, err := authoring.ParseDocument(data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trimmed := library.Recordings["padded_knock"]
+	if trimmed.PlaybackWindow == nil || trimmed.PlaybackWindow.StartMs < 200 || trimmed.PlaybackWindow.EndMs > 800 ||
+		trimmed.CalibrationMode() != authoring.CalibrationAuto {
+		t.Fatalf("trimmed to its sound and measured: %+v", trimmed)
+	}
+	if cue := library.Cues["sfx/padded_knock"]; len(cue.Recordings()) != 2 {
+		t.Fatalf("the new recording is played in turn: %+v", cue)
+	}
+	t.Logf("screenshots: %s %s", waveShot, levelShot)
 }

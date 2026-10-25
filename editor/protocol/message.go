@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 11
+const Version = 12
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -72,6 +72,11 @@ const (
 	// library changed, so windows that show it ask for it again.
 	KindAudioEdit    Kind = "audio-edit"
 	KindAudioChanged Kind = "audio-changed"
+	// KindAudioAnalysis asks for a recording's waveform and suggestions, and
+	// KindAudioCheck for every recording to be decoded; the orchestrator
+	// replies to each with the same kind, filled in.
+	KindAudioAnalysis Kind = "audio-analysis"
+	KindAudioCheck    Kind = "audio-check"
 )
 
 // Message is one framed protocol message.
@@ -464,26 +469,90 @@ type AudioCue struct {
 // the file does, so a window keeps bytes it already holds; its size in
 // bytes; its calibration gain in dB; the part of it that plays, in
 // milliseconds, both zero for all of it; and its status. For the Audio
-// window it also has its file, relative to the audio folder, the file it was
-// copied from, its note and search terms, and its attribution.
+// window it also has how its calibration was set (CalibrationAuto, manual,
+// or empty for none) and its target, zero for its family's; its acoustic
+// family; its file, relative to the audio folder; the file it was copied
+// from; its note and search terms; and its attribution.
 type AudioRecording struct {
-	ID            string      `json:"id"`
-	Extension     string      `json:"extension,omitempty"`
-	Version       string      `json:"version,omitempty"`
-	Size          int64       `json:"size,omitempty"`
-	CalibrationDB float64     `json:"calibrationDb,omitempty"`
-	StartMs       int64       `json:"startMs,omitempty"`
-	EndMs         int64       `json:"endMs,omitempty"`
-	Status        string      `json:"status"`
-	File          string      `json:"file,omitempty"`
-	OriginalFile  string      `json:"originalFile,omitempty"`
-	Note          string      `json:"note,omitempty"`
-	SearchTerms   []string    `json:"searchTerms,omitempty"`
-	Attribution   Attribution `json:"attribution"`
+	ID              string      `json:"id"`
+	Extension       string      `json:"extension,omitempty"`
+	Version         string      `json:"version,omitempty"`
+	Size            int64       `json:"size,omitempty"`
+	CalibrationDB   float64     `json:"calibrationDb,omitempty"`
+	CalibrationMode string      `json:"calibrationMode,omitempty"`
+	TargetDB        float64     `json:"targetDb,omitempty"`
+	Family          string      `json:"family,omitempty"`
+	StartMs         int64       `json:"startMs,omitempty"`
+	EndMs           int64       `json:"endMs,omitempty"`
+	Status          string      `json:"status"`
+	File            string      `json:"file,omitempty"`
+	OriginalFile    string      `json:"originalFile,omitempty"`
+	Note            string      `json:"note,omitempty"`
+	SearchTerms     []string    `json:"searchTerms,omitempty"`
+	Attribution     Attribution `json:"attribution"`
 }
 
 // Unknown is how the audio library spells an attribution nobody recorded.
 const Unknown = "unknown"
+
+// How a recording's calibration was set: measured from it, or by hand.
+const (
+	CalibrationAuto   = "auto"
+	CalibrationManual = "manual"
+)
+
+// AudioWindow is a part of a recording, in source milliseconds.
+type AudioWindow struct {
+	StartMs int64 `json:"startMs"`
+	EndMs   int64 `json:"endMs"`
+}
+
+// AudioAnalysis asks for a recording's waveform: Columns peaks between From
+// and To, in source milliseconds, both zero for all of it, and a calibration
+// suggestion for Region, the recording's own when nil. The reply adds the
+// recording's version and length, the peaks, each the loudest moment of its
+// column from 0 for −72 dB or quieter to 255 for 0 dB, the region its sound
+// fills, and the suggestion; or Problem, such as a file that cannot be
+// decoded.
+type AudioAnalysis struct {
+	Recording   string            `json:"recording"`
+	From        int64             `json:"from,omitempty"`
+	To          int64             `json:"to,omitempty"`
+	Columns     int               `json:"columns"`
+	Region      *AudioWindow      `json:"region,omitempty"`
+	Version     string            `json:"version,omitempty"`
+	DurationMs  int64             `json:"durationMs,omitempty"`
+	Peaks       []byte            `json:"peaks,omitempty"`
+	Suggested   *AudioWindow      `json:"suggested,omitempty"`
+	Calibration *AudioCalibration `json:"calibration,omitempty"`
+	Problem     string            `json:"problem,omitempty"`
+}
+
+// AudioCalibration is a calibration suggestion: how loud the region measures
+// and how it was measured, the target, its loudest sample, the gain that
+// brings it to the target, and whether the gain was limited to stop it
+// clipping or to stay in range. All in dB; estimates, never a listening
+// judgement.
+type AudioCalibration struct {
+	Method     string  `json:"method"`
+	MeasuredDB float64 `json:"measuredDb"`
+	TargetDB   float64 `json:"targetDb"`
+	PeakDB     float64 `json:"peakDb"`
+	GainDB     float64 `json:"gainDb"`
+	Limited    bool    `json:"limited,omitempty"`
+}
+
+// AudioCheck asks for every recording with a file to be decoded. The reply
+// lists those that cannot play, with why.
+type AudioCheck struct {
+	Broken []AudioProblem `json:"broken,omitempty"`
+}
+
+// AudioProblem is why a recording cannot play.
+type AudioProblem struct {
+	Recording string `json:"recording"`
+	Reason    string `json:"reason"`
+}
 
 // Attribution is who made a recording, where it came from and on what
 // licence, as its author recorded them, Unknown where nobody did, and
@@ -517,6 +586,15 @@ const (
 	// recording only when no cue plays it.
 	AudioDeleteCue       = "audio.delete-cue"
 	AudioDeleteRecording = "audio.delete-recording"
+	// AudioSetRegion sets the part of a recording that plays, RegionChange;
+	// AudioDuplicateRegion makes a new recording of part of one, DuplicateRegion.
+	AudioSetRegion       = "audio.set-region"
+	AudioDuplicateRegion = "audio.duplicate-region"
+	// AudioAcceptCalibration measures a recording and sets its gain from the
+	// measurement, AudioItem; AudioSetCalibration sets its gain or its target
+	// by hand, CalibrationChange.
+	AudioAcceptCalibration = "audio.accept-calibration"
+	AudioSetCalibration    = "audio.set-calibration"
 )
 
 // AudioEdit asks for one change to the audio library: Edit names it and Args
@@ -598,9 +676,34 @@ type AttributionChange struct {
 	Attribution Attribution `json:"attribution"`
 }
 
-// AudioItem names the cue or recording an edit deletes.
+// AudioItem names the cue or recording an edit deletes, or the recording it
+// measures.
 type AudioItem struct {
 	ID string `json:"id"`
+}
+
+// RegionChange sets the part of a recording that plays; nil plays all of it.
+type RegionChange struct {
+	Recording string       `json:"recording"`
+	Region    *AudioWindow `json:"region,omitempty"`
+}
+
+// DuplicateRegion makes a new recording of part of one, nil for all of it, and
+// adds it to the recordings Cue plays in turn when Cue is set.
+type DuplicateRegion struct {
+	Recording string       `json:"recording"`
+	Region    *AudioWindow `json:"region,omitempty"`
+	Cue       string       `json:"cue,omitempty"`
+}
+
+// CalibrationChange sets a recording's gain by hand, in dB, or the loudness
+// its measurement aims at, in dB; DefaultTarget returns that to its family's.
+// A nil field stays as it is.
+type CalibrationChange struct {
+	Recording     string   `json:"recording"`
+	GainDB        *float64 `json:"gainDb,omitempty"`
+	TargetDB      *float64 `json:"targetDb,omitempty"`
+	DefaultTarget bool     `json:"defaultTarget,omitempty"`
 }
 
 // Recording asks for a recording's bytes from Offset. The reply carries its

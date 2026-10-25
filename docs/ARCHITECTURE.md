@@ -217,6 +217,11 @@ first; a window opens its audio device only when it first plays.
 orchestrator notices its files changed outside the editor, every window is
 told the library changed and asks for it again. The library also lists the
 recordings no cue plays, and each recording's file, note and attribution.
+**Protocol version 12:** a window never decodes a recording to draw or
+measure it. It asks the orchestrator for a recording's peaks, at the width
+it draws them, with a suggested region and gain, and to check that every
+file decodes; the orchestrator answers off its loop, keeping a few decoded
+recordings for the next question.
 
 ## D9 — Saving and versions
 
@@ -238,6 +243,8 @@ they are lost.
 audio files before it is acknowledged, so it is not journaled. Edits run one
 at a time on a worker, so copying a large file never holds up the
 orchestrator; each opens the library afresh and saves it at once.
+**Protocol version 12:** a recording's region is a draft in its window, like
+typed text, until Apply sends it; the window asks before it is lost.
 
 ## D10 — Lifecycle and failure
 

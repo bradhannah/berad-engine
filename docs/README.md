@@ -10,5 +10,6 @@
 | [Third build](THIRD_BUILD.md) | NPC workflows and the wireframe look: decisions, steps and results |
 | [Fourth build](FOURTH_BUILD.md) | Sounds in workflows: choosing and hearing cues, decisions, steps and results |
 | [Fifth build](FIFTH_BUILD.md) | The Audio window: adding sounds with their attribution and editing cues |
+| [Sixth build](SIXTH_BUILD.md) | Trimming and levels: a recording's waveform, region and measured gain |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
