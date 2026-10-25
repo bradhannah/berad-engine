@@ -299,7 +299,8 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 // has none.
 func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error) {
 	reply, err := c.request(ctx, protocol.KindAudioLibrary, protocol.AudioLibrary{
-		Problem: "", Cues: nil, Schema: 0, Unused: nil,
+		Problem: "", Cues: nil, Schema: 0, Unused: nil, Profiles: nil, Families: nil, AmbientPreset: nil,
+		SliderGains: nil,
 	})
 	if err != nil {
 		return protocol.AudioLibrary{}, err

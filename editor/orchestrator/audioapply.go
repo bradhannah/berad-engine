@@ -75,7 +75,7 @@ func (s *audioSession) applyLevels(edit protocol.AudioEdit) (string, error) {
 		return withArgs(edit.Args, s.setCalibration)
 	}
 
-	return "", fmt.Errorf("%w: %s", ErrUnknownEdit, edit.Edit)
+	return s.applyClassification(edit)
 }
 
 func withArgs[T any](args json.RawMessage, apply func(T) (string, error)) (string, error) {
@@ -131,12 +131,21 @@ func (s *audioSession) createCue(cue protocol.NewCue) (string, error) {
 	if err := s.library.AddRecording(slot); err != nil {
 		return "", authoringError(err)
 	}
-	err := s.library.CreateCue(cue.ID, authoring.Cue{
+	made, profile := authoring.Cue{
 		Name: name, RecordingID: slot, RecordingIDs: nil, Selection: "", VolumeModifier: 1, HowToHear: how,
 		SearchTerms: nil,
-	}, "")
-	if err != nil {
+	}, ""
+	ambient := cue.Category == protocol.CategoryAmbient
+	if ambient {
+		s.newAmbient(&made, &profile)
+	}
+	if err := s.library.CreateCue(cue.ID, made, profile); err != nil {
 		return "", authoringError(err)
+	}
+	if ambient {
+		if err := s.heardFromAfar(cue.ID, slot); err != nil {
+			return "", err
+		}
 	}
 	if cue.Category != "" {
 		s.categories[cue.ID] = cue.Category
@@ -230,8 +239,10 @@ func (s *audioSession) copyIn(recording, path string, attribution protocol.Attri
 	return s.attribute(recording, attribution)
 }
 
-// attribute records who made a recording, where it came from, its licence and
-// whether it is cleared for a commercial game. A blank answer is unknown.
+// attribute records who made a recording, where it came from, what kind of
+// source that was, its licence, what was done to it and whether it is
+// cleared for a commercial game. A blank answer is unknown, and a blank
+// processing step is left out.
 func (s *audioSession) attribute(recording string, attribution protocol.Attribution) error {
 	if !slices.Contains(s.library.RecordingIDs(), recording) {
 		return errNoRecording
@@ -239,7 +250,17 @@ func (s *audioSession) attribute(recording string, attribution protocol.Attribut
 	provenance := s.library.Recording(recording).Provenance
 	provenance.SourceCreator = known(attribution.Creator)
 	provenance.SourceURL = known(attribution.Source)
+	provenance.SourceType = known(attribution.SourceType)
 	provenance.License = known(attribution.License)
+	provenance.Processing = make([]authoring.ProcessingStep, 0, len(attribution.Processing))
+	for _, step := range attribution.Processing {
+		if strings.TrimSpace(step.Description+step.Tool+step.PerformedBy) == "" {
+			continue
+		}
+		provenance.Processing = append(provenance.Processing, authoring.ProcessingStep{
+			Description: known(step.Description), Tool: known(step.Tool), PerformedBy: known(step.PerformedBy),
+		})
+	}
 	cleared := attribution.Commercial
 	provenance.CommercialUse = &cleared
 

@@ -59,13 +59,20 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Recording** | One sound file of the audio library, which cues play; an intentional silent slot has none |
 | **Category** | Whether a cue is music, SFX or ambient |
 | **Audio window** | The window where sounds are added and cues edited |
-| **Attribution** | Who made a recording, where it came from and its licence, as its author recorded them |
+| **Attribution** | Who made a recording, where it came from and what kind of source that was, its licence and its processing steps, as its author recorded them |
+| **Processing step** | One thing done to a recording before it came into the project, such as trimming it, with the tool used and who did it |
 | **Cleared** | A recording its author has marked as allowed in a commercial game; until then it is not cleared |
 | **Region** | The part of a recording that plays, from its start to its end; all of it when none is set |
 | **Waveform** | A picture of how loud a recording is from moment to moment |
-| **Gain** | How much louder or quieter something plays than as recorded: a recording's in dB, a cue's as a percentage |
-| **Level** | How a recording's gain is set: measured to reach its target, set by hand, or not set |
-| **Target** | The loudness a measured recording's gain aims at; its family's unless its author sets one |
+| **Gain** | How loud a cue, or a layer of the soundscape, plays, as a percentage; a mixing choice |
+| **Level** | How much louder or quieter a recording plays than as recorded, in dB, so recordings sound equally loud; every cue that plays it gets it. It is measured to reach its target, set by hand, or not set |
+| **Target** | The loudness a measured recording's level aims at; its family's unless its author sets one |
+| **Acoustic family** | A group of recordings that sound alike, which sets the target measuring aims at |
+| **Profile** | What kind of moment a cue plays for, such as a door starting to open, which a search finds it by |
+| **Distance** | How many tiles away an ambient cue is heard, louder closer; 0 is everywhere, as a background |
+| **Soundscape** | Up to four cues the Audio window plays together, two ambient, one music and one SFX, to hear how they sit together; never saved |
+| **Layer** | One cue of the soundscape, with its own gain, mute and solo |
+| **Monitor level** | How loud the Audio window plays a category while its author listens, standing in for a player's volume settings; never saved |
 
 ## Editor terms
 

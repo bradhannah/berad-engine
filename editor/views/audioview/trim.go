@@ -52,8 +52,7 @@ type trimmer struct {
 	playRegion, playWhole                  *ui.Button
 	loop                                   *ui.Toggle
 	suggest, all, apply, cancel, duplicate *ui.Button
-	useSuggestion, setGain, setTarget      *ui.Button
-	dialog                                 *levelDialog
+	useSuggestion, setLevel, setTarget     *ui.Button
 }
 
 func newTrimmer(theme *ui.Theme) *trimmer {
@@ -74,15 +73,15 @@ func newTrimmer(theme *ui.Theme) *trimmer {
 		suggest: button("suggest-region", "Suggest"), all: button("whole-region", "Whole file"),
 		apply: button("apply-region", "Apply"), cancel: button("cancel-region", "Cancel"),
 		duplicate:     button("duplicate-region", "Duplicate region"),
-		useSuggestion: button("use-suggestion", "Use suggestion"), setGain: button("set-gain", "Set gain…"),
-		setTarget: button("set-target", "Target…"), dialog: nil,
+		useSuggestion: button("use-suggestion", "Use suggested level"), setLevel: button("set-level", "Set level…"),
+		setTarget: button("set-target", "Target…"),
 	}
 }
 
 func (t *trimmer) buttons() []*ui.Button {
 	return []*ui.Button{
 		t.zoomIn, t.zoomOut, t.fit, t.playRegion, t.playWhole, t.suggest, t.all, t.apply, t.cancel, t.duplicate,
-		t.useSuggestion, t.setGain, t.setTarget,
+		t.useSuggestion, t.setLevel, t.setTarget,
 	}
 }
 
@@ -256,7 +255,7 @@ func (s *State) layoutTrim(left, right, top int) int {
 	trim.end.Rect = image.Rect(trim.start.Rect.Max.X+ui.Gap, top, trim.start.Rect.Max.X+ui.Gap+fieldWidth, top+ui.ButtonH)
 	s.row(trim.end.Rect.Max.X+ui.Inset, top, trim.suggest, trim.all, trim.apply, trim.cancel)
 	top += ui.ButtonH + ui.LineHeight + ui.Inset + ui.LineHeight*levelLines
-	s.row(left, top, trim.useSuggestion, trim.setGain, trim.setTarget)
+	s.row(left, top, trim.useSuggestion, trim.setLevel, trim.setTarget)
 	trim.layoutWave()
 	trim.apply.Disabled, trim.cancel.Disabled = !trim.dirty(), !trim.dirty()
 	trim.suggest.Disabled = trim.analysis == nil || trim.analysis.Suggested == nil
@@ -266,7 +265,7 @@ func (s *State) layoutTrim(left, right, top int) int {
 }
 
 // levelLines counts the lines about a recording's level above its buttons:
-// its label, how its gain is set, and the suggestion.
+// its label, how its level is set, and the suggestion.
 const levelLines = 3
 
 // layoutWave gives the waveform what it shows.
@@ -326,10 +325,10 @@ func (s *State) updateRegion(input *ui.Input, ctx *frame.Context) {
 		s.duplicateRegion(ctx)
 	case trim.useSuggestion.Update(input):
 		s.edit(ctx, protocol.AudioAcceptCalibration, protocol.AudioItem{ID: trim.recording}, nil)
-	case trim.setGain.Update(input):
-		trim.dialog = newLevelDialog(s.theme, levelGain, trim.recording, s.currentGain())
+	case trim.setLevel.Update(input):
+		s.prompt = s.levelDialog(levelByHand, trim.recording, s.currentLevel())
 	case trim.setTarget.Update(input):
-		trim.dialog = newLevelDialog(s.theme, levelTarget, trim.recording, s.currentTarget())
+		s.prompt = s.levelDialog(levelTarget, trim.recording, s.currentTarget())
 	}
 }
 
@@ -425,8 +424,8 @@ func (s *State) duplicateRegion(ctx *frame.Context) {
 	})
 }
 
-// currentGain is the focused recording's gain, in dB.
-func (s *State) currentGain() float64 {
+// currentLevel is the focused recording's level, in dB.
+func (s *State) currentLevel() float64 {
 	recording, _ := s.focused()
 
 	return recording.CalibrationDB
@@ -509,7 +508,7 @@ func decibels(value float64) string {
 	return "+" + text
 }
 
-// levelText says how the recording's gain is set, and what is suggested for
+// levelText says how the recording's level is set, and what is suggested for
 // the drafted region.
 func (s *State) levelText(recording protocol.AudioRecording) (string, string) {
 	trim := s.trim
@@ -517,7 +516,7 @@ func (s *State) levelText(recording protocol.AudioRecording) (string, string) {
 	if recording.TargetDB != 0 {
 		target = decibels(recording.TargetDB)
 	}
-	now := "Not set: plays as recorded. Use the suggestion, or set a gain by hand."
+	now := "Not set: plays as recorded. Use the suggested level, or set one by hand."
 	switch recording.CalibrationMode {
 	case protocol.CalibrationAuto:
 		now = "Measured: " + decibels(recording.CalibrationDB) + ", aiming at " + target + "."
@@ -527,7 +526,7 @@ func (s *State) levelText(recording protocol.AudioRecording) (string, string) {
 	suggestion := "Measuring…"
 	if trim.analysis != nil && trim.analysis.Calibration != nil {
 		found := trim.analysis.Calibration
-		suggestion = "Suggestion for this region: " + decibels(found.GainDB) + " (it measures " +
+		suggestion = "Suggested level for this region: " + decibels(found.GainDB) + " (it measures " +
 			decibels(found.MeasuredDB) + ", target " + decibels(found.TargetDB) + ")"
 		if found.Limited {
 			suggestion += ", limited so it does not clip"

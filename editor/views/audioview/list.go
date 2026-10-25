@@ -170,7 +170,11 @@ func (s *State) cueRows() []ui.Row {
 }
 
 func (s *State) matchesCue(cue protocol.AudioCue) bool {
-	texts := append([]string{cue.ID, cue.Name, cue.HowToHear}, cue.SearchTerms...)
+	texts := append([]string{cue.ID, cue.Name, cue.HowToHear, cue.Profile}, cue.SearchTerms...)
+	if profile, found := s.profileOf(cue.Profile); found {
+		texts = append(append(append(texts, profile.Phase, profile.Outcome, profile.MixRole), profile.Emitters...),
+			append(profile.Contexts, profile.SearchTerms...)...)
+	}
 	for _, recording := range cue.Recordings {
 		texts = append(texts, recordingTexts(recording)...)
 	}
@@ -183,7 +187,7 @@ func recordingTexts(recording protocol.AudioRecording) []string {
 
 	return append([]string{
 		recording.ID, recording.File, recording.OriginalFile, recording.Note, attribution.Creator,
-		attribution.Source, attribution.License,
+		attribution.Source, attribution.License, recording.Family,
 	}, recording.SearchTerms...)
 }
 

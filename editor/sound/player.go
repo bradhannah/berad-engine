@@ -69,6 +69,11 @@ type Player struct {
 	// pending is the audition last asked for, kept until its recording is
 	// listed.
 	pending *audition
+	// monitor is how loud each category plays; layers are the soundscape's,
+	// by slot; now tells the time.
+	monitor Monitor
+	layers  map[string]*layerPlay
+	now     func() time.Time
 }
 
 // auditionCue is the cue a Player makes to play an audition. Its slashes are
@@ -96,11 +101,13 @@ func (h heldRecording) complete(version string) bool {
 	return h.version == version && int64(len(h.data)) == h.size
 }
 
-// player is a runtime, the cues it can play and the voices it started.
+// player is a runtime, the cues it can play and the voices it started, and
+// whether it plays them at their calibrated level alone.
 type player struct {
-	runtime *audio.Runtime
-	cues    map[string]bool
-	voices  []audio.Voice
+	runtime   *audio.Runtime
+	cues      map[string]bool
+	voices    []audio.Voice
+	reference bool
 }
 
 // New returns a player that asks requests for what it plays and reports
@@ -111,6 +118,7 @@ func New(requests Requests, report func(string)) *Player {
 		listing: map[string]protocol.AudioCue{}, listed: false, asking: false, again: false,
 		held: map[string]heldRecording{}, fetching: map[string]bool{}, wanted: map[string]bool{}, queued: nil,
 		told: map[string]bool{}, current: nil, retiring: nil, audition: nil, loops: false, pending: nil,
+		monitor: FullMonitor(), layers: map[string]*layerPlay{}, now: time.Now,
 	}
 }
 
@@ -141,7 +149,7 @@ func auditionOf(recording protocol.AudioRecording, asked audition) *protocol.Aud
 
 	return &protocol.AudioCue{
 		ID: auditionCue, Name: recording.ID, Category: "", CategorySet: false, Gain: 1, HowToHear: "",
-		SearchTerms: nil, Recordings: []protocol.AudioRecording{recording},
+		SearchTerms: nil, Recordings: []protocol.AudioRecording{recording}, Profile: "", Ambient: nil,
 	}
 }
 
@@ -215,7 +223,8 @@ func (s *Player) Play(cue string) {
 	s.playQueued()
 }
 
-// Stop stops every sound this window plays, and forgets what waits to play.
+// Stop stops every sound this window plays but the soundscape, and forgets
+// what waits to play.
 func (s *Player) Stop() {
 	s.queued = nil
 	for _, playing := range s.players() {
@@ -276,10 +285,12 @@ func (s *Player) Update() {
 		return true
 	})
 	s.playQueued()
+	s.updateLayers()
 }
 
 // Close stops every runtime when the window closes.
 func (s *Player) Close() error {
+	s.stopLayers()
 	players := s.players()
 	errs := make([]error, 0, len(players))
 	for _, playing := range players {
@@ -329,7 +340,8 @@ func (s *Player) list(library protocol.AudioLibrary) {
 	alone := func(recording protocol.AudioRecording) {
 		s.listing[recordingCue(recording.ID)] = protocol.AudioCue{
 			ID: recordingCue(recording.ID), Name: recording.ID, Category: "", CategorySet: false, Gain: 1,
-			HowToHear: "", SearchTerms: nil, Recordings: []protocol.AudioRecording{recording},
+			HowToHear: "", SearchTerms: nil, Recordings: []protocol.AudioRecording{recording}, Profile: "",
+			Ambient: nil,
 		}
 	}
 	for _, cue := range library.Cues {
@@ -449,7 +461,7 @@ func (s *Player) readinessOf(cue string) (readiness, string) {
 }
 
 // playQueued plays each queued cue that is ready, drops those that cannot
-// play, and keeps those still waiting.
+// play, and keeps those still waiting; then the soundscape's layers.
 func (s *Player) playQueued() {
 	waiting := s.queued[:0]
 	for _, cue := range s.queued {
@@ -469,6 +481,7 @@ func (s *Player) playQueued() {
 		}
 	}
 	s.queued = waiting
+	s.startLayers()
 }
 
 // start plays a ready cue, building a runtime that can play it first.
@@ -480,6 +493,7 @@ func (s *Player) start(cue string) {
 	}
 	options := audio.DefaultPlayOptions()
 	options.Loop = cue == auditionCue && s.loops
+	options.Gain = s.monitorGain(cue)
 	result, err := s.current.runtime.Play(audio.CueID(cue), options)
 	if err != nil {
 		s.tell("play:"+cue, "Can’t play “"+s.listing[cue].Name+"”: "+err.Error())
@@ -492,8 +506,11 @@ func (s *Player) start(cue string) {
 }
 
 // stale reports whether a player was built from recordings that have
-// changed since.
+// changed since, or for the monitor's other Reference.
 func (s *Player) stale(playing *player) bool {
+	if playing.reference != s.monitor.Reference {
+		return true
+	}
 	for cue := range playing.cues {
 		if state, _ := s.readinessOf(cue); state != cueReady {
 			return true
@@ -507,14 +524,8 @@ func (s *Player) stale(playing *player) bool {
 // one playing now so its sounds finish. A cue the runtime refuses is
 // reported and no longer wanted, and the rest are built without it.
 func (s *Player) rebuild() bool {
-	if s.backend == nil {
-		backend, err := s.device()
-		if err != nil {
-			s.tell("device", "Sound is off: the audio device could not be opened: "+err.Error())
-
-			return false
-		}
-		s.backend = backend
+	if !s.open() {
+		return false
 	}
 	var ready []string
 	for _, cue := range slices.Sorted(maps.Keys(s.wanted)) {
@@ -547,18 +558,38 @@ func (s *Player) rebuild() bool {
 	for _, cue := range ready {
 		cues[cue] = true
 	}
-	s.current = &player{runtime: runtime, cues: cues, voices: nil}
+	s.current = &player{runtime: runtime, cues: cues, voices: nil, reference: s.monitor.Reference}
 
 	return true
 }
 
-// build makes a runtime that plays cues, each ready.
+// open opens the audio device the first time something plays.
+func (s *Player) open() bool {
+	if s.backend != nil {
+		return true
+	}
+	backend, err := s.device()
+	if err != nil {
+		s.tell("device", "Sound is off: the audio device could not be opened: "+err.Error())
+
+		return false
+	}
+	s.backend = backend
+
+	return true
+}
+
+// build makes a runtime that plays cues, each ready; for the monitor's
+// Reference, at their recordings' calibrated level alone.
 func (s *Player) build(cues []string) (*audio.Runtime, error) {
 	definition := audio.Definition{Recordings: map[audio.RecordingID]audio.Recording{}, Cues: map[audio.CueID]audio.Cue{}}
 	files, total := map[string][]byte{}, int64(1)
 	for _, cue := range cues {
 		listed := s.listing[cue]
 		played := audio.Cue{Recordings: nil, Gain: listed.Gain}
+		if s.monitor.Reference {
+			played.Gain = 1
+		}
 		for _, recording := range listed.Recordings {
 			played.Recordings = append(played.Recordings, audio.RecordingID(recording.ID))
 			definition.Recordings[audio.RecordingID(recording.ID)] = s.recordingOf(recording, files, &total)

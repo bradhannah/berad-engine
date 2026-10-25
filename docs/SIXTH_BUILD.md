@@ -44,9 +44,9 @@ Chosen while building, for its author to check:
   change: choosing another recording or closing the window asks first.
 - **A region shorter than 10 ms is refused**, and an end dragged past the
   other stops 10 ms short of it.
-- **Use suggestion waits for Apply.** The suggestion is measured on the
+- **Use suggested level waits for Apply.** The suggestion is measured on the
   drafted region, but saving it on a region that is not saved would store a
-  gain for a part that does not play, so the button stays disabled, with a
+  level for a part that does not play, so the button stays disabled, with a
   note saying why, until the region is applied.
 - **Play region plays the draft**, at the gain it would play at: for a
   measured recording, the gain suggested for the draft. Pressed again, the
@@ -91,7 +91,9 @@ Chosen while building, for its author to check:
   under a recording's buttons, with −, + and Fit to zoom; Play region, Play
   whole file and Loop; the region's start and end in seconds with Suggest,
   Whole file, Apply and Cancel; Duplicate region; and the level: how it is set,
-  the suggestion, Use suggestion, Set gain… and Target….
+  the suggestion, Use suggested level, Set level… and Target…. (These read
+  Use suggestion and Set gain… until the [seventh build](SEVENTH_BUILD.md)
+  renamed a recording's gain its level.)
 - **Check files** sits in the toolbar and reports how many files cannot be
   decoded.
 
@@ -99,5 +101,5 @@ Chosen while building, for its author to check:
 
 Ambient distance and fades, a new ambient cue from the descriptor's preset,
 the soundscape and the monitoring volume, and editing classification
-profiles and families (the next build). The waveform shows one channel, the
+profiles and families ([the next build](SEVENTH_BUILD.md)). The waveform shows one channel, the
 loudest of the recording's channels at each moment.

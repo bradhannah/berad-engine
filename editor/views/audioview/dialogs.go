@@ -60,18 +60,24 @@ type soundDialog struct {
 	category string
 	// name and id describe a new cue; autoID is the ID last suggested, kept
 	// in step with the name until the author changes the ID.
-	name, id                 *ui.TextField
-	autoID                   string
-	creator, source, license *ui.TextField
-	categories               []*ui.Button
-	commercial               *ui.Toggle
-	primary, cancel          *ui.Button
+	name, id *ui.TextField
+	autoID   string
+	// ambientPrefix begins a new ambient cue's ID, from the audio project's
+	// preset when it has one.
+	ambientPrefix                        string
+	creator, source, sourceType, license *ui.TextField
+	categories                           []*ui.Button
+	commercial                           *ui.Toggle
+	// steps are what was done to the sound before it came in.
+	steps                    []*stepRow
+	addStep, primary, cancel *ui.Button
 	focus                    ui.Focus
 	problem                  string
 	waiting                  bool
 	rect                     image.Rectangle
 	// problemTop is where a problem is written, under everything else.
 	problemTop int
+	theme      *ui.Theme
 }
 
 // newDialog returns the dialog for a kind of change.
@@ -85,24 +91,27 @@ func (s *State) newDialog(kind dialogKind, path string, target soundTarget, cate
 	dialog := &soundDialog{
 		kind: kind, path: path, target: target, category: category,
 		name: field("cue-name", "Door opens"), id: field("cue-id", "sfx/door_open"), autoID: "",
-		creator: field("creator", "Who made it"), source: field("source", "Where it came from, such as a web address"),
-		license: field("license", "Its licence, such as CC0-1.0 or CC BY 4.0"), categories: nil,
+		ambientPrefix: protocol.CategoryAmbient + "/",
+		creator:       field("creator", "Who made it"), source: field("source", "Where it came from, such as a web address"),
+		sourceType: field("source-type", "Such as recorded, synthesised or a sound library"),
+		license:    field("license", "Its licence, such as CC0-1.0 or CC BY 4.0"), categories: nil,
 		commercial: &ui.Toggle{ID: "commercial", Label: "Allowed in a commercial game", Rect: ui.Zero(), On: false},
-		primary:    ui.DialogButton("dialog-ok", primaryLabel(kind)), cancel: ui.DialogButton(ui.DialogCancel, "Cancel"),
-		focus: ui.Focus{}, problem: "", waiting: false, rect: ui.Zero(), problemTop: 0,
+		steps:      nil, addStep: ui.NewButton("add-step", "Add step"),
+		primary: ui.DialogButton("dialog-ok", primaryLabel(kind)), cancel: ui.DialogButton(ui.DialogCancel, "Cancel"),
+		focus: ui.Focus{}, problem: "", waiting: false, rect: ui.Zero(), problemTop: 0, theme: s.theme,
 	}
 	dialog.primary.Primary = true
+	if s.library != nil && s.library.AmbientPreset != nil && s.library.AmbientPreset.CuePrefix != "" {
+		dialog.ambientPrefix = s.library.AmbientPreset.CuePrefix
+	}
 	for _, category := range categories() {
 		dialog.categories = append(dialog.categories, ui.NewButton("dialog-"+category, categoryLabel(category)))
 	}
+	dialog.registerFields()
 	if dialog.newCue() {
-		dialog.focus.Register(dialog.name, dialog.id)
 		dialog.name.Field.Restore(nameFromFile(path))
 		dialog.suggestID()
 		dialog.focus.Set(dialog.name)
-	}
-	if dialog.attributes() {
-		dialog.focus.Register(dialog.creator, dialog.source, dialog.license)
 	}
 
 	return dialog
@@ -177,6 +186,12 @@ func (dlg *soundDialog) suggestID() {
 	suggested := ""
 	if part := slug(dlg.name.Field.Value()); part != "" {
 		suggested = dlg.category + "/" + part
+		if dlg.category == protocol.CategoryAmbient {
+			suggested = dlg.ambientPrefix + part
+		}
+	}
+	if suggested == dlg.autoID {
+		return
 	}
 	if current == dlg.autoID {
 		dlg.id.Field.Restore(suggested)
@@ -207,11 +222,15 @@ func (s *State) openAttribution(recording protocol.AudioRecording) {
 	dialog := s.newDialog(dialogAttribution, "", soundTarget{cue: "", recording: recording.ID}, "")
 	attribution := recording.Attribution
 	for field, value := range map[*ui.TextField]string{
-		dialog.creator: attribution.Creator, dialog.source: attribution.Source, dialog.license: attribution.License,
+		dialog.creator: attribution.Creator, dialog.source: attribution.Source,
+		dialog.sourceType: attribution.SourceType, dialog.license: attribution.License,
 	} {
 		if !unknown(value) {
 			field.Field.Restore(value)
 		}
+	}
+	for _, step := range attribution.Processing {
+		dialog.addStepRow(step)
 	}
 	dialog.commercial.On = attribution.Commercial
 	s.dialog = dialog
@@ -231,6 +250,7 @@ func (dlg *soundDialog) layout(window image.Rectangle) {
 	top := window.Min.Y + max((window.Dy()-height)/ui.Half, ui.Inset)
 	dlg.place(left, top, width)
 	dlg.rect = image.Rect(left, top, left+width, top+height)
+	dlg.addStep.Disabled = height+ui.LineHeight+ui.ButtonH+ui.Gap > window.Dy()-ui.Half*ui.Inset
 	right := dlg.rect.Max.X - ui.Inset
 	dlg.cancel.Rect = image.Rect(right-actionWidth, dlg.rect.Max.Y-ui.Inset-ui.ButtonH, right, dlg.rect.Max.Y-ui.Inset)
 	dlg.primary.Rect = dlg.cancel.Rect.Sub(image.Pt(actionWidth+ui.Gap*ui.Half, 0))
@@ -248,9 +268,10 @@ func (dlg *soundDialog) place(left, top, width int) int {
 		field.Rect = image.Rect(column, row, right, row+ui.ButtonH)
 		row += ui.ButtonH + ui.Gap
 	}
-	for _, unplaced := range []*ui.TextField{dlg.name, dlg.id, dlg.creator, dlg.source, dlg.license} {
+	for _, unplaced := range []*ui.TextField{dlg.name, dlg.id, dlg.creator, dlg.source, dlg.sourceType, dlg.license} {
 		unplaced.Rect = ui.Zero()
 	}
+	dlg.addStep.Rect = ui.Zero()
 	if dlg.newCue() {
 		field(dlg.name)
 		field(dlg.id)
@@ -262,9 +283,10 @@ func (dlg *soundDialog) place(left, top, width int) int {
 		row += ui.LineHeight
 		field(dlg.creator)
 		field(dlg.source)
+		field(dlg.sourceType)
 		field(dlg.license)
 		dlg.commercial.Rect = image.Rect(column, row, right, row+ui.ButtonH)
-		row += ui.ButtonH + len(reminder())*ui.LineHeight
+		row = dlg.placeSteps(column, right, row+ui.ButtonH+len(reminder())*ui.LineHeight+ui.Gap)
 	}
 	dlg.problemTop = row
 	if dlg.problem != "" {
@@ -290,7 +312,7 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	dlg.layout(image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	defer input.ClearAll()
 	field, outcome := dlg.focus.Update(input, ctx.Clipboard)
-	if field == dlg.name {
+	if dlg.newCue() {
 		dlg.suggestID()
 	}
 	for index, button := range dlg.categories {
@@ -300,6 +322,9 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		}
 	}
 	dlg.commercial.Update(input)
+	if dlg.attributes() {
+		dlg.updateSteps(input)
+	}
 	dlg.primary.Disabled = dlg.waiting
 	s.closeOrSubmit(input, ctx, field, outcome)
 }
@@ -334,8 +359,8 @@ func (s *State) submit(ctx *frame.Context) {
 		return
 	}
 	attribution := protocol.Attribution{
-		Creator: dlg.creator.Field.Value(), Source: dlg.source.Field.Value(), License: dlg.license.Field.Value(),
-		Commercial: dlg.commercial.On,
+		Creator: dlg.creator.Field.Value(), Source: dlg.source.Field.Value(), SourceType: dlg.sourceType.Field.Value(),
+		License: dlg.license.Field.Value(), Processing: dlg.stepValues(), Commercial: dlg.commercial.On,
 	}
 	cue := &protocol.NewCue{ID: cueID, Name: name, Category: dlg.category, HowToHear: ""}
 	edit, args, selectNext := s.dialogEdit(dlg, cue, attribution)
@@ -429,11 +454,13 @@ func (s *State) drawDialog(screen *ebiten.Image) {
 		s.theme.DrawLabel(screen, "WHERE IT CAME FROM", column, heading, ui.ColorInk())
 		label(dlg.creator, "CREATOR")
 		label(dlg.source, "SOURCE")
+		label(dlg.sourceType, "SOURCE TYPE")
 		label(dlg.license, "LICENCE")
 		dlg.commercial.Draw(screen, s.theme)
 		for index, line := range reminder() {
 			s.theme.DrawText(screen, line, column, dlg.commercial.Rect.Max.Y+index*ui.LineHeight, ui.ColorMuted())
 		}
+		dlg.drawSteps(screen, column)
 	}
 	if dlg.problem != "" {
 		s.theme.DrawText(screen, dlg.problem, column, dlg.problemTop, ui.ColorWarn())
@@ -445,10 +472,13 @@ func (s *State) drawDialog(screen *ebiten.Image) {
 // locateInDialog finds a dialog's field, button or the checkbox, for input
 // scripts.
 func (dlg *soundDialog) locate(name string) (image.Point, bool) {
-	for _, field := range []*ui.TextField{dlg.name, dlg.id, dlg.creator, dlg.source, dlg.license} {
+	for _, field := range []*ui.TextField{dlg.name, dlg.id, dlg.creator, dlg.source, dlg.sourceType, dlg.license} {
 		if name == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}
+	}
+	if at, found := dlg.locateStep(name); found {
+		return at, true
 	}
 	buttons := append([]*ui.Button{dlg.primary, dlg.cancel}, dlg.categories...)
 	for _, button := range buttons {

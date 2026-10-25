@@ -35,6 +35,9 @@ type audioSession struct {
 	descriptor []byte
 	saved      map[string]string
 	categories map[string]string
+	// preset is what the audio project gives a new ambient cue, nil for
+	// nothing.
+	preset *authoring.AmbientPreset
 	// createdLibrary and createdDescriptor say the job made those files, so
 	// a failed job removes them again.
 	createdLibrary    bool
@@ -46,7 +49,7 @@ type audioSession struct {
 // project without a library gets an empty one.
 func openAudioSession(files audioFiles, create bool) (*audioSession, error) {
 	session := &audioSession{
-		files: files, library: nil, descriptor: nil, saved: map[string]string{}, categories: nil,
+		files: files, library: nil, descriptor: nil, saved: map[string]string{}, categories: nil, preset: nil,
 		createdLibrary: false, createdDescriptor: false,
 	}
 	options := authoring.DefaultEditorOptions(ebitengine.Decode)
@@ -58,7 +61,7 @@ func openAudioSession(files audioFiles, create bool) (*audioSession, error) {
 			return nil, fmt.Errorf("read the audio project: %w", err)
 		}
 		options = descriptor.EditorOptions(ebitengine.Decode)
-		session.descriptor = data
+		session.descriptor, session.preset = data, descriptor.Ambient
 		if descriptor.Targets.CueCategories != nil {
 			session.saved = maps.Clone(descriptor.Targets.CueCategories)
 		}

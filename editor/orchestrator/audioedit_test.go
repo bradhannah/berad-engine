@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -122,7 +123,10 @@ func TestAudioEditsStartTheLibraryAndUndo(t *testing.T) {
 	source := soundFile(t, "Door Open.wav")
 	mustAudioEdit(t, audio, protocol.AudioAddSound, protocol.AddSound{
 		Cue: "sfx/door-open", NewCue: nil, Path: source,
-		Attribution: protocol.Attribution{Creator: " A. Recordist ", Source: "", License: "CC0-1.0", Commercial: true},
+		Attribution: protocol.Attribution{Creator: " A. Recordist ", Source: "", SourceType: "recorded",
+			License: "CC0-1.0", Processing: []protocol.ProcessingStep{
+				{Description: "trimmed", Tool: "Audacity", PerformedBy: ""}, {Description: " ", Tool: "", PerformedBy: ""},
+			}, Commercial: true},
 	})
 	filled, _ := cueOf(t, audio, "sfx/door-open")
 	recording := filled.Recordings[0]
@@ -130,10 +134,12 @@ func TestAudioEditsStartTheLibraryAndUndo(t *testing.T) {
 		!strings.HasPrefix(recording.File, "imported/door_open_") || recording.OriginalFile != "Door Open.wav" {
 		t.Fatalf("the sound fills the empty slot, copied in: %+v", filled)
 	}
-	if recording.Attribution != (protocol.Attribution{
-		Creator: "A. Recordist", Source: protocol.Unknown, License: "CC0-1.0", Commercial: true,
+	if !reflect.DeepEqual(recording.Attribution, protocol.Attribution{
+		Creator: "A. Recordist", Source: protocol.Unknown, SourceType: "recorded", License: "CC0-1.0",
+		Processing: []protocol.ProcessingStep{{Description: "trimmed", Tool: "Audacity", PerformedBy: protocol.Unknown}},
+		Commercial: true,
 	}) {
-		t.Fatalf("its attribution: %+v", recording.Attribution)
+		t.Fatalf("its attribution, without the blank step: %+v", recording.Attribution)
 	}
 	copied := filepath.Join(dir, "audio", filepath.FromSlash(recording.File))
 	if _, err := os.Stat(copied); err != nil {

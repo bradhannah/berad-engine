@@ -18,6 +18,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -97,7 +98,8 @@ type Sounds interface {
 	Prepare(cues []string)
 	// Play plays a cue once, alongside whatever else is playing.
 	Play(cue string)
-	// Stop stops everything this window plays, and what waits to play.
+	// Stop stops everything this window plays but its soundscape, and what
+	// waits to play.
 	Stop()
 	// Playing reports whether a cue is playing, or waiting to.
 	Playing(cue string) bool
@@ -111,6 +113,22 @@ type Sounds interface {
 	// the recording's milliseconds, while it plays.
 	Audition(recording string, window *protocol.AudioWindow, calibrationDB float64, loop bool)
 	AuditionAt() (int64, bool)
+}
+
+// Soundscape is a window's soundscape: layers of sound that play together,
+// each from its start, and how loud each category plays while its author
+// listens. Nothing of it is saved.
+type Soundscape interface {
+	// PlayLayer plays a layer from its start, replacing what its slot played;
+	// SetLayer changes a playing layer's gain and whether it plays again;
+	// StopLayer stops one; LayerPlaying reports whether one plays or waits
+	// to.
+	PlayLayer(layer sound.Layer)
+	SetLayer(layer sound.Layer)
+	StopLayer(slot string)
+	LayerPlaying(slot string) bool
+	// SetMonitor sets how loud each category plays.
+	SetMonitor(monitor sound.Monitor)
 }
 
 // Picks are the requests for pick on map (D13).
@@ -134,11 +152,12 @@ type Previews interface {
 
 // Context is what a view's Update receives each frame.
 type Context struct {
-	Docs      Docs
-	Requests  Requests
-	Sounds    Sounds
-	Files     Files
-	Clipboard textedit.Clipboard
+	Docs       Docs
+	Requests   Requests
+	Sounds     Sounds
+	Soundscape Soundscape
+	Files      Files
+	Clipboard  textedit.Clipboard
 	// Window is this window's ID; Size is its size in pixels.
 	Window ids.ULID
 	Size   image.Point

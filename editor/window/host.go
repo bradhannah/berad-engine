@@ -73,8 +73,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 	created := &host{
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
-			Docs: nil, Requests: nil, Sounds: nil, Files: nil, Clipboard: nil, Window: conn.Window(),
-			Size: image.Pt(0, 0), Frame: nil,
+			Docs: nil, Requests: nil, Sounds: nil, Soundscape: nil, Files: nil, Clipboard: nil,
+			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil,
 		},
 		reader: newInputReader(), script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,
@@ -87,7 +87,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
 	created.sounds = sound.New(created, created.frame.Status)
-	created.ctx.Sounds = created.sounds
+	created.ctx.Sounds, created.ctx.Soundscape = created.sounds, created.sounds
 	created.ctx.Files = nativeFiles{post: created.post}
 	created.ctx.Clipboard = &systemClipboard{mu: sync.Mutex{}, memory: ""}
 	created.ctx.Frame = created.frame

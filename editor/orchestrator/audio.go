@@ -58,46 +58,62 @@ type loadedAudio struct {
 }
 
 func (a *projectAudio) load() loadedAudio {
-	loaded := loadedAudio{
-		library: protocol.AudioLibrary{Problem: "", Cues: []protocol.AudioCue{}, Schema: 0, Unused: nil},
-		files:   map[string]string{},
-	}
-	libraryPath, assetRoot, targets, problem := a.locate()
+	loaded := loadedAudio{library: emptyAudioLibrary(""), files: map[string]string{}}
+	loaded.library.Cues = []protocol.AudioCue{}
+	place, problem := a.locate()
 	if problem == "" {
-		problem = a.read(libraryPath, assetRoot, targets, &loaded)
+		problem = a.read(place, &loaded)
 	}
 	if problem != "" {
-		loaded.library = protocol.AudioLibrary{Problem: problem, Cues: nil, Schema: 0, Unused: nil}
+		loaded.library = emptyAudioLibrary(problem)
 	}
 
 	return loaded
 }
 
-// locate finds the library, the folder its recordings' paths start from,
-// and the consumer's targets, all relative to the project.
-func (a *projectAudio) locate() (string, string, authoring.AuthoringTargets, string) {
-	var targets authoring.AuthoringTargets
+// emptyAudioLibrary is a library with nothing in it, and why.
+func emptyAudioLibrary(problem string) protocol.AudioLibrary {
+	return protocol.AudioLibrary{
+		Problem: problem, Cues: nil, Schema: 0, Unused: nil, Profiles: nil, Families: nil, AmbientPreset: nil,
+		SliderGains: nil,
+	}
+}
+
+// audioPlace is where the library is and the folder its recordings' paths
+// start from, both relative to the project, and the audio project that
+// names them.
+type audioPlace struct {
+	library, assetRoot string
+	descriptor         authoring.ProjectDescriptor
+}
+
+// locate finds the library and its recordings' folder, and reads the audio
+// project when there is one.
+func (a *projectAudio) locate() (audioPlace, string) {
+	var place audioPlace
 	if _, err := a.root.Stat(audioDescriptor); errors.Is(err, fs.ErrNotExist) {
-		return audioLibrary, audioDir, targets, ""
+		place.library, place.assetRoot = audioLibrary, audioDir
+
+		return place, ""
 	}
 	descriptorPath := filepath.Join(a.dir, filepath.FromSlash(audioDescriptor))
 	descriptor, err := authoring.ReadProjectDescriptor(descriptorPath)
 	if err != nil {
-		return "", "", targets, problemAudioReadFail + err.Error()
+		return place, problemAudioReadFail + err.Error()
 	}
 	libraryPath, inside := a.relative(descriptor.LibraryPath(descriptorPath))
 	if !inside {
-		return "", "", targets, problemAudioOutside
+		return place, problemAudioOutside
 	}
 	assetRoot := path.Dir(libraryPath)
 	if descriptor.AssetRoot != "" {
 		if assetRoot, inside = a.relative(filepath.Join(filepath.Dir(filepath.Join(a.dir, libraryPath)),
 			filepath.FromSlash(descriptor.AssetRoot))); !inside {
-			return "", "", targets, problemAudioOutside
+			return place, problemAudioOutside
 		}
 	}
 
-	return libraryPath, assetRoot, descriptor.Targets, ""
+	return audioPlace{library: libraryPath, assetRoot: assetRoot, descriptor: descriptor}, ""
 }
 
 // relative returns an absolute path relative to the project, with forward
@@ -114,10 +130,9 @@ func (a *projectAudio) relative(absolute string) (string, bool) {
 // read parses the library and lists its cues, ordered by ID, each with its
 // category and recordings, then the recordings no cue plays. It returns a
 // problem when there is nothing to play.
-func (a *projectAudio) read(
-	libraryPath, assetRoot string, targets authoring.AuthoringTargets, loaded *loadedAudio,
-) string {
-	data, err := a.root.ReadFile(libraryPath)
+func (a *projectAudio) read(place audioPlace, loaded *loadedAudio) string {
+	targets, assetRoot := place.descriptor.Targets, place.assetRoot
+	data, err := a.root.ReadFile(place.library)
 	if errors.Is(err, fs.ErrNotExist) {
 		return problemNoAudio
 	}
@@ -134,13 +149,19 @@ func (a *projectAudio) read(
 	}
 	loaded.library.Schema = document.SchemaVersion
 	played := map[string]bool{}
-	for _, id := range slices.Sorted(maps.Keys(document.Cues)) {
-		source := document.Cues[id]
-		_, named := targets.CueCategories[id]
+	for _, cueID := range slices.Sorted(maps.Keys(document.Cues)) {
+		source := document.Cues[cueID]
+		_, named := targets.CueCategories[cueID]
 		cue := protocol.AudioCue{
-			ID: id, Name: source.Name, Category: authoring.CueCategory(targets, document.Routing, id),
-			CategorySet: named, Gain: definition.Cues[beradaudio.CueID(id)].Gain, HowToHear: source.HowToHear,
+			ID: cueID, Name: source.Name, Category: authoring.CueCategory(targets, document.Routing, cueID),
+			CategorySet: named, Gain: definition.Cues[beradaudio.CueID(cueID)].Gain, HowToHear: source.HowToHear,
 			SearchTerms: source.SearchTerms, Recordings: make([]protocol.AudioRecording, 0, len(source.Recordings())),
+			Profile: profileOf(document, cueID), Ambient: nil,
+		}
+		if ambient, found := document.Routing.Ambient[cueID]; found {
+			cue.Ambient = &protocol.AmbientSettings{
+				RadiusTiles: ambient.RadiusTiles, FadeInMs: ambient.FadeInMs, FadeOutMs: ambient.FadeOutMs,
+			}
 		}
 		for _, recordingID := range source.Recordings() {
 			played[recordingID] = true
@@ -152,6 +173,53 @@ func (a *projectAudio) read(
 		if !played[id] {
 			loaded.library.Unused = append(loaded.library.Unused,
 				a.recordingOf(id, document, definition, assetRoot, loaded))
+		}
+	}
+	classify(document, place.descriptor, &loaded.library)
+
+	return ""
+}
+
+// classify lists the library's classification profiles and acoustic
+// families, and what the audio project gives new ambient cues and its
+// volume levels.
+func classify(
+	document authoring.LibraryDocument, descriptor authoring.ProjectDescriptor, library *protocol.AudioLibrary,
+) {
+	taxonomy := document.Taxonomy
+	for _, name := range slices.Sorted(maps.Keys(taxonomy.Profiles)) {
+		profile := taxonomy.Profiles[name]
+		library.Profiles = append(library.Profiles, protocol.AudioProfile{
+			Name: name, Family: profile.TargetAcousticFamily, Phase: profile.Phase, Outcome: profile.Outcome,
+			MixRole: profile.MixRole, Emitters: profile.Emitters, Contexts: profile.Contexts,
+			SearchTerms: taxonomy.ProfileSearchTerms[name],
+		})
+	}
+	families := map[string]bool{}
+	for family := range taxonomy.RecordingFamilies {
+		families[family] = true
+	}
+	for _, family := range descriptor.Targets.Families {
+		families[family] = true
+	}
+	for family := range descriptor.CalibrationFamilies {
+		families[family] = true
+	}
+	library.Families = slices.Sorted(maps.Keys(families))
+	if preset := descriptor.Ambient; preset != nil {
+		library.AmbientPreset = &protocol.AmbientPreset{
+			CuePrefix: preset.CuePrefix, Profile: preset.Profile, Family: preset.Family, HowToHear: preset.HowToHear,
+			Gain: preset.Gain,
+		}
+	}
+	library.SliderGains = descriptor.SliderGains
+}
+
+// profileOf is the classification profile of a cue.
+func profileOf(document authoring.LibraryDocument, cueID string) string {
+	for profile, members := range document.Taxonomy.CueProfiles {
+		if slices.Contains(members, cueID) {
+			return profile
 		}
 	}
 
@@ -174,7 +242,8 @@ func (a *projectAudio) recordingOf(
 		Status: protocol.RecordingNoFile, File: recording.File, OriginalFile: provenance.OriginalFilename,
 		Note: source.Note, SearchTerms: source.SearchTerms,
 		Attribution: protocol.Attribution{
-			Creator: provenance.SourceCreator, Source: provenance.SourceURL, License: provenance.License,
+			Creator: provenance.SourceCreator, Source: provenance.SourceURL, SourceType: provenance.SourceType,
+			License: provenance.License, Processing: processingOf(provenance.Processing),
 			Commercial: provenance.CommercialUseAllowed(),
 		},
 	}
@@ -216,6 +285,18 @@ func familyOf(document authoring.LibraryDocument, recordingID string) string {
 	}
 
 	return ""
+}
+
+// processingOf lists what was done to a recording before it came in.
+func processingOf(steps []authoring.ProcessingStep) []protocol.ProcessingStep {
+	listed := make([]protocol.ProcessingStep, 0, len(steps))
+	for _, step := range steps {
+		listed = append(listed, protocol.ProcessingStep{
+			Description: step.Description, Tool: step.Tool, PerformedBy: step.PerformedBy,
+		})
+	}
+
+	return listed
 }
 
 // describe fills in a recording's status, size and version from its file.
