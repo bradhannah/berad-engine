@@ -59,6 +59,22 @@ func (s *audioSession) apply(edit protocol.AudioEdit) (string, error) {
 		})
 	}
 
+	return s.applyLevels(edit)
+}
+
+// applyLevels carries out an edit that trims a recording or sets its level.
+func (s *audioSession) applyLevels(edit protocol.AudioEdit) (string, error) {
+	switch edit.Edit {
+	case protocol.AudioSetRegion:
+		return withArgs(edit.Args, s.setRegion)
+	case protocol.AudioDuplicateRegion:
+		return withArgs(edit.Args, s.duplicateRegion)
+	case protocol.AudioAcceptCalibration:
+		return withArgs(edit.Args, s.acceptCalibration)
+	case protocol.AudioSetCalibration:
+		return withArgs(edit.Args, s.setCalibration)
+	}
+
 	return "", fmt.Errorf("%w: %s", ErrUnknownEdit, edit.Edit)
 }
 

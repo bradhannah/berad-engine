@@ -61,6 +61,11 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Audio window** | The window where sounds are added and cues edited |
 | **Attribution** | Who made a recording, where it came from and its licence, as its author recorded them |
 | **Cleared** | A recording its author has marked as allowed in a commercial game; until then it is not cleared |
+| **Region** | The part of a recording that plays, from its start to its end; all of it when none is set |
+| **Waveform** | A picture of how loud a recording is from moment to moment |
+| **Gain** | How much louder or quieter something plays than as recorded: a recording's in dB, a cue's as a percentage |
+| **Level** | How a recording's gain is set: measured to reach its target, set by hand, or not set |
+| **Target** | The loudness a measured recording's gain aims at; its family's unless its author sets one |
 
 ## Editor terms
 

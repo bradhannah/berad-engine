@@ -22,7 +22,7 @@ func (s *State) layout() {
 	content := frame.Content(s.size)
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	right := content.Max.X - ui.Inset
-	for _, button := range []*ui.Button{s.stopAll, s.newCue, s.addSound} {
+	for _, button := range []*ui.Button{s.stopAll, s.checkFiles, s.newCue, s.addSound} {
 		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
 		button.Rect = image.Rect(right-width, top, right, top+ui.ButtonH)
 		right -= width + toolbarGap
@@ -76,8 +76,17 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.updateConfirm(input, ctx)
 
 		return
+	case s.trim.dialog != nil:
+		s.updateLevelDialog(input, ctx)
+
+		return
 	}
 	s.inspector.sync(s, ctx)
+	if s.syncTrim() {
+		s.layout()
+	}
+	s.askTrim(ctx)
+	s.syncRegionFields()
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -101,7 +110,9 @@ func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
 	case field == s.search && outcome == textedit.OutcomeBlur:
 		s.search.Field.SetSaved("")
 	case field != nil && field != s.search && outcome == textedit.OutcomeCommit:
-		s.commitField(ctx, field)
+		if !s.commitRegionField(field) {
+			s.commitField(ctx, field)
+		}
 	}
 }
 
@@ -169,6 +180,8 @@ func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 		s.chooseSoundIn(ctx, soundTarget{cue: "", recording: ""}, s.categoryOfSelection())
 	case s.newCue.Update(input):
 		s.openNewCue(s.categoryOfSelection())
+	case s.checkFiles.Update(input):
+		s.check(ctx)
 	case s.stopAll.Update(input):
 		ctx.Sounds.Stop()
 	}

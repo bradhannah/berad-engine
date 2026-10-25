@@ -236,3 +236,25 @@ func TestSoundsPlayOneRecordingAndRelist(t *testing.T) {
 		t.Fatal("a change lists the library again")
 	}
 }
+
+// TestSoundsAuditionPartOfARecording plays a part of a recording at a gain,
+// once the recording has arrived, and says where it is in the recording.
+func TestSoundsAuditionPartOfARecording(t *testing.T) {
+	t.Parallel()
+	player, asks, told, _ := newTestPlayer(t)
+	player.Audition("door_a", &protocol.AudioWindow{StartMs: 100, EndMs: 200}, -3, true)
+	if _, playing := player.AuditionAt(); playing {
+		t.Fatal("nothing plays before the library is listed")
+	}
+	asks.libraries[0](testCues(), nil)
+	asks.nextRecording(t).done(protocol.Recording{ID: "door_a", Offset: 0, Version: "v1", Size: 6, Data: []byte("RIFF00")}, nil)
+	at, playing := player.AuditionAt()
+	if !playing || at < 100 || len(*told) != 0 {
+		t.Fatalf("the part plays from its start: %d %v %v", at, playing, *told)
+	}
+	player.Stop()
+	player.Update()
+	if _, playing := player.AuditionAt(); playing {
+		t.Fatal("Stop stops it")
+	}
+}

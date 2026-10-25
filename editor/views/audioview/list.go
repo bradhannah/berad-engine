@@ -15,6 +15,7 @@ const (
 	problemTooLarge   = "file too large"
 	problemUnknown    = "attribution incomplete"
 	problemUncleared  = "not cleared for a commercial game"
+	problemBroken     = "cannot be decoded"
 	stateNoSound      = "no sound yet"
 	sectionUsed       = sectionPrefix + "used"
 	sectionUnused     = sectionPrefix + "unused"
@@ -41,7 +42,7 @@ func categoryLabel(category string) string {
 // problems lists what is wrong with a recording that has a file: it is
 // missing or too large, its creator or licence is unknown, or it is not
 // cleared for a commercial game. A recording with no file has none.
-func problems(recording protocol.AudioRecording) []string {
+func fileProblems(recording protocol.AudioRecording) []string {
 	var found []string
 	switch recording.Status {
 	case protocol.RecordingNoFile:
@@ -66,11 +67,22 @@ func unknown(value string) bool {
 	return strings.TrimSpace(value) == "" || strings.EqualFold(strings.TrimSpace(value), protocol.Unknown)
 }
 
+// problems lists what is wrong with a recording, starting with a file the
+// last check could not decode, while the file is the one checked.
+func (s *State) problems(recording protocol.AudioRecording) []string {
+	found := fileProblems(recording)
+	if broken, checked := s.broken[recording.ID]; checked && broken == recording.Version {
+		found = append([]string{problemBroken}, found...)
+	}
+
+	return found
+}
+
 // cueProblems lists the problems of a cue's recordings, each once.
-func cueProblems(cue protocol.AudioCue) []string {
+func (s *State) cueProblems(cue protocol.AudioCue) []string {
 	var found []string
 	for _, recording := range cue.Recordings {
-		for _, problem := range problems(recording) {
+		for _, problem := range s.problems(recording) {
 			if !contains(found, problem) {
 				found = append(found, problem)
 			}
@@ -94,7 +106,8 @@ func contains(values []string, value string) bool {
 func (s *State) shows(found []string) bool {
 	switch s.filter {
 	case filterProblems:
-		return contains(found, problemMissing) || contains(found, problemTooLarge) || contains(found, problemUnknown)
+		return contains(found, problemMissing) || contains(found, problemTooLarge) || contains(found, problemUnknown) ||
+			contains(found, problemBroken)
 	case filterUncleared:
 		return contains(found, problemUncleared)
 	}
@@ -137,7 +150,7 @@ func (s *State) cueRows() []ui.Row {
 	for _, category := range categories() {
 		var shown []protocol.AudioCue
 		for _, cue := range s.library.Cues {
-			if cue.Category == category && s.shows(cueProblems(cue)) && s.matchesCue(cue) {
+			if cue.Category == category && s.shows(s.cueProblems(cue)) && s.matchesCue(cue) {
 				shown = append(shown, cue)
 			}
 		}
@@ -148,7 +161,7 @@ func (s *State) cueRows() []ui.Row {
 		}
 		for _, cue := range shown {
 			row := ui.NewRow(cuePrefix+cue.ID, cue.Name)
-			row.Icon, row.Aside, row.Detail = ui.IconSound, cue.ID, cueState(cue)
+			row.Icon, row.Aside, row.Detail = ui.IconSound, cue.ID, s.cueState(cue)
 			rows = append(rows, row)
 		}
 	}
@@ -176,8 +189,8 @@ func recordingTexts(recording protocol.AudioRecording) []string {
 
 // cueState says, for a cue's row, its first problem, that it has no sound
 // yet, or how many recordings it plays in turn.
-func cueState(cue protocol.AudioCue) string {
-	if found := cueProblems(cue); len(found) > 0 {
+func (s *State) cueState(cue protocol.AudioCue) string {
+	if found := s.cueProblems(cue); len(found) > 0 {
 		return found[0]
 	}
 	if len(cue.Recordings) == 1 && cue.Recordings[0].Status == protocol.RecordingNoFile {
@@ -211,7 +224,7 @@ func (s *State) recordingRows() []ui.Row {
 func (s *State) recordingSection(rowID, label string, recordings []protocol.AudioRecording) []ui.Row {
 	var shown []protocol.AudioRecording
 	for _, recording := range recordings {
-		if s.shows(problems(recording)) && s.matches(recordingTexts(recording)...) {
+		if s.shows(s.problems(recording)) && s.matches(recordingTexts(recording)...) {
 			shown = append(shown, recording)
 		}
 	}
@@ -225,7 +238,7 @@ func (s *State) recordingSection(rowID, label string, recordings []protocol.Audi
 		if recording.File == "" {
 			row.Aside = ""
 		}
-		if found := problems(recording); len(found) > 0 {
+		if found := s.problems(recording); len(found) > 0 {
 			row.Detail = found[0]
 		} else if recording.Status == protocol.RecordingNoFile {
 			row.Detail = stateNoSound

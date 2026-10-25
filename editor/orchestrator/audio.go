@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -167,7 +168,9 @@ func (a *projectAudio) recordingOf(
 	source := document.Recordings[recordingID]
 	provenance := source.Provenance
 	sent := protocol.AudioRecording{
-		ID: recordingID, Extension: "", Version: "", Size: 0, CalibrationDB: recording.CalibrationDB, StartMs: 0, EndMs: 0,
+		ID: recordingID, Extension: "", Version: "", Size: 0, CalibrationDB: recording.CalibrationDB,
+		CalibrationMode: calibrationMode(source), TargetDB: 0, Family: familyOf(document, recordingID),
+		StartMs: 0, EndMs: 0,
 		Status: protocol.RecordingNoFile, File: recording.File, OriginalFile: provenance.OriginalFilename,
 		Note: source.Note, SearchTerms: source.SearchTerms,
 		Attribution: protocol.Attribution{
@@ -178,6 +181,9 @@ func (a *projectAudio) recordingOf(
 	if recording.Window != nil {
 		sent.StartMs, sent.EndMs = recording.Window.Start.Milliseconds(), recording.Window.End.Milliseconds()
 	}
+	if source.CalibrationTargetDB != nil {
+		sent.TargetDB = *source.CalibrationTargetDB
+	}
 	if recording.File != "" {
 		file := path.Join(assetRoot, recording.File)
 		loaded.files[sent.ID] = file
@@ -186,6 +192,30 @@ func (a *projectAudio) recordingOf(
 	}
 
 	return sent
+}
+
+// calibrationMode says how a recording's gain was set: measured, by hand, or
+// not at all.
+func calibrationMode(recording authoring.Recording) string {
+	switch recording.CalibrationMode() {
+	case authoring.CalibrationAuto:
+		return protocol.CalibrationAuto
+	case authoring.CalibrationManual:
+		return protocol.CalibrationManual
+	}
+
+	return ""
+}
+
+// familyOf names a recording's acoustic family.
+func familyOf(document authoring.LibraryDocument, recordingID string) string {
+	for family, members := range document.Taxonomy.RecordingFamilies {
+		if slices.Contains(members, recordingID) {
+			return family
+		}
+	}
+
+	return ""
 }
 
 // describe fills in a recording's status, size and version from its file.
@@ -248,9 +278,14 @@ func (a *projectAudio) recording(asked protocol.Recording) (protocol.Recording, 
 
 // handleAudio answers a window's audio library or recording question, or
 // queues its audio edit.
-func (o *Orchestrator) handleAudio(from *window, message protocol.Message) {
+func (o *Orchestrator) handleAudio(ctx context.Context, from *window, message protocol.Message) {
 	if message.Kind == protocol.KindAudioEdit {
 		o.handleAudioEdit(from, message)
+
+		return
+	}
+	if message.Kind == protocol.KindAudioAnalysis || message.Kind == protocol.KindAudioCheck {
+		o.handleAnalysis(ctx, from, message)
 
 		return
 	}

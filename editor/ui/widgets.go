@@ -563,7 +563,12 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 		theme.DrawText(area, row.Label, labelLeft, labelTop, ColorInk())
 	}
 	if row.Aside != "" {
-		theme.DrawText(area, row.Aside, labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSubdued())
+		asideLeft := labelLeft + theme.StrongWidth(row.Label) + labelGap
+		room := rect.Max.X - Inset/Half - Gap*Half - asideLeft
+		if row.Detail != "" {
+			room -= theme.TextWidth(row.Detail) + labelGap
+		}
+		theme.DrawText(area, theme.FitText(row.Aside, room), asideLeft, labelTop, ColorSubdued())
 	}
 	if row.Marked {
 		theme.DrawText(area, "●", labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSelect())

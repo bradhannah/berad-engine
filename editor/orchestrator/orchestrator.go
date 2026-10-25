@@ -98,8 +98,9 @@ type Orchestrator struct {
 	preview    *preview
 	// audio answers windows' questions about the project's audio library,
 	// and edits carries out their changes to it.
-	audio *projectAudio
-	edits *audioEdits
+	audio    *projectAudio
+	edits    *audioEdits
+	analyses *audioAnalyses
 	// attentions are items to show in windows being opened, sent once each
 	// joins.
 	attentions map[ids.ULID]string
@@ -165,7 +166,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		picks:      newPicks(),
 		preview:    nil,
 		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir},
-		edits:      newAudioEdits(),
+		edits:      newAudioEdits(), analyses: newAudioAnalyses(),
 		attentions: map[ids.ULID]string{},
 		removed:    map[string]bool{},
 		folders:    map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
@@ -399,9 +400,11 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		case left := <-o.leaves:
 			o.leave(left)
 		case message := <-o.inbound:
-			o.handle(message)
+			o.handle(ctx, message)
 		case outcome := <-o.edits.done:
 			o.audioFinished(outcome)
+		case answer := <-o.analyses.done:
+			o.analysisFinished(answer)
 		case exit := <-o.exits:
 			o.childExited(exit)
 			if o.quit {

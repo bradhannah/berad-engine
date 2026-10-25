@@ -74,9 +74,9 @@ type State struct {
 	library *protocol.AudioLibrary
 	asking  bool
 	again   bool
-	// select is the item to select once the library lists it, such as a
-	// cue just made.
-	selectNext string
+	// selectNext is the item to select once the library lists it, such as a
+	// cue just made; playedNext is the same for the cue's recordings.
+	selectNext, playedNext string
 
 	mode    string
 	filter  string
@@ -87,9 +87,13 @@ type State struct {
 	closed  map[string]bool
 	played  *ui.List
 
-	addSound, newCue, stopAll *ui.Button
-	panel                     *panel
-	inspector                 *inspector
+	addSound, newCue, checkFiles, stopAll *ui.Button
+	panel                                 *panel
+	inspector                             *inspector
+	trim                                  *trimmer
+	// broken holds the version of each recording's file the last check
+	// could not decode.
+	broken map[string]string
 
 	focus   ui.Focus
 	guard   frame.Guard
@@ -105,7 +109,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subbed: false,
-		library: nil, asking: false, again: false, selectNext: "",
+		library: nil, asking: false, again: false, selectNext: "", playedNext: "",
 		mode: modeCues, filter: filterAll,
 		tabs: []*ui.Button{button("tab-"+modeCues, "Cues"), button("tab-"+modeRecordings, "Recordings")},
 		filters: []*ui.Button{
@@ -117,13 +121,13 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		closed:   map[string]bool{},
 		played:   &ui.List{ID: "played", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
 		addSound: button("add-sound", "Add sound…"), newCue: button("new-cue", "New cue…"),
-		stopAll: button("stop-all", "Stop all"),
-		panel:   newPanel(), inspector: newInspector(theme),
+		checkFiles: button("check-files", "Check files"), stopAll: button("stop-all", "Stop all"),
+		panel: newPanel(), inspector: newInspector(theme), trim: newTrimmer(theme), broken: map[string]string{},
 		focus: ui.Focus{}, guard: frame.Guard{}, dialog: nil, confirm: nil, deleting: "", sounds: nil,
 	}
 	view.addSound.Primary = true
 	view.search.Placeholder, view.search.Unmarked = "Search names, IDs, files and licences", true
-	view.focus.Register(view.search)
+	view.focus.Register(view.search, view.trim.start, view.trim.end)
 	view.focus.Register(view.inspector.fields()...)
 
 	return view
@@ -324,23 +328,67 @@ func (s *State) whereUsed(ctx *frame.Context, cue string, done func([]protocol.U
 	})
 }
 
-// Unsaved counts typed changes not saved yet.
-func (s *State) Unsaved(frame.Docs) int { return frame.UnsavedFields(s.inspector.fields()...) }
+// Unsaved counts typed changes not saved yet, and a drafted region.
+func (s *State) Unsaved(frame.Docs) int {
+	count := frame.UnsavedFields(s.inspector.fields()...)
+	if s.trim.dirty() {
+		count++
+	}
+
+	return count
+}
 
 // UnsavedName names what the typed changes belong to.
-func (s *State) UnsavedName(frame.Docs) string { return s.inspector.subject }
+func (s *State) UnsavedName(frame.Docs) string {
+	if s.inspector.subject == "" {
+		return s.trim.recording
+	}
 
-// Save saves every typed change.
-func (s *State) Save(ctx *frame.Context) bool { return s.inspector.saveAll(s, ctx) }
+	return s.inspector.subject
+}
+
+// Save saves every typed change and a drafted region.
+func (s *State) Save(ctx *frame.Context) bool {
+	if s.trim.dirty() {
+		s.applyRegion(ctx)
+	}
+
+	return s.inspector.saveAll(s, ctx)
+}
 
 // Leave asks about typed changes before the window closes.
 func (s *State) Leave(ctx *frame.Context, then func()) {
 	s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), then)
 }
 
-// discard drops typed changes.
+// discard drops typed changes and a drafted region.
 func (s *State) discard() {
 	for _, field := range s.inspector.fields() {
 		field.Field.Revert()
 	}
+	s.trim.draft = copyWindow(s.trim.saved)
+}
+
+// check decodes every recording, and marks those that cannot play.
+func (s *State) check(ctx *frame.Context) {
+	ctx.Frame.Status("Checking every file…")
+	ctx.Requests.AudioCheck(func(result protocol.AudioCheck, err error) {
+		if err != nil {
+			ctx.Frame.Status("The files could not be checked: " + err.Error())
+
+			return
+		}
+		s.broken = map[string]string{}
+		for _, problem := range result.Broken {
+			if recording, found := s.recording(problem.Recording); found {
+				s.broken[problem.Recording] = recording.Version
+			}
+		}
+		if len(result.Broken) == 0 {
+			ctx.Frame.Status("Every file plays.")
+
+			return
+		}
+		ctx.Frame.Status(itoa(len(result.Broken)) + " files cannot be decoded; the Problems filter shows them.")
+	})
 }

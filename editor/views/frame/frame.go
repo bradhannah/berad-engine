@@ -74,6 +74,11 @@ type Audio interface {
 	// AudioEdit changes the audio library (D11); every window is then told
 	// it changed.
 	AudioEdit(edit protocol.AudioEdit, done func(protocol.Result, error))
+	// AudioAnalysis asks for a recording's waveform and suggestions, and
+	// AudioCheck for every recording to be decoded; the orchestrator decodes
+	// them, never the window.
+	AudioAnalysis(asked protocol.AudioAnalysis, done func(protocol.AudioAnalysis, error))
+	AudioCheck(done func(protocol.AudioCheck, error))
 }
 
 // Files asks the author to choose a file of their own, outside the project,
@@ -100,6 +105,12 @@ type Sounds interface {
 	// reports whether it is playing or waiting to.
 	PlayRecording(recording string)
 	PlayingRecording(recording string) bool
+	// Audition plays part of a recording, nil for all of it, at a
+	// calibration gain in dB, again and again when loop is set, as the Audio
+	// window plays a region it is editing; AuditionAt reports where it is, in
+	// the recording's milliseconds, while it plays.
+	Audition(recording string, window *protocol.AudioWindow, calibrationDB float64, loop bool)
+	AuditionAt() (int64, bool)
 }
 
 // Picks are the requests for pick on map (D13).

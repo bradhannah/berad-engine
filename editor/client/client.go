@@ -332,6 +332,33 @@ func (c *Client) AudioEdit(ctx context.Context, edit protocol.AudioEdit) (protoc
 	return resultOf(reply)
 }
 
+// AudioAnalysis asks for a recording's waveform and suggestions.
+func (c *Client) AudioAnalysis(ctx context.Context, asked protocol.AudioAnalysis) (protocol.AudioAnalysis, error) {
+	reply, err := c.request(ctx, protocol.KindAudioAnalysis, asked)
+	if err != nil {
+		return protocol.AudioAnalysis{}, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return protocol.AudioAnalysis{}, rejected(reply)
+	}
+
+	return protocol.DecodePayload[protocol.AudioAnalysis](reply)
+}
+
+// AudioCheck asks for every recording to be decoded, and lists those that
+// cannot play.
+func (c *Client) AudioCheck(ctx context.Context) (protocol.AudioCheck, error) {
+	reply, err := c.request(ctx, protocol.KindAudioCheck, protocol.AudioCheck{Broken: nil})
+	if err != nil {
+		return protocol.AudioCheck{}, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return protocol.AudioCheck{}, rejected(reply)
+	}
+
+	return protocol.DecodePayload[protocol.AudioCheck](reply)
+}
+
 // Recording asks for part of a recording's bytes, from offset.
 func (c *Client) Recording(ctx context.Context, recording string, offset int64) (protocol.Recording, error) {
 	reply, err := c.request(ctx, protocol.KindRecording, protocol.Recording{

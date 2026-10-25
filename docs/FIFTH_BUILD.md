@@ -84,7 +84,7 @@ Chosen while building, for its author to check:
 - **Editing libraries (berad-sdk):** authoring gains `CreateLibrary`,
   `CreateCue`, `DeleteCue`, `RoutingUses`, `DeleteRecording`,
   `SetRecordingProvenance`, `SaveChanged` (which decodes only recordings
-  whose file or excerpt changed), `CheckDisk` with
+  whose file or region changed), `CheckDisk` with
   `ErrLibraryChangedOnDisk`, and the descriptor's `ParseProjectDescriptor`,
   `EditorOptions`, `CreateProjectDescriptor` and `SetDescriptorCueCategory`.
   Saving now keeps untouched entries byte for byte when entries are deleted
@@ -120,8 +120,8 @@ Chosen while building, for its author to check:
 
 ## Not in this build
 
-Trimming a recording and its waveform, duplicating a clip, and calibrating
-levels (the next build); ambient distance and fades, a new ambient cue from
+Trimming a recording and its waveform, duplicating a region, and
+calibrating levels ([the next build](SIXTH_BUILD.md)); ambient distance and fades, a new ambient cue from
 the descriptor's preset, the soundscape and the monitoring volume (the build
 after). Classification profiles and families are shown nowhere yet. The
 terminal audio editor reads schema 4 once its berad-audio pin moves, a
