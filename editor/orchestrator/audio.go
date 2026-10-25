@@ -242,7 +242,8 @@ func (a *projectAudio) recordingOf(
 		Status: protocol.RecordingNoFile, File: recording.File, OriginalFile: provenance.OriginalFilename,
 		Note: source.Note, SearchTerms: source.SearchTerms,
 		Attribution: protocol.Attribution{
-			Creator: provenance.SourceCreator, Source: provenance.SourceURL, License: provenance.License,
+			Creator: provenance.SourceCreator, Source: provenance.SourceURL, SourceType: provenance.SourceType,
+			License: provenance.License, Processing: processingOf(provenance.Processing),
 			Commercial: provenance.CommercialUseAllowed(),
 		},
 	}
@@ -284,6 +285,18 @@ func familyOf(document authoring.LibraryDocument, recordingID string) string {
 	}
 
 	return ""
+}
+
+// processingOf lists what was done to a recording before it came in.
+func processingOf(steps []authoring.ProcessingStep) []protocol.ProcessingStep {
+	listed := make([]protocol.ProcessingStep, 0, len(steps))
+	for _, step := range steps {
+		listed = append(listed, protocol.ProcessingStep{
+			Description: step.Description, Tool: step.Tool, PerformedBy: step.PerformedBy,
+		})
+	}
+
+	return listed
 }
 
 // describe fills in a recording's status, size and version from its file.

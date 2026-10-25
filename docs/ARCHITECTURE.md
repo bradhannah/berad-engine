@@ -224,9 +224,10 @@ file decodes; the orchestrator answers off its loop, keeping a few decoded
 recordings for the next question.
 **Protocol version 13:** the library also lists its classification profiles
 and acoustic families, the audio project's ambient preset and volume levels,
-and each cue's profile and, for an ambient cue, its distance and fades. The
-soundscape and monitor levels are a window's own, played by its player and
-never sent.
+and each cue's profile and, for an ambient cue, its distance and fades. A
+recording's attribution also carries its source type and processing steps.
+The soundscape and monitor levels are a window's own, played by its player
+and never sent.
 
 ## D9 — Saving and versions
 

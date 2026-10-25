@@ -62,8 +62,9 @@ func everyMessage(t *testing.T) []protocol.Message {
 				CalibrationMode: protocol.CalibrationAuto, TargetDB: -24, Family: "wood", StartMs: 10, EndMs: 900,
 				Status: protocol.RecordingReady, File: "imported/door_a_01.wav", OriginalFile: "door A.wav",
 				Note: "first take", SearchTerms: []string{"creak"},
-				Attribution: protocol.Attribution{Creator: "c", Source: "https://example.com", License: "CC0-1.0",
-					Commercial: true},
+				Attribution: protocol.Attribution{Creator: "c", Source: "https://example.com", SourceType: "recorded",
+					License: "CC0-1.0", Processing: []protocol.ProcessingStep{{Description: "trimmed", Tool: "Audacity",
+						PerformedBy: "b"}}, Commercial: true},
 			}},
 			Profile: "door", Ambient: &protocol.AmbientSettings{RadiusTiles: 8, FadeInMs: 800, FadeOutMs: 1200},
 		}}, Schema: 4, Unused: []protocol.AudioRecording{{ID: "spare", Status: protocol.RecordingNoFile,
@@ -198,7 +199,8 @@ func TestPayloadsRoundTrip(t *testing.T) {
 func TestAudioEditArgsRoundTrip(t *testing.T) {
 	t.Parallel()
 	name, gain, terms := "Door opens", 0.5, []string{"hinge"}
-	attribution := protocol.Attribution{Creator: "c", Source: "s", License: "l", Commercial: true}
+	attribution := protocol.Attribution{Creator: "c", Source: "s", SourceType: "t", License: "l",
+		Processing: []protocol.ProcessingStep{{Description: "d", Tool: "t", PerformedBy: "p"}}, Commercial: true}
 	for edit, args := range map[string]any{
 		protocol.AudioCreateCue: protocol.NewCue{ID: "door/open", Name: name, Category: protocol.CategorySFX,
 			HowToHear: "Open a door."},

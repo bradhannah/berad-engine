@@ -8,12 +8,12 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
-// What a level dialog sets: a recording's gain by hand, or the loudness its
+// What a level dialog sets: a recording's level by hand, or the loudness its
 // measurement aims at.
 type levelKind int
 
 const (
-	levelGain levelKind = iota
+	levelByHand levelKind = iota
 	levelTarget
 )
 
@@ -26,11 +26,11 @@ const (
 	levelDialogLines = 3
 )
 
-// levelDialog asks for a recording's gain or target, in dB; a target can
+// levelDialog asks for a recording's level or target, in dB; a target can
 // also go back to its family's.
 func (s *State) levelDialog(kind levelKind, recording string, value float64) *fieldDialog {
 	low, high := minGainDB, maxGainDB
-	title, explained := "Gain of “"+recording+"”", "Set by hand, in dB, it stays when the region or file changes."
+	title, explained := "Level of “"+recording+"”", "Set by hand, in dB, it stays when the region or file changes."
 	lines := make([]string, 0, levelDialogLines)
 	if kind == levelTarget {
 		low, high = minTargetDB, maxTargetDB

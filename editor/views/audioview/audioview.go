@@ -91,6 +91,7 @@ type State struct {
 	panel                                 *panel
 	inspector                             *inspector
 	trim                                  *trimmer
+	attribution                           *attributionSection
 	soundscape                            *soundscape
 	// broken holds the version of each recording's file the last check
 	// could not decode.
@@ -127,7 +128,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		addSound: button("add-sound", "Add sound…"), newCue: button("new-cue", "New cue…"),
 		checkFiles: button("check-files", "Check files"), stopAll: button("stop-all", "Stop all"),
 		panel: newPanel(), inspector: newInspector(theme), trim: newTrimmer(theme),
-		soundscape: newSoundscape(), broken: map[string]string{},
+		attribution: newAttributionSection(), soundscape: newSoundscape(), broken: map[string]string{},
 		focus: ui.Focus{}, guard: frame.Guard{}, dialog: nil, confirm: nil, prompt: nil, deleting: "", sounds: nil,
 		mixer: nil,
 	}

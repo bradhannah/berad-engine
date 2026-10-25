@@ -2,6 +2,7 @@ package audioview_test
 
 import (
 	"image"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -197,7 +198,18 @@ func TestAddSoundAsksWhatItIsAndWhoMadeIt(t *testing.T) {
 	}
 	f.click("ui:dialog-" + protocol.CategoryMusic)
 	f.typeInto("creator", "A. Recordist")
+	f.typeInto("source-type", "recorded")
 	f.typeInto("license", "CC BY 4.0")
+	f.click("ui:add-step")
+	f.typeInto("step-what-0", "trimmed")
+	f.click("ui:add-step")
+	if !f.has("ui:step-what-1") {
+		t.Fatal("Add step adds another")
+	}
+	f.click("ui:step-remove-1")
+	if f.has("ui:step-what-1") {
+		t.Fatal("its × takes it out")
+	}
 	f.click("ui:commercial")
 	f.click("ui:dialog-ok")
 	added := f.edit(protocol.AudioAddSound)
@@ -207,8 +219,9 @@ func TestAddSoundAsksWhatItIsAndWhoMadeIt(t *testing.T) {
 	}
 	if args.NewCue == nil || args.NewCue.ID != "music/door_knock" || args.NewCue.Name != "Door Knock" ||
 		args.NewCue.Category != protocol.CategoryMusic || args.Path != "/sounds/Door Knock.wav" ||
-		args.Attribution != (protocol.Attribution{
-			Creator: "A. Recordist", Source: "", License: "CC BY 4.0", Commercial: true,
+		!reflect.DeepEqual(args.Attribution, protocol.Attribution{
+			Creator: "A. Recordist", Source: "", SourceType: "recorded", License: "CC BY 4.0",
+			Processing: []protocol.ProcessingStep{{Description: "trimmed", Tool: "", PerformedBy: ""}}, Commercial: true,
 		}) {
 		t.Fatalf("the sound and its attribution: %+v %+v", args, args.NewCue)
 	}

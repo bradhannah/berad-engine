@@ -35,7 +35,6 @@ type inspector struct {
 	category               []*ui.Button
 	quieter, louder        *ui.Button
 	removeCue, removeRec   *ui.Button
-	editAttribution        *ui.Button
 	ambient                *ambientSection
 	classes                *classifier
 	// shown is the row the fields were filled from, and subject names it for
@@ -61,8 +60,7 @@ func newInspector(theme *ui.Theme) *inspector {
 		terms: field("terms", "hinge, creak", termsBytes), note: field("note", "A note about this recording", textBytes),
 		category: nil, quieter: ui.NewButton("quieter", "−"), louder: ui.NewButton("louder", "+"),
 		removeCue: ui.NewButton("delete-cue", "Delete cue"), removeRec: ui.NewButton("delete-recording", "Delete recording"),
-		editAttribution: ui.NewButton("edit-attribution", "Edit attribution…"),
-		ambient:         newAmbientSection(theme), classes: newClassifier(),
+		ambient: newAmbientSection(theme), classes: newClassifier(),
 		shown: "", subject: "", usesTop: 0, uses: nil, usesFor: "",
 	}
 	for _, category := range categories() {
@@ -79,8 +77,8 @@ func (insp *inspector) fields() []*ui.TextField {
 
 func (insp *inspector) buttons() []*ui.Button {
 	buttons := make([]*ui.Button, 0, len(insp.category)+inspectorButtons)
-	buttons = append(buttons, insp.quieter, insp.louder, insp.removeCue, insp.removeRec, insp.editAttribution,
-		insp.ambient.setDistance, insp.classes.profile, insp.classes.family)
+	buttons = append(buttons, insp.quieter, insp.louder, insp.removeCue, insp.removeRec, insp.ambient.setDistance,
+		insp.classes.profile, insp.classes.family)
 
 	return append(buttons, insp.category...)
 }
@@ -186,8 +184,6 @@ func (s *State) layoutInspector() {
 	}
 	if recording, ok := s.selectedRecording(); ok {
 		top = factsTop(area) + ui.LineHeight*recordingFacts + ui.Gap
-		insp.editAttribution.Rect = image.Rect(left, top, right, top+ui.ButtonH)
-		top += ui.ButtonH + ui.Inset
 		place(insp.note)
 		s.layoutFamily(recording, left, right, top)
 		insp.removeRec.Rect = image.Rect(left, area.Max.Y-ui.Inset-ui.ButtonH, right, area.Max.Y-ui.Inset)
@@ -206,10 +202,9 @@ func (insp *inspector) hide() {
 	insp.ambient.curve = ui.Zero()
 }
 
-// recordingFacts counts the lines of facts about a recording above its
-// attribution button: its file, original file, creator, source, licence and
-// clearance, each a label and a value.
-const recordingFacts = 12
+// recordingFacts counts the lines about a recording's file above its note:
+// a label and a value. Its attribution is in the panel.
+const recordingFacts = 2
 
 // factsTop is where a recording's facts start, below the inspector's label.
 func factsTop(area image.Rectangle) int { return area.Min.Y + ui.Inset + ui.LineHeight + ui.Inset }
@@ -253,8 +248,6 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 	}
 	if recording, ok := s.selectedRecording(); ok {
 		switch {
-		case insp.editAttribution.Update(input):
-			s.openAttribution(recording)
 		case insp.classes.family.Update(input):
 			s.openFamilies()
 		case insp.removeRec.Update(input):
@@ -366,7 +359,7 @@ func (s *State) drawInspector(screen *ebiten.Image) {
 			s.theme.DrawText(screen, "Only a recording no cue plays can be deleted.", left,
 				insp.removeRec.Rect.Min.Y-ui.LineHeight, ui.ColorMuted())
 		}
-		s.drawButtons(screen, insp.editAttribution, insp.removeRec)
+		s.drawButtons(screen, insp.removeRec)
 		s.drawFields(screen, insp.note)
 		s.drawFamily(screen)
 	default:
@@ -409,24 +402,14 @@ func (s *State) drawUses(screen *ebiten.Image, left, top, bottom int) {
 	}
 }
 
-// drawFacts shows a recording's file and where it came from.
+// drawFacts shows a recording's file.
 func (s *State) drawFacts(screen *ebiten.Image, recording protocol.AudioRecording, left, top int) {
-	attribution := recording.Attribution
-	cleared, ink := "Not cleared", ui.ColorWarn()
-	if attribution.Commercial {
-		cleared, ink = "Cleared", ui.ColorInk()
-	}
 	width := s.inspectorArea().Dx() - ui.Half*ui.Inset
 	facts := []struct {
 		label, value string
 		ink          color.RGBA
 	}{
 		{"FILE", orNone(recording.File), ui.ColorMuted()},
-		{"COPIED FROM", orNone(recording.OriginalFile), ui.ColorMuted()},
-		{"CREATOR", attribution.Creator, ui.ColorInk()},
-		{"SOURCE", attribution.Source, ui.ColorInk()},
-		{"LICENCE", attribution.License, ui.ColorInk()},
-		{"COMMERCIAL GAME", cleared, ink},
 	}
 	for _, fact := range facts {
 		s.theme.DrawLabel(screen, fact.label, left, top, ui.ColorMuted())

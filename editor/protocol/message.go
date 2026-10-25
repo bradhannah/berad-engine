@@ -598,15 +598,26 @@ type AudioProblem struct {
 	Reason    string `json:"reason"`
 }
 
-// Attribution is who made a recording, where it came from and on what
-// licence, as its author recorded them, Unknown where nobody did, and
+// Attribution is who made a recording, where it came from, what kind of
+// source that was and on what licence, and what was done to it before it
+// came in, as its author recorded them, Unknown where nobody did; and
 // whether the author cleared it for use in a commercial game. The editor
 // records these; it verifies no licence.
 type Attribution struct {
-	Creator    string `json:"creator"`
-	Source     string `json:"source"`
-	License    string `json:"license"`
-	Commercial bool   `json:"commercial,omitempty"`
+	Creator    string           `json:"creator"`
+	Source     string           `json:"source"`
+	SourceType string           `json:"sourceType"`
+	License    string           `json:"license"`
+	Processing []ProcessingStep `json:"processing,omitempty"`
+	Commercial bool             `json:"commercial,omitempty"`
+}
+
+// ProcessingStep is one thing done to a recording before it came in, such
+// as trimming it, with the tool used and who did it.
+type ProcessingStep struct {
+	Description string `json:"description"`
+	Tool        string `json:"tool"`
+	PerformedBy string `json:"performedBy"`
 }
 
 // Audio edits, as AudioEdit names them, with the arguments each takes.

@@ -100,6 +100,42 @@ Chosen while building, for its author to check:
   not only after Enter; the gain and target dialogs share one field dialog
   with the new family's.
 
+## Changed after its author tried it
+
+Settled by its author on 2026-10-25, after trying the sixth and seventh
+builds:
+
+- **The region's ends are easy to grab.** A press anywhere from the
+  waveform's top to its bottom, within 10 pixels of an end, picks it up, even
+  just outside the waveform when the end is at its edge. Each end has a flag
+  with a grip pointing into the region, drawn inside the waveform so an end
+  at either edge can be seen, and drawn heavier under the pointer. A dragged
+  end moves as far as the pointer does, so a press that does not move changes
+  nothing. A press elsewhere on the waveform still does nothing: only the two
+  ends are dragged, as its author asked. Before, an end at the edge sat on
+  the waveform's border, half of its tab took no presses, and a press had to
+  land within 6 pixels of its line.
+- **A recording's gain is its level.** "Gain" meant both a recording's dB and
+  a cue's percentage, which its author found confusing. The level's buttons
+  now read Use suggested level, Set level… and Target…, and "gain" means only
+  a cue's, or a soundscape layer's.
+- **Attribution shows in the panel,** for the recording in focus, under its
+  level, as the terminal editor shows it in its details: creator, licence,
+  source, source type, the file it was copied from and its processing steps,
+  with the **Allowed in a commercial game** checkbox ticked right there, as an
+  edit that undo takes back. Edit attribution… opens the dialog for the rest,
+  which now also asks for the source type and lists processing steps, each
+  what was done, the tool and who did it, with Add step and ×. A blank answer
+  is `unknown`, and a step left blank is left out. The Attribution… buttons
+  and the inspector's attribution are gone; the inspector shows a recording's
+  file. Protocol version 13's attribution carries both new fields.
+- **The panel scrolls** with the wheel when it is taller than the window, with
+  a thumb at its right edge. Its buttons see no presses away from it.
+
+Verified: `make check` and every real-window test pass, including a new one
+that drags the region's start by hand, ticks the checkbox and records a
+processing step. Only screenshots show the flags and the section.
+
 ## Not in this build
 
 Placing ambient sounds in a zone, and the game's own ambient playback, are

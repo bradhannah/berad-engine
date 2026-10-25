@@ -187,13 +187,14 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	buttons = append(buttons, s.filters...)
 	buttons = append(buttons, s.panel.all()...)
 	buttons = append(buttons, s.inspector.buttons()...)
+	buttons = append(buttons, s.attribution.edit)
 	for _, button := range buttons {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
 	}
 
-	for _, toggle := range append([]*ui.Toggle{s.trim.loop}, s.soundscape.toggles()...) {
+	for _, toggle := range append([]*ui.Toggle{s.trim.loop, s.attribution.cleared}, s.soundscape.toggles()...) {
 		if widget == toggle.ID && !toggle.Rect.Empty() {
 			return image.Pt(toggle.Rect.Min.X+ui.Inset/ui.Half, ui.Center(toggle.Rect).Y), true
 		}

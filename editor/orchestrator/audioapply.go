@@ -239,8 +239,10 @@ func (s *audioSession) copyIn(recording, path string, attribution protocol.Attri
 	return s.attribute(recording, attribution)
 }
 
-// attribute records who made a recording, where it came from, its licence and
-// whether it is cleared for a commercial game. A blank answer is unknown.
+// attribute records who made a recording, where it came from, what kind of
+// source that was, its licence, what was done to it and whether it is
+// cleared for a commercial game. A blank answer is unknown, and a blank
+// processing step is left out.
 func (s *audioSession) attribute(recording string, attribution protocol.Attribution) error {
 	if !slices.Contains(s.library.RecordingIDs(), recording) {
 		return errNoRecording
@@ -248,7 +250,17 @@ func (s *audioSession) attribute(recording string, attribution protocol.Attribut
 	provenance := s.library.Recording(recording).Provenance
 	provenance.SourceCreator = known(attribution.Creator)
 	provenance.SourceURL = known(attribution.Source)
+	provenance.SourceType = known(attribution.SourceType)
 	provenance.License = known(attribution.License)
+	provenance.Processing = make([]authoring.ProcessingStep, 0, len(attribution.Processing))
+	for _, step := range attribution.Processing {
+		if strings.TrimSpace(step.Description+step.Tool+step.PerformedBy) == "" {
+			continue
+		}
+		provenance.Processing = append(provenance.Processing, authoring.ProcessingStep{
+			Description: known(step.Description), Tool: known(step.Tool), PerformedBy: known(step.PerformedBy),
+		})
+	}
 	cleared := attribution.Commercial
 	provenance.CommercialUse = &cleared
 

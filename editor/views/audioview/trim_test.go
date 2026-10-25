@@ -104,7 +104,7 @@ func TestTypedRegionAndDuplicateRegion(t *testing.T) {
 	}
 }
 
-// TestSetsLevels uses the suggestion, sets a gain by hand and a target.
+// TestSetsLevels uses the suggested level, sets one by hand and a target.
 func TestSetsLevels(t *testing.T) {
 	t.Parallel()
 	f := withWaveform(t)
@@ -113,7 +113,7 @@ func TestSetsLevels(t *testing.T) {
 	if err := f.edit(protocol.AudioAcceptCalibration).Decode(&measured); err != nil || measured.ID != "door_a" {
 		t.Fatalf("the suggestion measures the recording: %+v %v", measured, err)
 	}
-	f.click("ui:set-gain")
+	f.click("ui:set-level")
 	f.typeInto("level", "-60")
 	f.click("ui:set-level")
 	if len(f.requests.AudioOf(protocol.AudioSetCalibration)) != 0 {

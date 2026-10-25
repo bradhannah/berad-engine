@@ -245,6 +245,14 @@ under consideration), **open** (undecided).
   straight away who made it, where it came from and its licence, with an
   "Allowed in a commercial game" checkbox and a reminder that some free
   licences forbid commercial use. The checkbox is berad-audio's schema 4.
+- **Agreed (2026-10-25):** the attribution of the recording in focus shows in
+  the Audio window's panel, as the terminal editor shows it in its details,
+  with the commercial checkbox ticked there. Its source type and processing
+  steps, which berad-audio already keeps, can be seen and edited.
+- **Agreed (2026-10-25):** a recording's dB adjustment is its **level**;
+  **gain** means only a cue's, or a soundscape layer's, percentage.
+- **Agreed (2026-10-25):** on the waveform, only the region's two ends are
+  dragged; a press elsewhere does nothing.
 - **Agreed:** the editor understands a cue's category: music, SFX or ambient.
 - **Agreed:** a Play sound node plays a cue once and the workflow carries on;
   most sounds can come from a node.

@@ -104,6 +104,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	frame.CommonKeys(input, ctx)
 	s.updateToolbar(input, ctx)
 	s.updateList(input, ctx)
+	s.scrollPanel(input)
 	s.layout()
 	s.updatePanel(input, ctx)
 	if s.soundscape.shown {

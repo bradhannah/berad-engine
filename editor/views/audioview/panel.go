@@ -27,14 +27,17 @@ const (
 )
 
 // panel is the middle of the window: the selected cue and the recordings it
-// plays in turn, or the selected recording and the cues that play it.
+// plays in turn, or the selected recording and the cues that play it. It
+// scrolls when it is taller than the window.
 type panel struct {
-	play, addRecording, addLayer                           *ui.Button
-	playRecording, up, down, takeOut, replace, attribution *ui.Button
+	play, addRecording, addLayer              *ui.Button
+	playRecording, up, down, takeOut, replace *ui.Button
 	// cues are the cues playing the selected recording, which select them.
 	cues []*ui.Button
 	// listTop is where the recordings, or the cues, start.
 	listTop int
+	// scroll is how far it is scrolled down, at most furthest.
+	scroll, furthest int
 }
 
 func newPanel() *panel {
@@ -45,8 +48,7 @@ func newPanel() *panel {
 		addLayer:      button("add-layer", "Add to soundscape"),
 		playRecording: button("play-recording", "Play recording"), up: button("recording-up", "Up"),
 		down: button("recording-down", "Down"), takeOut: button("take-out", "Take out"),
-		replace: button("replace-file", "Replace file…"), attribution: button("attribution", "Attribution…"),
-		cues: nil, listTop: 0,
+		replace: button("replace-file", "Replace file…"), cues: nil, listTop: 0, scroll: 0, furthest: 0,
 	}
 }
 
@@ -65,38 +67,59 @@ func headerLines(found []string) int {
 	return fixed + len(found)
 }
 
-// layoutPanel places the panel's buttons and list for what is selected.
+// panelTop is where the panel's content starts, as far as it is scrolled.
+func (s *State) panelTop() int { return s.panelArea().Min.Y + ui.Inset - s.panel.scroll }
+
+// layoutPanel places the panel's buttons and list for what is selected, and
+// keeps its scroll within its content.
 func (s *State) layoutPanel() {
 	pane, area := s.panel, s.panelArea()
-	left := area.Min.X + ui.Inset
+	bottom := s.layoutPanelContent()
+	pane.furthest = max(bottom+pane.scroll-area.Max.Y, 0)
+	if pane.scroll > pane.furthest {
+		pane.scroll = pane.furthest
+		s.layoutPanelContent()
+	}
+}
+
+// layoutPanelContent places what the panel shows, and returns where it ends.
+func (s *State) layoutPanelContent() int {
+	pane, area := s.panel, s.panelArea()
+	left, right := area.Min.X+ui.Inset, area.Max.X-ui.Inset
 	for _, button := range pane.all() {
 		button.Rect = ui.Zero()
 	}
 	s.played.Rect = ui.Zero()
 	if cue, ok := s.selectedCue(); ok {
-		s.layoutCue(cue, left, area)
+		return s.layoutCue(cue, left, area)
+	}
+	recording, ok := s.selectedRecording()
+	if !ok {
+		s.layoutTrim(left, right, area.Min.Y)
+		s.layoutAttribution(left, right, area.Min.Y)
 
-		return
+		return area.Min.Y
 	}
-	if recording, ok := s.selectedRecording(); ok {
-		top := area.Min.Y + ui.Inset + headerLines(s.problems(recording))*ui.LineHeight + ui.Gap
-		s.row(left, top, pane.play, pane.replace, pane.attribution)
-		top = s.layoutTrim(left, area.Max.X-ui.Inset, top+ui.ButtonH+ui.Inset)
-		pane.listTop = top + ui.LineHeight
-		pane.cues = pane.cues[:0]
-		for index, cue := range s.usedBy(recording.ID) {
-			button := ui.NewButton(cuePrefix+cue.ID, cue.Name)
-			rowTop := pane.listTop + index*(ui.ButtonH+ui.Gap)
-			button.Rect = image.Rect(left, rowTop, left+s.theme.TextWidth(cue.Name)+ui.Half*ui.Inset, rowTop+ui.ButtonH)
-			pane.cues = append(pane.cues, button)
-		}
+	top := s.panelTop() + headerLines(s.problems(recording))*ui.LineHeight + ui.Gap
+	s.row(left, top, pane.play, pane.replace)
+	top = s.layoutTrim(left, right, top+ui.ButtonH+ui.Inset)
+	pane.listTop = s.layoutAttribution(left, right, top) + ui.LineHeight
+	pane.cues = pane.cues[:0]
+	for index, cue := range s.usedBy(recording.ID) {
+		button := ui.NewButton(cuePrefix+cue.ID, cue.Name)
+		rowTop := pane.listTop + index*(ui.ButtonH+ui.Gap)
+		button.Rect = image.Rect(left, rowTop, left+s.theme.TextWidth(cue.Name)+ui.Half*ui.Inset, rowTop+ui.ButtonH)
+		pane.cues = append(pane.cues, button)
 	}
+
+	return pane.listTop + max(len(pane.cues)*(ui.ButtonH+ui.Gap), ui.LineHeight) + ui.Inset
 }
 
-// layoutCue places a cue's buttons and its recordings.
-func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle) {
+// layoutCue places a cue's buttons and its recordings, and returns where
+// they end.
+func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle) int {
 	pane := s.panel
-	top := area.Min.Y + ui.Inset + headerLines(s.cueProblems(cue))*ui.LineHeight + ui.Gap
+	top := s.panelTop() + headerLines(s.cueProblems(cue))*ui.LineHeight + ui.Gap
 	s.row(left, top, pane.play, pane.addRecording, pane.addLayer)
 	pane.addRecording.Disabled = cue.Ambient != nil
 	pane.listTop = top + ui.ButtonH + ui.Inset + ui.LineHeight
@@ -125,12 +148,13 @@ func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle)
 	}
 	shown := min(max(len(rows), 1), playedRows)
 	s.played.Rect = image.Rect(left, pane.listTop, area.Max.X-ui.Inset, pane.listTop+shown*ui.RowHeight)
-	s.row(left, s.played.Rect.Max.Y+ui.Gap, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace,
-		pane.attribution)
+	s.row(left, s.played.Rect.Max.Y+ui.Gap, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace)
 	index, _ := s.playedIndex(cue)
 	pane.up.Disabled, pane.down.Disabled = index <= 0, index < 0 || index >= len(cue.Recordings)-1
 	pane.takeOut.Disabled = len(cue.Recordings) < minRecordings
-	s.layoutTrim(left, area.Max.X-ui.Inset, pane.playRecording.Rect.Max.Y+ui.Inset)
+	top = s.layoutTrim(left, area.Max.X-ui.Inset, pane.playRecording.Rect.Max.Y+ui.Inset)
+
+	return s.layoutAttribution(left, area.Max.X-ui.Inset, top)
 }
 
 // row lays buttons out in a row, each as wide as its label.
@@ -145,7 +169,6 @@ func (s *State) row(left, top int, buttons ...*ui.Button) {
 func (pane *panel) all() []*ui.Button {
 	return []*ui.Button{
 		pane.play, pane.addRecording, pane.addLayer, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace,
-		pane.attribution,
 	}
 }
 
@@ -175,10 +198,30 @@ func recordingIDs(cue protocol.AudioCue) []string {
 	return ids
 }
 
-// updatePanel handles the panel's buttons and list.
+// scrollPanel scrolls the panel for the wheel over it, but not over a list
+// of recordings that scrolls itself.
+func (s *State) scrollPanel(input *ui.Input) {
+	pane := s.panel
+	if input.WheelY == 0 || !input.Cursor.In(s.panelArea()) ||
+		input.Cursor.In(s.played.Rect) && len(s.played.Rows) > playedRows {
+		return
+	}
+	pane.scroll = min(max(pane.scroll-int(input.WheelY*ui.RowHeight), 0), pane.furthest)
+	input.WheelY = 0
+}
+
+// updatePanel handles the panel's buttons and list. Away from the panel, its
+// buttons, which may be scrolled out of it, see no presses; a waveform end
+// being dragged follows the pointer anywhere.
 func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 	pane := s.panel
+	if !input.Cursor.In(s.panelArea()) && !s.trim.wave.Dragging() {
+		away := *input
+		away.ClearPointer()
+		input = &away
+	}
 	s.updateTrim(input, ctx)
+	s.updateAttribution(input, ctx)
 	if cue, ok := s.selectedCue(); ok {
 		previous := s.played.Selected
 		if s.played.Update(input).Changed {
@@ -199,8 +242,6 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 		s.listenRecording(ctx, recording.ID)
 	case pane.replace.Update(input):
 		s.chooseSound(ctx, soundTarget{cue: "", recording: recording.ID})
-	case pane.attribution.Update(input):
-		s.openAttribution(recording)
 	}
 	for _, button := range pane.cues {
 		if button.Update(input) {
@@ -237,10 +278,6 @@ func (s *State) updateCue(input *ui.Input, ctx *frame.Context, cue protocol.Audi
 		s.reorder(ctx, cue, slices.Delete(order, index, index+1))
 	case pane.replace.Update(input):
 		s.chooseSound(ctx, soundTarget{cue: "", recording: order[index]})
-	case pane.attribution.Update(input):
-		if recording, found := s.recording(order[index]); found {
-			s.openAttribution(recording)
-		}
 	}
 }
 
@@ -271,11 +308,17 @@ func (s *State) listenRecording(ctx *frame.Context, recording string) {
 	ctx.Sounds.PlayRecording(recording)
 }
 
-// drawPanel draws what is selected: a cue and its recordings, or a recording
-// and the cues that play it.
-func (s *State) drawPanel(screen *ebiten.Image) {
+// drawPanel draws what is selected, within the panel: a cue and its
+// recordings, or a recording and the cues that play it, and how far it is
+// scrolled.
+func (s *State) drawPanel(window *ebiten.Image) {
 	area := s.panelArea()
-	left, top := area.Min.X+ui.Inset, area.Min.Y+ui.Inset
+	screen, clipped := window.SubImage(area).(*ebiten.Image)
+	if !clipped {
+		return
+	}
+	s.drawPanelScroll(screen)
+	left, top := area.Min.X+ui.Inset, s.panelTop()
 	if cue, ok := s.selectedCue(); ok {
 		s.panel.play.Label = playLabel(s.sounds != nil && s.sounds.Playing(cue.ID))
 		if index, chosen := s.playedIndex(cue); chosen && s.sounds != nil &&
@@ -294,6 +337,7 @@ func (s *State) drawPanel(screen *ebiten.Image) {
 		s.played.Draw(screen, s.theme)
 		s.drawButtons(screen, s.panel.all()...)
 		s.drawTrim(screen)
+		s.drawAttribution(screen)
 
 		return
 	}
@@ -305,13 +349,30 @@ func (s *State) drawPanel(screen *ebiten.Image) {
 	}
 	s.panel.play.Label = playLabel(s.sounds != nil && s.sounds.PlayingRecording(recording.ID))
 	s.drawHeader(screen, left, top, recording.ID, recording.File, recordingWhat(recording), s.problems(recording))
-	s.drawButtons(screen, s.panel.play, s.panel.replace, s.panel.attribution)
+	s.drawButtons(screen, s.panel.play, s.panel.replace)
 	s.drawTrim(screen)
+	s.drawAttribution(screen)
 	s.theme.DrawLabel(screen, "PLAYED BY", left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 	if len(s.panel.cues) == 0 {
 		s.theme.DrawText(screen, "No cue plays this recording.", left, s.panel.listTop, ui.ColorSubdued())
 	}
 	s.drawButtons(screen, s.panel.cues...)
+}
+
+// thumbWidth is the width of the panel's scroll thumb, in screen pixels.
+const thumbWidth = 4
+
+// drawPanelScroll draws a thumb at the panel's right edge while it is
+// taller than the window, showing which part is in view.
+func (s *State) drawPanelScroll(screen *ebiten.Image) {
+	pane, area := s.panel, s.panelArea()
+	if pane.furthest == 0 {
+		return
+	}
+	height := max(area.Dy()*area.Dy()/(area.Dy()+pane.furthest), ui.ButtonH)
+	top := area.Min.Y + (area.Dy()-height)*pane.scroll/pane.furthest
+	right := area.Max.X - ui.Gap/ui.Half
+	ui.FillRound(screen, image.Rect(right-thumbWidth, top, right, top+height), ui.Half, ui.ColorRule())
 }
 
 // labelStop is what a play button reads while what it plays is playing.
