@@ -509,6 +509,30 @@ func TestBrowserFoldersTagsAndSearch(t *testing.T) {
 	t.Logf("screenshots: %s %s", shot, menuShot)
 }
 
+// TestBrowserRightClickMenu makes a workflow folder from the Workflows
+// heading's right-click menu and names it, then a workflow inside the folder
+// from the folder's own menu. The saved workflow is in the folder.
+func TestBrowserRightClickMenu(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "browser-right-click.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		rightClick("section:workflows"), must("menu:new-folder-workflow", 60),
+		click("menu:new-folder-workflow"), wait(30), typed("Routines"), keys("Enter"),
+		must("row:Routines", 300), wait(5),
+		rightClick("row:Routines"), must("menu:new-workflow", 60), step{Repeat: 2, Screenshot: shot},
+		click("menu:new-workflow"), must("row:Workflow 1", 300), wait(30), quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	readEnvelope(t, project, "workflows/Routines/workflow-1--*[^t].json")
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}
+
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes
 // the first view's stroke, because views of one zone share one undo list.
 func TestViewsShareUndo(t *testing.T) {

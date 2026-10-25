@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -117,13 +118,15 @@ func (m *Menu) Locate(id string) (image.Point, bool) {
 }
 
 // Draw renders the menu when open: a card with a shadow, each item with its
-// icon.
+// icon. When some items have icons, every label lines up after the icon
+// column.
 func (m *Menu) Draw(screen *ebiten.Image, theme *Theme) {
 	if !m.open {
 		return
 	}
 	FillRound(screen, m.rect.Add(image.Pt(0, shadowDrop/Half)), dialogRadius, HexAlpha(0, shadowAlpha))
 	Box(screen, m.rect, ColorBackground())
+	icons := slices.ContainsFunc(m.Items, func(item MenuItem) bool { return item.Icon != IconNone })
 	for index, item := range m.Items {
 		rect := m.itemRect(index)
 		if item.Rule && index > 0 {
@@ -135,6 +138,8 @@ func (m *Menu) Draw(screen *ebiten.Image, theme *Theme) {
 		left := rect.Min.X + menuPad*Half
 		if item.Icon != IconNone {
 			DrawIcon(screen, item.Icon, image.Pt(left, rect.Min.Y+(rect.Dy()-IconSize)/Half))
+		}
+		if icons {
 			left += IconSize + treeLabelGap
 		}
 		ink := ColorInk()
@@ -148,13 +153,14 @@ func (m *Menu) Draw(screen *ebiten.Image, theme *Theme) {
 	}
 }
 
-// MenuWidth returns a width that fits every item's label, at least the
-// default width.
+// MenuWidth returns a width that fits every item's label, after the icon
+// column when any item has an icon, and at least the default width.
 func MenuWidth(items []MenuItem, theme *Theme) int {
+	icons := slices.ContainsFunc(items, func(item MenuItem) bool { return item.Icon != IconNone })
 	width := menuWidth
 	for _, item := range items {
 		labelWidth := theme.TextWidth(item.Label) + Half*Half*menuPad
-		if item.Icon != IconNone {
+		if icons {
 			labelWidth += IconSize + treeLabelGap
 		}
 		width = max(width, labelWidth)

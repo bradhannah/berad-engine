@@ -1,8 +1,9 @@
 // Package browser is the project browser window: the project's zones with
 // their floors, its workflows, NPCs and text documents, in folders. Authors
-// create, rename, delete and open documents here, keep them in folders and
-// tag them, search them, reorder a zone's floors, and choose each NPC's
-// behaviour and write its notes.
+// create, rename, delete and open documents here, from the toolbar, the
+// inspector or a right-click menu, keep them in folders and tag them,
+// search them, reorder a zone's floors, and choose each NPC's behaviour and
+// write its notes.
 package browser
 
 import (
@@ -103,6 +104,11 @@ type State struct {
 	tagBns              []*ui.Button
 	save                *ui.SaveBar
 	guard               frame.Guard
+	// contextMenu is the right-click menu, opened at contextAt once the
+	// right-click waiting in context has settled the selection.
+	contextMenu ui.Menu
+	contextAt   image.Point
+	context     contextClick
 
 	npc *npcPanel
 
@@ -129,7 +135,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		down: button("move-down", "Move down"), remove: button("delete", "Delete"),
 		moveBn: button("move-to", "Move to…"), newFolderBn: button("new-folder", "New folder"),
 		moveMenu: ui.Menu{Items: nil, Width: 0}, tagBns: nil, save: ui.NewSaveBar(),
-		guard:  frame.Guard{},
+		guard:       frame.Guard{},
+		contextMenu: ui.Menu{Items: nil, Width: 0}, contextAt: image.Pt(0, 0), context: noContextClick(),
 		npc:    newNPCPanel(theme),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 	}
@@ -268,8 +275,9 @@ func (s *State) zoneOf(docs frame.Docs, floorID ids.ULID) (ids.ULID, bool) {
 	return ids.ULID{}, false
 }
 
-// Update handles one frame of input. The guard, a dialog or the New menu,
-// while showing, takes all of it.
+// Update handles one frame of input. The guard, a dialog or a menu, while
+// showing, takes all of it. A right-click opens its menu once the selection
+// it makes has settled.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout(ctx.Docs)
@@ -284,6 +292,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	case s.menu.IsOpen():
 		s.create(ctx, s.menu.Update(input))
+
+		return
+	case s.contextMenu.IsOpen():
+		s.chooseFromContext(ctx, s.contextMenu.Update(input))
 
 		return
 	case s.moveMenu.IsOpen():
@@ -304,6 +316,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateList(input, ctx)
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
+	s.openContextMenu(ctx.Docs)
 }
 
 // updateFields handles the text fields: Enter saves a name or tags, and the
@@ -324,11 +337,15 @@ func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
 }
 
 // updateList handles the list: selecting, opening, showing and hiding rows,
-// a section's [+], and dropping a row on a folder or a section.
+// a section's [+], dropping a row on a folder or a section, and a
+// right-click.
 func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 	result := s.list.Update(input)
 	if result.Changed {
 		s.focus.Set(nil)
+	}
+	if result.Context {
+		s.rightClicked(result.ContextRow, input.Cursor)
 	}
 	if result.Activated {
 		s.openSelected(ctx)
@@ -856,8 +873,9 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 // Locate finds a named part of the window for input scripts: "row:<name>"
 // for a document by name, "toggle:<name>" for its disclosure triangle,
 // "section:<zones|workflows|npcs|text>" for a section heading,
-// "ui:<button id>", "ui:name", "ui:notes", a New ▾ item while the menu is
-// open, or a dialog button or list row. "ui:new-zone", "ui:new-workflow",
+// "ui:<button id>", "ui:name", "ui:notes", an item of New ▾ or the
+// right-click menu while it is open, or a dialog button or list row.
+// "ui:new-zone", "ui:new-workflow",
 // "ui:new-npc" and "ui:new-text" are their section's [+].
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
@@ -869,6 +887,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.locateInDialog(kind, value)
 	case s.menu.IsOpen():
 		return s.menu.Locate(value)
+	case s.contextMenu.IsOpen():
+		return s.contextMenu.Locate(value)
 	case s.moveMenu.IsOpen():
 		return s.moveMenu.Locate(movePrefix + value)
 	}
@@ -957,6 +977,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.list.Draw(screen, s.theme)
 	s.drawInspector(screen, docs)
 	s.menu.Draw(screen, s.theme)
+	s.contextMenu.Draw(screen, s.theme)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
