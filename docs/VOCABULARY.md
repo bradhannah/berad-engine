@@ -58,6 +58,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Cue** | A sound something asks for by its ID, such as `door/open`; it plays one recording, or cycles through several |
 | **Recording** | One sound file of the audio library, which cues play; an intentional silent slot has none |
 | **Category** | Whether a cue is music, SFX or ambient |
+| **Audio window** | The window where sounds are added and cues edited |
+| **Attribution** | Who made a recording, where it came from and its licence, as its author recorded them |
+| **Cleared** | A recording its author has marked as allowed in a commercial game; until then it is not cleared |
 
 ## Editor terms
 

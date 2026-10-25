@@ -45,8 +45,9 @@ Settled by its author on 2026-10-24, before building:
   in berad-audio's own formats, outside the document envelope, so the
   terminal audio editor opens the same files (an exception to D11).
 - In this build the editor only reads them; audio is edited in the terminal
-  audio editor until the Audio window exists. The orchestrator reads them
-  again for every question, so changes made there show up at once.
+  audio editor until the Audio window exists ([the fifth
+  build](FIFTH_BUILD.md)). The orchestrator reads them again for every
+  question, so changes made there show up at once.
 - A cue parameter stores the cue's ID as the audio library spells it, such as
   `door/open`, not a ULID (an exception to D4). A cue whose ID changes in the
   terminal audio editor shows as missing.
