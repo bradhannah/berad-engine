@@ -213,3 +213,26 @@ func TestSoundsRefetchAChangedFile(t *testing.T) {
 		t.Fatalf("a changed file is fetched again from the start, not from %d", again.offset)
 	}
 }
+
+// TestSoundsPlayOneRecordingAndRelist plays one recording on its own, even
+// one no cue plays, and lists the library again once it changes.
+func TestSoundsPlayOneRecordingAndRelist(t *testing.T) {
+	t.Parallel()
+	player, asks, told, _ := newTestPlayer(t)
+	player.Changed()
+	if len(asks.libraries) != 0 {
+		t.Fatal("a player that never listed has nothing to refresh")
+	}
+	player.PlayRecording("spare")
+	library := testCues()
+	library.Unused = []protocol.AudioRecording{ready("spare", 6)}
+	asks.libraries[0](library, nil)
+	asks.nextRecording(t).done(protocol.Recording{ID: "spare", Offset: 0, Version: "v1", Size: 6, Data: []byte("RIFF00")}, nil)
+	if !player.PlayingRecording("spare") || player.Playing("door/open") || len(*told) != 0 {
+		t.Fatalf("the unused recording plays on its own: told %v", *told)
+	}
+	player.Changed()
+	if len(asks.libraries) != 2 {
+		t.Fatal("a change lists the library again")
+	}
+}

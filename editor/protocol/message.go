@@ -545,7 +545,7 @@ type NewCue struct {
 }
 
 // AddSound copies the file at Path into the project as a new recording with
-// its attribution: into a new cue, NewCue, or as another variant of Cue,
+// its attribution: into a new cue, NewCue, or as another recording of Cue,
 // filling its empty slot when it has one.
 type AddSound struct {
 	Cue         string      `json:"cue,omitempty"`

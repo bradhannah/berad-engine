@@ -20,14 +20,14 @@ const defaultHowToHear = "Not described yet."
 var (
 	errCueID = errors.New("a cue ID uses lowercase letters, digits, _ and -, in parts joined by /, " +
 		"such as door/open")
-	errNoName      = errors.New("a cue needs a name")
-	errNoHowToHear = errors.New("say how to hear the cue in the game")
-	errNoFile      = errors.New("choose a sound file")
-	errNoCue       = errors.New("the audio library has no such cue")
-	errNoRecording = errors.New("the audio library has no such recording")
-	errCategory    = errors.New("a category is music, sfx or ambient")
-	errNoVariants  = errors.New("a cue plays at least one recording")
-	errGain        = errors.New("a cue's gain is between 0 and 1")
+	errNoName       = errors.New("a cue needs a name")
+	errNoHowToHear  = errors.New("say how to hear the cue in the game")
+	errNoFile       = errors.New("choose a sound file")
+	errNoCue        = errors.New("the audio library has no such cue")
+	errNoRecording  = errors.New("the audio library has no such recording")
+	errCategory     = errors.New("a category is music, sfx or ambient")
+	errNoRecordings = errors.New("a cue plays at least one recording")
+	errGain         = errors.New("a cue's gain is between 0 and 1")
 )
 
 // apply carries out one audio edit and returns the cue or recording it made.
@@ -152,7 +152,7 @@ func (s *audioSession) newRecordingID(cueID string) string {
 }
 
 // addSound copies a file in as a new recording: into a new cue, into an
-// existing cue's empty slot, or as another variant it plays in turn.
+// existing cue's empty slot, or as another recording it plays in turn.
 func (s *audioSession) addSound(sound protocol.AddSound) (string, error) {
 	if strings.TrimSpace(sound.Path) == "" {
 		return "", errNoFile
@@ -306,7 +306,7 @@ func (s *audioSession) setRecordings(change protocol.CueRecordings) (string, err
 		return "", errNoCue
 	}
 	if len(change.Recordings) == 0 {
-		return "", errNoVariants
+		return "", errNoRecordings
 	}
 	cue := s.library.Cue(change.Cue).WithRecordings(change.Recordings)
 

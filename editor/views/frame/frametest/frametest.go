@@ -78,7 +78,7 @@ func (c Command) Decode(target any) error {
 // Succeed delivers a successful reply.
 func (c Command) Succeed(created ids.ULID) {
 	if c.Done != nil {
-		c.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: created}, nil)
+		c.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: created, Item: ""}, nil)
 	}
 }
 
@@ -105,6 +105,56 @@ type Requests struct {
 	// questions, waiting for the test to answer.
 	AudioAsks     []func(protocol.AudioLibrary, error)
 	RecordingAsks []RecordingAsk
+	// AudioEdits are audio edits waiting for the test to answer.
+	AudioEdits []AudioEdit
+}
+
+// AudioEdit is a recorded audio edit and its reply callback.
+type AudioEdit struct {
+	Edit protocol.AudioEdit
+	Done func(protocol.Result, error)
+}
+
+// Decode decodes the edit's arguments.
+func (e AudioEdit) Decode(target any) error {
+	return json.Unmarshal(e.Edit.Args, target) //nolint:wrapcheck // Test helper; callers report the error.
+}
+
+// Succeed delivers a successful reply naming what the edit made.
+func (e AudioEdit) Succeed(item string) {
+	if e.Done != nil {
+		e.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: ids.ULID{}, Item: item}, nil)
+	}
+}
+
+// AudioEdit records an audio edit; the test answers it.
+func (r *Requests) AudioEdit(edit protocol.AudioEdit, done func(protocol.Result, error)) {
+	r.AudioEdits = append(r.AudioEdits, AudioEdit{Edit: edit, Done: done})
+}
+
+// AudioOf returns the audio edits of one kind.
+func (r *Requests) AudioOf(edit string) []AudioEdit {
+	var matching []AudioEdit
+	for _, recorded := range r.AudioEdits {
+		if recorded.Edit.Edit == edit {
+			matching = append(matching, recorded)
+		}
+	}
+
+	return matching
+}
+
+// Files answers a choice of file with Chosen, or a cancel when it is empty,
+// and counts the choices asked for.
+type Files struct {
+	Chosen string
+	Asked  int
+}
+
+// ChooseSound answers at once.
+func (f *Files) ChooseSound(done func(string, bool)) {
+	f.Asked++
+	done(f.Chosen, f.Chosen != "")
 }
 
 // RecordingAsk is a recording question: which recording, from where, and
@@ -126,13 +176,20 @@ func (r *Requests) Recording(recording string, offset int64, done func(protocol.
 }
 
 // Sounds records what a view asks to play. Sounding holds the cues the test
-// says are playing.
+// says are playing, and recordings played on their own under "/" and their
+// ID.
 type Sounds struct {
 	Prepared [][]string
 	Played   []string
 	Stops    int
 	Sounding map[string]bool
 }
+
+// PlayRecording records a recording played on its own, as "/" and its ID.
+func (s *Sounds) PlayRecording(recording string) { s.Play("/" + recording) }
+
+// PlayingRecording reports whether a recording played on its own plays.
+func (s *Sounds) PlayingRecording(recording string) bool { return s.Sounding["/"+recording] }
 
 // Prepare records cues to fetch.
 func (s *Sounds) Prepare(cues []string) { s.Prepared = append(s.Prepared, cues) }
@@ -176,7 +233,12 @@ func (r *Requests) Subscribe(document ids.ULID, done func(error)) {
 
 // Open records a window request.
 func (r *Requests) Open(view string, target ids.ULID, newView bool) {
-	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: newView})
+	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: newView, Item: ""})
+}
+
+// OpenItem records a window request that shows an item.
+func (r *Requests) OpenItem(view string, target ids.ULID, item string) {
+	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: false, Item: item})
 }
 
 // Publish records session state set.
@@ -202,7 +264,7 @@ func (r *Requests) PickAsk(_ string, done func([]protocol.PickMap, error)) {
 func (r *Requests) PickStart(start protocol.PickStart, done func(protocol.Result, error)) {
 	r.PickStarts = append(r.PickStarts, start)
 	if done != nil {
-		done(protocol.Result{OK: true, Reason: "", Revision: 0, Created: ids.ULID{}}, nil)
+		done(protocol.Result{OK: true, Reason: "", Revision: 0, Created: ids.ULID{}, Item: ""}, nil)
 	}
 }
 
@@ -253,7 +315,8 @@ func (r *Requests) Of(edit string) []Command {
 func Context(docs *Docs, requests *Requests, size image.Point) *frame.Context {
 	return &frame.Context{
 		Docs: docs, Requests: requests, Sounds: &Sounds{Prepared: nil, Played: nil, Stops: 0, Sounding: nil},
-		Clipboard: nil, Window: ID(windowSeed), Size: size, Frame: frame.NewFrame(time.Now),
+		Files: &Files{Chosen: "", Asked: 0}, Clipboard: nil, Window: ID(windowSeed), Size: size,
+		Frame: frame.NewFrame(time.Now),
 	}
 }
 

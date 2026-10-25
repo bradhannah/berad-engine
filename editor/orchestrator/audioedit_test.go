@@ -163,7 +163,7 @@ func TestAudioEditsStartTheLibraryAndUndo(t *testing.T) {
 	}
 }
 
-// TestAudioEditsChangeCuesAndRecordings changes a cue and its variants, a
+// TestAudioEditsChangeCuesAndRecordings changes a cue and its recordings, a
 // recording's note and attribution, and deletes them.
 func TestAudioEditsChangeCuesAndRecordings(t *testing.T) {
 	t.Parallel()
@@ -182,7 +182,7 @@ func TestAudioEditsChangeCuesAndRecordings(t *testing.T) {
 	chime, _ := cueOf(t, audio, "ui/chime")
 	if len(chime.Recordings) != 2 || chime.Recordings[1].ID != "chime_2" || chime.HowToHear == "" ||
 		chime.Recordings[0].Attribution.Commercial {
-		t.Fatalf("a second sound is another variant, not cleared: %+v", chime)
+		t.Fatalf("a second sound is another recording, not cleared: %+v", chime)
 	}
 	name, gain := "Bright chime", 0.25
 	mustAudioEdit(t, audio, protocol.AudioSetCue, protocol.CueChange{
@@ -207,7 +207,7 @@ func TestAudioEditsChangeCuesAndRecordings(t *testing.T) {
 		t.Fatalf("the changes: %+v", changed)
 	}
 	if len(library.Unused) != 1 || library.Unused[0].ID != "chime" {
-		t.Fatalf("the variant taken out is unused: %+v", library.Unused)
+		t.Fatalf("the recording taken out is unused: %+v", library.Unused)
 	}
 	mustAudioEdit(t, audio, protocol.AudioDeleteRecording, protocol.AudioItem{ID: "chime"})
 	if _, err := audioEdit(t, audio, protocol.AudioDeleteRecording, protocol.AudioItem{ID: "chime_2"}); err == nil {

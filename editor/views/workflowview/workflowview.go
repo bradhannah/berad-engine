@@ -212,6 +212,9 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 // Changed reacts to picks answered for the inspector.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	s.picker.Changed(update, ctx)
+	if update.AudioChanged != nil && s.audio != nil {
+		s.askAudio(ctx)
+	}
 }
 
 // load copies the workflow and lays it out, its nodes, lines and loops, when

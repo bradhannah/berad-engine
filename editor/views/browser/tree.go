@@ -30,12 +30,13 @@ const (
 func sectionNew(section string) string {
 	return map[string]string{
 		sectionZones: newZone, sectionWorkflows: newWorkflow, sectionNPCs: newNPC, sectionText: newText,
+		sectionAudio: newSound,
 	}[section]
 }
 
 // newSection returns the section whose [+] creates an item, or "".
 func newSection(item string) string {
-	for _, section := range []string{sectionZones, sectionWorkflows, sectionNPCs, sectionText} {
+	for _, section := range []string{sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio} {
 		if sectionNew(section) == item {
 			return section
 		}
@@ -111,6 +112,7 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 	rows = append(rows, s.typeRows(sectionText, "Text", index, match.entry, func(entry project.Entry, depth int) []ui.Row {
 		return []ui.Row{item(entry, ui.IconText, "", depth)}
 	})...)
+	rows = append(rows, s.audioRows(match)...)
 
 	return append(rows, s.looseRows(index, listed, match)...)
 }

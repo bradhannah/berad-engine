@@ -42,8 +42,8 @@ const (
 var errNotPlayable = errors.New("this recording cannot be sent")
 
 // projectAudio answers windows' questions about the project's audio. It
-// reads the files again for every question, so changes made in the terminal
-// audio editor show up at once.
+// reads the files again for every question, so changes made by an audio
+// edit, or in the terminal audio editor, show up at once.
 type projectAudio struct {
 	root *os.Root
 	dir  string
