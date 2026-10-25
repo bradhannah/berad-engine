@@ -96,8 +96,13 @@ type Orchestrator struct {
 	children   map[ids.ULID]*child
 	picks      *picks
 	preview    *preview
-	// audio answers windows' questions about the project's audio library.
+	// audio answers windows' questions about the project's audio library,
+	// and edits carries out their changes to it.
 	audio *projectAudio
+	edits *audioEdits
+	// attentions are items to show in windows being opened, sent once each
+	// joins.
+	attentions map[ids.ULID]string
 	// removed holds files of deleted, renamed or moved documents, moved to
 	// the backups at the next save.
 	removed map[string]bool
@@ -160,6 +165,8 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		picks:      newPicks(),
 		preview:    nil,
 		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir},
+		edits:      newAudioEdits(),
+		attentions: map[ids.ULID]string{},
 		removed:    map[string]bool{},
 		folders:    map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
 		seq:      0,
@@ -382,6 +389,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	sync := time.NewTicker(o.cfg.SyncInterval)
 	defer sync.Stop()
 	o.flushLogged()
+	o.edits.stamp = o.audio.stamp()
 	for {
 		select {
 		case <-ctx.Done():
@@ -392,6 +400,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			o.leave(left)
 		case message := <-o.inbound:
 			o.handle(message)
+		case outcome := <-o.edits.done:
+			o.audioFinished(outcome)
 		case exit := <-o.exits:
 			o.childExited(exit)
 			if o.quit {
@@ -399,6 +409,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}
 		case <-flush.C:
 			o.flushLogged()
+			o.watchAudio()
 		case <-sync.C:
 			if err := o.journal.sync(); err != nil {
 				o.cfg.Logger.Error("journal sync failed", "error", err)
@@ -418,6 +429,7 @@ func (o *Orchestrator) shutdown() error {
 		o.leave(connected)
 	}
 	o.waitForChildren(o.cfg.Clock().Add(o.cfg.ShutdownTimeout))
+	o.waitForAudio(o.cfg.Clock().Add(o.cfg.ShutdownTimeout))
 	close(o.stopped)
 	flushErr := o.flush()
 

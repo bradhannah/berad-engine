@@ -80,7 +80,7 @@ func (o *Orchestrator) previewStart(from *window, message protocol.Message) {
 	}
 	o.preview = &preview{run: run, owner: from.id, zone: start.Zone, latest: nil}
 	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
-		OK: true, Reason: "", Revision: 0, Created: run,
+		OK: true, Reason: "", Revision: 0, Created: run, Item: "",
 	}))
 	start.Run, start.Window = run, from.id
 	o.toZoneViews(mustMessage(protocol.KindPreviewStart, 0, start), false)

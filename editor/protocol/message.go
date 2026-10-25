@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 10
+const Version = 11
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -67,6 +67,11 @@ const (
 	// a time. The orchestrator replies to each with the same kind, filled in.
 	KindAudioLibrary Kind = "audio-library"
 	KindRecording    Kind = "recording"
+	// KindAudioEdit asks the orchestrator to change the audio library, and is
+	// answered with a Result. KindAudioChanged tells every window that the
+	// library changed, so windows that show it ask for it again.
+	KindAudioEdit    Kind = "audio-edit"
+	KindAudioChanged Kind = "audio-changed"
 )
 
 // Message is one framed protocol message.
@@ -127,8 +132,10 @@ type Result struct {
 	Reason   string `json:"reason,omitempty"`
 	Revision uint64 `json:"revision,omitempty"`
 	// Created is the ID the orchestrator assigned to something the command
-	// created, such as a document or an anchor.
+	// created, such as a document or an anchor. Item names something it
+	// created that has no ID of its own, such as a cue.
 	Created ids.ULID `json:"created,omitzero"`
+	Item    string   `json:"item,omitempty"`
 }
 
 // Event reports an applied edit. Windows apply the same edit with the same
@@ -180,11 +187,19 @@ type Notice struct {
 
 // Open asks the orchestrator to open a window. Opening a view and target that
 // is already open draws attention to that window instead, unless NewView asks
-// for another view of it.
+// for another view of it. Item, when set, is something in the window to show,
+// such as a cue in the Audio window; the window is sent an Attention naming it.
 type Open struct {
 	View    string   `json:"view"`
 	Target  ids.ULID `json:"target"`
 	NewView bool     `json:"newView,omitempty"`
+	Item    string   `json:"item,omitempty"`
+}
+
+// Attention asks a window to draw attention to itself and, when Item is set,
+// to show that item.
+type Attention struct {
+	Item string `json:"item,omitempty"`
 }
 
 // QuestionWhereUsed asks which documents refer to a document, or to one item
@@ -419,20 +434,27 @@ const (
 
 // AudioLibrary asks for the project's audio library. The reply lists every
 // cue, ordered by ID, or says in Problem why there is nothing to play, such
-// as a project with no audio library.
+// as a project with no audio library. Schema is the library's schema version
+// and Unused lists the recordings no cue plays, ordered by ID.
 type AudioLibrary struct {
-	Problem string     `json:"problem,omitempty"`
-	Cues    []AudioCue `json:"cues,omitempty"`
+	Problem string           `json:"problem,omitempty"`
+	Cues    []AudioCue       `json:"cues,omitempty"`
+	Schema  int              `json:"schema,omitempty"`
+	Unused  []AudioRecording `json:"unused,omitempty"`
 }
 
 // AudioCue is one cue of the audio library: its ID, which a cue parameter
-// stores; its name; its category; its gain; the words a search also finds it
-// by; and its recordings, in the order a cycle plays them.
+// stores; its name; its category, and whether the audio project names it
+// rather than it following from the cue's routing; its gain; how to hear it;
+// the words a search also finds it by; and its recordings, in the order a
+// cycle plays them.
 type AudioCue struct {
 	ID          string           `json:"id"`
 	Name        string           `json:"name"`
 	Category    string           `json:"category"`
+	CategorySet bool             `json:"categorySet,omitempty"`
 	Gain        float64          `json:"gain"`
+	HowToHear   string           `json:"howToHear,omitempty"`
 	SearchTerms []string         `json:"searchTerms,omitempty"`
 	Recordings  []AudioRecording `json:"recordings"`
 }
@@ -441,16 +463,144 @@ type AudioCue struct {
 // extension, which says how to decode it; a version that changes whenever
 // the file does, so a window keeps bytes it already holds; its size in
 // bytes; its calibration gain in dB; the part of it that plays, in
-// milliseconds, both zero for all of it; and its status.
+// milliseconds, both zero for all of it; and its status. For the Audio
+// window it also has its file, relative to the audio folder, the file it was
+// copied from, its note and search terms, and its attribution.
 type AudioRecording struct {
-	ID            string  `json:"id"`
-	Extension     string  `json:"extension,omitempty"`
-	Version       string  `json:"version,omitempty"`
-	Size          int64   `json:"size,omitempty"`
-	CalibrationDB float64 `json:"calibrationDb,omitempty"`
-	StartMs       int64   `json:"startMs,omitempty"`
-	EndMs         int64   `json:"endMs,omitempty"`
-	Status        string  `json:"status"`
+	ID            string      `json:"id"`
+	Extension     string      `json:"extension,omitempty"`
+	Version       string      `json:"version,omitempty"`
+	Size          int64       `json:"size,omitempty"`
+	CalibrationDB float64     `json:"calibrationDb,omitempty"`
+	StartMs       int64       `json:"startMs,omitempty"`
+	EndMs         int64       `json:"endMs,omitempty"`
+	Status        string      `json:"status"`
+	File          string      `json:"file,omitempty"`
+	OriginalFile  string      `json:"originalFile,omitempty"`
+	Note          string      `json:"note,omitempty"`
+	SearchTerms   []string    `json:"searchTerms,omitempty"`
+	Attribution   Attribution `json:"attribution"`
+}
+
+// Unknown is how the audio library spells an attribution nobody recorded.
+const Unknown = "unknown"
+
+// Attribution is who made a recording, where it came from and on what
+// licence, as its author recorded them, Unknown where nobody did, and
+// whether the author cleared it for use in a commercial game. The editor
+// records these; it verifies no licence.
+type Attribution struct {
+	Creator    string `json:"creator"`
+	Source     string `json:"source"`
+	License    string `json:"license"`
+	Commercial bool   `json:"commercial,omitempty"`
+}
+
+// Audio edits, as AudioEdit names them, with the arguments each takes.
+const (
+	// AudioCreateCue makes a cue, NewCue, with an empty recording slot.
+	AudioCreateCue = "audio.create-cue"
+	// AudioAddSound copies a file into the project as a new recording, AddSound.
+	AudioAddSound = "audio.add-sound"
+	// AudioReplaceFile copies a file in for an existing recording, ReplaceFile.
+	AudioReplaceFile = "audio.replace-file"
+	// AudioSetCue, AudioSetCategory and AudioSetRecordings change a cue:
+	// CueChange, CategoryChange and CueRecordings.
+	AudioSetCue        = "audio.set-cue"
+	AudioSetCategory   = "audio.set-category"
+	AudioSetRecordings = "audio.set-recordings"
+	// AudioSetRecording and AudioSetAttribution change a recording:
+	// RecordingChange and AttributionChange.
+	AudioSetRecording   = "audio.set-recording"
+	AudioSetAttribution = "audio.set-attribution"
+	// AudioDeleteCue and AudioDeleteRecording delete one, AudioItem; a
+	// recording only when no cue plays it.
+	AudioDeleteCue       = "audio.delete-cue"
+	AudioDeleteRecording = "audio.delete-recording"
+)
+
+// AudioEdit asks for one change to the audio library: Edit names it and Args
+// holds its arguments, as for a Command. Gesture groups consecutive edits
+// into one undo step. The Result's Item names a cue or recording it created.
+type AudioEdit struct {
+	Edit    string          `json:"edit"`
+	Gesture string          `json:"gesture,omitempty"`
+	Args    json.RawMessage `json:"args"`
+}
+
+// AudioChanged tells windows the audio library changed: an edit, an undo or
+// a change another program made to its files. Revision counts the changes
+// the orchestrator has seen.
+type AudioChanged struct {
+	Revision uint64 `json:"revision"`
+}
+
+// NewCue is a cue to create: its ID, which never changes; its name; its
+// category, or empty for the default; and how to hear it in the game.
+type NewCue struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Category  string `json:"category,omitempty"`
+	HowToHear string `json:"howToHear"`
+}
+
+// AddSound copies the file at Path into the project as a new recording with
+// its attribution: into a new cue, NewCue, or as another variant of Cue,
+// filling its empty slot when it has one.
+type AddSound struct {
+	Cue         string      `json:"cue,omitempty"`
+	NewCue      *NewCue     `json:"newCue,omitempty"`
+	Path        string      `json:"path"`
+	Attribution Attribution `json:"attribution"`
+}
+
+// ReplaceFile copies the file at Path into the project for a recording, with
+// the new file's attribution.
+type ReplaceFile struct {
+	Recording   string      `json:"recording"`
+	Path        string      `json:"path"`
+	Attribution Attribution `json:"attribution"`
+}
+
+// CueChange changes some of a cue's fields; a nil field stays as it is.
+type CueChange struct {
+	Cue         string    `json:"cue"`
+	Name        *string   `json:"name,omitempty"`
+	Gain        *float64  `json:"gain,omitempty"`
+	HowToHear   *string   `json:"howToHear,omitempty"`
+	SearchTerms *[]string `json:"searchTerms,omitempty"`
+}
+
+// CategoryChange sets a cue's category; empty returns it to the default.
+type CategoryChange struct {
+	Cue      string `json:"cue"`
+	Category string `json:"category,omitempty"`
+}
+
+// CueRecordings sets the recordings a cue plays, in turn when there are
+// several.
+type CueRecordings struct {
+	Cue        string   `json:"cue"`
+	Recordings []string `json:"recordings"`
+}
+
+// RecordingChange changes a recording's note or search terms; a nil field
+// stays as it is.
+type RecordingChange struct {
+	Recording   string    `json:"recording"`
+	Note        *string   `json:"note,omitempty"`
+	SearchTerms *[]string `json:"searchTerms,omitempty"`
+}
+
+// AttributionChange sets a recording's attribution.
+type AttributionChange struct {
+	Recording   string      `json:"recording"`
+	Attribution Attribution `json:"attribution"`
+}
+
+// AudioItem names the cue or recording an edit deletes.
+type AudioItem struct {
+	ID string `json:"id"`
 }
 
 // Recording asks for a recording's bytes from Offset. The reply carries its

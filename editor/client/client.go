@@ -58,8 +58,12 @@ type Update struct {
 	Session *protocol.Session
 	// Shutdown asks the window to clean up and close.
 	Shutdown *protocol.Shutdown
-	// Attention asks the window to draw attention to itself.
+	// Attention asks the window to draw attention to itself and, when Item
+	// is set, to show that item.
 	Attention bool
+	Item      string
+	// AudioChanged says the audio library changed.
+	AudioChanged *protocol.AudioChanged
 	// PickStart asks this Map window to answer a pick.
 	PickStart *protocol.PickStart
 	// PickAnswer answers a pick this window asked for.
@@ -264,7 +268,7 @@ func (c *Client) Redo(ctx context.Context) (protocol.Result, error) {
 // Open asks the orchestrator to open a window, or to draw attention to the
 // window already showing that view and target unless newView is set.
 func (c *Client) Open(ctx context.Context, view string, target ids.ULID, newView bool) (protocol.Result, error) {
-	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target, NewView: newView})
+	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target, NewView: newView, Item: ""})
 	if err != nil {
 		return protocol.Result{}, err
 	}
@@ -294,7 +298,9 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 // AudioLibrary asks for the project's audio library: its cues, or why it
 // has none.
 func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error) {
-	reply, err := c.request(ctx, protocol.KindAudioLibrary, protocol.AudioLibrary{Problem: "", Cues: nil})
+	reply, err := c.request(ctx, protocol.KindAudioLibrary, protocol.AudioLibrary{
+		Problem: "", Cues: nil, Schema: 0, Unused: nil,
+	})
 	if err != nil {
 		return protocol.AudioLibrary{}, err
 	}
@@ -303,6 +309,27 @@ func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error
 	}
 
 	return protocol.DecodePayload[protocol.AudioLibrary](reply)
+}
+
+// OpenItem asks the orchestrator to open a window and show an item in it, such
+// as a cue in the Audio window, or to show it in the window already open.
+func (c *Client) OpenItem(ctx context.Context, view string, target ids.ULID, item string) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target, NewView: false, Item: item})
+	if err != nil {
+		return protocol.Result{}, err
+	}
+
+	return resultOf(reply)
+}
+
+// AudioEdit asks for a change to the audio library and waits for its result.
+func (c *Client) AudioEdit(ctx context.Context, edit protocol.AudioEdit) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindAudioEdit, edit)
+	if err != nil {
+		return protocol.Result{}, err
+	}
+
+	return resultOf(reply)
 }
 
 // Recording asks for part of a recording's bytes, from offset.

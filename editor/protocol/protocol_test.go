@@ -24,10 +24,10 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindSubscribe: protocol.Subscribe{Document: testID},
 		protocol.KindSnapshot:  protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
 		protocol.KindCommand:   protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
-		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID},
+		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID, Item: "door/open"},
 		protocol.KindEvent:     protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
 		protocol.KindSession:   protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
-		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true},
+		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true, Item: "door/open"},
 		protocol.KindShutdown:  protocol.Shutdown{Reason: "bye", Save: true},
 		protocol.KindUnsaved:   protocol.Unsaved{Count: 2, Name: "NPC 1"},
 		protocol.KindQuitAsk: protocol.QuitAsk{Windows: 3, Unsaved: []protocol.UnsavedWindow{
@@ -38,7 +38,7 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindRedo:         nil,
 		protocol.KindQuery:        protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
 		protocol.KindAnswer:       protocol.Answer{Uses: []protocol.Use{{Document: testID, Name: "n", Format: "f", Label: "l"}}},
-		protocol.KindAttention:    nil,
+		protocol.KindAttention:    protocol.Attention{Item: "door/open"},
 		protocol.KindPickAsk:      protocol.PickAsk{What: protocol.PickAnchor, Maps: []protocol.PickMap{{Window: testID, Zone: testID, Shows: true}}},
 		protocol.KindPickStart:    protocol.PickStart{Pick: "p", What: protocol.PickAnchor, Label: "l", Window: testID, Zone: testID, From: testID},
 		protocol.KindPickAnswer:   protocol.PickAnswer{Pick: "p", Floor: testID, Item: "i"},
@@ -55,13 +55,22 @@ func everyMessage(t *testing.T) []protocol.Message {
 			Step: []protocol.PreviewChange{{From: testID, Output: "o1", To: testID, Tick: 9, Status: "b"}}},
 		protocol.KindPreviewStop: protocol.PreviewStop{Run: testID, Reason: "r"},
 		protocol.KindAudioLibrary: protocol.AudioLibrary{Problem: "p", Cues: []protocol.AudioCue{{
-			ID: "door/open", Name: "Door opens", Category: protocol.CategorySFX, Gain: 0.8, SearchTerms: []string{"hinge"},
+			ID: "door/open", Name: "Door opens", Category: protocol.CategorySFX, CategorySet: true, Gain: 0.8,
+			HowToHear: "Open a door.", SearchTerms: []string{"hinge"},
 			Recordings: []protocol.AudioRecording{{
 				ID: "door_a", Extension: ".wav", Version: "v", Size: 9, CalibrationDB: -4.5, StartMs: 10, EndMs: 900,
-				Status: protocol.RecordingReady,
+				Status: protocol.RecordingReady, File: "imported/door_a_01.wav", OriginalFile: "door A.wav",
+				Note: "first take", SearchTerms: []string{"creak"},
+				Attribution: protocol.Attribution{Creator: "c", Source: "https://example.com", License: "CC0-1.0",
+					Commercial: true},
 			}},
-		}}},
-		protocol.KindRecording: protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
+		}}, Schema: 4, Unused: []protocol.AudioRecording{{ID: "spare", Status: protocol.RecordingNoFile,
+			Attribution: protocol.Attribution{Creator: protocol.Unknown, Source: protocol.Unknown,
+				License: protocol.Unknown}}}},
+		protocol.KindAudioEdit: protocol.AudioEdit{Edit: protocol.AudioAddSound, Gesture: "g",
+			Args: json.RawMessage(`{"cue":"door/open","path":"/sounds/door.wav","attribution":{"creator":"c"}}`)},
+		protocol.KindAudioChanged: protocol.AudioChanged{Revision: 3},
+		protocol.KindRecording:    protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
 		protocol.KindPreviewControl: protocol.PreviewControl{
 			Run: testID, Action: protocol.ControlJump, Placement: testID, Rate: 60, Seconds: 9 * 3600,
 		},
@@ -147,12 +156,55 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.AudioLibrary](message)
 		case protocol.KindRecording:
 			check = roundTrip[protocol.Recording](message)
+		case protocol.KindAttention:
+			check = roundTrip[protocol.Attention](message)
+		case protocol.KindAudioEdit:
+			check = roundTrip[protocol.AudioEdit](message)
+		case protocol.KindAudioChanged:
+			check = roundTrip[protocol.AudioChanged](message)
 		default:
 			continue
 		}
 		decoded, again, err := check()
 		if err != nil || !reflect.DeepEqual(decoded, again) {
 			t.Fatalf("%s: %+v != %+v (%v)", message.Kind, decoded, again, err)
+		}
+	}
+}
+
+// TestAudioEditArgsRoundTrip checks that the arguments of every audio edit
+// decode back to the value that was encoded.
+func TestAudioEditArgsRoundTrip(t *testing.T) {
+	t.Parallel()
+	name, gain, terms := "Door opens", 0.5, []string{"hinge"}
+	attribution := protocol.Attribution{Creator: "c", Source: "s", License: "l", Commercial: true}
+	for edit, args := range map[string]any{
+		protocol.AudioCreateCue: protocol.NewCue{ID: "door/open", Name: name, Category: protocol.CategorySFX,
+			HowToHear: "Open a door."},
+		protocol.AudioAddSound: protocol.AddSound{Cue: "", NewCue: &protocol.NewCue{ID: "door/open", Name: name,
+			Category: "", HowToHear: "h"}, Path: "/sounds/door.wav", Attribution: attribution},
+		protocol.AudioReplaceFile: protocol.ReplaceFile{Recording: "door_a", Path: "/sounds/door.wav",
+			Attribution: attribution},
+		protocol.AudioSetCue: protocol.CueChange{Cue: "door/open", Name: &name, Gain: &gain, HowToHear: &name,
+			SearchTerms: &terms},
+		protocol.AudioSetCategory:   protocol.CategoryChange{Cue: "door/open", Category: protocol.CategoryMusic},
+		protocol.AudioSetRecordings: protocol.CueRecordings{Cue: "door/open", Recordings: []string{"a", "b"}},
+		protocol.AudioSetRecording:  protocol.RecordingChange{Recording: "door_a", Note: &name, SearchTerms: &terms},
+		protocol.AudioSetAttribution: protocol.AttributionChange{Recording: "door_a",
+			Attribution: attribution},
+		protocol.AudioDeleteCue:       protocol.AudioItem{ID: "door/open"},
+		protocol.AudioDeleteRecording: protocol.AudioItem{ID: "door_a"},
+	} {
+		data, err := json.Marshal(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded := reflect.New(reflect.TypeOf(args))
+		if err := json.Unmarshal(data, decoded.Interface()); err != nil {
+			t.Fatal(edit, err)
+		}
+		if !reflect.DeepEqual(decoded.Elem().Interface(), args) {
+			t.Fatalf("%s: %+v != %+v", edit, decoded.Elem().Interface(), args)
 		}
 	}
 }

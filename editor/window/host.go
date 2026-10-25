@@ -292,7 +292,7 @@ func (h *host) flush() {
 	for _, item := range h.outbox {
 		request, err := h.conn.Send(item.command)
 		if err != nil {
-			reply(item.done, protocol.Result{OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}}, err)
+			reply(item.done, protocol.Result{OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: ""}, err)
 
 			continue
 		}
