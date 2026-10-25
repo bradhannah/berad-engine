@@ -246,10 +246,11 @@ under consideration), **open** (undecided).
 - **Candidate:** handlers, workflows that run when something happens, for each
   kind of thing: the game, zones, areas, object definitions and placements,
   NPCs, conversations and quests. "On create" runs each time something comes
-  alive, for example when its zone loads, not once per game. The proposed term
-  is *handler*, since *event* already means the orchestrator's notice of a
-  change. *Open:* whether On create runs when a placement appears partway
-  through a visit because a flag changed.
+  alive, for example when its zone loads, not once per game. It also runs when
+  a placement appears partway through a visit because a flag changed, so the
+  placement behaves the same as one that was there when the player arrived.
+  The proposed term is *handler*, since *event* already means the
+  orchestrator's notice of a change.
 - **Candidate:** a zone loop that watches flags and other things affecting the
   zone, and can control ambient sounds as well as music. It is not based on
   turns and pauses when the game pauses; *open:* whether a second loop runs by
