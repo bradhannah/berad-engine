@@ -60,6 +60,13 @@ The project browser and a Map window open on a sample zone with two floors.
   move them; Backspace removes the selected node. The inspector edits the
   selected node: Enter saves a field, and "Pick on map" chooses a Go to's
   destination. Auto-arrange lays the workflow out.
+- **Audio window:** the project browser's Audio section lists the cues; open
+  one, or click the section's [+] to add a sound. Adding a sound asks for a
+  file, copies it into the project and asks who made it and whether it may be
+  used in a commercial game. The window lists cues by category, or
+  recordings, with filters for problems and for sounds not cleared; it plays
+  them, and edits a cue's name, category, gain and the recordings it plays in
+  turn.
 
 `Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
 opens another view of the same zone, and the views update live and share undo;

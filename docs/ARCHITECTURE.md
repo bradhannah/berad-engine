@@ -47,6 +47,12 @@ leaves a field without saving.
 A gesture such as a paint stroke is sent step by step (strict) but grouped into
 one undo step (D3).
 
+**As built for audio (protocol version 11):** to add a sound, a window asks
+the author for a file of their own with the system's Open dialog and sends
+only its path; the orchestrator copies the file into the project through
+berad-audio's authoring package. That chosen file is the only file outside
+the project the editor reads.
+
 ## D2 — Project data versus session state
 
 - **Project data:** authored content. Saved, undoable, written only by the
@@ -73,6 +79,14 @@ documents need a broader rule.
 Closing a window ends its undo list (unless another view shares it). Undo does
 not survive quitting the editor; versions (D9) cover older changes. Each undo
 list keeps 100 steps by default.
+
+**As built for audio (protocol version 11):** the Audio window has its own
+undo list. An audio undo step holds the values its edit changed, before and
+after: each cue, recording, classification, ambient setting and category it
+touched. An undo is refused when another window changed one of them since,
+as above, and also when a program outside the editor did, since the audio
+files can be edited elsewhere too. Undoing never deletes a file that was
+copied in.
 
 ## D4 — Identity and references
 
@@ -107,6 +121,12 @@ references flagged in a Problems view, and the deletion can be undone.
 the audio library spells it, such as `door/open`, not a ULID, because the
 library keeps berad-audio's own format (D11). A cue whose ID changes outside
 the editor shows as missing, as a broken reference does.
+**As built (protocol version 11):** a cue's ID is chosen when the cue is made,
+in lowercase letters, digits, `_` and `-`, in parts joined by `/`, and the
+editor never changes it; its name can change freely. A workflow's Play sound
+nodes declare their cues as references to the audio library, which goes by a
+fixed ID of its own (`model.AudioLibraryID`), so where-used lists the
+workflows that play a cue before it is deleted.
 
 ## D5 — What each window holds
 
@@ -193,6 +213,10 @@ most 8 MiB a reply, never reading a file itself. Each recording carries a
 version made from its file's size and modification time, and a window keeps
 the bytes it holds until the version changes. Recordings travel in JSON
 first; a window opens its audio device only when it first plays.
+**Protocol version 11:** after every change to the audio library, and when the
+orchestrator notices its files changed outside the editor, every window is
+told the library changed and asks for it again. The library also lists the
+recordings no cue plays, and each recording's file, note and attribution.
 
 ## D9 — Saving and versions
 
@@ -209,6 +233,11 @@ draft until Save, Cmd+S or Enter in a one-line field sends it as a command;
 from then on it is saved like every other command. A draft is never project
 data, so the windows, not the orchestrator, ask about unsaved drafts before
 they are lost.
+
+**As built for audio (protocol version 11):** an audio edit is written to the
+audio files before it is acknowledged, so it is not journaled. Edits run one
+at a time on a worker, so copying a large file never holds up the
+orchestrator; each opens the library afresh and saves it at once.
 
 ## D10 — Lifecycle and failure
 
@@ -260,10 +289,16 @@ document's tags are an optional list in its envelope. Floors stay with their
 zone and take no folder.
 **Exception (protocol version 10):** the project's `audio` folder keeps
 berad-audio's own formats rather than the envelope, so the terminal audio
-editor opens the same files: `audio/library.json`, a schema-3 audio library,
-and `audio/project.json`, its version-1 descriptor, beside the sound files
-they name. Only berad-audio's authoring package reads them, the editor never
-writes them, and loading the project skips the folder.
+editor opens the same files: `audio/library.json`, an audio library, and
+`audio/project.json`, its version-1 descriptor, beside the sound files they
+name. Only berad-audio's authoring package reads and writes them, and loading
+the project skips the folder.
+**As built (protocol version 11):** the Audio window writes them. The editor
+starts the library when the first sound is added, writes it in schema 4,
+which records whether each recording may be used in a commercial game, and
+moves a schema-3 library to schema 4 the first time it changes it. A cue's
+category is kept in the descriptor, made when one is first needed. Sounds
+added are copied into `audio/imported/`.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
 changes only when the layout does (D17). A workflow's layout holds where
@@ -288,7 +323,9 @@ each node sits and the bends of lines moved by hand. *Open:* chunking very large
 - **Selection stays local:** selecting in one window changes only that window.
 - **Opening something already open** brings its window to the front. A
   process cannot raise another process's window, so the window asks for
-  attention instead (on macOS its Dock icon bounces).
+  attention instead (on macOS its Dock icon bounces). Opening can also name
+  an item to show, such as a cue in the Audio window; the window is told it
+  once open, or at once if it is open already (protocol version 11).
 - **Several views of one map** are allowed through an explicit "New view"; all
   views show every change and share undo (D3). During preview, every view of the
   map shows the live entities.

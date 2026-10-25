@@ -106,6 +106,26 @@ func openDevice() (audio.Backend, error) {
 	return ebitengine.Backend{Context: context}, nil
 }
 
+// recordingCue is the cue a Player makes to play one recording on its own,
+// at its calibration and unit gain. Its leading slash is never in a cue ID.
+func recordingCue(recording string) string { return "/" + recording }
+
+// PlayRecording plays one recording on its own, once it has arrived, as the
+// Audio window auditions one of a cue's recordings, or one no cue plays.
+func (s *Player) PlayRecording(recording string) { s.Play(recordingCue(recording)) }
+
+// PlayingRecording reports whether a recording played on its own is playing
+// or waiting to.
+func (s *Player) PlayingRecording(recording string) bool { return s.Playing(recordingCue(recording)) }
+
+// Changed lists the library again after it changed, so what plays next plays
+// the library as it is now.
+func (s *Player) Changed() {
+	if s.listed || len(s.wanted) > 0 {
+		s.refresh()
+	}
+}
+
 // Prepare fetches the library again and the recordings cues need.
 func (s *Player) Prepare(cues []string) {
 	for _, cue := range cues {
@@ -222,9 +242,7 @@ func (s *Player) refresh() {
 			}
 		default:
 			s.listed, s.listing = true, map[string]protocol.AudioCue{}
-			for _, cue := range library.Cues {
-				s.listing[cue.ID] = cue
-			}
+			s.list(library)
 		}
 		s.fetchWanted()
 		if s.again {
@@ -233,6 +251,25 @@ func (s *Player) refresh() {
 		}
 		s.playQueued()
 	})
+}
+
+// list keeps a listing's cues, and a cue for each recording on its own.
+func (s *Player) list(library protocol.AudioLibrary) {
+	alone := func(recording protocol.AudioRecording) {
+		s.listing[recordingCue(recording.ID)] = protocol.AudioCue{
+			ID: recordingCue(recording.ID), Name: recording.ID, Category: "", CategorySet: false, Gain: 1,
+			HowToHear: "", SearchTerms: nil, Recordings: []protocol.AudioRecording{recording},
+		}
+	}
+	for _, cue := range library.Cues {
+		s.listing[cue.ID] = cue
+		for _, recording := range cue.Recordings {
+			alone(recording)
+		}
+	}
+	for _, recording := range library.Unused {
+		alone(recording)
+	}
 }
 
 // fetchWanted asks for every wanted cue's recordings not held at their

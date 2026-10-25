@@ -91,20 +91,29 @@ func (d *Document) Clone() model.Document {
 	return &Document{Workflow: d.Workflow.Clone()}
 }
 
-// References lists the anchors the workflow's Go to nodes lead to.
+// References lists the anchors the workflow's Go to nodes lead to and the
+// cues its Play sound nodes play.
 func (d *Document) References() []model.Reference {
 	var references []model.Reference
 	for _, node := range d.Workflow.Nodes() {
-		if node.Kind != flow.KindGoTo {
-			continue
+		switch node.Kind {
+		case flow.KindGoTo:
+			destination, err := node.Anchor("destination")
+			if err != nil || destination.IsZero() {
+				continue
+			}
+			references = append(references, model.Reference{
+				Document: destination.Floor, Item: destination.Anchor.String(), Label: "a Go to node",
+			})
+		case flow.KindPlaySound:
+			cue, err := node.Cue("cue")
+			if err != nil || cue == "" {
+				continue
+			}
+			references = append(references, model.Reference{
+				Document: model.AudioLibraryID(), Item: cue, Label: "a Play sound node",
+			})
 		}
-		destination, err := node.Anchor("destination")
-		if err != nil || destination.IsZero() {
-			continue
-		}
-		references = append(references, model.Reference{
-			Document: destination.Floor, Item: destination.Anchor.String(), Label: "a Go to node",
-		})
 	}
 
 	return references

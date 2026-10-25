@@ -25,5 +25,6 @@ It uses the engine module; games never use this module.
 | `views/browser`, `views/mapview`, `views/textview`, `views/workflowview` | The four windows, testable without a screen; the Map window also runs previews |
 | `views/picker` | Pick on map for any window that needs an anchor |
 | `views/watchview` | The Watch window: where the watched NPC is in its workflow during a preview |
+| `views/audioview` | The Audio window: adding sounds with their attribution, and editing cues and recordings |
 | `sound` | Plays the project's cues in a window, from recordings the orchestrator sends |
-| `window` | Ebitengine host: input and input method, requests, sound, test scripts |
+| `window` | Ebitengine host: input and input method, requests, sound, the Open dialog, test scripts |

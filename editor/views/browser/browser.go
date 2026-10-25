@@ -1,5 +1,6 @@
 // Package browser is the project browser window: the project's zones with
-// their floors, its workflows, NPCs and text documents, in folders. Authors
+// their floors, its workflows, NPCs and text documents, in folders, and the
+// audio library's cues, which open in the Audio window. Authors
 // create, rename, delete and open documents here, from the toolbar, the
 // inspector or a right-click menu, keep them in folders and tag them,
 // search them, reorder a zone's floors, and choose each NPC's behaviour and
@@ -73,6 +74,7 @@ const (
 	dialogNone dialogKind = iota
 	dialogDelete
 	dialogBehaviour
+	dialogDeleteCue
 )
 
 // State is the project browser.
@@ -111,6 +113,8 @@ type State struct {
 	context     contextClick
 
 	npc *npcPanel
+	// audio is the Audio section's cues.
+	audio *audioState
 
 	dialog     *ui.Dialog
 	dialogKind dialogKind
@@ -137,7 +141,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		moveMenu: ui.Menu{Items: nil, Width: 0}, tagBns: nil, save: ui.NewSaveBar(),
 		guard:       frame.Guard{},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, contextAt: image.Pt(0, 0), context: noContextClick(),
-		npc:    newNPCPanel(theme),
+		npc: newNPCPanel(theme), audio: newAudioState(),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
@@ -157,6 +161,7 @@ func menuItems() []ui.MenuItem {
 		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false, Danger: false, Rule: false},
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
 		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
+		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
 		{ID: newFolderPrefix + zone.FormatName, Label: "Zone folder", Icon: ui.IconFolder, Disabled: false, Danger: false,
 			Rule: true},
 		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
@@ -174,9 +179,10 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
-// Start subscribes to the project index.
+// Start subscribes to the project index and lists the audio library.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
+	s.askAudio(ctx)
 }
 
 func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
@@ -192,8 +198,12 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 }
 
 // Changed subscribes to every zone, so their floors can be listed, and to
-// every NPC, so the list can say which workflow each follows.
+// every NPC, so the list can say which workflow each follows. It lists the
+// audio library again when it changes.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
+	if update.AudioChanged != nil {
+		s.askAudio(ctx)
+	}
 	if update.Event == nil && update.Snapshot == nil {
 		return
 	}
@@ -308,6 +318,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.guardSelection(ctx)
 	s.syncName(ctx.Docs)
 	s.syncNPC(ctx)
+	s.syncCueUses(ctx)
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -443,14 +454,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	switch s.save.Update(input) {
-	case ui.SaveID:
-		s.Save(ctx)
-
-		return
-	case ui.RevertID:
-		s.discard()
-
+	if s.saveBar(input, ctx) {
 		return
 	}
 	switch {
@@ -478,6 +482,26 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 			}
 		}
 	}
+}
+
+// saveBar handles the save bar and the Audio section's button, and reports
+// whether one was used.
+func (s *State) saveBar(input *ui.Input, ctx *frame.Context) bool {
+	if s.audio.open.Update(input) {
+		s.openCue(ctx)
+
+		return true
+	}
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+	case ui.RevertID:
+		s.discard()
+	default:
+		return false
+	}
+
+	return true
 }
 
 // openMenu shows New ▾; a floor needs a zone, or a floor of one, selected.
@@ -509,6 +533,8 @@ func (s *State) create(ctx *frame.Context, item string) {
 		s.createNPC(ctx)
 	case newText:
 		s.createText(ctx)
+	case newSound:
+		s.addSound(ctx)
 	}
 }
 
@@ -702,6 +728,14 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 // document in a Text window, and a workflow, or an NPC's behaviour workflow,
 // in a Workflow window. A folder opens or closes.
 func (s *State) openSelected(ctx *frame.Context) {
+	if s.openCue(ctx) {
+		return
+	}
+	if strings.HasPrefix(s.list.Selected, audioCategoryPrefix) {
+		s.closed[s.list.Selected] = !s.closed[s.list.Selected]
+
+		return
+	}
 	if folder, isFolder := s.selectedFolder(); isFolder {
 		id := folderRowID(folder.Format, folder.Path)
 		s.closed[id] = !s.closed[id]
@@ -765,6 +799,11 @@ func (s *State) moveFloor(ctx *frame.Context, delta int) {
 // (D4). Deleting a zone deletes its floors with it, as one undo step. A
 // folder is deleted when it is empty.
 func (s *State) deleteSelected(ctx *frame.Context) {
+	if _, isCue := s.selectedCue(); isCue {
+		s.deleteCue(ctx)
+
+		return
+	}
 	if folder, isFolder := s.selectedFolder(); isFolder {
 		s.deleteFolder(ctx, folder)
 
@@ -839,6 +878,8 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		s.deleteDocument(ctx, s.deleting)
 	case kind == dialogBehaviour && choice == "use" && list != nil:
 		s.setBehaviour(ctx, list.Selected)
+	case kind == dialogDeleteCue && choice == "delete":
+		s.removeCue(ctx, s.audio.deleting)
 	}
 }
 
@@ -947,6 +988,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
+		s.audio.open,
 	}, s.tagBns...)
 }
 

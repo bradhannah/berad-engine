@@ -230,8 +230,19 @@ under consideration), **open** (undecided).
   editor stays for Ultima V Redux. Both read and write berad-audio's formats
   only through its authoring package, and those formats change only through a
   new version, so Ultima V Redux stays compatible. Choosing cues for workflows
-  comes first ([the fourth build](FOURTH_BUILD.md)); an Audio window comes
-  later.
+  comes first ([the fourth build](FOURTH_BUILD.md)); the Audio window follows
+  ([the fifth build](FIFTH_BUILD.md)).
+- **Agreed:** the Audio window does everything the terminal audio editor does
+  except its Ultima V routing (sounds per tile type, footstep surfaces, named
+  emitters, the music, dungeon and naval groups), in three builds: adding and
+  editing sounds and cues, then trimming and levels, then ambient distance,
+  fades and the soundscape.
+- **Agreed:** audio is always saved and undone with Cmd+Z, like everything
+  else; there is no Save button.
+- **Agreed:** adding a sound copies its file into the project and asks
+  straight away who made it, where it came from and its licence, with an
+  "Allowed in a commercial game" checkbox and a reminder that some free
+  licences forbid commercial use. The checkbox is berad-audio's schema 4.
 - **Agreed:** the editor understands a cue's category: music, SFX or ambient.
 - **Agreed:** a Play sound node plays a cue once and the workflow carries on;
   most sounds can come from a node.

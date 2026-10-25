@@ -107,6 +107,9 @@ func (s *State) openContextMenu(docs frame.Docs) {
 // document it opens it, makes another beside it, and renames, moves or
 // deletes it. Below the rows it offers everything New ▾ makes.
 func (s *State) contextItems(docs frame.Docs, row string) []ui.MenuItem {
+	if audioItem(row) {
+		return s.audioContextItems()
+	}
 	if row == "" {
 		var items []ui.MenuItem
 		for _, item := range menuItems() {
@@ -200,6 +203,8 @@ func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
 	case "":
 	case contextOpen:
 		s.openSelected(ctx)
+	case contextOpenAudio:
+		s.openCue(ctx)
 	case contextRename:
 		s.startRename(ctx.Docs)
 	case contextMove:

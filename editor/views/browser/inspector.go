@@ -65,8 +65,14 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	for _, button := range s.inspectorButtons() {
 		button.Rect = ui.Zero()
 	}
-	s.tagBns, s.remove.Disabled = nil, false
+	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
 	s.name.Rect, s.tags.Rect, s.save.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	if _, isCue := s.selectedCue(); isCue {
+		s.layoutCue(left, width)
+		s.layoutNPC(docs, left, width, 0, 0)
+
+		return
+	}
 	_, isFolder := s.selectedFolder()
 	entry, isDocument := s.selected(docs)
 	if !isFolder && !isDocument {
@@ -288,6 +294,11 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	left := panel.Min.X + ui.Inset
 	if folder, ok := s.selectedFolder(); ok {
 		s.drawFolder(screen, docs, folder, left)
+
+		return
+	}
+	if cue, ok := s.selectedCue(); ok {
+		s.drawCue(screen, cue, left)
 
 		return
 	}

@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -11,8 +12,8 @@ import (
 // Icon is a small drawing of a document type, shown before its name.
 type Icon int
 
-// Icons of the document types, and of a folder, which holds documents of
-// one type.
+// Icons of the document types, of a folder, which holds documents of one
+// type, and of a sound: a cue or a recording of the audio library.
 const (
 	IconNone Icon = iota
 	IconZone
@@ -21,6 +22,7 @@ const (
 	IconNPC
 	IconText
 	IconFolder
+	IconSound
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -36,6 +38,11 @@ const (
 	// A folder's tab is this wide and its body starts this far down.
 	iconTab    = 6
 	iconTabTop = 3
+	// A speaker's box is this wide and as tall as its cone's narrow end;
+	// its wave is this far out, a quarter turn long.
+	iconSpeaker = 4
+	iconWave    = 4
+	quarterTurn = math.Pi / 4
 )
 
 // IconColor returns the muted colour of an icon's type.
@@ -49,6 +56,8 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorNPC()
 	case IconText:
 		return ColorText()
+	case IconSound:
+		return ColorSound()
 	case IconFolder:
 		return ColorMuted()
 	case IconNone:
@@ -103,13 +112,41 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 			vector.StrokeLine(screen, start, lineY, end, lineY, Hairline, ink, true)
 		}
 	case IconFolder:
-		// A folder: a tab on the back of its body.
-		tab := image.Rect(corner.X, corner.Y+1, corner.X+iconTab, corner.Y+iconTabTop+1)
-		FillRound(screen, tab, 1, ink)
-		body := image.Rect(corner.X, corner.Y+iconTabTop, corner.X+IconSize, corner.Y+IconSize-1)
-		StrokeRound(screen, body, iconPageGap, iconStroke, ink)
+		drawFolder(screen, corner, ink)
+	case IconSound:
+		drawSpeaker(screen, left, top, ink)
 	case IconNone:
 	}
+}
+
+// drawFolder draws a folder: a tab on the back of its body.
+func drawFolder(screen *ebiten.Image, corner image.Point, ink color.RGBA) {
+	tab := image.Rect(corner.X, corner.Y+1, corner.X+iconTab, corner.Y+iconTabTop+1)
+	FillRound(screen, tab, 1, ink)
+	body := image.Rect(corner.X, corner.Y+iconTabTop, corner.X+IconSize, corner.Y+IconSize-1)
+	StrokeRound(screen, body, iconPageGap, iconStroke, ink)
+}
+
+// drawSpeaker draws a speaker with one wave coming from it.
+func drawSpeaker(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	middle := top + IconSize/Half
+	var cone vector.Path
+	cone.MoveTo(left+1, middle-iconSpeaker/Half)
+	cone.LineTo(left+1+iconSpeaker, middle-iconSpeaker/Half)
+	cone.LineTo(left+iconSpeaker*Half+1, top+1)
+	cone.LineTo(left+iconSpeaker*Half+1, top+IconSize-1)
+	cone.LineTo(left+1+iconSpeaker, middle+iconSpeaker/Half)
+	cone.LineTo(left+1, middle+iconSpeaker/Half)
+	cone.Close()
+	fillPath(screen, &cone, ink)
+	var wave vector.Path
+	centre := left + iconSpeaker*Half + 1
+	wave.Arc(centre, middle, iconWave, -quarterTurn, quarterTurn, vector.Clockwise)
+	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
+	options.ColorScale.ScaleWithColor(ink)
+	vector.StrokePath(screen, &wave, &vector.StrokeOptions{
+		Width: iconStroke, LineCap: vector.LineCapRound, LineJoin: vector.LineJoinRound, MiterLimit: 0,
+	}, options)
 }
 
 func fillPath(screen *ebiten.Image, path *vector.Path, fill color.Color) {

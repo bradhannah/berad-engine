@@ -47,14 +47,23 @@ type Requests interface {
 	Undo(done func(protocol.Result, error))
 	Redo(done func(protocol.Result, error))
 	Subscribe(document ids.ULID, done func(error))
-	Open(view string, target ids.ULID, newView bool)
 	WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error))
 	// Publish sets session state every window shares under a topic, such as
 	// the time the next preview starts at; the other windows are told.
 	Publish(topic string, value any)
+	Windows
 	Picks
 	Previews
 	Audio
+}
+
+// Windows are the requests that open windows (D13).
+type Windows interface {
+	// Open opens a window, or brings the one already showing it forward.
+	Open(view string, target ids.ULID, newView bool)
+	// OpenItem opens a window and shows an item in it, such as a cue in the
+	// Audio window, or shows it in the window already open.
+	OpenItem(view string, target ids.ULID, item string)
 }
 
 // Audio are the requests for the project's audio (D8): its library, the cues
@@ -62,6 +71,17 @@ type Requests interface {
 type Audio interface {
 	AudioLibrary(done func(protocol.AudioLibrary, error))
 	Recording(recording string, offset int64, done func(protocol.Recording, error))
+	// AudioEdit changes the audio library (D11); every window is then told
+	// it changed.
+	AudioEdit(edit protocol.AudioEdit, done func(protocol.Result, error))
+}
+
+// Files asks the author to choose a file of their own, outside the project,
+// such as a sound to add. The window only passes on its path: the
+// orchestrator copies it in (D1). done runs on the window's goroutine, with
+// chosen false when the author cancels.
+type Files interface {
+	ChooseSound(done func(path string, chosen bool))
 }
 
 // Sounds plays the project's cues in this window. The orchestrator sends the
@@ -76,6 +96,10 @@ type Sounds interface {
 	Stop()
 	// Playing reports whether a cue is playing, or waiting to.
 	Playing(cue string) bool
+	// PlayRecording plays one recording on its own, and PlayingRecording
+	// reports whether it is playing or waiting to.
+	PlayRecording(recording string)
+	PlayingRecording(recording string) bool
 }
 
 // Picks are the requests for pick on map (D13).
@@ -102,6 +126,7 @@ type Context struct {
 	Docs      Docs
 	Requests  Requests
 	Sounds    Sounds
+	Files     Files
 	Clipboard textedit.Clipboard
 	// Window is this window's ID; Size is its size in pixels.
 	Window ids.ULID

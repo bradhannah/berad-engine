@@ -1,7 +1,7 @@
 // Package window runs one editor window process: it connects to the
 // orchestrator, subscribes to its target document and runs the Ebitengine
-// window for its view (the project browser, a Map, Text, Workflow, Watch or
-// Clock window).
+// window for its view (the project browser, a Map, Text, Workflow, Watch,
+// Clock or Audio window).
 package window
 
 import (
@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/audioview"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
 	"github.com/bradhannah/berad-engine/editor/views/clockview"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -52,19 +53,22 @@ type Args struct {
 func Run(args Args, registry *plugin.Registry) error {
 	switch args.View {
 	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
-		clockview.ViewName:
+		clockview.ViewName, audioview.ViewName:
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-	// Views of one map, or of one workflow, share an undo list (D3).
+	// Views of one map, or of one workflow, share an undo list (D3); the
+	// Audio window, of which there is one, has its own.
 	group := ""
 	switch args.View {
 	case mapview.ViewName:
 		group = "map:" + args.Target.String()
 	case workflowview.ViewName:
 		group = "workflow:" + args.Target.String()
+	case audioview.ViewName:
+		group = audioview.UndoGroup
 	}
 	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
 		Protocol: protocol.Version, Build: args.Build, Window: args.Window, View: args.View,
@@ -125,6 +129,8 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 	switch args.View {
 	case browser.ViewName:
 		return browser.New(window, theme)
+	case audioview.ViewName:
+		return audioview.New(window, theme)
 	case clockview.ViewName:
 		return clockview.New(theme)
 	case textview.ViewName:

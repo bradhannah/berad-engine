@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	requestTimeout  = 5 * time.Second
-	maxUpdates      = 1024
-	callbackQueue   = 256
-	screenshotEnv   = "BERAD_SCREENSHOT"
-	screenshotFrame = 90
+	requestTimeout   = 5 * time.Second
+	audioEditTimeout = 2 * time.Minute
+	maxUpdates       = 1024
+	callbackQueue    = 256
+	screenshotEnv    = "BERAD_SCREENSHOT"
+	screenshotFrame  = 90
 )
 
 // starter is implemented by views that subscribe to more documents once the
@@ -72,8 +73,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 	created := &host{
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
-			Docs: nil, Requests: nil, Sounds: nil, Clipboard: nil, Window: conn.Window(), Size: image.Pt(0, 0),
-			Frame: nil,
+			Docs: nil, Requests: nil, Sounds: nil, Files: nil, Clipboard: nil, Window: conn.Window(),
+			Size: image.Pt(0, 0), Frame: nil,
 		},
 		reader: newInputReader(), script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,
@@ -87,6 +88,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 	created.ctx.Requests = created
 	created.sounds = sound.New(created, created.frame.Status)
 	created.ctx.Sounds = created.sounds
+	created.ctx.Files = nativeFiles{post: created.post}
 	created.ctx.Clipboard = &systemClipboard{mu: sync.Mutex{}, memory: ""}
 	created.ctx.Frame = created.frame
 
@@ -218,8 +220,12 @@ func (h *host) onUpdate(update client.Update) {
 	}
 	if update.Attention {
 		ebiten.RequestAttention()
-
-		return
+		if update.Item == "" {
+			return
+		}
+	}
+	if update.AudioChanged != nil {
+		h.sounds.Changed()
 	}
 	if update.Session != nil && update.Session.Topic == protocol.TopicNotice {
 		var notice protocol.Notice
@@ -292,7 +298,7 @@ func (h *host) flush() {
 	for _, item := range h.outbox {
 		request, err := h.conn.Send(item.command)
 		if err != nil {
-			reply(item.done, protocol.Result{OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}}, err)
+			reply(item.done, protocol.Result{OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: ""}, err)
 
 			continue
 		}
@@ -348,6 +354,29 @@ func (h *host) Open(view string, target ids.ULID, newView bool) {
 
 		return func() { h.frame.Report("")(result, err) }
 	})
+}
+
+// OpenItem asks for a window showing an item.
+func (h *host) OpenItem(view string, target ids.ULID, item string) {
+	h.background(func(ctx context.Context) func() {
+		result, err := h.conn.OpenItem(ctx, view, target, item)
+		if err == nil {
+			return nil
+		}
+
+		return func() { h.frame.Report("")(result, err) }
+	})
+}
+
+// AudioEdit asks for a change to the audio library. Copying a large file in
+// can take a while, so it may wait longer than other requests.
+func (h *host) AudioEdit(edit protocol.AudioEdit, done func(protocol.Result, error)) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), audioEditTimeout)
+		defer cancel()
+		result, err := h.conn.AudioEdit(ctx, edit)
+		h.post(func() { reply(done, result, err) })
+	}()
 }
 
 // Publish sets session state every window shares.

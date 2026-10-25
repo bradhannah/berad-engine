@@ -135,6 +135,13 @@ type Reference struct {
 	Label string
 }
 
+// AudioLibraryID is the ID the project's audio library goes by. The library
+// keeps berad-audio's own files rather than being a document (D11), but a
+// reference to one of its cues names it, with the cue's ID as the Item, and
+// so do its edits in undo histories. Its time part is zero, so no generated
+// ID ever equals it.
+func AudioLibraryID() ids.ULID { return ids.MustParse("00000000000000000000000001") }
+
 // Referencer is implemented by documents that refer to others, so deleting
 // something can show where it is used.
 type Referencer interface {

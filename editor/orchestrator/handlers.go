@@ -28,6 +28,10 @@ func (o *Orchestrator) join(joined *window) {
 	}
 	o.pickJoined(joined)
 	o.previewJoined(joined)
+	if item, ok := o.attentions[joined.id]; ok {
+		delete(o.attentions, joined.id)
+		o.send(joined, mustMessage(protocol.KindAttention, 0, protocol.Attention{Item: item}))
+	}
 }
 
 // leave forgets a window. Its undo list ends unless another view shares it.
@@ -73,10 +77,11 @@ func (o *Orchestrator) handle(message inbound) {
 		o.handlePreview(message.from, message.message)
 	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit:
 		o.handleQuit(message.from, message.message)
-	case protocol.KindAudioLibrary, protocol.KindRecording:
+	case protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit:
 		o.handleAudio(message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
-		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention:
+		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention,
+		protocol.KindAudioChanged:
 		o.reply(message.from, request, reasonUnexpected, 0)
 	default:
 		o.reply(message.from, request, reasonUnexpected, 0)
@@ -139,7 +144,7 @@ func (o *Orchestrator) command(from *window, message protocol.Message) {
 	}
 	o.history.record(from.group, command.Gesture, applied.action)
 	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
-		OK: true, Reason: "", Revision: applied.revision, Created: applied.created,
+		OK: true, Reason: "", Revision: applied.revision, Created: applied.created, Item: "",
 	}))
 }
 
@@ -248,6 +253,11 @@ func (o *Orchestrator) revert(entry *documentEntry, kind model.EditKind, applied
 // undo reverts the window's latest step unless another window has changed any
 // of its items since.
 func (o *Orchestrator) undo(from *window, request uint64) {
+	if o.audioPending(from.group) {
+		o.reply(from, request, reasonAudioSaving, 0)
+
+		return
+	}
 	candidate, ok := o.history.popUndo(from.group)
 	if !ok {
 		o.reply(from, request, reasonNothingToUndo, 0)
@@ -257,6 +267,11 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 	if o.history.clash(from.group, candidate) {
 		o.history.pushUndo(from.group, candidate)
 		o.reply(from, request, reasonClash, 0)
+
+		return
+	}
+	if isAudioStep(candidate) {
+		o.queueAudio(audioJob{from: from, request: request, kind: audioUndoJob, edit: noAudioEdit(), step: candidate})
 
 		return
 	}
@@ -278,6 +293,11 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 }
 
 func (o *Orchestrator) redo(from *window, request uint64) {
+	if o.audioPending(from.group) {
+		o.reply(from, request, reasonAudioSaving, 0)
+
+		return
+	}
 	candidate, ok := o.history.popRedo(from.group)
 	if !ok {
 		o.reply(from, request, reasonNothingToRedo, 0)
@@ -287,6 +307,11 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 	if o.history.clash(from.group, candidate) {
 		o.history.pushRedo(from.group, candidate)
 		o.reply(from, request, reasonClash, 0)
+
+		return
+	}
+	if isAudioStep(candidate) {
+		o.queueAudio(audioJob{from: from, request: request, kind: audioRedoJob, edit: noAudioEdit(), step: candidate})
 
 		return
 	}
@@ -362,24 +387,28 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 	if !request.NewView {
 		for _, open := range o.windows {
 			if open.hello.View == request.View && open.hello.Target == request.Target {
-				o.send(open, mustMessage(protocol.KindAttention, 0, nil))
+				o.send(open, mustMessage(protocol.KindAttention, 0, protocol.Attention{Item: request.Item}))
 				o.reply(from, message.Request, "", 0)
 
 				return
 			}
 		}
 	}
-	if _, err := o.launch(request.View, request.Target); err != nil {
+	launched, err := o.launch(request.View, request.Target)
+	if err != nil {
 		o.reply(from, message.Request, err.Error(), 0)
 
 		return
+	}
+	if request.Item != "" {
+		o.attentions[launched] = request.Item
 	}
 	o.reply(from, message.Request, "", 0)
 }
 
 // reply answers a request; an empty reason means success.
 func (o *Orchestrator) reply(target *window, request uint64, reason string, revision uint64) {
-	result := protocol.Result{OK: reason == "", Reason: reason, Revision: revision, Created: ids.ULID{}}
+	result := protocol.Result{OK: reason == "", Reason: reason, Revision: revision, Created: ids.ULID{}, Item: ""}
 	o.send(target, mustMessage(protocol.KindResult, request, result))
 }
 
