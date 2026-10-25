@@ -353,6 +353,19 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		}
 
 		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
+	case flow.KindPlaySound:
+		cue, err := node.Cue("cue")
+		if err != nil {
+			return "?"
+		}
+		if cue == "" {
+			return "no cue"
+		}
+		if listed, found := s.listedCue(cue); found {
+			return listed.Name
+		}
+
+		return cue
 	default:
 		return ""
 	}
@@ -588,6 +601,8 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		s.theme.DrawText(screen, detail, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
 		made.pick.Draw(screen, s.theme)
 		made.clear.Draw(screen, s.theme)
+	case flow.TypeCue:
+		s.drawCue(screen, made, node)
 	}
 }
 
@@ -621,7 +636,8 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 			option.remove.Draw(screen, s.theme)
 		}
 		made.addOption.Draw(screen, s.theme)
-	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText:
+	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
+		flow.TypeCue:
 	}
 }
 
@@ -630,6 +646,17 @@ func (s *State) drawTimes(screen *ebiten.Image, from, to *ui.TextField) {
 	to.Draw(screen)
 	s.theme.DrawText(screen, "–", from.Rect.Max.X+(dashWidth-s.theme.TextWidth("–"))/ui.Half,
 		from.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorInk())
+}
+
+// noteLines counts the lines of a node's problem and hint, as the inspector
+// writes them above its footer.
+func (s *State) noteLines(node flow.Node, width int) int {
+	lines := len(s.wrap(hintFor(node.Kind), width))
+	if problem, has := s.problems[node.ID]; has {
+		lines += len(s.wrap(problem, width))
+	}
+
+	return lines
 }
 
 // hintFor explains what a kind of node does.
@@ -645,7 +672,8 @@ func hintFor(kind string) string {
 		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
 		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
 			"ignores it.",
-		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away.",
+		flow.KindNote:      "A note for authors. It is not part of the flow.",
 	}[kind]
 }
 
@@ -737,6 +765,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	switch kind {
 	case "state":
 		return image.Pt(0, 0), s.hasState(value)
+	case locateCue, locatePlay:
+		return s.locateCueRow(kind, value)
 	case "palette":
 		for _, entry := range s.palette {
 			if entry.kind.Name == value {
@@ -859,23 +889,14 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 		return point, true
 	}
 	for _, made := range s.form.controls {
-		var fields []*ui.TextField
-		var buttons []*ui.Button
-		fields = append(fields, made.field, made.from, made.to)
-		buttons = append(buttons, made.addRange, made.pick, made.clear, made.addOption)
-		buttons = append(buttons, slices.Concat(made.choices, made.units, made.clocks)...)
-		for _, row := range made.rows {
-			fields = append(fields, row.from, row.to)
-			buttons = append(buttons, row.remove)
-		}
-		for _, option := range made.options {
-			fields = append(fields, option.label, option.share)
-			buttons = append(buttons, option.remove)
-		}
+		fields, buttons := made.widgets()
 		for _, field := range fields {
-			if field != nil && field.ID == widget {
+			if field != nil && field.ID == widget && !field.Rect.Empty() {
 				return field.Center(), true
 			}
+		}
+		if widget == "cue" && !made.cueBox.Empty() {
+			return ui.Center(made.cueBox), true
 		}
 		for _, button := range buttons {
 			if button != nil && button.ID == widget {
@@ -885,6 +906,24 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// widgets lists a control's text fields and buttons, some of them nil.
+func (made control) widgets() ([]*ui.TextField, []*ui.Button) {
+	fields := make([]*ui.TextField, 0, ui.Half*(ui.Half+len(made.rows)+len(made.options)))
+	fields = append(fields, made.field, made.from, made.to, made.search)
+	buttons := slices.Concat([]*ui.Button{made.addRange, made.pick, made.clear, made.addOption, made.listen},
+		made.choices, made.units, made.clocks)
+	for _, row := range made.rows {
+		fields = append(fields, row.from, row.to)
+		buttons = append(buttons, row.remove)
+	}
+	for _, option := range made.options {
+		fields = append(fields, option.label, option.share)
+		buttons = append(buttons, option.remove)
+	}
+
+	return fields, buttons
 }
 
 // hasState answers input scripts waiting for the window: "loaded", "nodes:N"
@@ -897,6 +936,9 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 // nth node of a kind has one.
 func (s *State) hasState(state string) bool {
 	if found, handled := s.hasLineState(state); handled {
+		return found
+	}
+	if found, handled := s.hasCueState(state); handled {
 		return found
 	}
 	switch {

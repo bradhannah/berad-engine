@@ -96,6 +96,8 @@ type Orchestrator struct {
 	children   map[ids.ULID]*child
 	picks      *picks
 	preview    *preview
+	// audio answers windows' questions about the project's audio library.
+	audio *projectAudio
 	// removed holds files of deleted, renamed or moved documents, moved to
 	// the backups at the next save.
 	removed map[string]bool
@@ -157,6 +159,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		children:   map[ids.ULID]*child{},
 		picks:      newPicks(),
 		preview:    nil,
+		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir},
 		removed:    map[string]bool{},
 		folders:    map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
 		seq:      0,

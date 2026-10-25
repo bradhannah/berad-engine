@@ -224,6 +224,54 @@ under consideration), **open** (undecided).
 - **Candidate:** positions entered by picking on the map rather than typing
   coordinates, using anchors and areas.
 
+## Sound
+
+- **Agreed:** audio editing moves into the editor. The berad-sdk terminal audio
+  editor stays for Ultima V Redux. Both read and write berad-audio's formats
+  only through its authoring package, and those formats change only through a
+  new version, so Ultima V Redux stays compatible. Choosing cues for workflows
+  comes first ([the fourth build](FOURTH_BUILD.md)); an Audio window comes
+  later.
+- **Agreed:** the editor understands a cue's category: music, SFX or ambient.
+- **Agreed:** a Play sound node plays a cue once and the workflow carries on;
+  most sounds can come from a node.
+- **Candidate:** a sound that comes with a conversation, such as a "mumble".
+- **Candidate:** ambient sounds that keep playing, so the world and its NPCs
+  feel alive. An object's sound belongs to its definition, so every fountain
+  gurgles, unless a placement overrides it.
+- **Candidate:** NPCs have an optional ambient sound: a default on the NPC, or
+  a node that sets it, which the engine then keeps playing. After a workflow
+  restarts, authors tidy it up in their own workflows for now; convenience
+  nodes can come later.
+- **Candidate:** music changes without sounds disagreeing. Zones have handlers
+  such as On enter and On exit that set the music; later, state machine nodes
+  change it.
+- **Candidate:** handlers, workflows that run when something happens, for each
+  kind of thing: the game, zones, areas, object definitions and placements,
+  NPCs, conversations and quests. "On create" runs each time something comes
+  alive, for example when its zone loads, not once per game. It also runs when
+  a placement appears partway through a visit because a flag changed, so the
+  placement behaves the same as one that was there when the player arrived.
+  The proposed term is *handler*, since *event* already means the
+  orchestrator's notice of a change.
+- **Candidate:** a zone loop that watches flags and other things affecting the
+  zone, and can control ambient sounds as well as music. It is not based on
+  turns and pauses when the game pauses; *open:* whether a second loop runs by
+  turn.
+- **Agreed:** an ambient sound is heard from a number of tiles, N, growing
+  louder as the player comes closer, with Ultima V Redux's curve
+  (berad-audio's `QuadraticDistanceGain`): full volume within one tile, then
+  1 − (distance ÷ N)², silent at N. Distance is a straight line between tiles,
+  and walls are ignored. Only the loudest source of each cue plays, the
+  nearest when two are equally loud; different cues still play together.
+- **Candidate:** N comes from the cue, and an object definition, placement or
+  NPC can override it and the volume in the game's data, so the audio formats
+  stay unchanged.
+- **Candidate:** each floor between the player and a sound adds 6 tiles to the
+  distance before the curve applies, as one project-wide setting tuned by ear.
+- Sound on the map, such as a layer showing where ambient sounds are heard,
+  is set aside for later.
+
 ## Preview, testing and validation
 
 - **Agreed:** the editor plays a map: walking around, NPCs running their
@@ -284,8 +332,8 @@ What the engine provides to games, as far as decided:
 editor, object and NPC definitions, behaviour and conversation workflows,
 schedules, quests, world state (flags, stats, skills, capabilities) and the rules
 catalogue. Many overlap: object and tile definitions are one editor; schedules
-are part of workflows; quests and rules are views of world state. Audio authoring
-is a separate tool.
+are part of workflows; quests and rules are views of world state. Audio editing
+moves into the editor (see [Sound](#sound)).
 
 **Window set (current wireframes):** project browser, Map, Workflow (including
 conversations), Pixel editor, World state, Conversation test, Clock and Problems,

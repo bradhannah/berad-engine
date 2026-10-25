@@ -291,6 +291,35 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 	return answer.Uses, nil
 }
 
+// AudioLibrary asks for the project's audio library: its cues, or why it
+// has none.
+func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error) {
+	reply, err := c.request(ctx, protocol.KindAudioLibrary, protocol.AudioLibrary{Problem: "", Cues: nil})
+	if err != nil {
+		return protocol.AudioLibrary{}, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return protocol.AudioLibrary{}, rejected(reply)
+	}
+
+	return protocol.DecodePayload[protocol.AudioLibrary](reply)
+}
+
+// Recording asks for part of a recording's bytes, from offset.
+func (c *Client) Recording(ctx context.Context, recording string, offset int64) (protocol.Recording, error) {
+	reply, err := c.request(ctx, protocol.KindRecording, protocol.Recording{
+		ID: recording, Offset: offset, Version: "", Size: 0, Data: nil,
+	})
+	if err != nil {
+		return protocol.Recording{}, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return protocol.Recording{}, rejected(reply)
+	}
+
+	return protocol.DecodePayload[protocol.Recording](reply)
+}
+
 // Unsaved tells the orchestrator this window's unsaved changes.
 func (c *Client) Unsaved(unsaved protocol.Unsaved) error {
 	return c.notify(protocol.KindUnsaved, unsaved)

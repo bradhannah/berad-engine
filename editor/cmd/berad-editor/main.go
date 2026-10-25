@@ -38,6 +38,7 @@ const (
 	sampleWidth = 32
 	sampleTall  = 24
 	dirPerm     = 0o750
+	filePerm    = 0o600
 	tapPerm     = 0o600
 )
 
@@ -184,7 +185,7 @@ func runOpen(args []string, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open project: %w", err)
 	}
-	firstZone, err := ensureDocuments(orch, options.sample)
+	firstZone, err := ensureDocuments(orch, options.sample, options.project)
 	if err != nil {
 		return errors.Join(err, orch.Close())
 	}
@@ -251,9 +252,9 @@ func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID) err
 	return nil
 }
 
-// ensureDocuments returns the first zone by name, creating the sample project
-// in an empty project when asked to.
-func ensureDocuments(orch *orchestrator.Orchestrator, sample bool) (ids.ULID, error) {
+// ensureDocuments returns the first zone by name, creating the sample project,
+// with its audio, in an empty project when asked to.
+func ensureDocuments(orch *orchestrator.Orchestrator, sample bool, projectDir string) (ids.ULID, error) {
 	documents, err := orch.Documents()
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("list documents: %w", err)
@@ -261,6 +262,9 @@ func ensureDocuments(orch *orchestrator.Orchestrator, sample bool) (ids.ULID, er
 	if len(documents) == 0 {
 		if !sample {
 			return ids.ULID{}, ErrNoDocuments
+		}
+		if err := sampleAudio(projectDir); err != nil {
+			return ids.ULID{}, err
 		}
 
 		return createSample(orch)

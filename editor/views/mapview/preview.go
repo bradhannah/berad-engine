@@ -55,6 +55,8 @@ type previewRun struct {
 	paused   bool
 	stepping bool
 	step     []protocol.PreviewChange
+	// heard counts the times each cue has played in this preview.
+	heard map[string]int
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -145,6 +147,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
+			heard: map[string]int{},
 		}
 		s.remote = nil
 		s.subscribeFloors(ctx)
@@ -286,6 +289,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 
 func (s *State) stopPreview(ctx *frame.Context, message string) {
 	ctx.Requests.PreviewStop(protocol.PreviewStop{Run: s.preview.id, Reason: "stopped in the window running it"})
+	ctx.Sounds.Stop()
 	s.preview = nil
 	ctx.Frame.Status(message)
 }

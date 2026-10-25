@@ -54,6 +54,14 @@ func everyMessage(t *testing.T) []protocol.Message {
 		}, Clock: 8 * 3600, Rate: 60, ClockStopped: true, NPCsPaused: true, Watched: testID, Stepping: true,
 			Step: []protocol.PreviewChange{{From: testID, Output: "o1", To: testID, Tick: 9, Status: "b"}}},
 		protocol.KindPreviewStop: protocol.PreviewStop{Run: testID, Reason: "r"},
+		protocol.KindAudioLibrary: protocol.AudioLibrary{Problem: "p", Cues: []protocol.AudioCue{{
+			ID: "door/open", Name: "Door opens", Category: protocol.CategorySFX, Gain: 0.8, SearchTerms: []string{"hinge"},
+			Recordings: []protocol.AudioRecording{{
+				ID: "door_a", Extension: ".wav", Version: "v", Size: 9, CalibrationDB: -4.5, StartMs: 10, EndMs: 900,
+				Status: protocol.RecordingReady,
+			}},
+		}}},
+		protocol.KindRecording: protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
 		protocol.KindPreviewControl: protocol.PreviewControl{
 			Run: testID, Action: protocol.ControlJump, Placement: testID, Rate: 60, Seconds: 9 * 3600,
 		},
@@ -135,6 +143,10 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.Hello](message)
 		case protocol.KindEvent:
 			check = roundTrip[protocol.Event](message)
+		case protocol.KindAudioLibrary:
+			check = roundTrip[protocol.AudioLibrary](message)
+		case protocol.KindRecording:
+			check = roundTrip[protocol.Recording](message)
 		default:
 			continue
 		}

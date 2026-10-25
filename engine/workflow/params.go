@@ -22,6 +22,13 @@ func (n Node) Text(name string) (string, error) {
 	return text, n.decode(name, &text)
 }
 
+// Cue returns a cue parameter's cue ID; "" means none is chosen.
+func (n Node) Cue(name string) (string, error) {
+	var cue string
+
+	return cue, n.decode(name, &cue)
+}
+
 // Anchor returns an anchor parameter; a zero reference means none is chosen.
 func (n Node) Anchor(name string) (tilefloor.AnchorRef, error) {
 	var ref tilefloor.AnchorRef

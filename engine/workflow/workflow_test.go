@@ -244,6 +244,7 @@ func TestParamsAreChecked(t *testing.T) {
 	random := node(t, 8, workflow.KindRandom, ids.ULID{})
 	move := node(t, 9, workflow.KindMove, ids.ULID{})
 	timeSwitch := node(t, 2, workflow.KindTimeSwitch, ids.ULID{})
+	sound := node(t, 10, workflow.KindPlaySound, ids.ULID{})
 	extra := wait.Clone()
 	extra.Params["colour"] = json.RawMessage(`"red"`)
 	share := func(port string, amount int) workflow.Share {
@@ -265,6 +266,8 @@ func TestParamsAreChecked(t *testing.T) {
 			[]workflow.TimeRange{{Port: "a", From: 1, To: 2}, {Port: "a", From: 3, To: 4}}),
 		"empty range":       with(timeSwitch, "ranges", []workflow.TimeRange{{Port: "a", From: 5, To: 5}}),
 		"unknown parameter": extra,
+		"cue not text":      with(sound, "cue", 7),
+		"cue too long":      with(sound, "cue", strings.Repeat("c", workflow.MaxCue+1)),
 	} {
 		if err := workflow.CheckParams(candidate); !errors.Is(err, workflow.ErrNode) {
 			t.Fatalf("%s: %v", name, err)
@@ -272,6 +275,13 @@ func TestParamsAreChecked(t *testing.T) {
 	}
 	if err := workflow.CheckParams(with(wait, "duration", duration(168, workflow.UnitHours, workflow.ClockReal))); err != nil {
 		t.Fatalf("a week on a real clock is allowed: %v", err)
+	}
+	chosen := with(sound, "cue", "door/open")
+	if cue, err := chosen.Cue("cue"); err != nil || cue != "door/open" || workflow.CheckParams(chosen) != nil {
+		t.Fatalf("a Play sound keeps its cue's ID: %q %v", cue, err)
+	}
+	if cue, err := sound.Cue("cue"); err != nil || cue != "" {
+		t.Fatalf("a new Play sound has no cue yet: %q %v", cue, err)
 	}
 }
 

@@ -100,7 +100,8 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 			return walkErr
 		}
 		if entry.IsDir() {
-			if path != "." && strings.HasPrefix(entry.Name(), ".") {
+			// The audio folder holds berad-audio's own files, not documents.
+			if path != "." && strings.HasPrefix(entry.Name(), ".") || path == audioDir {
 				return fs.SkipDir
 			}
 			if path != "." {

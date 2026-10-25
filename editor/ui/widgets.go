@@ -73,7 +73,7 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 	theme.DrawText(screen, b.Label, left, b.Rect.Min.Y+(b.Rect.Dy()-TextSize)/Half-1, ink)
 	if b.Caret {
 		caret := image.Rect(left+width-triangle*Half, b.Rect.Min.Y, left+width, b.Rect.Max.Y)
-		drawTriangle(screen, caret, true, ink)
+		DrawTriangle(screen, caret, true, ink)
 	}
 }
 
@@ -547,7 +547,7 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 		Line(area, image.Pt(parent, middle), image.Pt(left+treeToggle-Gap, middle), Hairline, ColorRule())
 	}
 	if row.Toggle != DisclosureNone {
-		drawTriangle(area, toggleRect(rect, row), row.Toggle == DisclosureOpen, ColorMuted())
+		DrawTriangle(area, toggleRect(rect, row), row.Toggle == DisclosureOpen, ColorMuted())
 	}
 	if row.Toggle == DisclosureOpen && childGuided {
 		// A short stub joins the icon to its first child's guide.
@@ -585,7 +585,7 @@ func (l *List) drawSection(area *ebiten.Image, theme *Theme, row Row, rect image
 		FillRound(area, highlight(rect), rowRadius, ColorHover())
 	}
 	if row.Toggle != DisclosureNone {
-		drawTriangle(area, toggleRect(rect, row), row.Toggle == DisclosureOpen, ColorInk())
+		DrawTriangle(area, toggleRect(rect, row), row.Toggle == DisclosureOpen, ColorInk())
 	}
 	labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
 	theme.DrawSection(area, row.Label, left+treeToggle, labelTop)
@@ -605,9 +605,9 @@ func (l *List) drawSection(area *ebiten.Image, theme *Theme, row Row, rect image
 	}
 }
 
-// drawTriangle draws a disclosure triangle centred in a box: pointing down
-// when open, right when closed.
-func drawTriangle(screen *ebiten.Image, box image.Rectangle, open bool, ink color.Color) {
+// DrawTriangle draws a small triangle centred in a box: pointing down
+// when open, as on a disclosure or a menu button, and right when closed.
+func DrawTriangle(screen *ebiten.Image, box image.Rectangle, open bool, ink color.Color) {
 	centre := Center(box)
 	midX, midY, size := float32(centre.X), float32(centre.Y), float32(triangle)
 	var path vector.Path

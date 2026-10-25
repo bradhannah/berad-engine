@@ -103,6 +103,11 @@ references flagged in a Problems view, and the deletion can be undone.
   references each document declares. The Problems view is not built yet: a
   broken reference shows as broken where it is displayed.
 
+**Exception (protocol version 10):** a cue parameter stores the cue's ID as
+the audio library spells it, such as `door/open`, not a ULID, because the
+library keeps berad-audio's own format (D11). A cue whose ID changes outside
+the editor shows as missing, as a broken reference does.
+
 ## D5 — What each window holds
 
 A window subscribes only to what it shows (a floor, a workflow and the names of
@@ -182,6 +187,13 @@ fingerprint. Pixel edits are patches (the changed rectangle) sent as ordinary
 strict, undoable commands, grouped per stroke, and other windows update live as
 the author draws. Pixel data is the first candidate for a binary codec.
 
+**As built for audio (protocol version 10):** a window asks the orchestrator
+for the audio library, the cues it can play, and for a recording's bytes, at
+most 8 MiB a reply, never reading a file itself. Each recording carries a
+version made from its file's size and modification time, and a window keeps
+the bytes it holds until the version changes. Recordings travel in JSON
+first; a window opens its audio device only when it first plays.
+
 ## D9 — Saving and versions
 
 - **Always saved:** every applied command is written to a journal before it is
@@ -246,6 +258,12 @@ undoable index edits like a rename. Files move at the next save; a folder's
 directory goes once nothing but Finder's `.DS_Store` is left in it. A
 document's tags are an optional list in its envelope. Floors stay with their
 zone and take no folder.
+**Exception (protocol version 10):** the project's `audio` folder keeps
+berad-audio's own formats rather than the envelope, so the terminal audio
+editor opens the same files: `audio/library.json`, a schema-3 audio library,
+and `audio/project.json`, its version-1 descriptor, beside the sound files
+they name. Only berad-audio's authoring package reads them, the editor never
+writes them, and loading the project skips the folder.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
 changes only when the layout does (D17). A workflow's layout holds where

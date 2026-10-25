@@ -101,7 +101,59 @@ type Requests struct {
 	// Published is the session state set, in order.
 	Published       []protocol.Session
 	PreviewControls []protocol.PreviewControl
+	// AudioAsks are audio library questions, and RecordingAsks recording
+	// questions, waiting for the test to answer.
+	AudioAsks     []func(protocol.AudioLibrary, error)
+	RecordingAsks []RecordingAsk
 }
+
+// RecordingAsk is a recording question: which recording, from where, and
+// how to answer.
+type RecordingAsk struct {
+	Recording string
+	Offset    int64
+	Done      func(protocol.Recording, error)
+}
+
+// AudioLibrary records an audio library question; the test answers it.
+func (r *Requests) AudioLibrary(done func(protocol.AudioLibrary, error)) {
+	r.AudioAsks = append(r.AudioAsks, done)
+}
+
+// Recording records a recording question; the test answers it.
+func (r *Requests) Recording(recording string, offset int64, done func(protocol.Recording, error)) {
+	r.RecordingAsks = append(r.RecordingAsks, RecordingAsk{Recording: recording, Offset: offset, Done: done})
+}
+
+// Sounds records what a view asks to play. Sounding holds the cues the test
+// says are playing.
+type Sounds struct {
+	Prepared [][]string
+	Played   []string
+	Stops    int
+	Sounding map[string]bool
+}
+
+// Prepare records cues to fetch.
+func (s *Sounds) Prepare(cues []string) { s.Prepared = append(s.Prepared, cues) }
+
+// Play records a cue played, which then counts as playing.
+func (s *Sounds) Play(cue string) {
+	s.Played = append(s.Played, cue)
+	if s.Sounding == nil {
+		s.Sounding = map[string]bool{}
+	}
+	s.Sounding[cue] = true
+}
+
+// Stop records a stop; nothing plays after it.
+func (s *Sounds) Stop() {
+	s.Stops++
+	s.Sounding = nil
+}
+
+// Playing reports whether a cue was played and not stopped.
+func (s *Sounds) Playing(cue string) bool { return s.Sounding[cue] }
 
 // Command records a command.
 func (r *Requests) Command(command protocol.Command, done func(protocol.Result, error)) {
@@ -200,7 +252,8 @@ func (r *Requests) Of(edit string) []Command {
 // given size.
 func Context(docs *Docs, requests *Requests, size image.Point) *frame.Context {
 	return &frame.Context{
-		Docs: docs, Requests: requests, Clipboard: nil, Window: ID(windowSeed), Size: size, Frame: frame.NewFrame(time.Now),
+		Docs: docs, Requests: requests, Sounds: &Sounds{Prepared: nil, Played: nil, Stops: 0, Sounding: nil},
+		Clipboard: nil, Window: ID(windowSeed), Size: size, Frame: frame.NewFrame(time.Now),
 	}
 }
 

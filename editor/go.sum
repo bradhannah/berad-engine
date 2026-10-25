@@ -1,3 +1,5 @@
+github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261024202552-cd6d962c2ae8 h1:nzs750m4FnGVcByD12Ut6LvM2HYnenzpFehJ77XhRLw=
+github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261024202552-cd6d962c2ae8/go.mod h1:H893PVQ8BMXtLKDjFWYRCdB71Pi1C0E6vv3SuKKxd1Q=
 github.com/bradhannah/berad-sdk/modules/berad-text v0.0.0-20261021210357-753ff71a4423 h1:9i6MsZYOSUSfFfp05DdSlgXBE/8YKbXTVhC5gdzrWRA=
 github.com/bradhannah/berad-sdk/modules/berad-text v0.0.0-20261021210357-753ff71a4423/go.mod h1:M84Q/vxVyuOemIKmdZgeVxKZXJklicjU61+eGCNm4z8=
 github.com/ebitengine/gomobile v0.0.0-20260820040257-d11f821a26a6 h1:Tnc3YtzxhgsvNdNrER9wWkGJbyjOwyUuzjUY5rZK72k=

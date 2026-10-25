@@ -50,6 +50,15 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Entry** | One link coming into a node, shown as its own dot on the node's left edge; any number of links can come in. ("Input" is kept for the values passed into a reusable workflow.) |
 | **Time-bound container** | A group of nodes that repeats while its time lasts, then leaves by its exit |
 
+## Sound terms
+
+| Term | Meaning |
+| --- | --- |
+| **Audio library** | A project's sounds, its cues and recordings, kept in berad-audio's own formats in the project's `audio` folder |
+| **Cue** | A sound something asks for by its ID, such as `door/open`; it plays one recording, or cycles through several |
+| **Recording** | One sound file of the audio library, which cues play; an intentional silent slot has none |
+| **Category** | Whether a cue is music, SFX or ambient |
+
 ## Editor terms
 
 | Term | Meaning |

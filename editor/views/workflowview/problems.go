@@ -33,7 +33,7 @@ const (
 // project's names or a destination floor has changed. Floors are read one at
 // a time, never one inside another.
 func (s *State) refreshProblems(docs frame.Docs) {
-	parts := []string{strconv.FormatUint(s.laidOut, 10)}
+	parts := []string{strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision)}
 	docs.View(project.IndexID(), func(document client.Document) {
 		parts = append(parts, "index:"+strconv.FormatUint(document.Revision, 10))
 	})
@@ -67,6 +67,10 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 	case flow.KindContainer:
 		if _, linked := node.Next[flow.OutputInside]; !linked {
 			return problemNoFirstStep
+		}
+	case flow.KindPlaySound:
+		if problem := s.cueProblem(node); problem != "" {
+			return problem
 		}
 	}
 	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {

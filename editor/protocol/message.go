@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 9
+const Version = 10
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -62,6 +62,11 @@ const (
 	KindUnsaved Kind = "unsaved"
 	KindQuitAsk Kind = "quit-ask"
 	KindQuit    Kind = "quit"
+	// The audio messages (D8): a window asks for the project's audio
+	// library, the cues it can play, and for a recording's bytes, a part at
+	// a time. The orchestrator replies to each with the same kind, filled in.
+	KindAudioLibrary Kind = "audio-library"
+	KindRecording    Kind = "recording"
 )
 
 // Message is one framed protocol message.
@@ -387,6 +392,76 @@ type QuitAsk struct {
 // its unsaved changes first when Save is set.
 type Quit struct {
 	Save bool `json:"save,omitempty"`
+}
+
+// Cue categories, as berad-audio's CueCategory names them.
+const (
+	CategoryMusic   = "music"
+	CategorySFX     = "sfx"
+	CategoryAmbient = "ambient"
+)
+
+// Recording statuses: ready to play, an intentional silent slot with no
+// file, a file the project does not have, or one too large to send.
+const (
+	RecordingReady    = "ready"
+	RecordingNoFile   = "no file"
+	RecordingMissing  = "missing"
+	RecordingTooLarge = "too large"
+)
+
+// MaxRecording bounds the size of a recording the orchestrator sends, and
+// MaxRecordingPart the bytes one reply carries, so it fits in a frame.
+const (
+	MaxRecording     = 128 << 20
+	MaxRecordingPart = 8 << 20
+)
+
+// AudioLibrary asks for the project's audio library. The reply lists every
+// cue, ordered by ID, or says in Problem why there is nothing to play, such
+// as a project with no audio library.
+type AudioLibrary struct {
+	Problem string     `json:"problem,omitempty"`
+	Cues    []AudioCue `json:"cues,omitempty"`
+}
+
+// AudioCue is one cue of the audio library: its ID, which a cue parameter
+// stores; its name; its category; its gain; the words a search also finds it
+// by; and its recordings, in the order a cycle plays them.
+type AudioCue struct {
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Category    string           `json:"category"`
+	Gain        float64          `json:"gain"`
+	SearchTerms []string         `json:"searchTerms,omitempty"`
+	Recordings  []AudioRecording `json:"recordings"`
+}
+
+// AudioRecording is one recording a cue plays: its ID; its file's
+// extension, which says how to decode it; a version that changes whenever
+// the file does, so a window keeps bytes it already holds; its size in
+// bytes; its calibration gain in dB; the part of it that plays, in
+// milliseconds, both zero for all of it; and its status.
+type AudioRecording struct {
+	ID            string  `json:"id"`
+	Extension     string  `json:"extension,omitempty"`
+	Version       string  `json:"version,omitempty"`
+	Size          int64   `json:"size,omitempty"`
+	CalibrationDB float64 `json:"calibrationDb,omitempty"`
+	StartMs       int64   `json:"startMs,omitempty"`
+	EndMs         int64   `json:"endMs,omitempty"`
+	Status        string  `json:"status"`
+}
+
+// Recording asks for a recording's bytes from Offset. The reply carries its
+// Version and Size and at most MaxRecordingPart bytes from Offset; a window
+// asks again from the end of each part until it has Size bytes.
+type Recording struct {
+	ID      string `json:"id"`
+	Offset  int64  `json:"offset,omitempty"`
+	Version string `json:"version,omitempty"`
+	Size    int64  `json:"size,omitempty"`
+	Data    []byte `json:"data,omitempty"`
 }
 
 // NewMessage encodes a payload into a message.

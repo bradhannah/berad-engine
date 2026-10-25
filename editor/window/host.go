@@ -14,6 +14,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -36,13 +37,15 @@ type starter interface {
 // host runs one view as an Ebitengine game: it applies what the orchestrator
 // sends, builds input, runs the view and carries out its requests.
 type host struct {
-	conn       *client.Client
-	view       frame.View
-	theme      *ui.Theme
-	frame      *frame.Frame
-	ctx        frame.Context
-	reader     *inputReader
-	script     *inputScript
+	conn   *client.Client
+	view   frame.View
+	theme  *ui.Theme
+	frame  *frame.Frame
+	ctx    frame.Context
+	reader *inputReader
+	script *inputScript
+	// sounds plays the project's cues in this window.
+	sounds     *sound.Player
 	callbacks  chan func()
 	outbox     []outgoing
 	pending    map[uint64]func(protocol.Result, error)
@@ -69,9 +72,11 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 	created := &host{
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
-			Docs: nil, Requests: nil, Clipboard: nil, Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil,
+			Docs: nil, Requests: nil, Sounds: nil, Clipboard: nil, Window: conn.Window(), Size: image.Pt(0, 0),
+			Frame: nil,
 		},
-		reader: newInputReader(), script: nil, callbacks: make(chan func(), callbackQueue), outbox: nil,
+		reader: newInputReader(), script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
+		outbox:     nil,
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
@@ -80,6 +85,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
+	created.sounds = sound.New(created, created.frame.Status)
+	created.ctx.Sounds = created.sounds
 	created.ctx.Clipboard = &systemClipboard{mu: sync.Mutex{}, memory: ""}
 	created.ctx.Frame = created.frame
 
@@ -98,6 +105,7 @@ func (h *host) Update() error {
 		return ebiten.Termination
 	}
 	h.runCallbacks()
+	h.sounds.Update()
 	if h.quitSaving && h.savedForQuit() {
 		return ebiten.Termination
 	}
@@ -359,6 +367,24 @@ func (h *host) WhereUsed(document ids.ULID, item string, done func([]protocol.Us
 		uses, err := h.conn.WhereUsed(ctx, document, item)
 
 		return func() { done(uses, err) }
+	})
+}
+
+// AudioLibrary asks for the project's audio library.
+func (h *host) AudioLibrary(done func(protocol.AudioLibrary, error)) {
+	h.background(func(ctx context.Context) func() {
+		library, err := h.conn.AudioLibrary(ctx)
+
+		return func() { done(library, err) }
+	})
+}
+
+// Recording asks for part of a recording's bytes.
+func (h *host) Recording(recording string, offset int64, done func(protocol.Recording, error)) {
+	h.background(func(ctx context.Context) func() {
+		part, err := h.conn.Recording(ctx, recording, offset)
+
+		return func() { done(part, err) }
 	})
 }
 

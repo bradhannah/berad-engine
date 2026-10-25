@@ -145,6 +145,7 @@ func (s *State) updateLive(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.load(ctx.Docs)
+	s.listAudio(ctx)
 	if s.live.flash > 0 {
 		s.live.flash--
 	}

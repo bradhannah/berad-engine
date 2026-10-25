@@ -108,7 +108,7 @@ func Run(args Args, registry *plugin.Registry) error {
 		runErr = nil
 	}
 
-	return errors.Join(runErr, conn.Close())
+	return errors.Join(runErr, game.sounds.Close(), conn.Close())
 }
 
 // windowSize is the size a window opens at: small for the Clock window.
