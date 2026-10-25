@@ -29,7 +29,7 @@ const (
 // panel is the middle of the window: the selected cue and the recordings it
 // plays in turn, or the selected recording and the cues that play it.
 type panel struct {
-	play, addRecording                                     *ui.Button
+	play, addRecording, addLayer                           *ui.Button
 	playRecording, up, down, takeOut, replace, attribution *ui.Button
 	// cues are the cues playing the selected recording, which select them.
 	cues []*ui.Button
@@ -42,6 +42,7 @@ func newPanel() *panel {
 
 	return &panel{
 		play: button("play", "Play"), addRecording: button("add-recording", "Add recording…"),
+		addLayer:      button("add-layer", "Add to soundscape"),
 		playRecording: button("play-recording", "Play recording"), up: button("recording-up", "Up"),
 		down: button("recording-down", "Down"), takeOut: button("take-out", "Take out"),
 		replace: button("replace-file", "Replace file…"), attribution: button("attribution", "Attribution…"),
@@ -96,7 +97,8 @@ func (s *State) layoutPanel() {
 func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle) {
 	pane := s.panel
 	top := area.Min.Y + ui.Inset + headerLines(s.cueProblems(cue))*ui.LineHeight + ui.Gap
-	s.row(left, top, pane.play, pane.addRecording)
+	s.row(left, top, pane.play, pane.addRecording, pane.addLayer)
+	pane.addRecording.Disabled = cue.Ambient != nil
 	pane.listTop = top + ui.ButtonH + ui.Inset + ui.LineHeight
 	rows := make([]ui.Row, 0, len(cue.Recordings))
 	for index, recording := range cue.Recordings {
@@ -142,7 +144,8 @@ func (s *State) row(left, top int, buttons ...*ui.Button) {
 
 func (pane *panel) all() []*ui.Button {
 	return []*ui.Button{
-		pane.play, pane.addRecording, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace, pane.attribution,
+		pane.play, pane.addRecording, pane.addLayer, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace,
+		pane.attribution,
 	}
 }
 
@@ -219,6 +222,8 @@ func (s *State) updateCue(input *ui.Input, ctx *frame.Context, cue protocol.Audi
 		s.listen(ctx, cue.ID)
 	case pane.addRecording.Update(input):
 		s.chooseSound(ctx, soundTarget{cue: cue.ID, recording: ""})
+	case pane.addLayer.Update(input):
+		s.addToSoundscape(ctx, cue, pane.addLayer.Rect)
 	case !chosen:
 	case pane.playRecording.Update(input):
 		s.listenRecording(ctx, order[index])
@@ -281,7 +286,11 @@ func (s *State) drawPanel(screen *ebiten.Image) {
 		}
 		what := categoryLabel(cue.Category) + " · " + plays(len(cue.Recordings))
 		s.drawHeader(screen, left, top, cue.Name, cue.ID, what, s.cueProblems(cue))
-		s.theme.DrawLabel(screen, "RECORDINGS · PLAY IN TURN", left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
+		label := "RECORDINGS · PLAY IN TURN"
+		if cue.Ambient != nil {
+			label = "RECORDING · ONE, AS IT IS HEARD FROM A DISTANCE"
+		}
+		s.theme.DrawLabel(screen, label, left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 		s.played.Draw(screen, s.theme)
 		s.drawButtons(screen, s.panel.all()...)
 		s.drawTrim(screen)

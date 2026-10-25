@@ -1,7 +1,7 @@
 github.com/akavel/rsrc v0.10.2 h1:Zxm8V5eI1hW4gGaYsJQUhxpjkENuG91ki8B4zCrvEsw=
 github.com/akavel/rsrc v0.10.2/go.mod h1:uLoCtb9J+EyAqh+26kdrTgmzRBFPGOolLWKpdxkKq+c=
-github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261025133043-d93310551cc1 h1:sEGdnjzWbDVfnDl4qcdsJOe3Tq/Iwu9Rd4Ro+U/gEnY=
-github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261025133043-d93310551cc1/go.mod h1:H893PVQ8BMXtLKDjFWYRCdB71Pi1C0E6vv3SuKKxd1Q=
+github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261025144737-ef07e3eed17c h1:DJzlFOd4soOIdJlbnlnxXcrlyDl3DnvuQYGTCaulXWc=
+github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261025144737-ef07e3eed17c/go.mod h1:H893PVQ8BMXtLKDjFWYRCdB71Pi1C0E6vv3SuKKxd1Q=
 github.com/bradhannah/berad-sdk/modules/berad-text v0.0.0-20261021210357-753ff71a4423 h1:9i6MsZYOSUSfFfp05DdSlgXBE/8YKbXTVhC5gdzrWRA=
 github.com/bradhannah/berad-sdk/modules/berad-text v0.0.0-20261021210357-753ff71a4423/go.mod h1:M84Q/vxVyuOemIKmdZgeVxKZXJklicjU61+eGCNm4z8=
 github.com/dchest/jsmin v1.0.0 h1:Y2hWXmGZiRxtl+VcTksyucgTlYxnhPzTozCwx9gy9zI=

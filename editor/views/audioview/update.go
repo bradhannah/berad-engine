@@ -22,7 +22,8 @@ func (s *State) layout() {
 	content := frame.Content(s.size)
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	right := content.Max.X - ui.Inset
-	for _, button := range []*ui.Button{s.stopAll, s.checkFiles, s.newCue, s.addSound} {
+	s.soundscape.toggle.On = s.soundscape.shown
+	for _, button := range []*ui.Button{s.stopAll, s.soundscape.toggle, s.checkFiles, s.newCue, s.addSound} {
 		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
 		button.Rect = image.Rect(right-width, top, right, top+ui.ButtonH)
 		right -= width + toolbarGap
@@ -58,10 +59,10 @@ func (s *State) spread(buttons []*ui.Button, left, right, top int) {
 	}
 }
 
-// Update handles one frame of input. The unsaved changes guard, a dialog or
-// the delete question, while showing, takes all of it.
+// Update handles one frame of input. The unsaved changes guard, a dialog,
+// the delete question or a menu, while showing, takes all of it.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
-	s.size, s.sounds = ctx.Size, ctx.Sounds
+	s.size, s.sounds, s.mixer = ctx.Size, ctx.Sounds, ctx.Soundscape
 	s.layout()
 	switch {
 	case s.guard.Active():
@@ -76,11 +77,20 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.updateConfirm(input, ctx)
 
 		return
-	case s.trim.dialog != nil:
-		s.updateLevelDialog(input, ctx)
+	case s.prompt != nil:
+		s.updatePrompt(input, ctx)
+
+		return
+	case s.inspector.classes.menu.IsOpen():
+		s.updateClassMenu(input, ctx)
+
+		return
+	case s.soundscape.replace.IsOpen():
+		s.updateReplace(input, ctx)
 
 		return
 	}
+	s.syncSoundscape(ctx)
 	s.inspector.sync(s, ctx)
 	if s.syncTrim() {
 		s.layout()
@@ -96,7 +106,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateList(input, ctx)
 	s.layout()
 	s.updatePanel(input, ctx)
-	s.updateInspector(input, ctx)
+	if s.soundscape.shown {
+		s.updateSoundscape(input, ctx)
+	} else {
+		s.updateInspector(input, ctx)
+	}
 }
 
 // updateFields handles the text fields: the search filters the list as it is
@@ -182,8 +196,13 @@ func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 		s.openNewCue(s.categoryOfSelection())
 	case s.checkFiles.Update(input):
 		s.check(ctx)
+	case s.soundscape.toggle.Update(input):
+		s.soundscape.shown = !s.soundscape.shown
 	case s.stopAll.Update(input):
 		ctx.Sounds.Stop()
+		for _, slot := range s.soundscape.slots {
+			ctx.Soundscape.StopLayer(slot.id)
+		}
 	}
 	for index, mode := range []string{modeCues, modeRecordings} {
 		if s.tabs[index].Update(input) && s.mode != mode {

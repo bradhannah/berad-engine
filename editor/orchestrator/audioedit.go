@@ -239,23 +239,23 @@ type audioFiles struct {
 
 // files says where audio jobs read and write, or why they cannot.
 func (a *projectAudio) files() (audioFiles, string) {
-	libraryPath, _, _, problem := a.locate()
+	place, problem := a.locate()
 	if problem != "" {
 		return audioFiles{descriptor: "", library: ""}, problem
 	}
 
 	return audioFiles{
 		descriptor: filepath.Join(a.dir, filepath.FromSlash(audioDescriptor)),
-		library:    filepath.Join(a.dir, filepath.FromSlash(libraryPath)),
+		library:    filepath.Join(a.dir, filepath.FromSlash(place.library)),
 	}, ""
 }
 
 // stamp describes the audio files' sizes and times, which change whenever
 // the files do.
 func (a *projectAudio) stamp() string {
-	libraryPath, _, _, problem := a.locate()
+	place, problem := a.locate()
 	parts := []string{problem}
-	for _, name := range []string{audioDescriptor, libraryPath} {
+	for _, name := range []string{audioDescriptor, place.library} {
 		info, err := a.root.Stat(name)
 		if name == "" || err != nil {
 			parts = append(parts, "-")

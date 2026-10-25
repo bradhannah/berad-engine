@@ -65,9 +65,16 @@ func everyMessage(t *testing.T) []protocol.Message {
 				Attribution: protocol.Attribution{Creator: "c", Source: "https://example.com", License: "CC0-1.0",
 					Commercial: true},
 			}},
+			Profile: "door", Ambient: &protocol.AmbientSettings{RadiusTiles: 8, FadeInMs: 800, FadeOutMs: 1200},
 		}}, Schema: 4, Unused: []protocol.AudioRecording{{ID: "spare", Status: protocol.RecordingNoFile,
 			Attribution: protocol.Attribution{Creator: protocol.Unknown, Source: protocol.Unknown,
-				License: protocol.Unknown}}}},
+				License: protocol.Unknown}}},
+			Profiles: []protocol.AudioProfile{{Name: "door", Family: "wood", Phase: "start", Outcome: "neutral",
+				MixRole: "world", Emitters: []string{"door"}, Contexts: []string{"house"}, SearchTerms: []string{"hinge"}}},
+			Families: []string{"wood"},
+			AmbientPreset: &protocol.AmbientPreset{CuePrefix: "bed/", Profile: "bed", Family: "water",
+				HowToHear: "Stand near water.", Gain: 0.7},
+			SliderGains: []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1}},
 		protocol.KindAudioEdit: protocol.AudioEdit{Edit: protocol.AudioAddSound, Gesture: "g",
 			Args: json.RawMessage(`{"cue":"door/open","path":"/sounds/door.wav","attribution":{"creator":"c"}}`)},
 		protocol.KindAudioChanged: protocol.AudioChanged{Revision: 3},
@@ -215,6 +222,10 @@ func TestAudioEditArgsRoundTrip(t *testing.T) {
 		protocol.AudioAcceptCalibration: protocol.AudioItem{ID: "door_a"},
 		protocol.AudioSetCalibration: protocol.CalibrationChange{Recording: "door_a", GainDB: &gain, TargetDB: &gain,
 			DefaultTarget: true},
+		protocol.AudioSetAmbient: protocol.AmbientChange{Cue: "bed/river",
+			Ambient: protocol.AmbientSettings{RadiusTiles: 6.5, FadeInMs: 500, FadeOutMs: 900}},
+		protocol.AudioSetProfile: protocol.ProfileChange{Cue: "door/open", Profile: "door"},
+		protocol.AudioSetFamily:  protocol.FamilyChange{Recording: "door_a", Family: "wood"},
 	} {
 		data, err := json.Marshal(args)
 		if err != nil {

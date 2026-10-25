@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 12
+const Version = 13
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -446,13 +446,55 @@ type AudioLibrary struct {
 	Cues    []AudioCue       `json:"cues,omitempty"`
 	Schema  int              `json:"schema,omitempty"`
 	Unused  []AudioRecording `json:"unused,omitempty"`
+	// Profiles are the classification profiles a cue can have, and Families
+	// the acoustic families a recording can be in, each by name.
+	Profiles []AudioProfile `json:"profiles,omitempty"`
+	Families []string       `json:"families,omitempty"`
+	// AmbientPreset is what the audio project gives a new ambient cue, if
+	// anything; SliderGains are its 11 volume levels, 0 to 10, as gains from 0
+	// to 1, or none for even steps.
+	AmbientPreset *AmbientPreset `json:"ambientPreset,omitempty"`
+	SliderGains   []float64      `json:"sliderGains,omitempty"`
+}
+
+// AudioProfile is a classification profile: the kind of moment a cue plays
+// for, which a search finds it by. Its fields are berad-audio's.
+type AudioProfile struct {
+	Name        string   `json:"name"`
+	Family      string   `json:"family"`
+	Phase       string   `json:"phase"`
+	Outcome     string   `json:"outcome"`
+	MixRole     string   `json:"mixRole"`
+	Emitters    []string `json:"emitters,omitempty"`
+	Contexts    []string `json:"contexts,omitempty"`
+	SearchTerms []string `json:"searchTerms,omitempty"`
+}
+
+// AmbientSettings say how an ambient cue is heard: from up to RadiusTiles
+// tiles away, louder closer, or everywhere when zero; fading in and out over
+// the given milliseconds.
+type AmbientSettings struct {
+	RadiusTiles float64 `json:"radiusTiles"`
+	FadeInMs    int64   `json:"fadeInMs"`
+	FadeOutMs   int64   `json:"fadeOutMs"`
+}
+
+// AmbientPreset is what a new ambient cue starts with: its ID's first part,
+// its profile, its first recording's family, how to hear it and its gain.
+type AmbientPreset struct {
+	CuePrefix string  `json:"cuePrefix"`
+	Profile   string  `json:"profile"`
+	Family    string  `json:"family"`
+	HowToHear string  `json:"howToHear"`
+	Gain      float64 `json:"gain"`
 }
 
 // AudioCue is one cue of the audio library: its ID, which a cue parameter
 // stores; its name; its category, and whether the audio project names it
 // rather than it following from the cue's routing; its gain; how to hear it;
 // the words a search also finds it by; and its recordings, in the order a
-// cycle plays them.
+// cycle plays them. For the Audio window it also has its classification
+// profile and, for an ambient cue, how far away it is heard.
 type AudioCue struct {
 	ID          string           `json:"id"`
 	Name        string           `json:"name"`
@@ -462,6 +504,8 @@ type AudioCue struct {
 	HowToHear   string           `json:"howToHear,omitempty"`
 	SearchTerms []string         `json:"searchTerms,omitempty"`
 	Recordings  []AudioRecording `json:"recordings"`
+	Profile     string           `json:"profile,omitempty"`
+	Ambient     *AmbientSettings `json:"ambient,omitempty"`
 }
 
 // AudioRecording is one recording a cue plays: its ID; its file's
@@ -595,6 +639,13 @@ const (
 	// by hand, CalibrationChange.
 	AudioAcceptCalibration = "audio.accept-calibration"
 	AudioSetCalibration    = "audio.set-calibration"
+	// AudioSetAmbient sets how far away an ambient cue is heard and its
+	// fades, AmbientChange.
+	AudioSetAmbient = "audio.set-ambient"
+	// AudioSetProfile sets a cue's classification profile, ProfileChange;
+	// AudioSetFamily a recording's acoustic family, FamilyChange.
+	AudioSetProfile = "audio.set-profile"
+	AudioSetFamily  = "audio.set-family"
 )
 
 // AudioEdit asks for one change to the audio library: Edit names it and Args
@@ -704,6 +755,25 @@ type CalibrationChange struct {
 	GainDB        *float64 `json:"gainDb,omitempty"`
 	TargetDB      *float64 `json:"targetDb,omitempty"`
 	DefaultTarget bool     `json:"defaultTarget,omitempty"`
+}
+
+// AmbientChange sets an ambient cue's settings.
+type AmbientChange struct {
+	Cue     string          `json:"cue"`
+	Ambient AmbientSettings `json:"ambient"`
+}
+
+// ProfileChange sets a cue's classification profile, one the library has.
+type ProfileChange struct {
+	Cue     string `json:"cue"`
+	Profile string `json:"profile"`
+}
+
+// FamilyChange puts a recording in an acoustic family, a new one when no
+// recording is in it yet; a measured recording is measured again.
+type FamilyChange struct {
+	Recording string `json:"recording"`
+	Family    string `json:"family"`
 }
 
 // Recording asks for a recording's bytes from Offset. The reply carries its

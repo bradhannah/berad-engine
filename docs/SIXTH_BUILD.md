@@ -99,5 +99,5 @@ Chosen while building, for its author to check:
 
 Ambient distance and fades, a new ambient cue from the descriptor's preset,
 the soundscape and the monitoring volume, and editing classification
-profiles and families (the next build). The waveform shows one channel, the
+profiles and families ([the next build](SEVENTH_BUILD.md)). The waveform shows one channel, the
 loudest of the recording's channels at each moment.

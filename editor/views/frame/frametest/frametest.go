@@ -11,6 +11,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -367,10 +368,45 @@ func Context(docs *Docs, requests *Requests, size image.Point) *frame.Context {
 		Docs: docs, Requests: requests, Sounds: &Sounds{
 			Prepared: nil, Played: nil, Stops: 0, Sounding: nil, Auditioned: nil,
 		},
-		Files: &Files{Chosen: "", Asked: 0}, Clipboard: nil, Window: ID(windowSeed), Size: size,
+		Soundscape: &Soundscape{Layers: map[string]sound.Layer{}, Started: nil, Monitor: sound.FullMonitor()},
+		Files:      &Files{Chosen: "", Asked: 0}, Clipboard: nil, Window: ID(windowSeed), Size: size,
 		Frame: frame.NewFrame(time.Now),
 	}
 }
+
+// Soundscape keeps the layers a view plays: Layers by slot while they play,
+// each layer started in Started, and the monitor levels last set.
+type Soundscape struct {
+	Layers  map[string]sound.Layer
+	Started []sound.Layer
+	Monitor sound.Monitor
+}
+
+// PlayLayer records a layer started.
+func (s *Soundscape) PlayLayer(layer sound.Layer) {
+	s.Layers[layer.Slot] = layer
+	s.Started = append(s.Started, layer)
+}
+
+// SetLayer changes a playing layer.
+func (s *Soundscape) SetLayer(layer sound.Layer) {
+	if playing, found := s.Layers[layer.Slot]; found && playing.Cue == layer.Cue {
+		s.Layers[layer.Slot] = layer
+	}
+}
+
+// StopLayer stops a layer.
+func (s *Soundscape) StopLayer(slot string) { delete(s.Layers, slot) }
+
+// LayerPlaying reports whether a layer plays.
+func (s *Soundscape) LayerPlaying(slot string) bool {
+	_, found := s.Layers[slot]
+
+	return found
+}
+
+// SetMonitor records the monitor levels.
+func (s *Soundscape) SetMonitor(monitor sound.Monitor) { s.Monitor = monitor }
 
 // ID returns a fixed ID for tests.
 func ID(seed byte) ids.ULID {

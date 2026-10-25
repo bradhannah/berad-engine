@@ -37,7 +37,7 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 		(toolbarHeight-ui.MonoSize)/ui.Half, ui.ColorSubdued())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 	ui.Divider(screen, image.Pt(listWidth, toolbarHeight), image.Pt(listWidth, content.Max.Y))
-	s.drawButtons(screen, s.addSound, s.newCue, s.checkFiles, s.stopAll)
+	s.drawButtons(screen, s.addSound, s.newCue, s.checkFiles, s.soundscape.toggle, s.stopAll)
 	s.drawButtons(screen, s.tabs...)
 	s.drawButtons(screen, s.filters...)
 	s.search.Draw(screen)
@@ -46,14 +46,20 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 		s.theme.DrawText(screen, "No sounds yet.", ui.Inset, s.list.Rect.Min.Y+ui.Inset, ui.ColorMuted())
 	}
 	s.drawPanel(screen)
-	s.drawInspector(screen)
+	if s.soundscape.shown {
+		s.drawSoundscape(screen)
+	} else {
+		s.drawInspector(screen)
+	}
 	switch {
 	case s.dialog != nil:
 		s.drawDialog(screen)
 	case s.confirm != nil:
 		s.confirm.Draw(screen, s.theme)
-	case s.trim.dialog != nil:
-		s.drawLevelDialog(screen)
+	case s.prompt != nil:
+		s.prompt.draw(screen, s.theme)
+	case s.inspector.classes.menu.IsOpen():
+		s.inspector.classes.menu.Draw(screen, s.theme)
 	}
 	s.guard.Draw(screen, s.theme)
 }
@@ -76,6 +82,8 @@ func (s *State) Locate(name string, _ frame.Docs) (image.Point, bool) {
 		return image.Pt(0, 0), s.state(value)
 	case s.dialogShows():
 		return s.locateInDialog(value)
+	case s.shownMenu() != nil:
+		return s.shownMenu().Locate(value)
 	}
 	switch kind {
 	case "row":
@@ -101,9 +109,20 @@ func (s *State) Locate(name string, _ frame.Docs) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
+// shownMenu is the menu open in the window, or nil.
+func (s *State) shownMenu() *ui.Menu {
+	for _, menu := range []*ui.Menu{&s.inspector.classes.menu, &s.soundscape.replace} {
+		if menu.IsOpen() {
+			return menu
+		}
+	}
+
+	return nil
+}
+
 // dialogShows reports whether a dialog takes the window's input.
 func (s *State) dialogShows() bool {
-	return s.dialog != nil || s.confirm != nil || s.trim.dialog != nil
+	return s.dialog != nil || s.confirm != nil || s.prompt != nil
 }
 
 // locateInDialog finds a button or field in the dialog that shows.
@@ -116,10 +135,10 @@ func (s *State) locateInDialog(value string) (image.Point, bool) {
 		return s.dialog.locate(value)
 	case s.confirm != nil:
 		return s.confirm.Locate(value, window)
-	case s.trim.dialog != nil:
-		s.trim.dialog.layout(window)
+	case s.prompt != nil:
+		s.prompt.layout(window)
 
-		return s.trim.dialog.locate(value)
+		return s.prompt.locate(value)
 	}
 
 	return image.Pt(0, 0), false
@@ -139,6 +158,11 @@ func (s *State) state(value string) bool {
 		return itoa(s.count(modeCues)) == argument
 	case "waveform":
 		return s.trim.analysis != nil && s.trim.analysis.Problem == ""
+	case "layer":
+		slot, cue, _ := strings.Cut(argument, ":")
+		found := s.soundscape.slot(slot)
+
+		return found != nil && found.cue == cue
 	case "stop":
 		return s.trim.auditioned != nil && s.trim.auditioned.ID == argument && s.trim.auditioned.Label == labelStop
 	case "region":
@@ -157,7 +181,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 			return field.Center(), true
 		}
 	}
-	buttons := append([]*ui.Button{s.addSound, s.newCue, s.checkFiles, s.stopAll}, s.tabs...)
+	buttons := append([]*ui.Button{s.addSound, s.newCue, s.checkFiles, s.soundscape.toggle, s.stopAll}, s.tabs...)
+	buttons = append(buttons, s.soundscape.buttons()...)
 	buttons = append(buttons, s.trim.buttons()...)
 	buttons = append(buttons, s.filters...)
 	buttons = append(buttons, s.panel.all()...)
@@ -168,8 +193,10 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		}
 	}
 
-	if widget == s.trim.loop.ID && !s.trim.loop.Rect.Empty() {
-		return image.Pt(s.trim.loop.Rect.Min.X+ui.Inset/ui.Half, ui.Center(s.trim.loop.Rect).Y), true
+	for _, toggle := range append([]*ui.Toggle{s.trim.loop}, s.soundscape.toggles()...) {
+		if widget == toggle.ID && !toggle.Rect.Empty() {
+			return image.Pt(toggle.Rect.Min.X+ui.Inset/ui.Half, ui.Center(toggle.Rect).Y), true
+		}
 	}
 
 	return image.Pt(0, 0), false

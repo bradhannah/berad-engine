@@ -53,7 +53,6 @@ type trimmer struct {
 	loop                                   *ui.Toggle
 	suggest, all, apply, cancel, duplicate *ui.Button
 	useSuggestion, setGain, setTarget      *ui.Button
-	dialog                                 *levelDialog
 }
 
 func newTrimmer(theme *ui.Theme) *trimmer {
@@ -75,7 +74,7 @@ func newTrimmer(theme *ui.Theme) *trimmer {
 		apply: button("apply-region", "Apply"), cancel: button("cancel-region", "Cancel"),
 		duplicate:     button("duplicate-region", "Duplicate region"),
 		useSuggestion: button("use-suggestion", "Use suggestion"), setGain: button("set-gain", "Set gain…"),
-		setTarget: button("set-target", "Target…"), dialog: nil,
+		setTarget: button("set-target", "Target…"),
 	}
 }
 
@@ -327,9 +326,9 @@ func (s *State) updateRegion(input *ui.Input, ctx *frame.Context) {
 	case trim.useSuggestion.Update(input):
 		s.edit(ctx, protocol.AudioAcceptCalibration, protocol.AudioItem{ID: trim.recording}, nil)
 	case trim.setGain.Update(input):
-		trim.dialog = newLevelDialog(s.theme, levelGain, trim.recording, s.currentGain())
+		s.prompt = s.levelDialog(levelGain, trim.recording, s.currentGain())
 	case trim.setTarget.Update(input):
-		trim.dialog = newLevelDialog(s.theme, levelTarget, trim.recording, s.currentTarget())
+		s.prompt = s.levelDialog(levelTarget, trim.recording, s.currentTarget())
 	}
 }
 

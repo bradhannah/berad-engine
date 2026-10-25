@@ -54,6 +54,13 @@ func testLibrary() protocol.AudioLibrary {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+
+	return newFixtureWith(t, testLibrary())
+}
+
+// newFixtureWith opens the window on a library.
+func newFixtureWith(t *testing.T, library protocol.AudioLibrary) *fixture {
+	t.Helper()
 	theme, err := ui.NewTheme()
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +72,7 @@ func newFixture(t *testing.T) *fixture {
 		ctx: frametest.Context(docs, requests, image.Pt(1200, 800)),
 	}
 	f.state.Start(f.ctx)
-	f.answer(testLibrary())
+	f.answer(library)
 
 	return f
 }

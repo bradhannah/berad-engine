@@ -75,7 +75,7 @@ func (s *audioSession) applyLevels(edit protocol.AudioEdit) (string, error) {
 		return withArgs(edit.Args, s.setCalibration)
 	}
 
-	return "", fmt.Errorf("%w: %s", ErrUnknownEdit, edit.Edit)
+	return s.applyClassification(edit)
 }
 
 func withArgs[T any](args json.RawMessage, apply func(T) (string, error)) (string, error) {
@@ -131,12 +131,21 @@ func (s *audioSession) createCue(cue protocol.NewCue) (string, error) {
 	if err := s.library.AddRecording(slot); err != nil {
 		return "", authoringError(err)
 	}
-	err := s.library.CreateCue(cue.ID, authoring.Cue{
+	made, profile := authoring.Cue{
 		Name: name, RecordingID: slot, RecordingIDs: nil, Selection: "", VolumeModifier: 1, HowToHear: how,
 		SearchTerms: nil,
-	}, "")
-	if err != nil {
+	}, ""
+	ambient := cue.Category == protocol.CategoryAmbient
+	if ambient {
+		s.newAmbient(&made, &profile)
+	}
+	if err := s.library.CreateCue(cue.ID, made, profile); err != nil {
 		return "", authoringError(err)
+	}
+	if ambient {
+		if err := s.heardFromAfar(cue.ID, slot); err != nil {
+			return "", err
+		}
 	}
 	if cue.Category != "" {
 		s.categories[cue.ID] = cue.Category

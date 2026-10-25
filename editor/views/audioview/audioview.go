@@ -91,6 +91,7 @@ type State struct {
 	panel                                 *panel
 	inspector                             *inspector
 	trim                                  *trimmer
+	soundscape                            *soundscape
 	// broken holds the version of each recording's file the last check
 	// could not decode.
 	broken map[string]string
@@ -99,9 +100,12 @@ type State struct {
 	guard   frame.Guard
 	dialog  *soundDialog
 	confirm *ui.Dialog
+	// prompt asks for one value, such as a level or a family's name.
+	prompt *fieldDialog
 	// deleting is the cue or recording the confirm dialog would delete.
 	deleting string
 	sounds   frame.Sounds
+	mixer    frame.Soundscape
 }
 
 // New returns the Audio window.
@@ -122,8 +126,10 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		played:   &ui.List{ID: "played", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
 		addSound: button("add-sound", "Add sound…"), newCue: button("new-cue", "New cue…"),
 		checkFiles: button("check-files", "Check files"), stopAll: button("stop-all", "Stop all"),
-		panel: newPanel(), inspector: newInspector(theme), trim: newTrimmer(theme), broken: map[string]string{},
-		focus: ui.Focus{}, guard: frame.Guard{}, dialog: nil, confirm: nil, deleting: "", sounds: nil,
+		panel: newPanel(), inspector: newInspector(theme), trim: newTrimmer(theme),
+		soundscape: newSoundscape(), broken: map[string]string{},
+		focus: ui.Focus{}, guard: frame.Guard{}, dialog: nil, confirm: nil, prompt: nil, deleting: "", sounds: nil,
+		mixer: nil,
 	}
 	view.addSound.Primary = true
 	view.search.Placeholder, view.search.Unmarked = "Search names, IDs, files and licences", true

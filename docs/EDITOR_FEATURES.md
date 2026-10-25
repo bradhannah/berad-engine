@@ -232,7 +232,8 @@ under consideration), **open** (undecided).
   new version, so Ultima V Redux stays compatible. Choosing cues for workflows
   comes first ([the fourth build](FOURTH_BUILD.md)); the Audio window follows
   ([the fifth build](FIFTH_BUILD.md)), then trimming and levels ([the sixth
-  build](SIXTH_BUILD.md)).
+  build](SIXTH_BUILD.md)), then ambient distance, profiles and families, and
+  the soundscape ([the seventh build](SEVENTH_BUILD.md)).
 - **Agreed:** the Audio window does everything the terminal audio editor does
   except its Ultima V routing (sounds per tile type, footstep surfaces, named
   emitters, the music, dungeon and naval groups), in three builds: adding and

@@ -222,6 +222,11 @@ measure it. It asks the orchestrator for a recording's peaks, at the width
 it draws them, with a suggested region and gain, and to check that every
 file decodes; the orchestrator answers off its loop, keeping a few decoded
 recordings for the next question.
+**Protocol version 13:** the library also lists its classification profiles
+and acoustic families, the audio project's ambient preset and volume levels,
+and each cue's profile and, for an ambient cue, its distance and fades. The
+soundscape and monitor levels are a window's own, played by its player and
+never sent.
 
 ## D9 — Saving and versions
 
@@ -306,6 +311,9 @@ which records whether each recording may be used in a commercial game, and
 moves a schema-3 library to schema 4 the first time it changes it. A cue's
 category is kept in the descriptor, made when one is first needed. Sounds
 added are copied into `audio/imported/`.
+**Protocol version 13:** an ambient cue's distance and fades are kept in the
+library's routing, the only part of it the editor changes; the rest of the
+routing, Ultima V's, is kept as it is.
 A document may keep its layout in a second file beside its own,
 `<name>--<id>.layout.json`, whose envelope carries no revision, so the file
 changes only when the layout does (D17). A workflow's layout holds where

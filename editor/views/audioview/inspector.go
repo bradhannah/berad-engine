@@ -16,7 +16,7 @@ import (
 )
 
 // inspectorButtons counts the inspector's buttons other than its categories.
-const inspectorButtons = 5
+const inspectorButtons = 8
 
 // gainStep is how much the gain buttons change a cue's gain, which runs from
 // 0 to 1.
@@ -36,10 +36,13 @@ type inspector struct {
 	quieter, louder        *ui.Button
 	removeCue, removeRec   *ui.Button
 	editAttribution        *ui.Button
+	ambient                *ambientSection
+	classes                *classifier
 	// shown is the row the fields were filled from, and subject names it for
-	// the unsaved changes guard.
+	// the unsaved changes guard; usesTop is where the cue's uses are listed.
 	shown   string
 	subject string
+	usesTop int
 	// uses are where the shown cue is used, once asked; usesFor is the cue
 	// they belong to.
 	uses    []protocol.Use
@@ -59,7 +62,8 @@ func newInspector(theme *ui.Theme) *inspector {
 		category: nil, quieter: ui.NewButton("quieter", "−"), louder: ui.NewButton("louder", "+"),
 		removeCue: ui.NewButton("delete-cue", "Delete cue"), removeRec: ui.NewButton("delete-recording", "Delete recording"),
 		editAttribution: ui.NewButton("edit-attribution", "Edit attribution…"),
-		shown:           "", subject: "", uses: nil, usesFor: "",
+		ambient:         newAmbientSection(theme), classes: newClassifier(),
+		shown: "", subject: "", usesTop: 0, uses: nil, usesFor: "",
 	}
 	for _, category := range categories() {
 		made.category = append(made.category, ui.NewButton("category-"+category, categoryLabel(category)))
@@ -70,12 +74,13 @@ func newInspector(theme *ui.Theme) *inspector {
 }
 
 func (insp *inspector) fields() []*ui.TextField {
-	return []*ui.TextField{insp.name, insp.how, insp.terms, insp.note}
+	return append([]*ui.TextField{insp.name, insp.how, insp.terms, insp.note}, insp.ambient.fields()...)
 }
 
 func (insp *inspector) buttons() []*ui.Button {
 	buttons := make([]*ui.Button, 0, len(insp.category)+inspectorButtons)
-	buttons = append(buttons, insp.quieter, insp.louder, insp.removeCue, insp.removeRec, insp.editAttribution)
+	buttons = append(buttons, insp.quieter, insp.louder, insp.removeCue, insp.removeRec, insp.editAttribution,
+		insp.ambient.setDistance, insp.classes.profile, insp.classes.family)
 
 	return append(buttons, insp.category...)
 }
@@ -115,6 +120,7 @@ func (insp *inspector) listed(view *State) {
 		insp.name.Field.SetSaved(cue.Name)
 		insp.how.Field.SetSaved(cue.HowToHear)
 		insp.terms.Field.SetSaved(strings.Join(cue.SearchTerms, ", "))
+		insp.ambient.listed(cue)
 	}
 	if recording, ok := view.selectedRecording(); ok {
 		insp.subject = recording.ID
@@ -145,12 +151,13 @@ func (s *State) inspectorArea() image.Rectangle { return frame.Inspector(s.size)
 // selected, and leaves the others with no place.
 func (s *State) layoutInspector() {
 	insp, area := s.inspector, s.inspectorArea()
-	for _, field := range insp.fields() {
-		field.Rect = ui.Zero()
+	insp.hide()
+	if s.soundscape.shown {
+		s.layoutSoundscape()
+
+		return
 	}
-	for _, button := range insp.buttons() {
-		button.Rect = ui.Zero()
-	}
+	s.soundscape.hide()
 	left, right := area.Min.X+ui.Inset, area.Max.X-ui.Inset
 	top := area.Min.Y + ui.Inset + ui.LineHeight
 	place := func(field *ui.TextField) {
@@ -167,8 +174,12 @@ func (s *State) layoutInspector() {
 		insp.louder.Rect = image.Rect(right-gainWidth, top, right, top+ui.ButtonH)
 		insp.quieter.Disabled, insp.louder.Disabled = cue.Gain <= 0, cue.Gain >= 1
 		top += ui.ButtonH + ui.Inset
+		if showsAmbient(cue) {
+			top = s.layoutAmbient(cue, left, right, top)
+		}
 		place(insp.how)
 		place(insp.terms)
+		insp.usesTop = s.layoutProfile(cue, left, right, top)
 		insp.removeCue.Rect = image.Rect(left, area.Max.Y-ui.Inset-ui.ButtonH, right, area.Max.Y-ui.Inset)
 
 		return
@@ -178,9 +189,21 @@ func (s *State) layoutInspector() {
 		insp.editAttribution.Rect = image.Rect(left, top, right, top+ui.ButtonH)
 		top += ui.ButtonH + ui.Inset
 		place(insp.note)
+		s.layoutFamily(recording, left, right, top)
 		insp.removeRec.Rect = image.Rect(left, area.Max.Y-ui.Inset-ui.ButtonH, right, area.Max.Y-ui.Inset)
 		insp.removeRec.Disabled = len(s.usedBy(recording.ID)) > 0
 	}
+}
+
+// hide leaves the inspector's fields and buttons with no place.
+func (insp *inspector) hide() {
+	for _, field := range insp.fields() {
+		field.Rect = ui.Zero()
+	}
+	for _, button := range insp.buttons() {
+		button.Rect = ui.Zero()
+	}
+	insp.ambient.curve = ui.Zero()
 }
 
 // recordingFacts counts the lines of facts about a recording above its
@@ -218,6 +241,10 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 			s.setGain(ctx, cue, cue.Gain-gainStep)
 		case insp.louder.Update(input):
 			s.setGain(ctx, cue, cue.Gain+gainStep)
+		case insp.ambient.setDistance.Update(input):
+			s.giveDistance(ctx, cue)
+		case insp.classes.profile.Update(input):
+			s.openProfiles()
 		case insp.removeCue.Update(input):
 			s.confirmDeleteCue(ctx, cue)
 		}
@@ -228,6 +255,8 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 		switch {
 		case insp.editAttribution.Update(input):
 			s.openAttribution(recording)
+		case insp.classes.family.Update(input):
+			s.openFamilies()
 		case insp.removeRec.Update(input):
 			s.confirmDeleteRecording(recording)
 		}
@@ -247,6 +276,9 @@ const percent = 100
 
 // commitField saves a field of the inspector after Enter.
 func (s *State) commitField(ctx *frame.Context, field *ui.TextField) {
+	if s.commitAmbient(ctx, field) {
+		return
+	}
 	value, changed := field.Field.Commit()
 	if !changed {
 		return
@@ -318,9 +350,14 @@ func (s *State) drawInspector(screen *ebiten.Image) {
 			insp.louder.Rect.Max.Y), ui.ColorInk())
 		s.drawFieldLabel(screen, insp.how, "HOW TO HEAR IT")
 		s.drawFieldLabel(screen, insp.terms, "SEARCH TERMS")
-		s.drawUses(screen, left, insp.terms.Rect.Max.Y+ui.Inset)
-		s.drawButtons(screen, insp.buttons()...)
+		s.drawUses(screen, left, insp.usesTop, insp.removeCue.Rect.Min.Y-ui.Inset)
+		s.drawButtons(screen, insp.quieter, insp.louder, insp.removeCue)
+		s.drawButtons(screen, insp.category...)
 		s.drawFields(screen, insp.name, insp.how, insp.terms)
+		if showsAmbient(cue) {
+			s.drawAmbient(screen, cue, left)
+		}
+		s.drawProfile(screen, cue)
 	case isRecording:
 		s.theme.DrawLabel(screen, "INSPECTOR · RECORDING", left, top, ui.ColorMuted())
 		s.drawFacts(screen, recording, left, factsTop(s.inspectorArea()))
@@ -329,8 +366,9 @@ func (s *State) drawInspector(screen *ebiten.Image) {
 			s.theme.DrawText(screen, "Only a recording no cue plays can be deleted.", left,
 				insp.removeRec.Rect.Min.Y-ui.LineHeight, ui.ColorMuted())
 		}
-		s.drawButtons(screen, insp.buttons()...)
+		s.drawButtons(screen, insp.editAttribution, insp.removeRec)
 		s.drawFields(screen, insp.note)
+		s.drawFamily(screen)
 	default:
 		s.theme.DrawLabel(screen, "INSPECTOR", left, top, ui.ColorMuted())
 	}
@@ -346,19 +384,28 @@ func (s *State) drawFields(screen *ebiten.Image, fields ...*ui.TextField) {
 	}
 }
 
-// drawUses lists the workflows that play the cue.
-func (s *State) drawUses(screen *ebiten.Image, left, top int) {
+// drawUses lists the workflows that play the cue, as many as fit above
+// bottom, then how many more there are.
+func (s *State) drawUses(screen *ebiten.Image, left, top, bottom int) {
 	s.theme.DrawLabel(screen, "USED BY", left, top, ui.ColorMuted())
 	top += ui.LineHeight
-	if len(s.inspector.uses) == 0 {
+	uses := s.inspector.uses
+	if len(uses) == 0 {
 		s.theme.DrawText(screen, "Nothing uses this cue yet.", left, top, ui.ColorSubdued())
 
 		return
 	}
 	width := s.inspectorArea().Dx() - ui.Half*ui.Inset
-	for _, use := range s.inspector.uses {
+	fit := max((bottom-top)/ui.LineHeight, 1)
+	if len(uses) > fit {
+		uses = uses[:fit-1]
+	}
+	for _, use := range uses {
 		s.theme.DrawText(screen, s.theme.FitText(use.Name+" · "+use.Label, width), left, top, ui.ColorInk())
 		top += ui.LineHeight
+	}
+	if more := len(s.inspector.uses) - len(uses); more > 0 {
+		s.theme.DrawText(screen, "and "+itoa(more)+" more", left, top, ui.ColorMuted())
 	}
 }
 

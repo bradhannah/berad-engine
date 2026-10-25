@@ -60,8 +60,11 @@ type soundDialog struct {
 	category string
 	// name and id describe a new cue; autoID is the ID last suggested, kept
 	// in step with the name until the author changes the ID.
-	name, id                 *ui.TextField
-	autoID                   string
+	name, id *ui.TextField
+	autoID   string
+	// ambientPrefix begins a new ambient cue's ID, from the audio project's
+	// preset when it has one.
+	ambientPrefix            string
 	creator, source, license *ui.TextField
 	categories               []*ui.Button
 	commercial               *ui.Toggle
@@ -85,13 +88,17 @@ func (s *State) newDialog(kind dialogKind, path string, target soundTarget, cate
 	dialog := &soundDialog{
 		kind: kind, path: path, target: target, category: category,
 		name: field("cue-name", "Door opens"), id: field("cue-id", "sfx/door_open"), autoID: "",
-		creator: field("creator", "Who made it"), source: field("source", "Where it came from, such as a web address"),
+		ambientPrefix: protocol.CategoryAmbient + "/",
+		creator:       field("creator", "Who made it"), source: field("source", "Where it came from, such as a web address"),
 		license: field("license", "Its licence, such as CC0-1.0 or CC BY 4.0"), categories: nil,
 		commercial: &ui.Toggle{ID: "commercial", Label: "Allowed in a commercial game", Rect: ui.Zero(), On: false},
 		primary:    ui.DialogButton("dialog-ok", primaryLabel(kind)), cancel: ui.DialogButton(ui.DialogCancel, "Cancel"),
 		focus: ui.Focus{}, problem: "", waiting: false, rect: ui.Zero(), problemTop: 0,
 	}
 	dialog.primary.Primary = true
+	if s.library != nil && s.library.AmbientPreset != nil && s.library.AmbientPreset.CuePrefix != "" {
+		dialog.ambientPrefix = s.library.AmbientPreset.CuePrefix
+	}
 	for _, category := range categories() {
 		dialog.categories = append(dialog.categories, ui.NewButton("dialog-"+category, categoryLabel(category)))
 	}
@@ -177,6 +184,12 @@ func (dlg *soundDialog) suggestID() {
 	suggested := ""
 	if part := slug(dlg.name.Field.Value()); part != "" {
 		suggested = dlg.category + "/" + part
+		if dlg.category == protocol.CategoryAmbient {
+			suggested = dlg.ambientPrefix + part
+		}
+	}
+	if suggested == dlg.autoID {
+		return
 	}
 	if current == dlg.autoID {
 		dlg.id.Field.Restore(suggested)
@@ -290,7 +303,7 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	dlg.layout(image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	defer input.ClearAll()
 	field, outcome := dlg.focus.Update(input, ctx.Clipboard)
-	if field == dlg.name {
+	if dlg.newCue() {
 		dlg.suggestID()
 	}
 	for index, button := range dlg.categories {

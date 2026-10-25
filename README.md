@@ -66,7 +66,11 @@ The project browser and a Map window open on a sample zone with two floors.
   used in a commercial game. The window lists cues by category, or
   recordings, with filters for problems and for sounds not cleared; it plays
   them, and edits a cue's name, category, gain and the recordings it plays in
-  turn.
+  turn. A recording's waveform shows where its sound is: trim it to a region,
+  make a new recording from a region, and even out its level with the gain
+  berad-audio measures. An ambient cue is heard from a distance, drawn on the
+  curve the game uses. The soundscape plays cues together at monitor levels,
+  and is never saved.
 
 `Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
 opens another view of the same zone, and the views update live and share undo;

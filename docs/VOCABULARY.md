@@ -66,6 +66,12 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Gain** | How much louder or quieter something plays than as recorded: a recording's in dB, a cue's as a percentage |
 | **Level** | How a recording's gain is set: measured to reach its target, set by hand, or not set |
 | **Target** | The loudness a measured recording's gain aims at; its family's unless its author sets one |
+| **Acoustic family** | A group of recordings that sound alike, which sets the target measuring aims at |
+| **Profile** | What kind of moment a cue plays for, such as a door starting to open, which a search finds it by |
+| **Distance** | How many tiles away an ambient cue is heard, louder closer; 0 is everywhere, as a background |
+| **Soundscape** | Up to four cues the Audio window plays together, two ambient, one music and one SFX, to hear how they sit together; never saved |
+| **Layer** | One cue of the soundscape, with its own gain, mute and solo |
+| **Monitor level** | How loud the Audio window plays a category while its author listens, standing in for a player's volume settings; never saved |
 
 ## Editor terms
 
