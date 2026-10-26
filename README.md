@@ -135,7 +135,7 @@ single-line and has no input method support. The two modules are joined by
 
 ## Documentation
 
-Design decisions, vocabulary and build progress are in [docs](docs/README.md).
+Design decisions, vocabulary and each increment of work are in [docs](docs/README.md).
 
 ## Contributing
 

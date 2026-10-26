@@ -1,11 +1,13 @@
-# Second build: walk the map
+# Increment 2: Walk the map
+
+**Status:** Built
 
 The second implementation step towards the
-[first useful authoring milestone](EDITOR_FEATURES.md#first-useful-authoring-milestone):
+[first useful authoring milestone](../EDITOR_FEATURES.md#first-useful-authoring-milestone):
 build a map, place NPCs with basic logic and schedule loops, then walk around
 it and talk to them. It starts with walking, as a preview of a zone in the Map
 window (D15), so each later piece can be tried by walking up to it. It is held
-to the same strict checks as [the first build](FIRST_BUILD.md).
+to the same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -24,14 +26,14 @@ to the same strict checks as [the first build](FIRST_BUILD.md).
 | 2. Live state | Protocol version 3: preview start, state and stop through the orchestrator | One preview at a time; the zone's other views see the player; a closing window ends its preview | Done (PR #6) |
 | 3. Preview in the Map window | `P` and a start cell; arrow keys walk; the view follows and changes floor on stairs; other views draw the player | Walking judged by its author | Done (PR #6) |
 
-Later builds of the milestone (placing NPCs with basic logic and schedule
+Later increments of the milestone (placing NPCs with basic logic and schedule
 loops, conversations) are not planned yet.
 
 ## Decisions
 
 Settled by its author before building:
 
-- The next build starts with walking the map, before objects and placements or
+- The next increment starts with walking the map, before objects and placements or
   workflows and NPCs.
 - **Doors stay passable for now.** Opening and closing come later ("we are
   focused on basics").

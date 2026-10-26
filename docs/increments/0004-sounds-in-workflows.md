@@ -1,10 +1,12 @@
-# Fourth build: sounds in workflows
+# Increment 4: Sounds in workflows
+
+**Status:** Built
 
 The fourth implementation step: a workflow's **Play sound** node chooses a
 cue from the project's audio library and plays it, so it can be heard while
 it is chosen, and when an NPC reaches it in a preview. It is the first part of
 moving audio editing into the editor; the Audio window comes later. It is held
-to the same strict checks as [the first build](FIRST_BUILD.md).
+to the same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -44,9 +46,8 @@ Settled by its author on 2026-10-24, before building:
 - The project's audio lives in `audio/library.json` and `audio/project.json`
   in berad-audio's own formats, outside the document envelope, so the
   terminal audio editor opens the same files (an exception to D11).
-- In this build the editor only reads them; audio is edited in the terminal
-  audio editor until the Audio window exists ([the fifth
-  build](FIFTH_BUILD.md)). The orchestrator reads them again for every
+- In this increment the editor only reads them; audio is edited in the terminal
+  audio editor until the Audio window exists ([increment 5](0005-audio-window.md)). The orchestrator reads them again for every
   question, so changes made there show up at once.
 - A cue parameter stores the cue's ID as the audio library spells it, such as
   `door/open`, not a ULID (an exception to D4). A cue whose ID changes in the
@@ -118,9 +119,9 @@ Chosen while building, for its author to check:
   workflow loads, and plays what the NPCs' Play sounds ask for as they reach
   them.
 
-## Not in this build
+## Not in this increment
 
 The Audio window and editing audio in the editor; sound on the map; ambient
 sounds that keep playing, their distance and the loudest-of-each-cue rule;
 nodes that set or stop music and ambient sounds; handlers and the zone loop.
-[The editor features](EDITOR_FEATURES.md#sound) record these as candidates.
+[The editor features](../EDITOR_FEATURES.md#sound) record these as candidates.

@@ -1,4 +1,6 @@
-# Eighth build: loudness
+# Increment 8: Loudness
+
+**Status:** Judged by its author on 2026-10-25
 
 The eighth implementation step makes every sound in a project as loud as it
 is meant to be, without its author judging it by ear. Each recording is
@@ -7,7 +9,7 @@ cue says how it is **meant to sound** next to that reference, in a few named
 steps; and a Play sound node can ask for another step for one moment. The
 Audio window shows a cue and a recording on screens of their own, and a
 **Loudness** view checks the whole library. It is held to the same strict
-checks as [the first build](FIRST_BUILD.md).
+checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -33,7 +35,7 @@ monitor levels; Play sound nodes allowed to change the volume in a special
 case.
 
 Agreed by its author on 2026-10-25, from the design board drawn for this
-build and the next:
+increment and the next:
 
 - **Evening out belongs to the recording.** It is a fact about the sound,
   measured on its region, the same in every cue that plays it.
@@ -70,7 +72,7 @@ Proposed, for its author to check while building:
   short sound or a sustained one, and no longer sets the target, so two
   recordings in different families even out to the same reference. The
   audio project's descriptor gives each family both today.
-- **Levels set by hand before this build stay,** shown as set by hand; cue
+- **Levels set by hand before this increment stay,** shown as set by hand; cue
   gains set before it show as the nearest step, or as their percentage when
   none is near.
 
@@ -105,7 +107,7 @@ Chosen while building, for its author to check:
   one the terminal editor set, shows as Custom with its dB, and − or + takes
   it to the nearest step.
 - **The cue's screen keeps the waveform** of the recording chosen in it, as
-  the seventh build made it, and adds under its attribution how loud this cue
+  increment 7 made it, and adds under its attribution how loud this cue
   plays each recording and how it plays: evened out, its step, a Play sound,
   the player's volume.
 - **Play sound's Loudness this time** is As the cue is or a step, workflow
@@ -119,7 +121,7 @@ Chosen while building, for its author to check:
 Open:
 
 - **The words.** The design board uses *evened out*, *reference loudness*,
-  *meant to sound* and *category adjustment*; the [vocabulary](VOCABULARY.md)
+  *meant to sound* and *category adjustment*; the [vocabulary](../VOCABULARY.md)
   still says level, target and gain, and changes when its author settles
   them.
 
@@ -130,7 +132,7 @@ Open:
 | 1. Schema 5 | In berad-sdk: a cue's gain and a play's gain up to +12 dB in schema 5, an upgrade from schema 4 when an editor asks, and each recording's headroom from the analysis it already keeps | Guard tests for schemas 3, 4 and 5; runtime gain tests | Built (berad-sdk PR #17) |
 | 2. Measuring by default | New and changed recordings measured automatically, Measure all, and the reference loudness and category adjustments in the audio project's descriptor | Headless orchestrator tests | Built |
 | 3. Meant to sound | A cue's step, the library check for recordings and for cues, and the Play sound node's step for one moment | Apply-then-undo tests and runner tests | Built |
-| 4. The windows | The cue's screen, the recording's screen, the Loudness view, the soundscape relabelled, and the Play sound node's inspector | View tests and a real-window test; judged by its author with the meters, not by ear alone | Built; not yet judged |
+| 4. The windows | The cue's screen, the recording's screen, the Loudness view, the soundscape relabelled, and the Play sound node's inspector | View tests and a real-window test; judged by its author with the meters, not by ear alone | Judged |
 
 ## Step results
 
@@ -196,9 +198,8 @@ Found by its author while trying it:
   it had played through; berad-sdk PR #18 wraps it to where the loop has
   reached, and berad-engine pins that commit.
 
-## Not in this build
+## Not in this increment
 
-Files and their pieces ([the ninth build](NINTH_BUILD.md)), built alongside
-it. Where an ambient sound is heard stays the cue's distance, from [the
-seventh build](SEVENTH_BUILD.md). A game's own playback of the steps and
+Files and their pieces ([increment 9](0009-files-and-pieces.md)), built alongside
+it. Where an ambient sound is heard stays the cue's distance, from [increment 7](0007-ambient-and-soundscape.md). A game's own playback of the steps and
 adjustments waits for the game to play sound.

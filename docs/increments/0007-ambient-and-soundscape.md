@@ -1,4 +1,6 @@
-# Seventh build: ambient sounds and the soundscape
+# Increment 7: Ambient sounds and the soundscape
+
+**Status:** Built
 
 The seventh implementation step finishes bringing the terminal audio editor's
 work into the Audio window. An ambient cue gets a **distance**: how many
@@ -6,8 +8,8 @@ tiles away it is heard, on berad-audio's curve, which the window draws, and
 its fades. The **soundscape** plays several cues together, and **monitor
 levels** stand in for a player's volume settings while listening. Cues get
 their classification **profile**, and recordings their **acoustic family**.
-It is the last of the three audio builds, held to the same strict checks as
-[the first build](FIRST_BUILD.md).
+It is the last of the three audio increments, held to the same strict checks as
+[increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -33,8 +35,7 @@ It is the last of the three audio builds, held to the same strict checks as
 
 ## Decisions
 
-Settled by its author on 2026-10-25 for all three audio builds (see [the
-fifth build](FIFTH_BUILD.md)): the Audio window does everything the terminal
+Settled by its author on 2026-10-25 for all three audio increments (see [increment 5](0005-audio-window.md)): the Audio window does everything the terminal
 audio editor does except its Ultima V routing, and audio is always saved.
 Earlier, on 2026-10-24, its author asked that an ambient sound grow louder as
 the player comes closer, on Ultima V Redux's curve, and that the distance be
@@ -102,8 +103,7 @@ Chosen while building, for its author to check:
 
 ## Changed after its author tried it
 
-Settled by its author on 2026-10-25, after trying the sixth and seventh
-builds:
+Settled by its author on 2026-10-25, after trying increments 6 and 7:
 
 - **The region's ends are easy to grab.** A press anywhere from the
   waveform's top to its bottom, within 10 pixels of an end, picks it up, even
@@ -136,7 +136,7 @@ Verified: `make check` and every real-window test pass, including a new one
 that drags the region's start by hand, ticks the checkbox and records a
 processing step. Only screenshots show the flags and the section.
 
-## Not in this build
+## Not in this increment
 
 Placing ambient sounds in a zone, and the game's own ambient playback, are
 game and engine work still to come. Profiles themselves are not edited, as in

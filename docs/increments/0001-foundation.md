@@ -1,6 +1,8 @@
-# First build
+# Increment 1: Foundation
 
-The first implementation of [the editor architecture](ARCHITECTURE.md): small,
+**Status:** Built
+
+The first implementation of [the editor architecture](../ARCHITECTURE.md): small,
 built properly (a foundation, not a prototype), and ordered so the riskiest parts
 are proven first. It is held to the strict checks in the README from the start.
 
@@ -32,7 +34,7 @@ game features.
 | 4. Working together | Anchors in the floor (format version 2); a Text window with a draft saved on Enter; pick on map; project browser; zones with several floors; layers, stand-ins, walls and wall families; pan, zoom and a tile picker; the zone origin and resizing floors (format version 3) | Text editing judged by its author | Done (PR #5) |
 | 5. Stretch | VM-guest embedding; "create version" through git | Optional | Later |
 
-The [second build](SECOND_BUILD.md) follows.
+[Increment 2](0002-walk-the-map.md) follows.
 
 ## Results so far
 
@@ -55,7 +57,7 @@ The [second build](SECOND_BUILD.md) follows.
 - Text fields keep a local draft; Enter saves, Cmd+Enter or Ctrl+J starts a new
   line, Escape reverts (D1).
 - Pick on map uses four messages through the orchestrator (D13).
-- Anchors live inside the floor document ([vocabulary](VOCABULARY.md)), which
+- Anchors live inside the floor document ([vocabulary](../VOCABULARY.md)), which
   raises the floor format to version 2: the first real use of upgrade with
   backup.
 - Added to the step: the project browser, zones with several floors, pan and
