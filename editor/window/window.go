@@ -85,7 +85,7 @@ func Run(args Args, registry *plugin.Registry) error {
 		return errors.Join(err, conn.Close())
 	}
 	defer theme.Close()
-	game := newHost(conn, newView(args, conn.Window(), theme), args.View, theme)
+	game := newHost(conn, newView(args, conn.Window(), theme), args.View, theme, newOwnWindow())
 	game.script, err = loadScript(args.View)
 	if err != nil {
 		return errors.Join(err, conn.Close())

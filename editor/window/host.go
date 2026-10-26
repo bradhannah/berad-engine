@@ -38,13 +38,14 @@ type starter interface {
 // host runs one view as an Ebitengine game: it applies what the orchestrator
 // sends, builds input, runs the view and carries out its requests.
 type host struct {
-	conn   *client.Client
-	view   frame.View
-	theme  *ui.Theme
-	frame  *frame.Frame
-	ctx    frame.Context
-	reader *inputReader
-	script *inputScript
+	conn  *client.Client
+	view  frame.View
+	theme *ui.Theme
+	frame *frame.Frame
+	ctx   frame.Context
+	// surface is the window the host is shown in.
+	surface surface
+	script  *inputScript
 	// sounds plays the project's cues in this window.
 	sounds     *sound.Player
 	callbacks  chan func()
@@ -63,26 +64,24 @@ type host struct {
 	quitAsking bool
 	quitSaving bool
 	reported   protocol.Unsaved
-	// floating is whether the window was last asked to stay on top, and
-	// float asks; tests replace it.
+	// floating is whether the window was last asked to stay on top.
 	floating bool
-	float    func(bool)
 }
 
-func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme) *host {
+func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn surface) *host {
 	created := &host{
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
 			Docs: nil, Requests: nil, Sounds: nil, Soundscape: nil, Files: nil, Clipboard: nil,
 			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil,
 		},
-		reader: newInputReader(), script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
+		surface: shownIn, script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		floating: false, float: ebiten.SetWindowFloating,
+		floating: false,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -115,7 +114,7 @@ func (h *host) Update() error {
 	if h.script != nil {
 		input = h.script.next(h, h.conn)
 	} else {
-		input = h.reader.read(h.view.Focused())
+		input = h.surface.Input(h.view.Focused())
 	}
 	h.frame.UpdateStatus(&input, h.ctx.Size)
 	h.applyOnTop()
@@ -138,7 +137,7 @@ func (h *host) Update() error {
 	}
 	if title := h.view.Title(h.conn); title != h.title {
 		h.title = title
-		ebiten.SetWindowTitle(title)
+		h.surface.SetTitle(title)
 	}
 
 	return nil
@@ -151,7 +150,7 @@ func (h *host) applyOnTop() {
 		return
 	}
 	h.floating = h.frame.OnTop.On
-	h.float(h.floating)
+	h.surface.SetFloating(h.floating)
 }
 
 // save saves a Saver's typed changes for Cmd+S, or says there is nothing
@@ -219,7 +218,7 @@ func (h *host) onUpdate(update client.Update) {
 		return
 	}
 	if update.Attention {
-		ebiten.RequestAttention()
+		h.surface.RequestAttention()
 		if update.Item == "" {
 			return
 		}
