@@ -50,6 +50,8 @@ type shell struct {
 	dragging bool
 	// stats are the window's frame statistics, when they are asked for.
 	stats *frameStats
+	// lastTab is each kind's tab last in front.
+	lastTab map[string]*tab
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -105,7 +107,7 @@ func runShell(args Args, registry *plugin.Registry) error {
 	// The pinned clock is a Clock window, always running.
 	project.host.Open(clockview.ViewName, args.Target, false)
 	ebiten.SetWindowTitle(project.host.view.Title(conn))
-	ebiten.SetWindowSize(windowWidth, windowHeight+barHeight)
+	ebiten.SetWindowSize(windowWidth, windowHeight+rowHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	// Closing the shell's window quits the editor, asking first.
 	ebiten.SetWindowClosingHandled(true)
@@ -124,6 +126,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
+		lastTab: map[string]*tab{},
 	}
 }
 
@@ -231,6 +234,7 @@ func (s *shell) Update() error {
 		s.run(shown)
 	}
 	s.attend()
+	s.remember()
 	s.followClock()
 	s.retitle()
 	if len(s.tabs) == 0 {
@@ -419,7 +423,7 @@ func (s *shell) panes() []*pane {
 
 // area is the part of the window under the bar, where tabs show.
 func (s *shell) area() image.Rectangle {
-	return image.Rect(0, barHeight, s.size.X, s.size.Y)
+	return image.Rect(0, s.barHeight(), s.size.X, s.size.Y)
 }
 
 // front is the tab in front, if there is one.

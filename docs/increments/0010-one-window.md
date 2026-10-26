@@ -149,6 +149,19 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 └──────────────────────────────────────┴┴─────────────────────────────┘
 ```
 
+Tabs by kind, settled after trying it (step 8): three Maps are open, so a
+second row lists them.
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ [P] Project │ [M] Maps 3 │ [F] Workflows 2 │ [T] Notes │  ◷ 08:00 ▾ │
+├─────────────────────────────────────────────────────────────────────┤
+│ Sample zone ⧉ × │ Harbour ⧉ × │ Sample zone (view 2) ⧉ ×            │
+├─────────────────────────────────────────────────────────────────────┤
+│ the chosen Map                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ## Steps
 
 | Step | Builds | Done when | Status |
@@ -160,6 +173,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Built |
 | 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Built |
 | 7. Measuring and judging | Frame time and command-to-event time with a Map and its Watch showing and a preview running, against separate windows | Numbers recorded here; judged by its author | Built; not yet judged |
+| 8. Tabs by kind | The bar's top row has a tab for each kind of window with how many are open; a second row lists the open documents of the kind in front, shown only when there are several | Unit tests of the grouping, and a real-window test with three Maps and two workflows open | Built; not yet judged |
 
 Where each step changes code:
 
@@ -271,10 +285,35 @@ Where each step changes code:
   command to event 0.52 ms against the Map window's 1.57). The first measurement painted cells that the Map, narrowed
   beside Watch, did not show, so it sent no commands; the scenario now paints
   where both layouts show the cells.
+- **Tabs by kind:** the bar's top row has one tab for each kind of window
+  open, in a fixed order: Project, Maps, Workflows, Text, Audio, Watch
+  (`editor/window/kinds.go`, `bar.go`). A kind with one window open is named
+  after it and carries its close and pop-out boxes; a kind with several is
+  named after the kind, with how many, and brings back the one last in
+  front. While the kind in front has several, a second row lists them by
+  name, keeping a window's ID only where two names would read the same, as
+  two views of one map do; its tabs carry the boxes. The bar grows by a row
+  only then. A Map with Watch beside it is one of the Maps. Verified with
+  unit tests of the grouping, the names and coming back to a kind's last
+  tab, and a real-window test that opens two workflows and three views of a
+  Map; `make check` and the other real-window tests pass.
+- **A hidden button no longer draws:** testing step 8 showed "Watch" peeking
+  from the top-left corner of every Map window, its hidden Watch button's
+  label drawn at the window's corner, in separate windows too. A button laid
+  out nowhere is now not drawn (`ui.Button.Draw`); checked in the
+  real-window test's screenshot.
 
 ## Changed after its author tried it
 
-Not tried yet.
+Settled by its author on 2026-10-26, after trying it:
+
+- **Tabs are grouped by kind of window.** The bar's top row has one tab for
+  each kind, the "apps": Project, Maps, Workflows, Text, Audio, with how
+  many are open. A second row lists the open documents of the kind in front,
+  and shows only when there are several. With many windows open, every tab
+  shrank until its name was gone; grouping keeps the top row short, and the
+  windows of one kind sit together. (Rejected: wrapping tabs onto more
+  rows.) Step 8 builds it.
 
 ## Not in this increment
 

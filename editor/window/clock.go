@@ -35,13 +35,15 @@ func (s *shell) pinClock(conn *client.Client, args Args) error {
 
 // readoutRect is the clock's place at the right end of the bar.
 func (s *shell) readoutRect() image.Rectangle {
-	return image.Rect(s.size.X-readoutWidth, 0, s.size.X, barHeight)
+	return image.Rect(s.size.X-readoutWidth, 0, s.size.X, rowHeight)
 }
 
 // panelRect is where the clock's panel shows: under its readout, at the right
 // of the window, as large as the Clock window was.
 func (s *shell) panelRect() image.Rectangle {
-	return image.Rect(s.size.X-clockview.Width, barHeight, s.size.X, barHeight+clockview.Height)
+	top := s.barHeight()
+
+	return image.Rect(s.size.X-clockview.Width, top, s.size.X, top+clockview.Height)
 }
 
 // clockReadout returns the pinned clock's readout and whether a preview runs.
@@ -99,8 +101,8 @@ func (s *shell) drawReadout(screen *ebiten.Image) {
 	if s.clockOpen {
 		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ink)
 	}
-	ui.Divider(screen, image.Pt(rect.Min.X, ui.Gap), image.Pt(rect.Min.X, barHeight-ui.Gap))
-	ui.DrawIcon(screen, ui.IconClock, image.Pt(rect.Min.X+tabPad, (barHeight-ui.IconSize)/ui.Half))
+	ui.Divider(screen, image.Pt(rect.Min.X, ui.Gap), image.Pt(rect.Min.X, rowHeight-ui.Gap))
+	ui.DrawIcon(screen, ui.IconClock, image.Pt(rect.Min.X+tabPad, (rowHeight-ui.IconSize)/ui.Half))
 	left := rect.Min.X + tabPad + ui.IconSize + ui.Gap*ui.Half
-	s.theme.DrawText(screen, s.theme.FitText(text, rect.Max.X-tabPad-left), left, (barHeight-ui.TextSize)/ui.Half-1, ink)
+	s.theme.DrawText(screen, s.theme.FitText(text, rect.Max.X-tabPad-left), left, (rowHeight-ui.TextSize)/ui.Half-1, ink)
 }

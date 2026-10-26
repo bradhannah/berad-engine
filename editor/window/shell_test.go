@@ -78,7 +78,7 @@ func TestSplitDividerDragsAndFocuses(t *testing.T) {
 	left, right := &pane{view: "map"}, &pane{view: "watch"}
 	shown := &shell{tabs: []*tab{{panes: []*pane{left, right}, split: 0.5}}, size: image.Pt(1000, 832)}
 	shown.layout()
-	if left.rect.Max.X != 496 || right.rect.Min.X != 504 || left.rect.Min.Y != barHeight || right.rect.Max.X != 1000 {
+	if left.rect.Max.X != 496 || right.rect.Min.X != 504 || left.rect.Min.Y != rowHeight || right.rect.Max.X != 1000 {
 		t.Fatalf("split rects %v %v", left.rect, right.rect)
 	}
 	press := ui.NewInput(image.Pt(500, 400))
@@ -97,5 +97,56 @@ func TestSplitDividerDragsAndFocuses(t *testing.T) {
 	shown.updateSplit(&click)
 	if shown.focused() != right {
 		t.Fatal("a press in the right pane focuses it")
+	}
+}
+
+// titled is a pane of a view whose window has a title.
+func titled(view, title string) *pane {
+	place := newPaneSurface()
+	place.title = title
+
+	return &pane{view: view, place: place}
+}
+
+// TestTabsGroupByKind files tabs under their kinds in bar order, names a kind
+// after its one window or counts several, shows the second row only for a
+// kind in front with several, comes back to a kind's last tab, and tells two
+// views of one map apart by their IDs.
+func TestTabsGroupByKind(t *testing.T) {
+	t.Parallel()
+	project := titled("browser", "Project")
+	town := titled("map", "Map: Town — Ground  (view aaaaaa)")
+	notes := titled("text", "Text: Notes  (window bbbbbb)")
+	harbour := titled("map", "Map: Harbour  (view cccccc)")
+	townAgain := titled("map", "Map: Town — Ground  (view dddddd)")
+	shown := &shell{size: image.Pt(1200, 832), tabs: []*tab{
+		{panes: []*pane{project}}, {panes: []*pane{town}}, {panes: []*pane{notes}},
+		{panes: []*pane{harbour}}, {panes: []*pane{townAgain}},
+	}, active: 2}
+	kinds := shown.kinds()
+	if len(kinds) != 3 || kinds[0].view != "browser" || kinds[1].view != "map" || len(kinds[1].tabs) != 3 ||
+		kinds[2].view != "text" {
+		t.Fatalf("kinds %+v", kinds)
+	}
+	if shown.documentRow() || shown.barHeight() != rowHeight {
+		t.Fatal("one text document in front needs no second row")
+	}
+	tabs := shown.barTabs()
+	if len(tabs) != 3 || tabs[1].label != "Maps" || tabs[1].count != 3 || tabs[2].label != "Notes" || !tabs[2].front {
+		t.Fatalf("top row %+v", tabs)
+	}
+	shown.active = 3
+	shown.remember()
+	shown.active = 2
+	if got := shown.chooseKind(kinds[1]); got != 3 {
+		t.Fatalf("choosing Maps brings back the last Map in front, tab %d", got)
+	}
+	shown.active = 3
+	if !shown.documentRow() || shown.barHeight() != rowHeight*2 {
+		t.Fatal("a Map in front, of three, shows the second row")
+	}
+	labels := shown.documentLabels(kinds[1])
+	if labels[0] != "Town — Ground  (view aaaaaa)" || labels[1] != "Harbour" || labels[2] != "Town — Ground  (view dddddd)" {
+		t.Fatalf("document labels %q", labels)
 	}
 }

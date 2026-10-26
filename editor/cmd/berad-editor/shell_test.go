@@ -229,3 +229,26 @@ func TestShellFrameTimes(t *testing.T) {
 	t.Logf("one window:\n%s", strings.Join(one, "\n"))
 	t.Logf("separate windows:\n%s", strings.Join(separate, "\n"))
 }
+
+// TestShellGroupsTabsByKind opens two workflows, then a Map and two more
+// views of it (increment 10, settled after trying it): the bar files them
+// under their kinds, and with the Maps in front a second row lists the three.
+func TestShellGroupsTabsByKind(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "shell-kinds.png")
+	browserScript := script(
+		must("row:Notes", 600), wait(5),
+		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		doubleClick("row:Sample zone"), wait(240), step{Repeat: 2, Screenshot: shot},
+		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	mapScript := script(must("state:loaded", 600), wait(5), keys("Cmd+N"), wait(60), keys("Cmd+N"), wait(60))
+	idle := script(must("state:loaded", 600))
+	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript, idle, idle}})
+	noCrashes(t, project)
+	shellLog(t, project)
+	t.Logf("screenshot: %s", shot)
+}

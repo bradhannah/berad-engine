@@ -2,66 +2,110 @@ package window
 
 import (
 	"image"
+	"slices"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
-	"github.com/bradhannah/berad-engine/editor/views/audioview"
-	"github.com/bradhannah/berad-engine/editor/views/browser"
-	"github.com/bradhannah/berad-engine/editor/views/clockview"
-	"github.com/bradhannah/berad-engine/editor/views/mapview"
-	"github.com/bradhannah/berad-engine/editor/views/textview"
-	"github.com/bradhannah/berad-engine/editor/views/watchview"
-	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 )
 
-// Window bar layout, in screen pixels: the bar is barHeight tall, and its
-// tabs share its width, up to tabWidth each.
+// Window bar layout, in screen pixels: each of the bar's rows is rowHeight
+// tall, and its tabs share its width, up to tabWidth each on the top row and
+// documentWidth on the second, whose names are longer.
 const (
-	barHeight = 32
-	tabWidth  = 220
-	tabPad    = 10
-	closeSize = 14
+	rowHeight     = 32
+	tabWidth      = 220
+	documentWidth = 340
+	tabPad        = 10
+	closeSize     = 14
 )
 
-// viewIcon is the icon of a kind of window, shown on its tab.
-func viewIcon(view string) ui.Icon {
-	switch view {
-	case browser.ViewName:
-		return ui.IconProject
-	case mapview.ViewName:
-		return ui.IconZone
-	case textview.ViewName:
-		return ui.IconText
-	case workflowview.ViewName:
-		return ui.IconWorkflow
-	case audioview.ViewName:
-		return ui.IconSound
-	case clockview.ViewName:
-		return ui.IconClock
-	case watchview.ViewName:
-		return ui.IconWatch
-	}
-
-	return ui.IconNone
+// barTab is one tab drawn on the bar: a kind on the top row, or a document of
+// the kind in front on the second. tab is the index of the shell's tab it
+// brings forward; boxes is set when it carries close and pop-out boxes for
+// that tab, and count when it stands for several.
+type barTab struct {
+	rect  image.Rectangle
+	tab   int
+	icons []ui.Icon
+	label string
+	count int
+	boxes bool
+	front bool
 }
 
-// tabRect returns a tab's place on the bar, left of the clock's readout.
-func (s *shell) tabRect(index int) image.Rectangle {
-	width := tabWidth
-	if count := len(s.tabs); count > 0 && (s.size.X-readoutWidth)/count < width {
-		width = (s.size.X - readoutWidth) / count
+// barHeight is how tall the bar is: one row, or two while the kind in front
+// has several windows open.
+func (s *shell) barHeight() int {
+	if s.documentRow() {
+		return rowHeight * ui.Half
 	}
 
-	return image.Rect(index*width, 0, (index+1)*width, barHeight)
+	return rowHeight
+}
+
+// barTabs lays out the bar's tabs: a kind's tab on the top row, named after
+// its window when it has one open and after the kind with a count when it has
+// several, and those several on the second row.
+func (s *shell) barTabs() []barTab {
+	groups := s.kinds()
+	tabs := make([]barTab, 0, len(groups))
+	width := min(tabWidth, (s.size.X-readoutWidth)/max(len(groups), 1))
+	for at, group := range groups {
+		index := s.chooseKind(group)
+		shown := barTab{
+			rect: image.Rect(at*width, 0, (at+1)*width, rowHeight), tab: index, icons: s.icons(index, true),
+			label: kindName(group.view), count: len(group.tabs), boxes: false, front: false,
+		}
+		if len(group.tabs) == 1 {
+			shown.label, shown.count, shown.boxes = shortTitle(s.tabTitle(index), false), 0, s.closable(index)
+		}
+		shown.front = slices.Contains(group.tabs, s.active)
+		tabs = append(tabs, shown)
+	}
+	if group, found := s.frontKind(); found && len(group.tabs) > 1 {
+		tabs = append(tabs, s.documentTabs(group)...)
+	}
+
+	return tabs
+}
+
+// documentTabs lays out the second row: the open documents of the kind in
+// front.
+func (s *shell) documentTabs(group kindGroup) []barTab {
+	labels := s.documentLabels(group)
+	width := min(documentWidth, s.size.X/len(group.tabs))
+	tabs := make([]barTab, 0, len(group.tabs))
+	for at, index := range group.tabs {
+		tabs = append(tabs, barTab{
+			rect: image.Rect(at*width, rowHeight, (at+1)*width, rowHeight*ui.Half), tab: index,
+			icons: s.icons(index, false), label: labels[at], count: 0, boxes: s.closable(index), front: index == s.active,
+		})
+	}
+
+	return tabs
+}
+
+// icons are the icons a tab shows: its kind's, when asked, and those of any
+// pane beside its first, such as Watch beside a Map.
+func (s *shell) icons(index int, kind bool) []ui.Icon {
+	var icons []ui.Icon
+	for slot, shown := range s.tabs[index].panes {
+		if slot > 0 || kind {
+			icons = append(icons, viewIcon(shown.view))
+		}
+	}
+
+	return icons
 }
 
 // closable reports whether a tab closes from the bar: every tab except the
 // project browser's, which closes the editor.
 func (s *shell) closable(index int) bool {
 	for _, shown := range s.tabs[index].panes {
-		if shown.host.closeQuits {
+		if shown.host != nil && shown.host.closeQuits {
 			return false
 		}
 	}
@@ -69,48 +113,51 @@ func (s *shell) closable(index int) bool {
 	return true
 }
 
-// popRect returns a tab's pop-out box, left of its close box.
-func (s *shell) popRect(index int) image.Rectangle {
-	return s.closeRect(index).Sub(image.Pt(closeSize+ui.Gap, 0))
-}
-
-// closeRect returns a tab's close box.
-func (s *shell) closeRect(index int) image.Rectangle {
-	rect := s.tabRect(index)
-	top := (barHeight - closeSize) / ui.Half
+// closeBox is a bar tab's close box, at its right end.
+func closeBox(rect image.Rectangle) image.Rectangle {
+	top := rect.Min.Y + (rowHeight-closeSize)/ui.Half
 
 	return image.Rect(rect.Max.X-tabPad-closeSize, top, rect.Max.X-tabPad, top+closeSize)
 }
 
-// updateBar handles a press on the bar: a tab comes to the front, or its
-// panes are asked to close from its close box, which asks about unsaved
-// changes first. The bar keeps the mouse from the panes.
+// popBox is a bar tab's pop-out box, left of its close box.
+func popBox(rect image.Rectangle) image.Rectangle {
+	return closeBox(rect).Sub(image.Pt(closeSize+ui.Gap, 0))
+}
+
+// updateBar handles a press on the bar: a kind or a document comes to the
+// front, or a tab's panes are asked to close from its close box, which asks
+// about unsaved changes first, or pop out from its pop-out box. The bar keeps
+// the mouse from the panes.
 func (s *shell) updateBar(input *ui.Input) {
-	if !input.Cursor.In(image.Rect(0, 0, s.size.X, barHeight)) {
+	if !input.Cursor.In(image.Rect(0, 0, s.size.X, s.barHeight())) {
 		return
 	}
 	if input.Pressed {
-		s.pressTab(input.Cursor)
+		s.pressBar(input.Cursor)
 		s.pressReadout(input.Cursor)
 	}
 	quietMouse(input)
 }
 
-func (s *shell) pressTab(point image.Point) {
-	for index, each := range s.tabs {
-		if !point.In(s.tabRect(index)) {
+func (s *shell) pressBar(point image.Point) {
+	for _, shown := range s.barTabs() {
+		if !point.In(shown.rect) {
 			continue
 		}
-		s.active = index
+		s.active = shown.tab
+		each := s.tabs[shown.tab]
 		switch {
-		case !s.closable(index):
-		case point.In(s.closeRect(index)):
-			for _, shown := range each.panes {
-				shown.host.frame.Closing = true
+		case !shown.boxes:
+		case point.In(closeBox(shown.rect)):
+			for _, closing := range each.panes {
+				closing.host.frame.Closing = true
 			}
-		case point.In(s.popRect(index)):
+		case point.In(popBox(shown.rect)):
 			popOut(each.panes[each.focus])
 		}
+
+		return
 	}
 }
 
@@ -122,46 +169,50 @@ func quietMouse(input *ui.Input) {
 	input.WheelX, input.WheelY = 0, 0
 }
 
-// drawBar draws the window bar: a tab for each window, the one in front
-// underlined.
+// drawBar draws the window bar: the kinds, the documents of the kind in front
+// when it has several, and the clock's readout.
 func (s *shell) drawBar(screen *ebiten.Image) {
-	ui.FillRect(screen, image.Rect(0, 0, s.size.X, barHeight), ui.ColorPanel())
-	for index := range s.tabs {
-		s.drawTab(screen, index)
+	height := s.barHeight()
+	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorPanel())
+	if height > rowHeight {
+		ui.FillRect(screen, image.Rect(0, rowHeight, s.size.X, height), ui.ColorBackground())
+		ui.Divider(screen, image.Pt(0, rowHeight-ui.Hairline), image.Pt(s.size.X, rowHeight-ui.Hairline))
+	}
+	for _, shown := range s.barTabs() {
+		s.drawBarTab(screen, shown)
 	}
 	s.drawReadout(screen)
-	ui.Divider(screen, image.Pt(0, barHeight-ui.Hairline), image.Pt(s.size.X, barHeight-ui.Hairline))
+	ui.Divider(screen, image.Pt(0, height-ui.Hairline), image.Pt(s.size.X, height-ui.Hairline))
 }
 
-func (s *shell) drawTab(screen *ebiten.Image, index int) {
-	rect := s.tabRect(index)
-	if index == s.active {
+func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
+	rect := shown.rect
+	if shown.front {
 		ui.FillRect(screen, rect, ui.ColorBackground())
 		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ui.ColorSelect())
 	}
-	textLeft := rect.Min.X + tabPad
-	for _, shown := range s.tabs[index].panes {
-		ui.DrawIcon(screen, viewIcon(shown.view), image.Pt(textLeft, (barHeight-ui.IconSize)/ui.Half))
-		textLeft += ui.IconSize + ui.Gap
+	left := rect.Min.X + tabPad
+	for _, icon := range shown.icons {
+		ui.DrawIcon(screen, icon, image.Pt(left, rect.Min.Y+(rowHeight-ui.IconSize)/ui.Half))
+		left += ui.IconSize + ui.Gap
 	}
-	textLeft += ui.Gap
-	textRight := rect.Max.X - tabPad
-	if s.closable(index) {
-		textRight -= (closeSize + ui.Gap) * ui.Half
-		drawClose(screen, s.closeRect(index))
-		drawPopOut(screen, s.popRect(index))
+	left += ui.Gap
+	right := rect.Max.X - tabPad
+	if shown.boxes {
+		right -= (closeSize + ui.Gap) * ui.Half
+		drawClose(screen, closeBox(rect))
+		drawPopOut(screen, popBox(rect))
 	}
-	label := s.theme.FitText(s.label(index), textRight-textLeft)
-	s.theme.DrawText(screen, label, textLeft, (barHeight-ui.TextSize)/ui.Half-1, ui.ColorInk())
-	ui.Divider(screen, image.Pt(rect.Max.X-ui.Hairline, ui.Gap), image.Pt(rect.Max.X-ui.Hairline, barHeight-ui.Gap))
-}
-
-// label names a tab after its focused pane; a split tab shows each pane's
-// icon before it.
-func (s *shell) label(index int) string {
-	each := s.tabs[index]
-
-	return each.panes[each.focus].place.title
+	textY := rect.Min.Y + (rowHeight-ui.TextSize)/ui.Half - 1
+	if shown.count > 1 {
+		count := strconv.Itoa(shown.count)
+		right -= s.theme.MonoWidth(count)
+		s.theme.DrawMono(screen, count, right, rect.Min.Y+(rowHeight-ui.MonoSize)/ui.Half-1, ui.ColorMuted())
+		right -= ui.Gap * ui.Half
+	}
+	s.theme.DrawText(screen, s.theme.FitText(shown.label, right-left), left, textY, ui.ColorInk())
+	ui.Divider(screen, image.Pt(rect.Max.X-ui.Hairline, rect.Min.Y+ui.Gap),
+		image.Pt(rect.Max.X-ui.Hairline, rect.Max.Y-ui.Gap))
 }
 
 // drawPopOut draws a pop-out box: a window with an arrow leaving it.
