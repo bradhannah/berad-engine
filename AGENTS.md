@@ -49,5 +49,10 @@ must be generic and self-contained.
 - Commit, push, create pull requests or change remote state only with
   authorization. Use a dedicated branch; do not commit to `main`. Humans merge
   pull requests.
+- Record each increment of work in `docs/increments/`, as
+  `NNNN-topic.md`: the next number, four digits, and a short topic in lower
+  case with hyphens. Start from [the template](docs/templates/increment.md),
+  keep its status line current (Planned, Built, Judged), and list it in
+  [docs/README.md](docs/README.md). Only its author marks an increment Judged.
 - Project-authored source and documentation are MIT-licensed. Preserve the
   notices of any transferred third-party code.

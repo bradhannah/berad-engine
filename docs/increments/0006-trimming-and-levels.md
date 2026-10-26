@@ -1,12 +1,14 @@
-# Sixth build: trimming and levels
+# Increment 6: Trimming and levels
+
+**Status:** Built
 
 The sixth implementation step brings the terminal audio editor's waveform
 work into the Audio window. An author sees a recording's **waveform**, trims
 it to the **region** that plays, makes another recording from a region of
 it, and evens out its **level** with the gain berad-audio measures. A **Check files**
 button finds files that cannot be decoded. It is the second of the three
-audio builds; ambient sounds and the soundscape follow. It is held to the
-same strict checks as [the first build](FIRST_BUILD.md).
+audio increments; ambient sounds and the soundscape follow. It is held to the
+same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -32,8 +34,7 @@ same strict checks as [the first build](FIRST_BUILD.md).
 
 ## Decisions
 
-Settled by its author on 2026-10-25 for all three audio builds (see [the
-fifth build](FIFTH_BUILD.md)): the Audio window does everything the terminal
+Settled by its author on 2026-10-25 for all three audio increments (see [increment 5](0005-audio-window.md)): the Audio window does everything the terminal
 audio editor does except its Ultima V routing, and audio is always saved.
 
 Chosen while building, for its author to check:
@@ -79,7 +80,7 @@ Chosen while building, for its author to check:
   stop when it does.
 - **Trim and level edits:** `audio.set-region`, `audio.duplicate-region`,
   `audio.accept-calibration` and `audio.set-calibration` run on the audio
-  worker like the fifth build's edits, and undo takes each back. Accepting a
+  worker like increment 5's edits, and undo takes each back. Accepting a
   suggestion measures the saved region again rather than trusting the
   window's number.
 - **Auditioning:** the window's player plays part of a recording, or all of
@@ -92,14 +93,14 @@ Chosen while building, for its author to check:
   whole file and Loop; the region's start and end in seconds with Suggest,
   Whole file, Apply and Cancel; Duplicate region; and the level: how it is set,
   the suggestion, Use suggested level, Set level… and Target…. (These read
-  Use suggestion and Set gain… until the [seventh build](SEVENTH_BUILD.md)
+  Use suggestion and Set gain… until [increment 7](0007-ambient-and-soundscape.md)
   renamed a recording's gain its level.)
 - **Check files** sits in the toolbar and reports how many files cannot be
   decoded.
 
-## Not in this build
+## Not in this increment
 
 Ambient distance and fades, a new ambient cue from the descriptor's preset,
 the soundscape and the monitoring volume, and editing classification
-profiles and families ([the next build](SEVENTH_BUILD.md)). The waveform shows one channel, the
+profiles and families ([the next increment](0007-ambient-and-soundscape.md)). The waveform shows one channel, the
 loudest of the recording's channels at each moment.

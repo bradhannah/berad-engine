@@ -1,13 +1,14 @@
-# Fifth build: the Audio window
+# Increment 5: The Audio window
+
+**Status:** Built
 
 The fifth implementation step: the **Audio window**, where an author adds
 sounds to the project and edits its cues, and an **Audio section** in the
 project browser that lists them. Adding a sound copies its file into the
 project and asks who made it and whether it may be used in a commercial game.
-It is the first of three builds that bring the terminal audio editor's work
+It is the first of three increments that bring the terminal audio editor's work
 into the editor; trimming and levels, then ambient sounds and the soundscape,
-follow. It is held to the same strict checks as [the first
-build](FIRST_BUILD.md).
+follow. It is held to the same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -52,7 +53,7 @@ Settled by its author on 2026-10-25, before building:
   library becomes schema 4 when this editor first writes it; the terminal
   editor keeps writing the schema it opened, so Ultima V Redux's files stay
   schema 3.
-- The work comes in three builds: this one adds and edits sounds and cues,
+- The work comes in three increments: this one adds and edits sounds and cues,
   the next trims them and evens out their levels, and the third adds ambient
   distance and fades and the soundscape.
 
@@ -118,11 +119,11 @@ Chosen while building, for its author to check:
   where the cue is used first.
 - **The sample project's** library is schema 4, its generated tones cleared.
 
-## Not in this build
+## Not in this increment
 
 Trimming a recording and its waveform, duplicating a region, and
-calibrating levels ([the next build](SIXTH_BUILD.md)); ambient distance and fades, a new ambient cue from
-the descriptor's preset, the soundscape and the monitoring volume (the build
+calibrating levels ([the next increment](0006-trimming-and-levels.md)); ambient distance and fades, a new ambient cue from
+the descriptor's preset, the soundscape and the monitoring volume (the increment
 after). Classification profiles and families are shown nowhere yet. The
 terminal audio editor reads schema 4 once its berad-audio pin moves, a
 berad-sdk follow-up.

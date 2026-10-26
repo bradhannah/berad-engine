@@ -1,4 +1,6 @@
-# Ninth build: files and their pieces
+# Increment 9: Files and their pieces
+
+**Status:** Judged by its author on 2026-10-25
 
 The ninth implementation step lets an author cut one sound file into many
 recordings and see them together, as its author did for Ultima V Redux: a
@@ -6,7 +8,7 @@ file of footsteps becomes four recordings, which two cues share, and the file
 is never copied. A file gets a screen of its own, with every piece cut from
 it marked on its waveform, **Find sounds** to propose the rest, and
 the file's attribution, changed once for all of its recordings. It is held
-to the same strict checks as [the first build](FIRST_BUILD.md).
+to the same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -19,8 +21,7 @@ to the same strict checks as [the first build](FIRST_BUILD.md).
    it is allowed in a commercial game change once, for every recording cut
    from it.
 4. **Nothing is copied:** a piece is a recording with its own region of a
-   shared file, as Duplicate region already makes one at a time ([the sixth
-   build](SIXTH_BUILD.md)).
+   shared file, as Duplicate region already makes one at a time ([increment 6](0006-trimming-and-levels.md)).
 
 ## Decisions
 
@@ -29,7 +30,7 @@ from its uses, so one file can be cut into several sound effects and one
 recording used in several places, without duplicates.
 
 Agreed by its author on 2026-10-25, from the design board drawn for this
-build and the last:
+increment and the last:
 
 - **Three layers:** a *file* on disk, never copied; a *recording*, a piece
   of one file; a *cue*, one use in the game, which takes turns between its
@@ -56,7 +57,7 @@ Chosen while building, for its author to check:
 - **The Recordings list is by file,** each file a row with how many
   recordings were cut from it, and recordings with no file under Empty slots.
 - **Pieces of one file whose attribution differs are a problem** that the
-  Problems filter shows, from files attributed before this build.
+  Problems filter shows, from files attributed before this increment.
 
 ## Steps
 
@@ -64,7 +65,7 @@ Chosen while building, for its author to check:
 | --- | --- | --- | --- |
 | 1. Finding sounds | In berad-sdk: finding each sound between silences in a file, from the analysis berad-audio already keeps | Authoring tests with generated sound | Built (berad-sdk PR #17) |
 | 2. File edits | Changing a file's attribution for all its recordings, and making several recordings from proposed pieces, each one undoable edit | Apply-then-undo tests | Built |
-| 3. The windows | The Recordings list by file, the file's screen with its pieces, Find sounds and attribution, and the recording's screen showing the other pieces of its file | View tests and a real-window test | Built; not yet judged |
+| 3. The windows | The Recordings list by file, the file's screen with its pieces, Find sounds and attribution, and the recording's screen showing the other pieces of its file | View tests and a real-window test | Judged |
 
 ## Step results
 
@@ -81,7 +82,6 @@ Chosen while building, for its author to check:
   is, outlines the file's other pieces on its waveform, opens its file, and
   lists the cues that play it with how loud each plays it.
 
-## Not in this build
+## Not in this increment
 
-Loudness, which this build relies on for each new piece ([the eighth
-build](EIGHTH_BUILD.md)).
+Loudness, which this increment relies on for each new piece ([increment 8](0008-loudness.md)).

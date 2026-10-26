@@ -1,11 +1,13 @@
-# Third build: NPC workflows
+# Increment 3: NPC workflows
+
+**Status:** Built
 
 The third implementation step towards the
-[first useful authoring milestone](EDITOR_FEATURES.md#first-useful-authoring-milestone):
+[first useful authoring milestone](../EDITOR_FEATURES.md#first-useful-authoring-milestone):
 authoring NPC behaviour as workflows, placing NPCs on the map, and watching
 them follow their workflows in the preview while the player walks around. It
 also gives every editor window the look of the editor wireframes. It is held
-to the same strict checks as [the first build](FIRST_BUILD.md).
+to the same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
 
@@ -37,7 +39,7 @@ Settled by its author before building:
 
 - Every editor window takes the look of the wireframes, not only the new
   Workflow window.
-- The build goes as far as NPCs following their workflows in the preview.
+- The increment goes as far as NPCs following their workflows in the preview.
 - The first node types: **Go to** (an anchor), **Wait**, **Time switch**,
   **Random choice** and the **time-bound container**, plus a start node and
   notes.
@@ -352,7 +354,7 @@ Open:
   with and without icons now lines their labels up. The protocol is
   unchanged.
 
-## Not in this build
+## Not in this increment
 
 Reusable workflows with input parameters, workflow inheritance, nested
 containers, conversations, objects and placements other than NPCs, areas, and

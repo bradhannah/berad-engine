@@ -86,7 +86,7 @@ func TestStopSavesFilesAndEmptiesJournal(t *testing.T) {
 	}
 }
 
-// D9 and the first build plan: killing the orchestrator process loses no
+// D9 and increment 1's plan: killing the orchestrator process loses no
 // acknowledged edit. The child process never flushes, so only the journal
 // holds the edits; it is killed with SIGKILL, then the project is reopened.
 func TestKilledOrchestratorLosesNothing(t *testing.T) {

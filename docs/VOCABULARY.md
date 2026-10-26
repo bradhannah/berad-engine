@@ -99,3 +99,10 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Pick** | Choosing something in a Map window for another window, through the orchestrator |
 | **Preview** | Playing a zone inside the editor, run by the Map window that started it (D15); it never changes the project |
 | **Run** | One play of a zone from its start; a preview is a run, and each has its own ID |
+
+## Working terms
+
+| Term | Meaning |
+| --- | --- |
+| **Increment** | One planned piece of work on the engine and editor, with its own record in `docs/increments/`: what it proves, its decisions, its steps and their results |
+| **Increment status** | Planned until an increment's steps are built; Built once they are and the checks pass; Judged once its author has tried it and accepted it |

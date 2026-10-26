@@ -230,13 +230,12 @@ under consideration), **open** (undecided).
   editor stays for Ultima V Redux. Both read and write berad-audio's formats
   only through its authoring package, and those formats change only through a
   new version, so Ultima V Redux stays compatible. Choosing cues for workflows
-  comes first ([the fourth build](FOURTH_BUILD.md)); the Audio window follows
-  ([the fifth build](FIFTH_BUILD.md)), then trimming and levels ([the sixth
-  build](SIXTH_BUILD.md)), then ambient distance, profiles and families, and
-  the soundscape ([the seventh build](SEVENTH_BUILD.md)).
+  comes first ([increment 4](increments/0004-sounds-in-workflows.md)); the Audio window follows
+  ([increment 5](increments/0005-audio-window.md)), then trimming and levels ([increment 6](increments/0006-trimming-and-levels.md)), then ambient distance, profiles and families, and
+  the soundscape ([increment 7](increments/0007-ambient-and-soundscape.md)).
 - **Agreed:** the Audio window does everything the terminal audio editor does
   except its Ultima V routing (sounds per tile type, footstep surfaces, named
-  emitters, the music, dungeon and naval groups), in three builds: adding and
+  emitters, the music, dungeon and naval groups), in three increments: adding and
   editing sounds and cues, then trimming and levels, then ambient distance,
   fades and the soundscape.
 - **Agreed:** audio is always saved and undone with Cmd+Z, like everything
@@ -260,13 +259,12 @@ under consideration), **open** (undecided).
   reference; a Play sound node may choose another step for one moment.
   Monitor levels and soundscape gains are for listening only. Five steps,
   from −12 to +8 dB; one reference for every recording with an adjustment per
-  category; louder cues through berad-audio's schema 5 ([the eighth
-  build](EIGHTH_BUILD.md)).
+  category; louder cues through berad-audio's schema 5 ([increment 8](increments/0008-loudness.md)).
 - **Agreed (2026-10-25):** a file is kept apart from its uses: one file can
   be cut into many recordings, and one recording used by many cues, without
   copying the file. Evening out belongs to the recording; how loud it is meant
   to sound belongs to the cue. A file's pieces are seen together on its own
-  screen ([the ninth build](NINTH_BUILD.md)).
+  screen ([increment 9](increments/0009-files-and-pieces.md)).
 - **Agreed:** the editor understands a cue's category: music, SFX or ambient.
 - **Agreed:** a Play sound node plays a cue once and the workflow carries on;
   most sounds can come from a node.
@@ -352,7 +350,7 @@ What the engine provides to games, as far as decided:
 - **Agreed:** the player walks one cell at a time: a tap moves exactly one cell,
   holding keeps walking, and the player slides smoothly between cells, in eight
   directions, never squeezing diagonally between two cells that block (the
-  engine's `play` package; see [the second build](SECOND_BUILD.md)).
+  engine's `play` package; see [increment 2](increments/0002-walk-the-map.md)).
 - **Agreed:** uniform pixel scaling is guaranteed (no stretching), and layout
   supports several popular aspect ratios rather than one fixed layout. Text uses
   TTF fonts.

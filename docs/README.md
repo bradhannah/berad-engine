@@ -5,14 +5,28 @@
 | [Architecture](ARCHITECTURE.md) | The editor's numbered design decisions (D1-D17) |
 | [Editor features](EDITOR_FEATURES.md) | What the editor lets an author do, with agreed and candidate directions |
 | [Vocabulary](VOCABULARY.md) | One term per concept: spatial and editor terms |
-| [First build](FIRST_BUILD.md) | The first implementation's steps and results |
-| [Second build](SECOND_BUILD.md) | Walking the map: the preview's decisions, steps and results |
-| [Third build](THIRD_BUILD.md) | NPC workflows and the wireframe look: decisions, steps and results |
-| [Fourth build](FOURTH_BUILD.md) | Sounds in workflows: choosing and hearing cues, decisions, steps and results |
-| [Fifth build](FIFTH_BUILD.md) | The Audio window: adding sounds with their attribution and editing cues |
-| [Sixth build](SIXTH_BUILD.md) | Trimming and levels: a recording's waveform, region and measured gain |
-| [Seventh build](SEVENTH_BUILD.md) | Ambient sounds and the soundscape: distance, profiles and families, monitor levels |
-| [Eighth build](EIGHTH_BUILD.md) | Loudness: recordings evened out to a reference, how a cue is meant to sound |
-| [Ninth build](NINTH_BUILD.md) | Files and their pieces: a file cut into recordings, its attribution, finding its sounds |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
+
+## Increments
+
+Work on the engine and editor comes in increments. Each has its own record in
+`increments/`, named by its number and topic and started from [the
+template](templates/increment.md): what it proves, its decisions, its steps
+and their results, and what changed after its author tried it.
+
+An increment is **Planned** until its steps are built, **Built** once they
+are and the checks pass, and **Judged** once its author has tried it and
+accepted it.
+
+| Increment | Holds | Status |
+| --- | --- | --- |
+| [1. Foundation](increments/0001-foundation.md) | The first implementation's steps and results | Built |
+| [2. Walk the map](increments/0002-walk-the-map.md) | Walking the map: the preview's decisions, steps and results | Built |
+| [3. NPC workflows](increments/0003-npc-workflows.md) | NPC workflows and the wireframe look: decisions, steps and results | Built |
+| [4. Sounds in workflows](increments/0004-sounds-in-workflows.md) | Sounds in workflows: choosing and hearing cues, decisions, steps and results | Built |
+| [5. The Audio window](increments/0005-audio-window.md) | The Audio window: adding sounds with their attribution and editing cues | Built |
+| [6. Trimming and levels](increments/0006-trimming-and-levels.md) | Trimming and levels: a recording's waveform, region and measured gain | Built |
+| [7. Ambient sounds and the soundscape](increments/0007-ambient-and-soundscape.md) | Ambient sounds and the soundscape: distance, profiles and families, monitor levels | Built |
+| [8. Loudness](increments/0008-loudness.md) | Loudness: recordings evened out to a reference, how a cue is meant to sound | Judged |
+| [9. Files and their pieces](increments/0009-files-and-pieces.md) | Files and their pieces: a file cut into recordings, its attribution, finding its sounds | Judged |

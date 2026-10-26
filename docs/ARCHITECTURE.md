@@ -70,7 +70,7 @@ orchestrator holds the histories.
 
 If something an undo would revert was changed afterwards from a different
 window, the undo is refused with a message rather than overwriting that change.
-The first build compares individual items (for a floor, each layer of each
+Increment 1 compares individual items (for a floor, each layer of each
 cell and each anchor, plus its bounds, which a resize changes along with every
 cell it adds or removes). Undoing the creation of a document is refused once
 another window has changed that document. *Open:* whether other kinds of
@@ -99,7 +99,7 @@ name in one zone). Deleting something that other content references shows where
 it is used and lets the author cancel or proceed; proceeding leaves broken
 references flagged in a Problems view, and the deletion can be undone.
 
-**How the first build does it:**
+**How increment 1 does it:**
 
 - Creating, renaming and deleting documents are edits on the **project index**,
   an in-memory list of every document that the orchestrator rebuilds from the
@@ -255,7 +255,7 @@ typed text, until Apply sends it; the window asks before it is lost.
 ## D10 — Lifecycle and failure
 
 - One orchestrator per project, protected by a lock. *Open:* a second launch on
-  an open project should join the running editor; the first build refuses it
+  an open project should join the running editor; increment 1 refuses it
   with directions instead.
 - The orchestrator starts every window process; windows never start each other.
 - The editor quits when its last window closes (later: when the project browser
@@ -385,7 +385,7 @@ back with a short reason the window shows.
   runs it in that window's process (one tick per frame); the arrow keys walk,
   the view follows the player and switches floor when they take stairs, and
   `P` stops it. The other views of the zone draw the player from the stream
-  (D7). See [the second build](SECOND_BUILD.md) for the movement rules.
+  (D7). See [increment 2](increments/0002-walk-the-map.md) for the movement rules.
 - *Not built yet:* keeping state until Reset (there is none to keep yet), test
   profiles, the clock, conversations and the world-state view.
 
