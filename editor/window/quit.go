@@ -20,8 +20,9 @@ const (
 )
 
 // windowKeys handles what every window does the same way, before its view
-// sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, and the close
-// button asks to close the window.
+// sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, the close
+// button asks to close the window, and in a shell Cmd+Shift+O moves a pane
+// into a window of its own.
 func (h *host) windowKeys(input *ui.Input) {
 	switch h.surface.Closing() {
 	case closeQuit:
@@ -35,6 +36,8 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.askQuit()
 	case input.Consume(ui.KeyS, ui.Cmd()):
 		h.save()
+	case h.popOut != nil && input.Consume(ui.KeyO, ui.CmdShift()):
+		h.popOut()
 	}
 }
 

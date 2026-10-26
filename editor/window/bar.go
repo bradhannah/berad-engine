@@ -69,6 +69,11 @@ func (s *shell) closable(index int) bool {
 	return true
 }
 
+// popRect returns a tab's pop-out box, left of its close box.
+func (s *shell) popRect(index int) image.Rectangle {
+	return s.closeRect(index).Sub(image.Pt(closeSize+ui.Gap, 0))
+}
+
 // closeRect returns a tab's close box.
 func (s *shell) closeRect(index int) image.Rectangle {
 	rect := s.tabRect(index)
@@ -97,10 +102,14 @@ func (s *shell) pressTab(point image.Point) {
 			continue
 		}
 		s.active = index
-		if s.closable(index) && point.In(s.closeRect(index)) {
+		switch {
+		case !s.closable(index):
+		case point.In(s.closeRect(index)):
 			for _, shown := range each.panes {
 				shown.host.frame.Closing = true
 			}
+		case point.In(s.popRect(index)):
+			popOut(each.panes[each.focus])
 		}
 	}
 }
@@ -138,8 +147,9 @@ func (s *shell) drawTab(screen *ebiten.Image, index int) {
 	textLeft += ui.Gap
 	textRight := rect.Max.X - tabPad
 	if s.closable(index) {
-		textRight -= closeSize + ui.Gap
+		textRight -= (closeSize + ui.Gap) * ui.Half
 		drawClose(screen, s.closeRect(index))
+		drawPopOut(screen, s.popRect(index))
 	}
 	label := s.theme.FitText(s.label(index), textRight-textLeft)
 	s.theme.DrawText(screen, label, textLeft, (barHeight-ui.TextSize)/ui.Half-1, ui.ColorInk())
@@ -152,6 +162,15 @@ func (s *shell) label(index int) string {
 	each := s.tabs[index]
 
 	return each.panes[each.focus].place.title
+}
+
+// drawPopOut draws a pop-out box: a window with an arrow leaving it.
+func drawPopOut(screen *ebiten.Image, rect image.Rectangle) {
+	inner := rect.Inset(ui.Gap / ui.Half)
+	window := image.Rect(inner.Min.X, inner.Min.Y+ui.Gap, inner.Max.X-ui.Gap, inner.Max.Y)
+	ui.StrokeRect(screen, window, ui.Hairline, ui.ColorMuted())
+	middle := image.Pt(window.Min.X+window.Dx()/ui.Half, window.Max.Y-window.Dy()/ui.Half)
+	ui.Line(screen, middle, image.Pt(inner.Max.X, inner.Min.Y), ui.Outline, ui.ColorMuted())
 }
 
 // drawClose draws a close box's cross.

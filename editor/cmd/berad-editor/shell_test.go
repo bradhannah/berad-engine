@@ -130,3 +130,37 @@ func TestShellShowsWatchBesideItsMap(t *testing.T) {
 	shellLog(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestShellPopsATabOut paints two strokes in a Map tab, then pops the tab out
+// with Cmd+Shift+O (increment 10): the Map opens in a window process of its
+// own, the tab closes once that window has joined, and undo in the new window
+// takes back the second stroke made in the tab, because their undo list
+// carried over, leaving the first.
+func TestShellPopsATabOut(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserScript := script(
+		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(600),
+		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	inTab := script(
+		must("state:loaded", 600), wait(5), keys("3"), drag("cell:4,8", "cell:5,8"), wait(30),
+		drag("cell:6,8", "cell:7,8"), wait(30), keys("Cmd+Shift+O"), wait(60),
+	)
+	poppedOut := script(must("state:loaded", 600), wait(30), keys("Cmd+Z"), wait(60))
+	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {inTab, poppedOut}})
+	noCrashes(t, project)
+
+	logs, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*.log"))
+	if err != nil || len(logs) != 2 {
+		t.Fatalf("the shell and the popped-out window: %v %v", logs, err)
+	}
+	ground, _ := readFloor(t, project, "ground-floor")
+	for col := 4; col <= 7; col++ {
+		if got, first := cellOf(t, ground, tilefloor.LayerGround, col, 8), col <= 5; (got == "road") != first {
+			t.Fatalf("ground cell %d = %q: the first stroke stays, undo in the popped-out window takes the second",
+				col, got)
+		}
+	}
+}

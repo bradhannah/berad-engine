@@ -143,7 +143,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | 3. The shell | `open --shell`; the window bar, with new icons for the project, the clock and Watch; tabs, focus, and routing of input and the input method; panes run hidden and are drawn only when shown; a crash closes one tab; Cmd+W and Cmd+Q; the window's title from the focused pane | A real-window test opening the browser, a Map and Audio as tabs | Built |
 | 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Built |
 | 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Built |
-| 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Planned |
+| 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Built |
 | 7. Measuring and judging | Frame time and command-to-event time with a Map and its Watch showing and a preview running, against separate windows | Numbers recorded here; judged by its author | Planned |
 
 Where each step changes code:
@@ -222,6 +222,15 @@ Where each step changes code:
   the other real-window tests. Seen in the test's screenshot: at 1200 pixels
   the Map's canvas is narrow beside its inspector, and the clock's panel,
   opened by the preview, covers the top of Watch until it is closed.
+- **Pop out:** every tab but the project browser's has a pop-out box beside
+  its close box, and Cmd+Shift+O pops out the focused pane. The pane asks
+  the orchestrator for its view in a window process of its own and closes,
+  saving first, once that window has joined. The pinned clock does not pop
+  out. Verified with a real-window test that paints two strokes in a Map
+  tab, pops it out, and undoes in the new window: the second stroke goes and
+  the first stays, so the undo list carried over; two window processes ran,
+  the shell and the popped-out Map. `make check` and the other real-window
+  tests pass.
 
 ## Changed after its author tried it
 

@@ -73,6 +73,8 @@ type host struct {
 	hosts      func(protocol.Host)
 	// saveShot saves a screenshot; a shell saves its whole window instead.
 	saveShot func(screen *ebiten.Image, path string) error
+	// popOut moves a shell's pane into a window of its own, for Cmd+Shift+O.
+	popOut func()
 }
 
 func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn surface) *host {
@@ -88,7 +90,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		floating: false, closeQuits: false, hosts: nil, saveShot: saveScreenshot,
+		floating: false, closeQuits: false, hosts: nil, saveShot: saveScreenshot, popOut: nil,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created

@@ -99,6 +99,7 @@ func runShell(args Args, registry *plugin.Registry) error {
 	}
 	project.host.closeQuits = true
 	project.host.hosts = shown.host
+	project.host.popOut = nil
 	// The pinned clock is a Clock window, always running.
 	project.host.Open(clockview.ViewName, args.Target, false)
 	ebiten.SetWindowTitle(project.host.view.Title(conn))
@@ -130,9 +131,25 @@ func (s *shell) addPane(conn *client.Client, args Args) (*pane, error) {
 	if err != nil {
 		return nil, err
 	}
+	shown.host.popOut = func() { popOut(shown) }
 	s.place(shown)
 
 	return shown, nil
+}
+
+// popOut moves a pane into a window process of its own. The orchestrator
+// starts the window, then tells the pane to close, saving first, once the
+// window has joined, so the undo list they share carries over.
+func popOut(shown *pane) {
+	shown.host.frame.Status("Opening this in a window of its own")
+	shown.host.background(func(ctx context.Context) func() {
+		result, err := shown.host.conn.PopOut(ctx, shown.view, shown.target, shown.host.conn.Window())
+		if err == nil {
+			return nil
+		}
+
+		return func() { shown.host.frame.Report("")(result, err) }
+	})
 }
 
 // newPane runs a connected window's view in a pane.
