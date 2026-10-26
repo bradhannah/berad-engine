@@ -142,7 +142,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | 2. Hosting | Protocol version 15: a hello that hosts panes, a Host message naming the view, target and window to host, and Open's pop out. The orchestrator hosts in a connected shell what it would otherwise start, counts hosted windows when deciding whether one is open or opening, and quits when the shell's process ends | Codec round-trip tests; headless orchestrator tests with a fake shell | Built |
 | 3. The shell | `open --shell`; the window bar, with new icons for the project, the clock and Watch; tabs, focus, and routing of input and the input method; panes run hidden and are drawn only when shown; a crash closes one tab; Cmd+W and Cmd+Q; the window's title from the focused pane | A real-window test opening the browser, a Map and Audio as tabs | Built |
 | 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Built |
-| 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Planned |
+| 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Built |
 | 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Planned |
 | 7. Measuring and judging | Frame time and command-to-event time with a Map and its Watch showing and a preview running, against separate windows | Numbers recorded here; judged by its author | Planned |
 
@@ -209,6 +209,19 @@ Where each step changes code:
   brings a text document's tab to the front and moves the hidden preview on
   an hour with the panel's +1h; a view test of the readout; `make check` and
   the other real-window tests.
+- **Split:** Watch opens as the right pane of the tab of a Map of its zone
+  when that Map is alone in its tab, and that tab comes to the front with the
+  Map still focused, so its arrow keys still walk the preview
+  (`editor/window/split.go`). The Map takes 58% at first; the divider drags
+  between a quarter and three quarters. A press in either pane focuses it,
+  outlined in blue. The tab shows both panes' icons and the focused pane's
+  title. Cmd+W closes the focused pane and leaves the other; the tab's close
+  box closes both. Verified with a real-window test that starts a preview
+  and opens Watch from the Map, and unit tests of where Watch goes, the
+  split's layout, dragging its divider and focusing a pane; `make check` and
+  the other real-window tests. Seen in the test's screenshot: at 1200 pixels
+  the Map's canvas is narrow beside its inspector, and the clock's panel,
+  opened by the preview, covers the top of Watch until it is closed.
 
 ## Changed after its author tried it
 

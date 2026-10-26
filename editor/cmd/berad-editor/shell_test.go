@@ -107,3 +107,26 @@ func TestShellPinsTheClock(t *testing.T) {
 	shellLog(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestShellShowsWatchBesideItsMap previews the sample zone and asks for Watch
+// from the Map (increment 10): Watch opens beside the Map, in its tab, and
+// follows the preview the Map still runs.
+func TestShellShowsWatchBesideItsMap(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "shell-split.png")
+	browserScript := script(
+		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(600),
+		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(5), keys("P"), click("cell:2,-2"), must("state:previewing", 300),
+		click("ui:watch"), wait(120), step{Repeat: 2, Screenshot: shot}, walk("ArrowRight"), wait(10),
+	)
+	watchScript := script(must("state:previewing", 900), wait(10))
+	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}, "watch": {watchScript}})
+	noCrashes(t, project)
+	shellLog(t, project)
+	t.Logf("screenshot: %s", shot)
+}

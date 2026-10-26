@@ -2,7 +2,6 @@ package window
 
 import (
 	"image"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -131,9 +130,12 @@ func (s *shell) drawTab(screen *ebiten.Image, index int) {
 		ui.FillRect(screen, rect, ui.ColorBackground())
 		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ui.ColorSelect())
 	}
-	iconCorner := image.Pt(rect.Min.X+tabPad, (barHeight-ui.IconSize)/ui.Half)
-	ui.DrawIcon(screen, viewIcon(s.tabs[index].panes[0].view), iconCorner)
-	textLeft := rect.Min.X + tabPad + ui.IconSize + ui.Gap*ui.Half
+	textLeft := rect.Min.X + tabPad
+	for _, shown := range s.tabs[index].panes {
+		ui.DrawIcon(screen, viewIcon(shown.view), image.Pt(textLeft, (barHeight-ui.IconSize)/ui.Half))
+		textLeft += ui.IconSize + ui.Gap
+	}
+	textLeft += ui.Gap
 	textRight := rect.Max.X - tabPad
 	if s.closable(index) {
 		textRight -= closeSize + ui.Gap
@@ -144,14 +146,12 @@ func (s *shell) drawTab(screen *ebiten.Image, index int) {
 	ui.Divider(screen, image.Pt(rect.Max.X-ui.Hairline, ui.Gap), image.Pt(rect.Max.X-ui.Hairline, barHeight-ui.Gap))
 }
 
-// label names a tab after its panes' titles.
+// label names a tab after its focused pane; a split tab shows each pane's
+// icon before it.
 func (s *shell) label(index int) string {
-	titles := make([]string, 0, len(s.tabs[index].panes))
-	for _, shown := range s.tabs[index].panes {
-		titles = append(titles, shown.place.title)
-	}
+	each := s.tabs[index]
 
-	return strings.Join(titles, " · ")
+	return each.panes[each.focus].place.title
 }
 
 // drawClose draws a close box's cross.

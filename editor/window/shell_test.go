@@ -2,9 +2,13 @@ package window
 
 import (
 	"errors"
+	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // TestSafelyTurnsAPanicIntoAnError catches a pane's panic, so the shell can
@@ -40,5 +44,58 @@ func TestRemovingATabKeepsTheTabInFront(t *testing.T) {
 	shown.remove(first)
 	if len(shown.tabs) != 0 || shown.focused() != nil {
 		t.Fatalf("after removing the last tab: %d tabs", len(shown.tabs))
+	}
+}
+
+// TestWatchOpensBesideAMapOfItsZone puts Watch in the tab of a Map of its
+// zone, which comes to the front with the Map still focused, and Watch of a
+// zone with no Map open in a tab of its own.
+func TestWatchOpensBesideAMapOfItsZone(t *testing.T) {
+	t.Parallel()
+	town, harbour := ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC"), ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHD")
+	project, townMap := &pane{view: "browser"}, &pane{view: "map", target: town}
+	shown := &shell{tabs: []*tab{{panes: []*pane{project}}, {panes: []*pane{townMap}}}, active: 0}
+	townWatch := &pane{view: "watch", target: town}
+	shown.place(townWatch)
+	if len(shown.tabs) != 2 || shown.active != 1 || len(shown.tabs[1].panes) != 2 || shown.focused() != townMap {
+		t.Fatalf("watch beside its map: %d tabs, front %d, focused %v", len(shown.tabs), shown.active, shown.focused())
+	}
+	shown.place(&pane{view: "watch", target: harbour})
+	if len(shown.tabs) != 3 || shown.active != 2 {
+		t.Fatalf("watch of another zone: %d tabs, front %d", len(shown.tabs), shown.active)
+	}
+	shown.remove(townWatch)
+	if len(shown.tabs[1].panes) != 1 || shown.tabs[1].panes[0] != townMap {
+		t.Fatal("closing watch leaves its map")
+	}
+}
+
+// TestSplitDividerDragsAndFocuses lays a split tab out either side of its
+// divider, drags the divider within its limits, and focuses the pane a press
+// lands in.
+func TestSplitDividerDragsAndFocuses(t *testing.T) {
+	t.Parallel()
+	left, right := &pane{view: "map"}, &pane{view: "watch"}
+	shown := &shell{tabs: []*tab{{panes: []*pane{left, right}, split: 0.5}}, size: image.Pt(1000, 832)}
+	shown.layout()
+	if left.rect.Max.X != 496 || right.rect.Min.X != 504 || left.rect.Min.Y != barHeight || right.rect.Max.X != 1000 {
+		t.Fatalf("split rects %v %v", left.rect, right.rect)
+	}
+	press := ui.NewInput(image.Pt(500, 400))
+	press.Pressed, press.Down = true, true
+	shown.updateSplit(&press)
+	drag := ui.NewInput(image.Pt(950, 400))
+	drag.Down = true
+	shown.updateSplit(&drag)
+	if split := shown.tabs[0].split; split != maxSplit || !drag.Cursor.Eq(outside()) {
+		t.Fatalf("dragged to %v, the panes got %v", split, drag.Cursor)
+	}
+	shown.updateSplit(&ui.Input{Cursor: image.Pt(950, 400)})
+	shown.layout()
+	click := ui.NewInput(image.Pt(900, 400))
+	click.Pressed, click.Down = true, true
+	shown.updateSplit(&click)
+	if shown.focused() != right {
+		t.Fatal("a press in the right pane focuses it")
 	}
 }

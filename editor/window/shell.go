@@ -15,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/clockview"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // openedQueue is how many windows can finish connecting between two frames.
@@ -45,12 +46,16 @@ type shell struct {
 	clock     *pane
 	clockOpen bool
 	clockLive bool
+	// dragging is set while the divider of a split tab is dragged.
+	dragging bool
 }
 
-// tab is one tab of the window bar.
+// tab is one tab of the window bar: one pane, or two side by side, the left
+// taking split of its width.
 type tab struct {
 	panes []*pane
 	focus int
+	split float64
 }
 
 // pane is one window shown in the shell: its host, its part of the shell's
@@ -59,6 +64,7 @@ type tab struct {
 type pane struct {
 	host   *host
 	view   string
+	target ids.ULID
 	place  *paneSurface
 	image  *ebiten.Image
 	rect   image.Rectangle
@@ -114,7 +120,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
-		clock: nil, clockOpen: false, clockLive: false,
+		clock: nil, clockOpen: false, clockLive: false, dragging: false,
 	}
 }
 
@@ -124,8 +130,7 @@ func (s *shell) addPane(conn *client.Client, args Args) (*pane, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.tabs = append(s.tabs, &tab{panes: []*pane{shown}, focus: 0})
-	s.active = len(s.tabs) - 1
+	s.place(shown)
 
 	return shown, nil
 }
@@ -139,7 +144,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	place := newPaneSurface()
 	shown := &pane{
 		host: newHost(conn, newView(args, conn.Window(), s.theme), args.View, s.theme, place),
-		view: args.View, place: place, image: nil, rect: ui.Zero(), failed: nil,
+		view: args.View, target: args.Target, place: place, image: nil, rect: ui.Zero(), failed: nil,
 	}
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
@@ -197,11 +202,12 @@ func (s *shell) show(opened openedPane) {
 func (s *shell) Update() error {
 	s.receiveOpened()
 	s.layout()
-	focused := s.focused()
-	target := s.target(focused)
-	input := s.readInput(target)
+	input := s.readInput(s.target(s.focused()))
 	s.updateBar(&input)
-	s.route(input, target, focused)
+	s.updateSplit(&input)
+	s.layout()
+	focused := s.focused()
+	s.route(input, s.target(focused), focused)
 	for _, shown := range s.panes() {
 		s.run(shown)
 	}
@@ -218,11 +224,8 @@ func (s *shell) Update() error {
 // layout gives every pane its part of the window. A pane of a hidden tab
 // keeps the size it will be shown at.
 func (s *shell) layout() {
-	area := image.Rect(0, barHeight, s.size.X, s.size.Y)
 	for _, each := range s.tabs {
-		for _, shown := range each.panes {
-			shown.rect = area
-		}
+		layoutTab(each, s.area())
 	}
 	if s.clock != nil {
 		s.clock.rect = s.panelRect()
@@ -394,13 +397,27 @@ func (s *shell) panes() []*pane {
 	return all
 }
 
-// focused is the pane that takes the keyboard: the focused pane of the tab in
-// front.
-func (s *shell) focused() *pane {
+// area is the part of the window under the bar, where tabs show.
+func (s *shell) area() image.Rectangle {
+	return image.Rect(0, barHeight, s.size.X, s.size.Y)
+}
+
+// front is the tab in front, if there is one.
+func (s *shell) front() *tab {
 	if s.active >= len(s.tabs) {
 		return nil
 	}
-	front := s.tabs[s.active]
+
+	return s.tabs[s.active]
+}
+
+// focused is the pane that takes the keyboard: the focused pane of the tab in
+// front.
+func (s *shell) focused() *pane {
+	front := s.front()
+	if front == nil {
+		return nil
+	}
 
 	return front.panes[front.focus]
 }
@@ -408,10 +425,11 @@ func (s *shell) focused() *pane {
 // Draw draws the tab in front and the window bar.
 func (s *shell) Draw(screen *ebiten.Image) {
 	screen.Fill(ui.ColorBackground())
-	if s.active < len(s.tabs) {
-		for _, shown := range s.tabs[s.active].panes {
+	if front := s.front(); front != nil {
+		for _, shown := range front.panes {
 			drawPane(screen, shown)
 		}
+		s.drawSplit(screen, front)
 	}
 	s.drawClock(screen)
 	s.drawBar(screen)
