@@ -26,8 +26,8 @@ func TestAudioWindowDragsAndAttributes(t *testing.T) {
 	audioScript := script(
 		must("state:dialog", 900), wait(5), click("ui:dialog-ok"),
 		must("state:selected=cue:sfx/padded_knock", 900), must("state:waveform", 900), wait(10),
-		drag("wave:start", "ui:play-whole", "ui:duplicate-region"), wait(5), click("ui:apply-region"), wait(40),
-		click("ui:cleared"), wait(40), click("ui:edit-attribution"), must("state:dialog", 60),
+		drag("wave:start", "ui:part-whole", "ui:duplicate-region"), wait(5), click("ui:apply-region"), wait(40),
+		step{Wheel: &[2]float64{0, -10}, Repeat: 2, At: "ui:part-whole"}, wait(5), click("ui:cleared"), wait(40), click("ui:edit-attribution"), must("state:dialog", 60),
 		click("ui:source-type"), typed("recorded"), click("ui:add-step"), typed("trimmed"),
 		click("ui:step-tool-0"), typed("Audacity"), step{Repeat: 2, Screenshot: dialogShot},
 		click("ui:dialog-ok"), wait(40), step{Repeat: 2, Screenshot: panelShot}, quit(),

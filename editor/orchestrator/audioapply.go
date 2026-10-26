@@ -27,7 +27,7 @@ var (
 	errNoRecording  = errors.New("the audio library has no such recording")
 	errCategory     = errors.New("a category is music, sfx or ambient")
 	errNoRecordings = errors.New("a cue plays at least one recording")
-	errGain         = errors.New("a cue's gain is between 0 and 1")
+	errGain         = errors.New("a cue's gain is between 0 and what its library's schema allows")
 )
 
 // apply carries out one audio edit and returns the cue or recording it made.
@@ -131,9 +131,13 @@ func (s *audioSession) createCue(cue protocol.NewCue) (string, error) {
 	if err := s.library.AddRecording(slot); err != nil {
 		return "", authoringError(err)
 	}
+	category := cue.Category
+	if category == "" {
+		category = protocol.CategorySFX
+	}
 	made, profile := authoring.Cue{
-		Name: name, RecordingID: slot, RecordingIDs: nil, Selection: "", VolumeModifier: 1, HowToHear: how,
-		SearchTerms: nil,
+		Name: name, RecordingID: slot, RecordingIDs: nil, Selection: "", VolumeModifier: s.normalGain(category),
+		HowToHear: how, SearchTerms: nil,
 	}, ""
 	ambient := cue.Category == protocol.CategoryAmbient
 	if ambient {
@@ -228,15 +232,18 @@ func (s *audioSession) replaceFile(replace protocol.ReplaceFile) (string, error)
 	return replace.Recording, s.copyIn(replace.Recording, replace.Path, replace.Attribution)
 }
 
-// copyIn copies the author's file into the project for a recording, then
-// records its attribution. berad-audio decodes the file first, so one that
-// cannot play is refused before anything is copied.
+// copyIn copies the author's file into the project for a recording, records
+// its attribution and evens it out to the reference. berad-audio decodes the
+// file first, so one that cannot play is refused before anything is copied.
 func (s *audioSession) copyIn(recording, path string, attribution protocol.Attribution) error {
 	if err := s.library.ImportRecording(recording, path); err != nil {
 		return fmt.Errorf("add the sound: %w", authoringError(err))
 	}
+	if err := s.attribute(recording, attribution); err != nil {
+		return err
+	}
 
-	return s.attribute(recording, attribution)
+	return s.measureNew(recording)
 }
 
 // attribute records who made a recording, where it came from, what kind of
@@ -292,7 +299,7 @@ func (s *audioSession) setCue(change protocol.CueChange) (string, error) {
 		}
 	}
 	if change.Gain != nil {
-		if *change.Gain < 0 || *change.Gain > 1 {
+		if *change.Gain < 0 || *change.Gain > s.maxCueGain() {
 			return "", errGain
 		}
 		cue.VolumeModifier = *change.Gain
@@ -318,22 +325,24 @@ func terms(values []string) []string {
 }
 
 // setCategory names a cue's category in the descriptor, or returns it to the
-// default when empty.
+// default when empty. The cue keeps its step: its gain moves from the old
+// category's adjustment to the new one's.
 func (s *audioSession) setCategory(change protocol.CategoryChange) (string, error) {
 	if !slices.Contains(s.library.CueIDs(), change.Cue) {
 		return "", errNoCue
 	}
-	if change.Category == "" {
-		delete(s.categories, change.Cue)
-
-		return change.Cue, nil
-	}
-	if !validCategory(change.Category) {
+	if change.Category != "" && !validCategory(change.Category) {
 		return "", errCategory
 	}
-	s.categories[change.Cue] = change.Category
+	was := s.categoryOf(change.Cue)
+	if change.Category == "" {
+		delete(s.categories, change.Cue)
+	} else {
+		s.categories[change.Cue] = change.Category
+	}
+	now := s.categoryOf(change.Cue)
 
-	return change.Cue, nil
+	return change.Cue, s.rescale(now, s.gains[now]-s.gains[was], change.Cue)
 }
 
 // setRecordings sets the recordings a cue plays, in turn when there are

@@ -195,7 +195,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	if s.preview.stepping {
 		ticks = stepBudget
 	}
-	var asked []string
+	var asked []npcrun.Sound
 	for range ticks {
 		passed := s.preview.clock.Advance()
 		asked = asked[:0]
@@ -216,14 +216,19 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 }
 
 // hear plays the cues NPCs asked for in one tick, each once however many
-// NPCs asked for it.
-func (s *State) hear(ctx *frame.Context, cues []string) {
+// NPCs asked for it, at the loudness the first asked for.
+func (s *State) hear(ctx *frame.Context, sounds []npcrun.Sound) {
 	played := map[string]bool{}
-	for _, cue := range cues {
-		if !played[cue] {
-			played[cue] = true
-			s.preview.heard[cue]++
-			ctx.Sounds.Play(cue)
+	for _, sound := range sounds {
+		if played[sound.Cue] {
+			continue
+		}
+		played[sound.Cue] = true
+		s.preview.heard[sound.Cue]++
+		if sound.Loudness != "" {
+			ctx.Sounds.PlayAt(sound.Cue, sound.Loudness)
+		} else {
+			ctx.Sounds.Play(sound.Cue)
 		}
 	}
 }

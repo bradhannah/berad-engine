@@ -75,7 +75,8 @@ func everyMessage(t *testing.T) []protocol.Message {
 			Families: []string{"wood"},
 			AmbientPreset: &protocol.AmbientPreset{CuePrefix: "bed/", Profile: "bed", Family: "water",
 				HowToHear: "Stand near water.", Gain: 0.7},
-			SliderGains: []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1}},
+			SliderGains: []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1},
+			ReferenceDB: -20, CategoryGainsDB: map[string]float64{protocol.CategoryAmbient: -3}, MaxCueGain: 3.98},
 		protocol.KindAudioEdit: protocol.AudioEdit{Edit: protocol.AudioAddSound, Gesture: "g",
 			Args: json.RawMessage(`{"cue":"door/open","path":"/sounds/door.wav","attribution":{"creator":"c"}}`)},
 		protocol.KindAudioChanged: protocol.AudioChanged{Revision: 3},
@@ -83,12 +84,16 @@ func everyMessage(t *testing.T) []protocol.Message {
 			Recording: "door_a", From: 10, To: 900, Columns: 3, Region: &protocol.AudioWindow{StartMs: 20, EndMs: 800},
 			Version: "v", DurationMs: 1000, Peaks: []byte{0, 128, 255},
 			Suggested: &protocol.AudioWindow{StartMs: 30, EndMs: 700},
+			Sounds:    []protocol.AudioWindow{{StartMs: 30, EndMs: 200}, {StartMs: 400, EndMs: 700}},
 			Calibration: &protocol.AudioCalibration{Method: "active_rms", MeasuredDB: -26, TargetDB: -20, PeakDB: -6,
 				GainDB: 6, Limited: true},
 			Problem: "p",
 		},
 		protocol.KindAudioCheck: protocol.AudioCheck{Broken: []protocol.AudioProblem{{Recording: "door_a", Reason: "r"}}},
-		protocol.KindRecording:  protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
+		protocol.KindAudioLoudness: protocol.AudioLoudness{Recordings: []protocol.RecordingLoudness{
+			{ID: "door_a", MeasuredDB: -26, PeakDB: -6, TargetDB: -20}, {ID: "spare", Problem: "silent"},
+		}},
+		protocol.KindRecording: protocol.Recording{ID: "door_a", Offset: 3, Version: "v", Size: 9, Data: []byte{1, 2, 3}},
 		protocol.KindPreviewControl: protocol.PreviewControl{
 			Run: testID, Action: protocol.ControlJump, Placement: testID, Rate: 60, Seconds: 9 * 3600,
 		},
@@ -184,6 +189,8 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.AudioAnalysis](message)
 		case protocol.KindAudioCheck:
 			check = roundTrip[protocol.AudioCheck](message)
+		case protocol.KindAudioLoudness:
+			check = roundTrip[protocol.AudioLoudness](message)
 		default:
 			continue
 		}
@@ -226,8 +233,18 @@ func TestAudioEditArgsRoundTrip(t *testing.T) {
 			DefaultTarget: true},
 		protocol.AudioSetAmbient: protocol.AmbientChange{Cue: "bed/river",
 			Ambient: protocol.AmbientSettings{RadiusTiles: 6.5, FadeInMs: 500, FadeOutMs: 900}},
-		protocol.AudioSetProfile: protocol.ProfileChange{Cue: "door/open", Profile: "door"},
-		protocol.AudioSetFamily:  protocol.FamilyChange{Recording: "door_a", Family: "wood"},
+		protocol.AudioSetProfile:  protocol.ProfileChange{Cue: "door/open", Profile: "door"},
+		protocol.AudioSetFamily:   protocol.FamilyChange{Recording: "door_a", Family: "wood"},
+		protocol.AudioSetLoudness: protocol.LoudnessChange{Cue: "door/open", Step: "louder"},
+		protocol.AudioSetCategoryGain: protocol.CategoryGainChange{Category: protocol.CategoryAmbient,
+			GainDB: -3},
+		protocol.AudioSetReference: protocol.ReferenceChange{TargetDB: -18},
+		protocol.AudioMeasureAll:   protocol.AudioItem{ID: ""},
+		protocol.AudioUseReference: protocol.AudioItem{ID: "door_a"},
+		protocol.AudioSetFileAttribution: protocol.FileAttributionChange{File: "imported/door.wav",
+			Attribution: attribution},
+		protocol.AudioMakePieces: protocol.MakePieces{Recording: "door_a",
+			Regions: []protocol.AudioWindow{{StartMs: 1, EndMs: 2}, {StartMs: 3, EndMs: 4}}, Cue: "door/open"},
 	} {
 		data, err := json.Marshal(args)
 		if err != nil {

@@ -37,7 +37,7 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 		(toolbarHeight-ui.MonoSize)/ui.Half, ui.ColorSubdued())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 	ui.Divider(screen, image.Pt(listWidth, toolbarHeight), image.Pt(listWidth, content.Max.Y))
-	s.drawButtons(screen, s.addSound, s.newCue, s.checkFiles, s.soundscape.toggle, s.stopAll)
+	s.drawButtons(screen, s.addSound, s.newCue, s.checkFiles, s.loud.toggle, s.soundscape.toggle, s.stopAll)
 	s.drawButtons(screen, s.tabs...)
 	s.drawButtons(screen, s.filters...)
 	s.search.Draw(screen)
@@ -45,10 +45,14 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	if s.library != nil && s.library.Problem != "" {
 		s.theme.DrawText(screen, "No sounds yet.", ui.Inset, s.list.Rect.Min.Y+ui.Inset, ui.ColorMuted())
 	}
-	s.drawPanel(screen)
-	if s.soundscape.shown {
+	switch {
+	case s.loud.shown:
+		s.drawLoudness(screen)
+	case s.soundscape.shown:
+		s.drawPanel(screen)
 		s.drawSoundscape(screen)
-	} else {
+	default:
+		s.drawPanel(screen)
 		s.drawInspector(screen)
 	}
 	switch {
@@ -66,8 +70,9 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 
 // Locate finds a named part of the window for input scripts: "ui:<id>" for
 // a button, field or checkbox, in a dialog while one shows; "row:<label>"
-// for a list row by its label; "cue:<id>", "rec:<id>" and "plays:<id>"
-// for a cue, a recording and one of a cue's recordings; "section:<id>" for a
+// for a list row by its label; "cue:<id>", "rec:<id>", "file:<path>" and
+// "plays:<id>" for a cue, a recording, a file and one of a cue's recordings;
+// "section:<id>" for a
 // section's heading; "wave:start" and "wave:end" for the region's ends; or
 // "state:selected=<row>", "state:listed", "state:dialog", "state:cues=<n>",
 // "state:waveform", "state:region=<start>-<end>" and "state:stop=<button>"
@@ -92,7 +97,7 @@ func (s *State) Locate(name string, _ frame.Docs) (image.Point, bool) {
 				return s.list.Locate(row.ID)
 			}
 		}
-	case "cue", "rec":
+	case "cue", "rec", "file":
 		return s.list.Locate(name)
 	case "plays":
 		return s.played.Locate(name)
@@ -163,6 +168,8 @@ func (s *State) state(value string) bool {
 		found := s.soundscape.slot(slot)
 
 		return found != nil && found.cue == cue
+	case "hear":
+		return s.hearing() == argument
 	case "stop":
 		return s.trim.auditioned != nil && s.trim.auditioned.ID == argument && s.trim.auditioned.Label == labelStop
 	case "region":
@@ -181,7 +188,10 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 			return field.Center(), true
 		}
 	}
-	buttons := append([]*ui.Button{s.addSound, s.newCue, s.checkFiles, s.soundscape.toggle, s.stopAll}, s.tabs...)
+	buttons := append([]*ui.Button{s.addSound, s.newCue, s.checkFiles, s.soundscape.toggle, s.loud.toggle, s.stopAll},
+		s.tabs...)
+	buttons = append(buttons, s.loud.buttons()...)
+	buttons = append(buttons, s.files.buttons()...)
 	buttons = append(buttons, s.soundscape.buttons()...)
 	buttons = append(buttons, s.trim.buttons()...)
 	buttons = append(buttons, s.filters...)

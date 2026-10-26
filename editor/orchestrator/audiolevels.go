@@ -75,8 +75,11 @@ func (s *audioSession) duplicateRegion(duplicate protocol.DuplicateRegion) (stri
 	ctx, cancel := context.WithTimeout(context.Background(), analysisTimeout)
 	defer cancel()
 	err = s.library.DuplicateRecordingRegion(ctx, draft, made, playbackWindow(duplicate.Region), duplicate.Cue)
+	if err != nil {
+		return "", authoringError(err)
+	}
 
-	return made, authoringError(err)
+	return made, s.measureNew(made)
 }
 
 // acceptCalibration measures a recording and sets its gain from that, to be

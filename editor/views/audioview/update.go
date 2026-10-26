@@ -23,7 +23,10 @@ func (s *State) layout() {
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	right := content.Max.X - ui.Inset
 	s.soundscape.toggle.On = s.soundscape.shown
-	for _, button := range []*ui.Button{s.stopAll, s.soundscape.toggle, s.checkFiles, s.newCue, s.addSound} {
+	s.loud.toggle.On = s.loud.shown
+	for _, button := range []*ui.Button{
+		s.stopAll, s.soundscape.toggle, s.loud.toggle, s.checkFiles, s.newCue, s.addSound,
+	} {
 		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
 		button.Rect = image.Rect(right-width, top, right, top+ui.ButtonH)
 		right -= width + toolbarGap
@@ -47,6 +50,7 @@ func (s *State) layout() {
 	s.list.Rows = s.rows()
 	s.layoutPanel()
 	s.layoutInspector()
+	s.layoutLoudness()
 }
 
 // spread lays buttons out side by side across a width.
@@ -96,6 +100,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.layout()
 	}
 	s.askTrim(ctx)
+	s.askFile(ctx)
 	s.syncRegionFields()
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
@@ -104,6 +109,18 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	frame.CommonKeys(input, ctx)
 	s.updateToolbar(input, ctx)
 	s.updateList(input, ctx)
+	s.updateContent(input, ctx)
+}
+
+// updateContent handles what shows beside the list: the Loudness view, or
+// the panel and the soundscape or inspector.
+func (s *State) updateContent(input *ui.Input, ctx *frame.Context) {
+	if s.loud.shown {
+		s.layout()
+		s.updateLoudness(input, ctx)
+
+		return
+	}
 	s.scrollPanel(input)
 	s.layout()
 	s.updatePanel(input, ctx)
@@ -147,13 +164,18 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	}
 }
 
-// listenSelected plays or stops the selected cue or recording.
+// listenSelected plays or stops what is selected, as its screen's Play
+// does: a cue as the game plays it, a recording as its waveform's Play is
+// set to, and a file whole.
 func (s *State) listenSelected(ctx *frame.Context) {
 	if cue, ok := s.selectedCue(); ok {
 		s.listen(ctx, cue.ID)
 	}
-	if recording, ok := s.selectedRecording(); ok {
-		s.listenRecording(ctx, recording.ID)
+	if _, ok := s.selectedRecording(); ok && s.trim.shows() {
+		s.playPart(ctx)
+	}
+	if file, ok := s.selectedFile(); ok {
+		s.playFile(ctx, file)
 	}
 }
 
@@ -185,6 +207,7 @@ func (s *State) choose(ctx *frame.Context, row string) {
 	s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), func() {
 		s.list.Selected = row
 		s.focus.Set(nil)
+		s.loud.shown = false
 	})
 }
 
@@ -198,7 +221,13 @@ func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 	case s.checkFiles.Update(input):
 		s.check(ctx)
 	case s.soundscape.toggle.Update(input):
-		s.soundscape.shown = !s.soundscape.shown
+		s.soundscape.shown, s.loud.shown = !s.soundscape.shown, false
+	case s.loud.toggle.Update(input):
+		s.loud.shown = !s.loud.shown
+		if s.loud.shown {
+			s.soundscape.shown = false
+			s.askLoudness(ctx)
+		}
 	case s.stopAll.Update(input):
 		ctx.Sounds.Stop()
 		for _, slot := range s.soundscape.slots {

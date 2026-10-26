@@ -52,6 +52,7 @@ const (
 // Row ID prefixes: a cue, a recording, a section.
 const (
 	cuePrefix       = "cue:"
+	hearInPrefix    = "hear-in:"
 	recordingPrefix = "rec:"
 	sectionPrefix   = "section:"
 )
@@ -96,6 +97,12 @@ type State struct {
 	// broken holds the version of each recording's file the last check
 	// could not decode.
 	broken map[string]string
+	// measured is how loud each recording last measured; measuring is set
+	// while the question is out, and remeasure when another is wanted.
+	measured             map[string]protocol.RecordingLoudness
+	measuring, remeasure bool
+	loud                 *loudnessView
+	files                *fileScreen
 
 	focus   ui.Focus
 	guard   frame.Guard
@@ -129,6 +136,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		checkFiles: button("check-files", "Check files"), stopAll: button("stop-all", "Stop all"),
 		panel: newPanel(), inspector: newInspector(theme), trim: newTrimmer(theme),
 		attribution: newAttributionSection(), soundscape: newSoundscape(), broken: map[string]string{},
+		measured: map[string]protocol.RecordingLoudness{}, measuring: false, remeasure: false, loud: newLoudnessView(),
+		files: newFileScreen(),
 		focus: ui.Focus{}, guard: frame.Guard{}, dialog: nil, confirm: nil, prompt: nil, deleting: "", sounds: nil,
 		mixer: nil,
 	}
@@ -200,6 +209,7 @@ func (s *State) ask(ctx *frame.Context) {
 		} else {
 			s.library = &library
 			s.inspector.listed(s)
+			s.askLoudness(ctx)
 		}
 		if s.again {
 			s.again = false

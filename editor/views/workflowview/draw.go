@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/loudness"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -362,7 +363,10 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 			return "no cue"
 		}
 		if listed, found := s.listedCue(cue); found {
-			return listed.Name
+			cue = listed.Name
+		}
+		if step, found := loudness.Find(choiceOf(node, "loudness")); found {
+			return cue + " · " + strings.ToLower(step.Label) + " this time"
 		}
 
 		return cue
@@ -672,8 +676,9 @@ func hintFor(kind string) string {
 		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
 		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
 			"ignores it.",
-		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away.",
-		flow.KindNote:      "A note for authors. It is not part of the flow.",
+		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
+			"loudness as the cue is, unless a moment must stand out or sit back.",
+		flow.KindNote: "A note for authors. It is not part of the flow.",
 	}[kind]
 }
 
@@ -967,4 +972,14 @@ func (s *State) hasState(state string) bool {
 	}
 
 	return false
+}
+
+// choiceOf is a choice parameter's value, empty when it has none.
+func choiceOf(node flow.Node, name string) string {
+	chosen, err := node.Choice(name)
+	if err != nil {
+		return ""
+	}
+
+	return chosen
 }

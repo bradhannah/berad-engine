@@ -2,6 +2,7 @@ package audioview_test
 
 import (
 	"image"
+	"math"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -68,7 +69,7 @@ func TestTrimsARecording(t *testing.T) {
 	if f.has("state:region=0.240-0.760") {
 		t.Fatal("dragging the end moves it")
 	}
-	f.click("ui:play-region")
+	f.click("ui:play-part")
 	sounds := f.ctx.Sounds.(*frametest.Sounds)
 	if len(sounds.Auditioned) != 1 || sounds.Auditioned[0].Window == nil || sounds.Auditioned[0].Window.StartMs != 240 {
 		t.Fatalf("the draft plays: %+v", sounds.Auditioned)
@@ -104,14 +105,18 @@ func TestTypedRegionAndDuplicateRegion(t *testing.T) {
 	}
 }
 
-// TestSetsLevels uses the suggested level, sets one by hand and a target.
+// TestSetsLevels measures a recording not measured yet, sets one by hand,
+// and measures a recording set by hand to the reference again.
 func TestSetsLevels(t *testing.T) {
 	t.Parallel()
 	f := withWaveform(t)
-	f.click("ui:use-suggestion")
+	if f.has("ui:use-reference") {
+		t.Fatal("a recording not set by hand has nothing to go back from")
+	}
+	f.click("ui:measure")
 	var measured protocol.AudioItem
 	if err := f.edit(protocol.AudioAcceptCalibration).Decode(&measured); err != nil || measured.ID != "door_a" {
-		t.Fatalf("the suggestion measures the recording: %+v %v", measured, err)
+		t.Fatalf("Measure evens the recording out: %+v %v", measured, err)
 	}
 	f.click("ui:set-level")
 	f.typeInto("level", "-60")
@@ -125,12 +130,14 @@ func TestSetsLevels(t *testing.T) {
 	if err := f.edit(protocol.AudioSetCalibration).Decode(&gain); err != nil || gain.GainDB == nil || *gain.GainDB != -6 {
 		t.Fatalf("a gain by hand: %+v %v", gain, err)
 	}
-	f.requests.AudioEdits = nil
-	f.click("ui:set-target")
-	f.click("ui:family-level")
-	var target protocol.CalibrationChange
-	if err := f.edit(protocol.AudioSetCalibration).Decode(&target); err != nil || !target.DefaultTarget {
-		t.Fatalf("the family's target: %+v %v", target, err)
+	library := testLibrary()
+	library.Cues[1].Recordings[0].CalibrationMode, library.Cues[1].Recordings[0].CalibrationDB = "manual", -6
+	byHand := newFixtureWith(t, library)
+	byHand.click("cue:sfx/door")
+	byHand.click("ui:use-reference")
+	var again protocol.AudioItem
+	if err := byHand.edit(protocol.AudioUseReference).Decode(&again); err != nil || again.ID != "door_a" {
+		t.Fatalf("a level set by hand is measured to the reference again: %+v %v", again, err)
 	}
 }
 
@@ -170,22 +177,81 @@ func TestDraftedRegionIsKeptOrSaved(t *testing.T) {
 	}
 }
 
-// TestPlayButtonsStop shows Stop on the button whose part is playing; it
-// stops, and the other button plays its part instead.
-func TestPlayButtonsStop(t *testing.T) {
+// TestPlaysAsChosen plays the region with the one Play: on a cue's screen
+// as the cue plays it at first, its step added; then, chosen while it
+// plays, again as recorded, unaltered, and evened out, at its level. A
+// recording on its own has no cue to play it, and plays evened out at first.
+func TestPlaysAsChosen(t *testing.T) {
+	t.Parallel()
+	library := testLibrary()
+	library.Cues[1].Gain, library.Cues[1].Recordings[0].CalibrationDB = 2, 5
+	f := newFixtureWith(t, library)
+	f.click("cue:sfx/door")
+	f.answerWaveform()
+	sounds := f.ctx.Sounds.(*frametest.Sounds)
+	if !f.has("state:hear=cue") {
+		t.Fatal("a cue's screen plays as the cue plays it at first")
+	}
+	f.click("ui:play-part")
+	if !f.has("state:stop=play-part") {
+		t.Fatal("Play shows Stop while it plays")
+	}
+	f.click("ui:hear-recorded")
+	f.click("ui:hear-evened")
+	f.click("ui:play-part")
+	if f.has("state:stop=play-part") || len(sounds.Auditioned) != 3 || math.Abs(sounds.Auditioned[0].CalibrationDB-(5+20*math.Log10(2))) > 1e-9 ||
+		sounds.Auditioned[1].CalibrationDB != 0 || sounds.Auditioned[2].CalibrationDB != 5 {
+		t.Fatalf("in the cue with its +6 dB, as recorded at 0 dB, then evened out at its level: %+v", sounds.Auditioned)
+	}
+	f.click("ui:tab-recordings")
+	f.click("rec:spare")
+	if f.has("ui:hear-cue") || !f.has("ui:hear-evened") || !f.has("state:hear=evened") {
+		t.Fatal("a recording on its own has no cue to play it, and plays evened out")
+	}
+}
+
+// TestPlayStops plays the drafted region and stops; then, with Whole file
+// chosen, plays the whole file.
+func TestPlayStops(t *testing.T) {
 	t.Parallel()
 	f := withWaveform(t)
 	sounds := f.ctx.Sounds.(*frametest.Sounds)
-	f.click("ui:play-region")
-	if !f.has("state:stop=play-region") {
-		t.Fatal("the playing part shows Stop")
+	f.click("ui:suggest-region")
+	f.click("ui:play-part")
+	if !f.has("state:stop=play-part") || sounds.Auditioned[0].Window == nil {
+		t.Fatal("the region plays, and Play shows Stop")
 	}
-	f.click("ui:play-whole")
-	if len(sounds.Auditioned) != 2 || sounds.Auditioned[1].Window != nil || !f.has("state:stop=play-whole") {
-		t.Fatalf("the whole file plays instead: %+v", sounds.Auditioned)
-	}
-	f.click("ui:play-whole")
-	if len(sounds.Auditioned) != 2 || f.has("state:stop=play-whole") {
+	f.click("ui:play-part")
+	if len(sounds.Auditioned) != 1 || f.has("state:stop=play-part") {
 		t.Fatal("Stop stops it")
+	}
+	f.click("ui:part-whole")
+	f.click("ui:play-part")
+	if len(sounds.Auditioned) != 2 || sounds.Auditioned[1].Window != nil {
+		t.Fatalf("with Whole file chosen, the whole file plays: %+v", sounds.Auditioned)
+	}
+}
+
+// TestPlaysAsEachCuePlaysIt plays a recording, from its own screen, as a cue
+// playing it does: its region, at its level and the cue's step.
+func TestPlaysAsEachCuePlaysIt(t *testing.T) {
+	t.Parallel()
+	library := testLibrary()
+	library.Cues[1].Gain, library.Cues[1].Recordings[0].CalibrationDB = 2, 5
+	library.Cues[1].Recordings[0].StartMs, library.Cues[1].Recordings[0].EndMs = 100, 400
+	f := newFixtureWith(t, library)
+	f.click("ui:tab-recordings")
+	f.click("rec:door_a")
+	if f.has("ui:play") {
+		t.Fatal("a recording's own screen has no Play up top")
+	}
+	f.click("ui:hear-in:sfx/door")
+	sounds := f.ctx.Sounds.(*frametest.Sounds)
+	if len(sounds.Auditioned) != 1 || sounds.Auditioned[0].Window == nil || sounds.Auditioned[0].Window.StartMs != 100 ||
+		math.Abs(sounds.Auditioned[0].CalibrationDB-(5+20*math.Log10(2))) > 1e-9 {
+		t.Fatalf("its region, at its level and the cue's +6 dB: %+v", sounds.Auditioned)
+	}
+	if !f.has("state:stop=hear-in:sfx/door") {
+		t.Fatal("the cue's Play shows Stop while it plays")
 	}
 }

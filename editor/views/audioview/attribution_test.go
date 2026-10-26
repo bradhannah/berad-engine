@@ -23,15 +23,16 @@ func TestAttributionInThePanel(t *testing.T) {
 	if !f.has("ui:cleared") || !f.has("ui:edit-attribution") {
 		t.Fatal("the recording in focus shows its attribution")
 	}
+	f.scrollPanel(-5)
 	f.click("ui:cleared")
-	var change protocol.AttributionChange
-	if err := f.edit(protocol.AudioSetAttribution).Decode(&change); err != nil {
+	var change protocol.FileAttributionChange
+	if err := f.edit(protocol.AudioSetFileAttribution).Decode(&change); err != nil {
 		t.Fatal(err)
 	}
 	want := recording("door_a", true).Attribution
 	want.Commercial = false
-	if change.Recording != "door_a" || !reflect.DeepEqual(change.Attribution, want) {
-		t.Fatalf("unticking it keeps the rest: %+v", change)
+	if change.File != "imported/door_a.wav" || !reflect.DeepEqual(change.Attribution, want) {
+		t.Fatalf("unticking it changes its file, keeping the rest: %+v", change)
 	}
 	f.click("ui:edit-attribution")
 	if !f.has("state:dialog") || !f.has("ui:source-type") || !f.has("ui:add-step") {
@@ -42,6 +43,13 @@ func TestAttributionInThePanel(t *testing.T) {
 	if f.has("ui:cleared") {
 		t.Fatal("an empty slot has no attribution")
 	}
+}
+
+// scrollPanel turns the wheel over the panel, down for a negative turn.
+func (f *fixture) scrollPanel(turn float64) {
+	wheel := ui.NewInput(image.Pt(600, 300))
+	wheel.WheelY = turn
+	f.frame(wheel)
 }
 
 // TestPanelScrolls scrolls a panel taller than the window with the wheel.

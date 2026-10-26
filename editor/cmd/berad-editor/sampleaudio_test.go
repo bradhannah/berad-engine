@@ -9,7 +9,7 @@ import (
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/backend/ebitengine"
 )
 
-// TestSampleAudioIsALibrary writes a schema-3 library and a version-1
+// TestSampleAudioIsALibrary writes a schema-5 library and a version-1
 // descriptor that berad-audio reads, with one cue of each category and tones
 // that decode, and leaves an audio folder that is already there alone.
 func TestSampleAudioIsALibrary(t *testing.T) {
@@ -28,8 +28,8 @@ func TestSampleAudioIsALibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	document, err := authoring.ParseDocument(data, nil)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || document.SchemaVersion != authoring.LibrarySchemaFive {
+		t.Fatalf("a schema-5 library: %v", err)
 	}
 	for cue, want := range map[string]string{
 		"sample/chime": authoring.CategorySFX, "sample/hum": authoring.CategoryAmbient,

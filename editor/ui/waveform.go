@@ -29,7 +29,8 @@ const (
 // Waveform draws a recording's peaks between From and To, in its own
 // milliseconds: each peak, 0 to 255, is the loudest moment of its share of
 // the width. When HasRegion is set, the part from Start to End is marked and
-// its ends can be dragged; while Playing, a line marks Playhead.
+// its ends can be dragged; while Playing, a line marks Playhead. Marks are
+// other parts outlined, such as the other pieces of a file.
 type Waveform struct {
 	ID        string
 	Rect      image.Rectangle
@@ -40,6 +41,7 @@ type Waveform struct {
 	HasRegion bool
 	Playhead  int64
 	Playing   bool
+	Marks     []WaveMark
 	drag      waveDrag
 	// hover is the end the pointer is over, drawn heavier. A dragged end
 	// moves as far as the pointer has from pressX, where it was at origin.
@@ -48,11 +50,18 @@ type Waveform struct {
 	origin int64
 }
 
+// WaveMark is a part of a waveform outlined, in its own milliseconds: a
+// piece, in blue, or one Found and not yet a piece, in orange.
+type WaveMark struct {
+	Start, End int64
+	Found      bool
+}
+
 // NewWaveform returns an empty waveform, placed later by setting Rect.
 func NewWaveform(id string) *Waveform {
 	return &Waveform{
 		ID: id, Rect: Zero(), Peaks: nil, From: 0, To: 0, Start: 0, End: 0, HasRegion: false, Playhead: 0,
-		Playing: false, drag: dragNone, hover: dragNone, pressX: 0, origin: 0,
+		Playing: false, Marks: nil, drag: dragNone, hover: dragNone, pressX: 0, origin: 0,
 	}
 }
 
@@ -184,6 +193,17 @@ func (w *Waveform) Draw(screen *ebiten.Image) {
 			}
 			FillRect(screen, image.Rect(column, middle-height, column+1, middle+height), ink)
 		}
+	}
+	for _, mark := range w.Marks {
+		if mark.End < w.From || mark.Start > w.To {
+			continue
+		}
+		box := image.Rect(w.endX(max(mark.Start, w.From)), w.Rect.Min.Y+Gap, w.endX(min(mark.End, w.To)), w.Rect.Max.Y-Gap)
+		ink := ColorSelect()
+		if mark.Found {
+			ink = ColorLive()
+		}
+		StrokeRound(screen, box, Half, Outline, ink)
 	}
 	if w.HasRegion {
 		w.drawEnd(screen, dragStart, w.Start, 1)

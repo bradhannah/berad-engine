@@ -352,6 +352,37 @@ func TestUpgradeFromVersion1(t *testing.T) {
 	}
 }
 
+// TestUpgradeFromVersion2 gives a Play sound its cue's own loudness, as it
+// played before.
+func TestUpgradeFromVersion2(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.Format()); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"start":"` + id(1).String() + `","nodes":[` +
+		`{"id":"` + id(1).String() + `","kind":"start","next":{"next":"` + id(2).String() + `"}},` +
+		`{"id":"` + id(2).String() + `","kind":"play-sound","params":{"cue":"door/knock"}}]}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.FormatName, Version: 2, ID: id(9), Name: "Old", Revision: 1, Data: json.RawMessage(old),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.FormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	decoded, err := workflow.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	played, _ := decoded.Node(id(2))
+	loudness, err := played.Choice("loudness")
+	if err != nil || loudness != workflow.LoudnessAsCue {
+		t.Fatalf("loudness %q %v", loudness, err)
+	}
+	if err := workflow.CheckParams(played); err != nil {
+		t.Fatalf("an upgraded Play sound does not fit its kind: %v", err)
+	}
+}
+
 func TestDecodeRefusesBrokenWorkflows(t *testing.T) {
 	t.Parallel()
 	for name, data := range map[string]string{

@@ -14,19 +14,17 @@ import (
 const fieldDialogWidth = 380
 
 // fieldDialog asks for one value, such as a level in dB or a new family's
-// name: a title, lines that explain it, the field, then Set, another choice
-// when there is one, and Cancel. submit sends the typed value, or returns
-// why it cannot be; other carries out the other choice.
+// name: a title, lines that explain it, the field, then Set and Cancel.
+// submit sends the typed value, or returns why it cannot be.
 type fieldDialog struct {
-	title              string
-	lines              []string
-	field              *ui.TextField
-	set, other, cancel *ui.Button
-	focus              ui.Focus
-	problem            string
-	rect               image.Rectangle
-	submit             func(ctx *frame.Context, value string) string
-	choose             func(ctx *frame.Context)
+	title       string
+	lines       []string
+	field       *ui.TextField
+	set, cancel *ui.Button
+	focus       ui.Focus
+	problem     string
+	rect        image.Rectangle
+	submit      func(ctx *frame.Context, value string) string
 }
 
 // newFieldDialog returns a dialog whose field, fieldID, starts with value;
@@ -38,9 +36,9 @@ func newFieldDialog(
 	field := ui.NewTextField(fieldID, textedit.NewField("", false, nameBytes), false, theme)
 	field.Unmarked = true
 	dialog := &fieldDialog{
-		title: title, lines: lines, field: field, set: ui.DialogButton(setID, "Set"), other: nil,
+		title: title, lines: lines, field: field, set: ui.DialogButton(setID, "Set"),
 		cancel: ui.DialogButton(ui.DialogCancel, "Cancel"), focus: ui.Focus{}, problem: "", rect: ui.Zero(),
-		submit: submit, choose: nil,
+		submit: submit,
 	}
 	dialog.set.Primary = true
 	dialog.field.Field.Restore(value)
@@ -50,20 +48,7 @@ func newFieldDialog(
 	return dialog
 }
 
-// withOther adds another choice between Set and Cancel.
-func (d *fieldDialog) withOther(id, label string, choose func(ctx *frame.Context)) *fieldDialog {
-	d.other, d.choose = ui.DialogButton(id, label), choose
-
-	return d
-}
-
-func (d *fieldDialog) buttons() []*ui.Button {
-	if d.other == nil {
-		return []*ui.Button{d.set, d.cancel}
-	}
-
-	return []*ui.Button{d.set, d.other, d.cancel}
-}
+func (d *fieldDialog) buttons() []*ui.Button { return []*ui.Button{d.set, d.cancel} }
 
 func (d *fieldDialog) layout(window image.Rectangle) {
 	width := min(fieldDialogWidth, window.Dx()-ui.Half*ui.Inset)
@@ -91,9 +76,6 @@ func (s *State) updatePrompt(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case dialog.cancel.Update(input) || input.Has(ui.KeyEscape, ui.Plain()) && field == nil:
 		s.prompt = nil
-	case dialog.other != nil && dialog.other.Update(input):
-		s.prompt = nil
-		dialog.choose(ctx)
 	case dialog.set.Update(input) || outcome == textedit.OutcomeCommit:
 		if dialog.problem = dialog.submit(ctx, dialog.field.Field.Value()); dialog.problem == "" {
 			s.prompt = nil

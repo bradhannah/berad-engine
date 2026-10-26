@@ -157,8 +157,9 @@ func TestTrimDuplicateAndLevel(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if undone := toneRecording(t, audio); undone.CalibrationMode != "" || undone.StartMs != 240 {
-		t.Fatalf("undo takes the levels back: %+v", undone)
+	if undone := toneRecording(t, audio); undone.CalibrationMode != protocol.CalibrationAuto ||
+		!near(undone.CalibrationDB, measured.CalibrationDB) || undone.StartMs != 240 {
+		t.Fatalf("undo takes the levels back to measured when it came in: %+v", undone)
 	}
 }
 

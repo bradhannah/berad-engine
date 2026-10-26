@@ -42,7 +42,7 @@ func (c *Client) dispatch(message protocol.Message) {
 			c.emit(update)
 		}
 	case protocol.KindAnswer, protocol.KindQuitAsk, protocol.KindAudioLibrary, protocol.KindRecording,
-		protocol.KindAudioAnalysis, protocol.KindAudioCheck:
+		protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness:
 		c.deliver(message)
 	case protocol.KindAttention, protocol.KindAudioChanged:
 		c.dispatchNotice(message)
@@ -115,7 +115,7 @@ func (c *Client) dispatchPick(message protocol.Message) {
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPreviewStart, protocol.KindPreviewState,
 		protocol.KindPreviewStop, protocol.KindPreviewControl, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
-		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck:
+		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness:
 		return
 	default:
 		return
@@ -151,7 +151,7 @@ func (c *Client) dispatchPreview(message protocol.Message) {
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPickAsk, protocol.KindPickStart,
 		protocol.KindPickAnswer, protocol.KindPickCancel, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
-		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck:
+		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness:
 		return
 	default:
 		return

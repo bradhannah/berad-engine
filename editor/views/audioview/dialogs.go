@@ -145,6 +145,8 @@ func (dlg *soundDialog) title() string {
 	switch {
 	case dlg.kind == dialogNewCue:
 		return "New cue"
+	case dlg.kind == dialogAttribution && dlg.path != "":
+		return "Attribution of “" + file + "”, for every recording cut from it"
 	case dlg.kind == dialogAttribution:
 		return "Attribution of “" + dlg.target.recording + "”"
 	case dlg.kind == dialogReplace:
@@ -233,6 +235,7 @@ func (s *State) openAttribution(recording protocol.AudioRecording) {
 		dialog.addStepRow(step)
 	}
 	dialog.commercial.On = attribution.Commercial
+	dialog.path = recording.File
 	s.dialog = dialog
 }
 
@@ -393,9 +396,11 @@ func (s *State) dialogEdit(
 			Recording: dlg.target.recording, Path: dlg.path, Attribution: attribution,
 		}, ""
 	case dlg.kind == dialogAttribution:
-		return protocol.AudioSetAttribution, protocol.AttributionChange{
-			Recording: dlg.target.recording, Attribution: attribution,
-		}, ""
+		recording, _ := s.recording(dlg.target.recording)
+		recording.ID = dlg.target.recording
+		edit, args := attributionEdit(recording, attribution)
+
+		return edit, args, ""
 	case dlg.target.cue != "":
 		return protocol.AudioAddSound, protocol.AddSound{
 			Cue: dlg.target.cue, NewCue: nil, Path: dlg.path, Attribution: attribution,

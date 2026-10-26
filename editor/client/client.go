@@ -300,7 +300,7 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error) {
 	reply, err := c.request(ctx, protocol.KindAudioLibrary, protocol.AudioLibrary{
 		Problem: "", Cues: nil, Schema: 0, Unused: nil, Profiles: nil, Families: nil, AmbientPreset: nil,
-		SliderGains: nil,
+		SliderGains: nil, ReferenceDB: 0, CategoryGainsDB: nil, MaxCueGain: 0,
 	})
 	if err != nil {
 		return protocol.AudioLibrary{}, err
@@ -358,6 +358,19 @@ func (c *Client) AudioCheck(ctx context.Context) (protocol.AudioCheck, error) {
 	}
 
 	return protocol.DecodePayload[protocol.AudioCheck](reply)
+}
+
+// AudioLoudness asks how loud every recording with a file measures.
+func (c *Client) AudioLoudness(ctx context.Context) (protocol.AudioLoudness, error) {
+	reply, err := c.request(ctx, protocol.KindAudioLoudness, protocol.AudioLoudness{Recordings: nil})
+	if err != nil {
+		return protocol.AudioLoudness{}, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return protocol.AudioLoudness{}, rejected(reply)
+	}
+
+	return protocol.DecodePayload[protocol.AudioLoudness](reply)
 }
 
 // Recording asks for part of a recording's bytes, from offset.

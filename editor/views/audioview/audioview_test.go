@@ -258,8 +258,8 @@ func TestNewCueNeedsAValidID(t *testing.T) {
 	}
 }
 
-// TestChangesACue renames a cue with Enter, lowers its gain, changes its
-// category and its order of recordings, and plays one of them.
+// TestChangesACue renames a cue with Enter, makes it a step quieter,
+// changes its category and its order of recordings, and plays it.
 func TestChangesACue(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -270,14 +270,16 @@ func TestChangesACue(t *testing.T) {
 	f.click("ui:category-" + protocol.CategoryAmbient)
 	f.click("plays:door_b")
 	f.click("ui:recording-up")
-	f.click("ui:play-recording")
-	var renamed, quieter protocol.CueChange
+	f.click("ui:play")
+	var renamed protocol.CueChange
 	changes := f.requests.AudioOf(protocol.AudioSetCue)
-	if len(changes) != 2 || changes[0].Decode(&renamed) != nil || changes[1].Decode(&quieter) != nil {
-		t.Fatalf("two cue changes: %d", len(changes))
+	if len(changes) != 1 || changes[0].Decode(&renamed) != nil || renamed.Name == nil || *renamed.Name != "Door creaks" {
+		t.Fatalf("renamed: %d %+v", len(changes), renamed)
 	}
-	if renamed.Name == nil || *renamed.Name != "Door creaks" || quieter.Gain == nil || *quieter.Gain != 0.7 {
-		t.Fatalf("renamed, and a step quieter: %+v %+v", renamed, quieter)
+	var quieter protocol.LoudnessChange
+	if err := f.edit(protocol.AudioSetLoudness).Decode(&quieter); err != nil || quieter.Cue != "sfx/door" ||
+		quieter.Step != "quieter" {
+		t.Fatalf("from 80%%, between steps, the next step down is Quieter: %+v %v", quieter, err)
 	}
 	var category protocol.CategoryChange
 	if err := f.edit(protocol.AudioSetCategory).Decode(&category); err != nil ||
@@ -289,8 +291,8 @@ func TestChangesACue(t *testing.T) {
 		strings.Join(order.Recordings, ",") != "door_b,door_a" {
 		t.Fatalf("door_b moves up: %+v", order)
 	}
-	if sounds := f.ctx.Sounds.(*frametest.Sounds); !sounds.PlayingRecording("door_b") {
-		t.Fatalf("the chosen recording plays on its own: %v", sounds.Played)
+	if sounds := f.ctx.Sounds.(*frametest.Sounds); !sounds.Playing("sfx/door") {
+		t.Fatalf("Play cue plays the cue: %v", sounds.Played)
 	}
 }
 

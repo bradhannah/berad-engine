@@ -12,5 +12,7 @@
 | [Fifth build](FIFTH_BUILD.md) | The Audio window: adding sounds with their attribution and editing cues |
 | [Sixth build](SIXTH_BUILD.md) | Trimming and levels: a recording's waveform, region and measured gain |
 | [Seventh build](SEVENTH_BUILD.md) | Ambient sounds and the soundscape: distance, profiles and families, monitor levels |
+| [Eighth build](EIGHTH_BUILD.md) | Loudness: recordings evened out to a reference, how a cue is meant to sound |
+| [Ninth build](NINTH_BUILD.md) | Files and their pieces: a file cut into recordings, its attribution, finding its sounds |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |

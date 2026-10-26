@@ -85,9 +85,9 @@ type NPC struct {
 	Last    Change
 	Changes uint64
 	Taken   []Change
-	// Sounds are the cues the latest Step's Play sounds asked for, in order,
+	// Sounds are what the latest Step's Play sounds asked for, in order,
 	// until the next Step.
-	Sounds []string
+	Sounds []Sound
 	// Status says what keeps the NPC from following its workflow now: it has
 	// none, or it is looping without waiting.
 	Status string
@@ -296,6 +296,13 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 	}
 }
 
+// Sound is what one Play sound asks for: its cue, and the step of package
+// loudness to play it at this time, empty to play it at the cue's own.
+type Sound struct {
+	Cue      string
+	Loudness string
+}
+
 // actPlaySound asks for a Play sound's cue and carries on at once; with no
 // cue chosen it carries on and says why.
 func (n *NPC) actPlaySound(node flow.Node) {
@@ -305,7 +312,11 @@ func (n *NPC) actPlaySound(node flow.Node) {
 
 		return
 	}
-	n.Sounds = append(n.Sounds, cue)
+	asked := Sound{Cue: cue, Loudness: ""}
+	if step, err := node.Choice("loudness"); err == nil && step != flow.LoudnessAsCue {
+		asked.Loudness = step
+	}
+	n.Sounds = append(n.Sounds, asked)
 }
 
 // timeSwitch takes the output of the first time that holds the minute, or

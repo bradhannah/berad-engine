@@ -75,7 +75,7 @@ func (a *projectAudio) load() loadedAudio {
 func emptyAudioLibrary(problem string) protocol.AudioLibrary {
 	return protocol.AudioLibrary{
 		Problem: problem, Cues: nil, Schema: 0, Unused: nil, Profiles: nil, Families: nil, AmbientPreset: nil,
-		SliderGains: nil,
+		SliderGains: nil, ReferenceDB: 0, CategoryGainsDB: nil, MaxCueGain: 0,
 	}
 }
 
@@ -181,8 +181,9 @@ func (a *projectAudio) read(place audioPlace, loaded *loadedAudio) string {
 }
 
 // classify lists the library's classification profiles and acoustic
-// families, and what the audio project gives new ambient cues and its
-// volume levels.
+// families; what the audio project gives new ambient cues, its volume levels,
+// its reference loudness and category adjustments; and the largest gain a cue
+// may have.
 func classify(
 	document authoring.LibraryDocument, descriptor authoring.ProjectDescriptor, library *protocol.AudioLibrary,
 ) {
@@ -213,6 +214,8 @@ func classify(
 		}
 	}
 	library.SliderGains = descriptor.SliderGains
+	library.ReferenceDB, library.CategoryGainsDB = referenceOf(descriptor), descriptor.CategoryGainsDB
+	library.MaxCueGain = authoring.MaxCueGain(document.SchemaVersion)
 }
 
 // profileOf is the classification profile of a cue.
@@ -365,7 +368,8 @@ func (o *Orchestrator) handleAudio(ctx context.Context, from *window, message pr
 
 		return
 	}
-	if message.Kind == protocol.KindAudioAnalysis || message.Kind == protocol.KindAudioCheck {
+	if message.Kind == protocol.KindAudioAnalysis || message.Kind == protocol.KindAudioCheck ||
+		message.Kind == protocol.KindAudioLoudness {
 		o.handleAnalysis(ctx, from, message)
 
 		return

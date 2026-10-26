@@ -400,6 +400,16 @@ func (h *host) AudioCheck(done func(protocol.AudioCheck, error)) {
 	}()
 }
 
+// AudioLoudness asks how loud every recording measures.
+func (h *host) AudioLoudness(done func(protocol.AudioLoudness, error)) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), audioEditTimeout)
+		defer cancel()
+		answer, err := h.conn.AudioLoudness(ctx)
+		h.post(func() { done(answer, err) })
+	}()
+}
+
 // Publish sets session state every window shares.
 func (h *host) Publish(topic string, value any) {
 	encoded, err := json.Marshal(value)
