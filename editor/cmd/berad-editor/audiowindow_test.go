@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
+
+	"github.com/bradhannah/berad-engine/engine/loudness"
 )
 
 // paddedKnockWAV is a second of generated sound: silence, a tone in the
@@ -81,8 +83,8 @@ func runEditorWith(t *testing.T, binary, project string, windows scripts, env ..
 // TestAudioWindowAddsAndEditsSounds adds a sound from the project browser's
 // Audio section: the Audio window opens on the Open dialog's file, asks what
 // it is and who made it, and copies it in as a new cue. It plays the cue,
-// lowers its gain, changes its category and undoes that, then lists the
-// recordings.
+// makes it a step quieter, changes its category and undoes that, then lists
+// the recordings.
 func TestAudioWindowAddsAndEditsSounds(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -122,8 +124,8 @@ func TestAudioWindowAddsAndEditsSounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	cue, found := library.Cues["sfx/door_knock"]
-	if !found || cue.Name != "Door knock" || cue.VolumeModifier != 0.9 {
-		t.Fatalf("the cue, a little quieter: %+v", cue)
+	if !found || cue.Name != "Door knock" || cue.VolumeModifier != loudness.Gain(-6) {
+		t.Fatalf("the cue, a step quieter: %+v", cue)
 	}
 	recording := library.Recordings[cue.RecordingID]
 	provenance := recording.Provenance
@@ -139,9 +141,9 @@ func TestAudioWindowAddsAndEditsSounds(t *testing.T) {
 	t.Logf("screenshots: %s %s %s %s", browserShot, dialogShot, cueShot, recordingsShot)
 }
 
-// TestAudioWindowTrimsAndLevels adds a sound with silence round it, trims it
-// to the suggested region, measures its level, duplicates its region and
-// checks every file.
+// TestAudioWindowTrimsAndLevels adds a sound with silence round it, which is
+// measured as it comes in, trims it to the suggested region, which measures
+// it again, duplicates its region and checks every file.
 func TestAudioWindowTrimsAndLevels(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -157,7 +159,7 @@ func TestAudioWindowTrimsAndLevels(t *testing.T) {
 		must("state:dialog", 900), wait(5), click("ui:dialog-ok"),
 		must("state:selected=cue:sfx/padded_knock", 900), must("state:waveform", 900), wait(10),
 		click("ui:suggest-region"), wait(5), step{Repeat: 2, Screenshot: waveShot},
-		click("ui:apply-region"), wait(40), click("ui:use-suggestion"), wait(40),
+		click("ui:apply-region"), wait(40),
 		click("ui:duplicate-region"), wait(40), click("ui:check-files"), wait(40),
 		step{Repeat: 2, Screenshot: levelShot}, quit(),
 	)

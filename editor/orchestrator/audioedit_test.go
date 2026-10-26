@@ -111,8 +111,8 @@ func TestAudioEditsStartTheLibraryAndUndo(t *testing.T) {
 	}
 	nextUpdate(t, other, "the change", func(update client.Update) bool { return update.AudioChanged != nil })
 	library := askAudio(t, audio)
-	if library.Problem != "" || library.Schema != authoring.LibrarySchemaFour || len(library.Cues) != 1 {
-		t.Fatalf("a schema-4 library with the cue: %+v", library)
+	if library.Problem != "" || library.Schema != authoring.LibrarySchemaFive || len(library.Cues) != 1 {
+		t.Fatalf("a schema-5 library with the cue: %+v", library)
 	}
 	cue := library.Cues[0]
 	if !cue.CategorySet || cue.Category != protocol.CategorySFX || cue.Recordings[0].ID != "door_open" ||
@@ -253,7 +253,7 @@ func TestAudioEditsRefuseWhatCannotBe(t *testing.T) {
 		t.Fatal("a refused new cue leaves no library behind")
 	}
 	mustAudioEdit(t, audio, protocol.AudioCreateCue, protocol.NewCue{ID: "a/b", Name: "B", Category: "", HowToHear: ""})
-	gain := 2.0
+	gain := 5.0
 	notAudio := filepath.Join(t.TempDir(), "notes.wav")
 	if err := os.WriteFile(notAudio, []byte("not a sound"), 0o600); err != nil {
 		t.Fatal(err)
@@ -378,7 +378,7 @@ func TestOpenItemShowsItInTheOpenWindow(t *testing.T) {
 	})
 }
 
-// TestFirstEditUpgradesTheLibrary writes a schema-3 library as schema 4 when
+// TestFirstEditUpgradesTheLibrary writes a schema-3 library as schema 5 when
 // the editor first changes it, with no recording cleared for commercial use,
 // and leaves it alone while it only reads it.
 func TestFirstEditUpgradesTheLibrary(t *testing.T) {
@@ -402,8 +402,8 @@ func TestFirstEditUpgradesTheLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	document, err := authoring.ParseDocument(data, nil)
-	if err != nil || document.SchemaVersion != authoring.LibrarySchemaFour {
-		t.Fatalf("the first edit writes schema 4: %v", err)
+	if err != nil || document.SchemaVersion != authoring.LibrarySchemaFive {
+		t.Fatalf("the first edit writes schema 5: %v", err)
 	}
 	for id, recording := range document.Recordings {
 		if recording.Provenance.CommercialUseAllowed() {
@@ -413,7 +413,7 @@ func TestFirstEditUpgradesTheLibrary(t *testing.T) {
 	if _, err := undo(t, audio); err != nil {
 		t.Fatal(err)
 	}
-	if cue, _ := cueOf(t, audio, "bed/hum"); cue.Name != "Hum" || askAudio(t, audio).Schema != authoring.LibrarySchemaFour {
+	if cue, _ := cueOf(t, audio, "bed/hum"); cue.Name != "Hum" || askAudio(t, audio).Schema != authoring.LibrarySchemaFive {
 		t.Fatalf("undo takes back the edit, not the upgrade: %+v", cue)
 	}
 }

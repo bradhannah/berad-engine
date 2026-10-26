@@ -114,8 +114,10 @@ func newSoundscape() *soundscape {
 			row(protocol.CategoryMusic, "Music"), row(protocol.CategorySFX, "SFX"),
 			row(protocol.CategoryAmbient, "Ambient"),
 		},
-		reference: &ui.Toggle{ID: "reference", Label: "Reference: calibrated level alone", Rect: ui.Zero(), On: false},
-		sent:      nil, replace: ui.Menu{Items: nil, Width: 0}, waiting: "", top: 0,
+		reference: &ui.Toggle{
+			ID: "reference", Label: "Reference: every layer evened out, at Normal", Rect: ui.Zero(), On: false,
+		},
+		sent: nil, replace: ui.Menu{Items: nil, Width: 0}, waiting: "", top: 0,
 	}
 }
 
@@ -418,12 +420,13 @@ func (s *State) drawSoundscape(screen *ebiten.Image) {
 	frame.DrawInspector(screen)
 	left, right := area.Min.X+ui.Inset, area.Max.X-ui.Inset
 	top := area.Min.Y + ui.Inset
-	s.theme.DrawLabel(screen, "SOUNDSCAPE · NOT SAVED", left, top, ui.ColorMuted())
-	s.theme.DrawText(screen, "Cues played together, to hear the mix.", left, top+ui.LineHeight, ui.ColorMuted())
+	s.theme.DrawLabel(screen, "SOUNDSCAPE · LISTENING ONLY, NEVER SAVED", left, top, ui.ColorMuted())
+	s.theme.DrawText(screen, "Cues played together, to hear the mix. Meant to sound sets a cue's loudness.", left,
+		top+ui.LineHeight, ui.ColorMuted())
 	for _, slot := range scape.slots {
 		s.drawLayer(screen, slot, left, right)
 	}
-	s.theme.DrawLabel(screen, "MONITOR · NOT SAVED", left, scape.top+ui.Gap, ui.ColorMuted())
+	s.theme.DrawLabel(screen, "PRETEND PLAYER VOLUME · NOT SAVED", left, scape.top+ui.Gap, ui.ColorMuted())
 	for _, row := range scape.monitor {
 		textTop := row.quieter.Rect.Min.Y + (ui.ButtonH-ui.LineHeight)/ui.Half + ui.Gap
 		s.theme.DrawText(screen, row.label, left, textTop, ui.ColorInk())
@@ -452,7 +455,7 @@ func (s *State) drawLayer(screen *ebiten.Image, slot *layerSlot, left, right int
 	}
 	name := s.theme.FitText(s.cueName(slot.cue), slot.play.Rect.Min.X-left-ui.Gap)
 	s.theme.DrawStrong(screen, name, left, top+(ui.ButtonH-ui.LineHeight)/ui.Half+ui.Gap, ui.ColorInk())
-	gain := strconv.Itoa(int(math.Round(slot.gain*percent))) + " %"
+	gain := "mix " + strconv.Itoa(int(math.Round(slot.gain*percent))) + " %"
 	s.theme.DrawTextIn(screen, gain, image.Rect(slot.quieter.Rect.Max.X, slot.quieter.Rect.Min.Y,
 		slot.louder.Rect.Min.X, slot.louder.Rect.Max.Y), ui.ColorInk())
 	s.drawButtons(screen, slot.buttons()...)

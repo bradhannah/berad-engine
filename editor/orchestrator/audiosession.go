@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
-	"github.com/bradhannah/berad-sdk/modules/berad-audio/backend/ebitengine"
 )
 
 // Permissions of the audio folder when an edit makes it.
@@ -25,16 +24,19 @@ var errNoLibrary = errors.New("this project has no sounds yet; add a sound to st
 var errAudioChanged = errors.New(reasonAudioChanged)
 
 // audioSession is one job's view of the audio files: the library, opened
-// afresh, and the cues' categories from the descriptor.
+// afresh, and from the descriptor the cues' categories, each category's
+// adjustment and the reference loudness recordings are evened out to.
 type audioSession struct {
 	files   audioFiles
 	library *authoring.LibraryEditor
 	// descriptor is the descriptor's bytes as last read or written, nil when
-	// the project has none; saved are the categories it held when the job
-	// began and categories those the job leaves.
+	// the project has none; saved is what it held when the job began, and
+	// categories, gains and reference what the job leaves.
 	descriptor []byte
-	saved      map[string]string
+	saved      descriptorState
 	categories map[string]string
+	gains      map[string]float64
+	reference  float64
 	// preset is what the audio project gives a new ambient cue, nil for
 	// nothing.
 	preset *authoring.AmbientPreset
@@ -49,10 +51,10 @@ type audioSession struct {
 // project without a library gets an empty one.
 func openAudioSession(files audioFiles, create bool) (*audioSession, error) {
 	session := &audioSession{
-		files: files, library: nil, descriptor: nil, saved: map[string]string{}, categories: nil, preset: nil,
-		createdLibrary: false, createdDescriptor: false,
+		files: files, library: nil, descriptor: nil, saved: neutralDescriptor(), categories: nil, gains: nil,
+		reference: 0, preset: nil, createdLibrary: false, createdDescriptor: false,
 	}
-	options := authoring.DefaultEditorOptions(ebitengine.Decode)
+	var read *authoring.ProjectDescriptor
 	data, err := os.ReadFile(files.descriptor)
 	switch {
 	case err == nil:
@@ -60,16 +62,15 @@ func openAudioSession(files audioFiles, create bool) (*audioSession, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read the audio project: %w", err)
 		}
-		options = descriptor.EditorOptions(ebitengine.Decode)
-		session.descriptor, session.preset = data, descriptor.Ambient
-		if descriptor.Targets.CueCategories != nil {
-			session.saved = maps.Clone(descriptor.Targets.CueCategories)
-		}
+		read = &descriptor
+		session.descriptor, session.preset, session.saved = data, descriptor.Ambient, stateOf(descriptor)
 	case !errors.Is(err, fs.ErrNotExist):
 		return nil, fmt.Errorf("read the audio project: %w", err)
 	}
-	session.categories = maps.Clone(session.saved)
-	options.SchemaVersion = authoring.LibrarySchemaFour
+	session.categories, session.gains = maps.Clone(session.saved.categories), maps.Clone(session.saved.gains)
+	session.reference = session.saved.reference
+	options := evenedOptions(read, func() float64 { return session.reference })
+	options.SchemaVersion = authoring.LibrarySchemaFive
 	if err := session.ensureLibrary(create); err != nil {
 		return nil, err
 	}
@@ -105,33 +106,66 @@ func (s *audioSession) ensureLibrary(create bool) error {
 	return nil
 }
 
-// save writes the categories that changed into the descriptor, then the
-// library. If the library cannot be saved, the descriptor is put back, so the
-// job changes both files or neither.
+// descriptorState is what an audio job can change in the descriptor: the
+// cues' categories, each category's adjustment in dB and the reference
+// loudness, in dB.
+type descriptorState struct {
+	categories map[string]string
+	gains      map[string]float64
+	reference  float64
+}
+
+// neutralDescriptor is what a project without a descriptor has: no named
+// categories, no adjustments and berad-audio's default reference.
+func neutralDescriptor() descriptorState {
+	return descriptorState{
+		categories: map[string]string{}, gains: map[string]float64{},
+		reference: authoring.DefaultCalibrationOptions().TargetDB,
+	}
+}
+
+// stateOf is what a descriptor holds of an audio job's concerns.
+func stateOf(descriptor authoring.ProjectDescriptor) descriptorState {
+	state := neutralDescriptor()
+	if descriptor.Targets.CueCategories != nil {
+		state.categories = maps.Clone(descriptor.Targets.CueCategories)
+	}
+	if descriptor.CategoryGainsDB != nil {
+		state.gains = maps.Clone(descriptor.CategoryGainsDB)
+	}
+	state.reference = referenceOf(descriptor)
+
+	return state
+}
+
+// current is what the job leaves in the descriptor.
+func (s *audioSession) current() descriptorState {
+	return descriptorState{categories: s.categories, gains: s.gains, reference: s.reference}
+}
+
+// save writes what changed into the descriptor, then the library. If the
+// library cannot be saved, the descriptor is put back, so the job changes both
+// files or neither.
 func (s *audioSession) save() error {
-	before := maps.Clone(s.saved)
-	if err := s.writeCategories(before, s.categories); err != nil {
+	before, after := s.saved, s.current()
+	if err := s.writeDescriptor(before, after); err != nil {
 		return err
 	}
 	err := s.library.SaveChanged()
 	if err == nil || errors.Is(err, authoring.ErrAudioPublicationSync) {
 		return nil
 	}
-	restore := s.writeCategories(s.categories, before)
+	restore := s.writeDescriptor(after, before)
 
 	return errors.Join(fmt.Errorf("save the audio library: %w", err), restore)
 }
 
-// writeCategories changes the descriptor's categories from one set to
-// another, making a descriptor first when the project has none.
-func (s *audioSession) writeCategories(from, target map[string]string) error {
-	var changed []string
-	for _, cue := range slices.Sorted(maps.Keys(mapsUnion(from, target))) {
-		if from[cue] != target[cue] {
-			changed = append(changed, cue)
-		}
-	}
-	if len(changed) == 0 {
+// writeDescriptor changes the descriptor from one state to another, making a
+// descriptor first when the project has none and something changed.
+func (s *audioSession) writeDescriptor(from, target descriptorState) error {
+	changed, adjusted := differing(from.categories, target.categories), differing(from.gains, target.gains)
+	retarget := from.reference != target.reference
+	if len(changed) == 0 && len(adjusted) == 0 && !retarget {
 		return nil
 	}
 	if s.descriptor == nil {
@@ -140,9 +174,24 @@ func (s *audioSession) writeCategories(from, target map[string]string) error {
 		}
 	}
 	for _, cue := range changed {
-		data, err := authoring.SetDescriptorCueCategory(s.files.descriptor, s.descriptor, cue, target[cue])
+		data, err := authoring.SetDescriptorCueCategory(s.files.descriptor, s.descriptor, cue, target.categories[cue])
 		if err != nil {
 			return fmt.Errorf("save the category of %s: %w", cue, err)
+		}
+		s.descriptor = data
+	}
+	for _, category := range adjusted {
+		data, err := authoring.SetDescriptorCategoryGain(s.files.descriptor, s.descriptor, category,
+			target.gains[category])
+		if err != nil {
+			return fmt.Errorf("save the adjustment of %s: %w", category, err)
+		}
+		s.descriptor = data
+	}
+	if retarget {
+		data, err := authoring.SetDescriptorCalibrationTarget(s.files.descriptor, s.descriptor, target.reference)
+		if err != nil {
+			return fmt.Errorf("save the reference loudness: %w", err)
 		}
 		s.descriptor = data
 	}
@@ -175,10 +224,22 @@ func (s *audioSession) discard() error {
 		removeCreated(s.files.descriptor, s.createdDescriptor))
 }
 
-func mapsUnion(first, second map[string]string) map[string]string {
+// differing lists, in order, the keys whose values two maps disagree on.
+func differing[V comparable](from, target map[string]V) []string {
+	var keys []string
+	for _, key := range slices.Sorted(maps.Keys(mapsUnion(from, target))) {
+		if from[key] != target[key] {
+			keys = append(keys, key)
+		}
+	}
+
+	return keys
+}
+
+func mapsUnion[V any](first, second map[string]V) map[string]V {
 	union := maps.Clone(first)
 	if union == nil {
-		union = map[string]string{}
+		union = map[string]V{}
 	}
 	maps.Copy(union, second)
 
@@ -195,11 +256,17 @@ const (
 	entryProfile   = "profile"
 	entryAmbient   = "ambient"
 	entryCategory  = "category"
+	// entryAdjustment is a category's adjustment, and entryReference the
+	// reference loudness, named referenceEntry.
+	entryAdjustment = "adjustment"
+	entryReference  = "reference"
+	referenceEntry  = "loudness"
 )
 
 // entries lists every value an audio edit can change, encoded, by key: each
 // recording and cue, the family of each recording and the profile of each
-// cue, each profile, each cue's ambient settings and its category.
+// cue, each profile, each cue's ambient settings and its category, each
+// category's adjustment and the reference loudness.
 func (s *audioSession) entries() map[string]string {
 	document := s.library.Document()
 	entries := map[string]string{}
@@ -229,6 +296,10 @@ func (s *audioSession) entries() map[string]string {
 	for cue, category := range s.categories {
 		add(entryCategory, cue, category)
 	}
+	for category, gain := range s.gains {
+		add(entryAdjustment, category, gain)
+	}
+	add(entryReference, referenceEntry, s.reference)
 
 	return entries
 }
@@ -343,6 +414,17 @@ func (s *audioSession) setEntry(document *authoring.LibraryDocument, key string,
 		return setValue(document.Routing.Ambient, name, value)
 	case entryCategory:
 		return setValue(s.categories, name, value)
+	case entryAdjustment:
+		return setValue(s.gains, name, value)
+	case entryReference:
+		if value == nil {
+			return fmt.Errorf("%w: the reference loudness cannot be removed", ErrUnknownEdit)
+		}
+		if err := json.Unmarshal([]byte(*value), &s.reference); err != nil {
+			return fmt.Errorf("read the undo step: %w", err)
+		}
+
+		return nil
 	}
 
 	return fmt.Errorf("%w: undo step entry %q", ErrUnknownEdit, key)

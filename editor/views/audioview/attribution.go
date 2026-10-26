@@ -11,9 +11,11 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
-// The panel's attribution of the recording in focus: who made it, where it
-// came from and its licence, what was done to it before it came in, and
-// whether it is cleared for a commercial game, which is ticked here.
+// The panel's attribution of the recording in focus, or of the file shown:
+// who made it, where it came from and its licence, what was done to it before
+// it came in, and whether it is cleared for a commercial game, which is
+// ticked here. It belongs to the file, so a change changes every recording
+// cut from it.
 
 // Attribution layout: its lines of facts, each two to a line but the last,
 // and the width of a fact's label, in screen pixels.
@@ -41,11 +43,26 @@ func newAttributionSection() *attributionSection {
 }
 
 // attributed returns the recording whose attribution the panel shows: the
-// one in focus, unless it is an empty slot.
+// one in focus, unless it is an empty slot, or the first piece of the file
+// shown.
 func (s *State) attributed() (protocol.AudioRecording, bool) {
+	if file, ok := s.selectedFile(); ok {
+		return s.pieces(file)[0], true
+	}
 	recording, ok := s.focused()
 
 	return recording, ok && recording.Status != protocol.RecordingNoFile
+}
+
+// attributionEdit is the edit that sets a recording's attribution: its
+// file's, for every recording cut from it, when it has a file.
+func attributionEdit(recording protocol.AudioRecording, attribution protocol.Attribution) (string, any) {
+	if recording.File != "" {
+		return protocol.AudioSetFileAttribution,
+			protocol.FileAttributionChange{File: recording.File, Attribution: attribution}
+	}
+
+	return protocol.AudioSetAttribution, protocol.AttributionChange{Recording: recording.ID, Attribution: attribution}
 }
 
 // layoutAttribution places the section from a top edge, and returns where
@@ -93,10 +110,8 @@ func (s *State) updateAttribution(input *ui.Input, ctx *frame.Context) {
 		if !cleared {
 			said = "No longer cleared for a commercial game. Undo takes it back."
 		}
-		s.editIn(ctx, protocol.AudioSetAttribution,
-			protocol.AttributionChange{Recording: recording.ID, Attribution: attribution},
-			func(protocol.Result) { ctx.Frame.Status(said) },
-			func() { section.pending = nil })
+		edit, args := attributionEdit(recording, attribution)
+		s.editIn(ctx, edit, args, func(protocol.Result) { ctx.Frame.Status(said) }, func() { section.pending = nil })
 	case section.edit.Update(input):
 		s.openAttribution(recording)
 	}
@@ -112,7 +127,11 @@ func (s *State) drawAttribution(screen *ebiten.Image) {
 	}
 	attribution := recording.Attribution
 	left, right := s.panelArea().Min.X+ui.Inset, section.edit.Rect.Max.X
-	s.theme.DrawLabel(screen, "ATTRIBUTION · WHO MADE IT, WHERE IT CAME FROM AND ITS LICENCE", left,
+	label := "ATTRIBUTION · WHO MADE IT, WHERE IT CAME FROM AND ITS LICENCE"
+	if count := len(s.pieces(recording.File)); count > 1 {
+		label = "ATTRIBUTION · KEPT WITH THE FILE, FOR ALL " + itoa(count) + " RECORDINGS CUT FROM IT"
+	}
+	s.theme.DrawLabel(screen, s.theme.FitText(label, section.edit.Rect.Min.X-left-ui.Inset), left,
 		section.top+(ui.ButtonH-ui.LabelSize)/ui.Half, ui.ColorMuted())
 	middle := left + (right-left)/ui.Half
 	top := section.top + ui.ButtonH + ui.Gap

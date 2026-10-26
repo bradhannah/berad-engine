@@ -4,7 +4,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -13,14 +12,11 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/loudness"
 )
 
 // inspectorButtons counts the inspector's buttons other than its categories.
 const inspectorButtons = 8
-
-// gainStep is how much the gain buttons change a cue's gain, which runs from
-// 0 to 1.
-const gainStep = 0.1
 
 // Inspector layout, in screen pixels.
 const (
@@ -170,8 +166,10 @@ func (s *State) layoutInspector() {
 		top += ui.LineHeight + ui.ButtonH + ui.Inset + ui.LineHeight
 		insp.quieter.Rect = image.Rect(left, top, left+gainWidth, top+ui.ButtonH)
 		insp.louder.Rect = image.Rect(right-gainWidth, top, right, top+ui.ButtonH)
-		insp.quieter.Disabled, insp.louder.Disabled = cue.Gain <= 0, cue.Gain >= 1
-		top += ui.ButtonH + ui.Inset
+		_, quieter := s.nextStep(cue, -1)
+		_, louder := s.nextStep(cue, 1)
+		insp.quieter.Disabled, insp.louder.Disabled = !quieter, !louder
+		top += ui.ButtonH + ui.LineHeight + ui.Inset
 		if showsAmbient(cue) {
 			top = s.layoutAmbient(cue, left, right, top)
 		}
@@ -233,9 +231,9 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 		}
 		switch {
 		case insp.quieter.Update(input):
-			s.setGain(ctx, cue, cue.Gain-gainStep)
+			s.stepCue(ctx, cue, -1)
 		case insp.louder.Update(input):
-			s.setGain(ctx, cue, cue.Gain+gainStep)
+			s.stepCue(ctx, cue, 1)
 		case insp.ambient.setDistance.Update(input):
 			s.giveDistance(ctx, cue)
 		case insp.classes.profile.Update(input):
@@ -256,16 +254,80 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 	}
 }
 
-// setGain sets a cue's gain, rounded to the step and kept between 0 and 1.
-func (s *State) setGain(ctx *frame.Context, cue protocol.AudioCue, gain float64) {
-	gain = math.Round(min(max(gain, 0), 1)/gainStep) * gainStep
-	gain = math.Round(gain*percent) / percent
-	s.edit(ctx, protocol.AudioSetCue, protocol.CueChange{
-		Cue: cue.ID, Name: nil, Gain: &gain, HowToHear: nil, SearchTerms: nil,
-	}, nil)
+// nextStep is the step quieter or louder than the one a cue plays at, by
+// direction; from between steps, the nearest that way.
+func (s *State) nextStep(cue protocol.AudioCue, direction int) (loudness.Step, bool) {
+	_, now, _ := s.cueStep(cue)
+	steps := loudness.Steps()
+	if direction < 0 {
+		for index := len(steps) - 1; index >= 0; index-- {
+			if steps[index].DB < now-evenTolerance/ui.Half {
+				return steps[index], true
+			}
+		}
+
+		return steps[0], false
+	}
+	for _, step := range steps {
+		if step.DB > now+evenTolerance/ui.Half {
+			return step, true
+		}
+	}
+
+	return steps[len(steps)-1], false
+}
+
+// stepCue sets how loud a cue is meant to sound, a step quieter or louder.
+func (s *State) stepCue(ctx *frame.Context, cue protocol.AudioCue, direction int) {
+	step, found := s.nextStep(cue, direction)
+	if !found {
+		return
+	}
+	s.edit(ctx, protocol.AudioSetLoudness, protocol.LoudnessChange{Cue: cue.ID, Step: step.ID},
+		func(protocol.Result) {
+			ctx.Frame.Status(cue.Name + " is meant to sound " + step.Label + ". Undo puts it back.")
+		})
 }
 
 const percent = 100
+
+// drawMeantToSound draws the step a cue plays at between its buttons, and
+// its category's adjustment under them.
+func (s *State) drawMeantToSound(screen *ebiten.Image, cue protocol.AudioCue) {
+	insp := s.inspector
+	left := insp.quieter.Rect.Min.X
+	s.theme.DrawLabel(screen, "MEANT TO SOUND", left, insp.quieter.Rect.Min.Y-ui.LineHeight+ui.Gap, ui.ColorMuted())
+	between := image.Rect(insp.quieter.Rect.Max.X, insp.quieter.Rect.Min.Y, insp.louder.Rect.Min.X, insp.louder.Rect.Max.Y)
+	label := s.stepLabel(cue)
+	step, stepDB, found := s.cueStep(cue)
+	if found && step.DB != 0 {
+		label += " · " + decibels(step.DB)
+	}
+	if !found {
+		step = loudness.Step{ID: "", Label: "", DB: stepDB}
+	}
+	const pipsWidth = 24
+	width := pipsWidth + ui.Gap + s.theme.TextWidth(label)
+	start := between.Min.X + max((between.Dx()-width)/ui.Half, ui.Gap)
+	drawStepPips(screen, start, between.Min.Y, step, ui.ColorSelect())
+	s.theme.DrawText(screen, s.theme.FitText(label, between.Max.X-start-pipsWidth-ui.Gap), start+pipsWidth+ui.Gap,
+		between.Min.Y+ui.Gap, ui.ColorInk())
+	note := categoryLabel(cue.Category) + " adjustment " + signedDB(s.adjustment(cue.Category)) + " · in Loudness…"
+	s.theme.DrawText(screen, s.theme.FitText(note, s.inspectorArea().Dx()-ui.Half*ui.Inset), left,
+		insp.quieter.Rect.Max.Y+ui.Gap, ui.ColorMuted())
+}
+
+// noAdjustmentDB is how near 0 dB an adjustment shows as none.
+const noAdjustmentDB = 0.05
+
+// signedDB writes an adjustment, ±0 dB when there is none.
+func signedDB(value float64) string {
+	if math.Abs(value) < noAdjustmentDB {
+		return "±0 dB"
+	}
+
+	return decibels(value)
+}
 
 // commitField saves a field of the inspector after Enter.
 func (s *State) commitField(ctx *frame.Context, field *ui.TextField) {
@@ -337,10 +399,7 @@ func (s *State) drawInspector(screen *ebiten.Image) {
 		s.theme.DrawLabel(screen, "ID", left, insp.name.Rect.Max.Y+ui.Inset, ui.ColorMuted())
 		s.theme.DrawMono(screen, cue.ID, left+ui.Half*ui.Inset, insp.name.Rect.Max.Y+ui.Inset, ui.ColorSubdued())
 		s.theme.DrawLabel(screen, "CATEGORY", left, insp.category[0].Rect.Min.Y-ui.LineHeight+ui.Gap, ui.ColorMuted())
-		s.theme.DrawLabel(screen, "CUE GAIN", left, insp.quieter.Rect.Min.Y-ui.LineHeight+ui.Gap, ui.ColorMuted())
-		gain := strconv.Itoa(int(math.Round(cue.Gain*percent))) + " %"
-		s.theme.DrawTextIn(screen, gain, image.Rect(insp.quieter.Rect.Max.X, insp.quieter.Rect.Min.Y, insp.louder.Rect.Min.X,
-			insp.louder.Rect.Max.Y), ui.ColorInk())
+		s.drawMeantToSound(screen, cue)
 		s.drawFieldLabel(screen, insp.how, "HOW TO HEAR IT")
 		s.drawFieldLabel(screen, insp.terms, "SEARCH TERMS")
 		s.drawUses(screen, left, insp.usesTop, insp.removeCue.Rect.Min.Y-ui.Inset)

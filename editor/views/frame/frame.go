@@ -75,11 +75,13 @@ type Audio interface {
 	// AudioEdit changes the audio library (D11); every window is then told
 	// it changed.
 	AudioEdit(edit protocol.AudioEdit, done func(protocol.Result, error))
-	// AudioAnalysis asks for a recording's waveform and suggestions, and
-	// AudioCheck for every recording to be decoded; the orchestrator decodes
-	// them, never the window.
+	// AudioAnalysis asks for a recording's waveform and suggestions,
+	// AudioCheck for every recording to be decoded and AudioLoudness for how
+	// loud every recording measures; the orchestrator decodes them, never the
+	// window.
 	AudioAnalysis(asked protocol.AudioAnalysis, done func(protocol.AudioAnalysis, error))
 	AudioCheck(done func(protocol.AudioCheck, error))
+	AudioLoudness(done func(protocol.AudioLoudness, error))
 }
 
 // Files asks the author to choose a file of their own, outside the project,
@@ -96,8 +98,11 @@ type Files interface {
 type Sounds interface {
 	// Prepare fetches what cues need, so they play without waiting later.
 	Prepare(cues []string)
-	// Play plays a cue once, alongside whatever else is playing.
+	// Play plays a cue once, alongside whatever else is playing; PlayAt plays
+	// it once at a step of package loudness instead of its own, as a Play
+	// sound asking for one moment louder or quieter does.
 	Play(cue string)
+	PlayAt(cue, step string)
 	// Stop stops everything this window plays but its soundscape, and what
 	// waits to play.
 	Stop()
@@ -107,10 +112,11 @@ type Sounds interface {
 	// reports whether it is playing or waiting to.
 	PlayRecording(recording string)
 	PlayingRecording(recording string) bool
-	// Audition plays part of a recording, nil for all of it, at a
-	// calibration gain in dB, again and again when loop is set, as the Audio
-	// window plays a region it is editing; AuditionAt reports where it is, in
-	// the recording's milliseconds, while it plays.
+	// Audition plays part of a recording, nil for all of it, at a gain in
+	// dB, again and again when loop is set, as the Audio window plays a region
+	// it is editing: as recorded, evened out, or as a cue plays it, louder
+	// than a level alone reaches. AuditionAt reports where it is, in the
+	// recording's milliseconds, while it plays.
 	Audition(recording string, window *protocol.AudioWindow, calibrationDB float64, loop bool)
 	AuditionAt() (int64, bool)
 }

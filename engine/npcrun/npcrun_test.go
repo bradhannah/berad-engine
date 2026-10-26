@@ -365,20 +365,35 @@ func TestRandomWalkRepeats(t *testing.T) {
 	}
 }
 
-// TestPlaySoundAsksForItsCue asks for the cue in the tick it reaches a Play
-// sound and carries on at once, without a cue says why it carried on, and
-// asks again only when it comes round again.
+// soundsOf lists what Play sounds asked for, a step after its cue's @ when
+// one asked for one.
+func soundsOf(sounds []npcrun.Sound) string {
+	listed := make([]string, 0, len(sounds))
+	for _, sound := range sounds {
+		if sound.Loudness != "" {
+			listed = append(listed, sound.Cue+"@"+sound.Loudness)
+		} else {
+			listed = append(listed, sound.Cue)
+		}
+	}
+
+	return strings.Join(listed, ",")
+}
+
+// TestPlaySoundAsksForItsCue asks for the cue, at the loudness it asks for,
+// in the tick it reaches a Play sound and carries on at once, without a cue
+// says why it carried on, and asks again only when it comes round again.
 func TestPlaySoundAsksForItsCue(t *testing.T) {
 	t.Parallel()
 	nodes := []flow.Node{
-		node(t, 2, flow.KindPlaySound, map[string]any{"cue": "door/open"}),
+		node(t, 2, flow.KindPlaySound, map[string]any{"cue": "door/open", "loudness": "louder"}),
 		node(t, 3, flow.KindPlaySound, nil),
 		node(t, 4, flow.KindWait, map[string]any{"duration": waitFor(1, flow.UnitSeconds, flow.ClockReal)}),
 	}
 	workflow := workflowOf(t, nodes, link(1, flow.OutputNext, 2), link(2, flow.OutputNext, 3), link(3, flow.OutputNext, 4))
 	run := newRunner(t, workflow, image.Pt(1, 1), eight, clock.MinutePerSecond)
 	run.run(1)
-	if strings.Join(run.npc.Sounds, ",") != "door/open" || run.npc.Node != id(4) {
+	if soundsOf(run.npc.Sounds) != "door/open@louder" || run.npc.Node != id(4) {
 		t.Fatalf("one tick plays the cue and reaches the Wait: %v at %v", run.npc.Sounds, run.npc.Node)
 	}
 	if run.npc.Last.From != id(3) || run.npc.Last.Status != npcrun.StatusNoCue {
@@ -391,7 +406,7 @@ func TestPlaySoundAsksForItsCue(t *testing.T) {
 	asked := 0
 	for range clock.TicksPerSecond {
 		run.run(1)
-		if strings.Join(run.npc.Sounds, ",") == "door/open" {
+		if soundsOf(run.npc.Sounds) == "door/open@louder" {
 			asked++
 		}
 	}

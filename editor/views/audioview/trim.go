@@ -29,6 +29,15 @@ const (
 	secondMs    = 1000.0
 	fieldBytes  = 16
 	regionLabel = "REGION · A DRAFT UNTIL APPLY"
+	labelPlay   = "Play"
+)
+
+// How loud the waveform's Play plays: as recorded, evened out to the
+// reference, or as the selected cue plays it.
+const (
+	hearRecorded = "recorded"
+	hearEvened   = "evened"
+	hearInCue    = "cue"
 )
 
 // trimmer is what the window knows of the recording in focus: its region as
@@ -49,10 +58,23 @@ type trimmer struct {
 	wave                                   *ui.Waveform
 	start, end                             *ui.TextField
 	zoomIn, zoomOut, fit                   *ui.Button
-	playRegion, playWhole                  *ui.Button
 	loop                                   *ui.Toggle
 	suggest, all, apply, cancel, duplicate *ui.Button
-	useSuggestion, setLevel, setTarget     *ui.Button
+	measure, useReference, setLevel        *ui.Button
+	// play is the one Play of the recording in focus; the part and hear
+	// buttons choose what it plays: the region or the whole file, as
+	// recorded, evened out or as the selected cue plays it. wholeFile and
+	// the hear choices last while the window is open, a cue's apart from a
+	// recording's own.
+	play                     *ui.Button
+	partRegion, partWhole    *ui.Button
+	hearRecorded, hearEvened *ui.Button
+	hearCue                  *ui.Button
+	wholeFile                bool
+	hearOnCue, hearAlone     string
+	// meterTop is where the recording's loudness meter is, and choiceTop
+	// where the hear buttons are.
+	meterTop, choiceTop int
 }
 
 func newTrimmer(theme *ui.Theme) *trimmer {
@@ -68,20 +90,22 @@ func newTrimmer(theme *ui.Theme) *trimmer {
 		recording: "", version: "", saved: nil, draft: nil, whole: true, from: 0, until: 0, analysis: nil, asked: "",
 		top: 0, auditioned: nil, wave: ui.NewWaveform("waveform"), start: field("region-start"), end: field("region-end"),
 		zoomIn: button("zoom-in", "+"), zoomOut: button("zoom-out", "−"), fit: button("zoom-fit", "Fit"),
-		playRegion: button("play-region", "Play region"), playWhole: button("play-whole", "Play whole file"),
 		loop:    &ui.Toggle{ID: "loop", Label: "Loop", Rect: ui.Zero(), On: false},
-		suggest: button("suggest-region", "Suggest"), all: button("whole-region", "Whole file"),
+		suggest: button("suggest-region", "Suggest"), all: button("whole-region", "Use whole file"),
 		apply: button("apply-region", "Apply"), cancel: button("cancel-region", "Cancel"),
-		duplicate:     button("duplicate-region", "Duplicate region"),
-		useSuggestion: button("use-suggestion", "Use suggested level"), setLevel: button("set-level", "Set level…"),
-		setTarget: button("set-target", "Target…"),
+		duplicate: button("duplicate-region", "Duplicate region"), measure: button("measure", "Measure"),
+		useReference: button("use-reference", "Use the reference"), setLevel: button("set-level", "Set by hand…"),
+		play: button("play-part", labelPlay), partRegion: button("part-region", "Region"),
+		partWhole: button("part-whole", "Whole file"), hearRecorded: button("hear-recorded", "As recorded"),
+		hearEvened: button("hear-evened", "Evened out"), hearCue: button("hear-cue", "In this cue"), wholeFile: false,
+		hearOnCue: hearInCue, hearAlone: hearEvened, meterTop: 0, choiceTop: 0,
 	}
 }
 
 func (t *trimmer) buttons() []*ui.Button {
 	return []*ui.Button{
-		t.zoomIn, t.zoomOut, t.fit, t.playRegion, t.playWhole, t.suggest, t.all, t.apply, t.cancel, t.duplicate,
-		t.useSuggestion, t.setLevel, t.setTarget,
+		t.zoomIn, t.zoomOut, t.fit, t.play, t.partRegion, t.partWhole, t.suggest, t.all, t.apply, t.cancel,
+		t.duplicate, t.measure, t.useReference, t.setLevel, t.hearRecorded, t.hearEvened, t.hearCue,
 	}
 }
 
@@ -199,8 +223,8 @@ func (s *State) askTrim(ctx *frame.Context) {
 	}
 	asked := protocol.AudioAnalysis{
 		Recording: trim.recording, From: 0, To: 0, Columns: max(trim.wave.Rect.Dx()/ui.Half, 1),
-		Region: copyWindow(trim.draft), Version: "", DurationMs: 0, Peaks: nil, Suggested: nil, Calibration: nil,
-		Problem: "",
+		Region: copyWindow(trim.draft), Version: "", DurationMs: 0, Peaks: nil, Suggested: nil, Sounds: nil,
+		Calibration: nil, Problem: "",
 	}
 	if !trim.whole {
 		asked.From, asked.To = trim.from, trim.until
@@ -234,7 +258,7 @@ func (s *State) layoutTrim(left, right, top int) int {
 	if !trim.shows() {
 		return top
 	}
-	trim.playRegion.Label, trim.playWhole.Label = "Play region", "Play whole file"
+	trim.play.Label, trim.play.Primary = labelPlay, true
 	if s.sounds == nil || !auditioning(s.sounds) {
 		trim.auditioned = nil
 	} else if trim.auditioned != nil {
@@ -246,27 +270,102 @@ func (s *State) layoutTrim(left, right, top int) int {
 	top += ui.ButtonH + ui.Gap
 	trim.wave.Rect = image.Rect(left, top, right, top+waveHeight)
 	top += waveHeight + ui.Gap*ui.Half
-	s.row(left, top, trim.playRegion, trim.playWhole)
-	trim.loop.Rect = image.Rect(trim.playWhole.Rect.Max.X+ui.Inset, top, trim.playWhole.Rect.Max.X+ui.Inset+loopWidth,
+	s.row(left, top, trim.play)
+	s.segments(trim.play.Rect.Max.X+ui.Inset, top, trim.partRegion, trim.partWhole)
+	trim.partRegion.On, trim.partWhole.On = !trim.wholeFile, trim.wholeFile
+	trim.loop.Rect = image.Rect(trim.partWhole.Rect.Max.X+ui.Inset, top, trim.partWhole.Rect.Max.X+ui.Inset+loopWidth,
 		top+ui.ButtonH)
 	s.row(trim.loop.Rect.Max.X+ui.Inset, top, trim.duplicate)
 	top += ui.ButtonH + ui.Inset + ui.LineHeight
 	trim.start.Rect = image.Rect(left, top, left+fieldWidth, top+ui.ButtonH)
 	trim.end.Rect = image.Rect(trim.start.Rect.Max.X+ui.Gap, top, trim.start.Rect.Max.X+ui.Gap+fieldWidth, top+ui.ButtonH)
 	s.row(trim.end.Rect.Max.X+ui.Inset, top, trim.suggest, trim.all, trim.apply, trim.cancel)
-	top += ui.ButtonH + ui.LineHeight + ui.Inset + ui.LineHeight*levelLines
-	s.row(left, top, trim.useSuggestion, trim.setLevel, trim.setTarget)
+	top = s.layoutLoudnessSection(left, top+ui.ButtonH+ui.LineHeight+ui.Inset+ui.LineHeight)
 	trim.layoutWave()
+	recording, _ := s.focused()
+	trim.wave.Marks = marksOf(s.pieces(recording.File), recording.ID)
 	trim.apply.Disabled, trim.cancel.Disabled = !trim.dirty(), !trim.dirty()
 	trim.suggest.Disabled = trim.analysis == nil || trim.analysis.Suggested == nil
-	trim.useSuggestion.Disabled = trim.dirty() || trim.analysis == nil || trim.analysis.Calibration == nil
+
+	return top
+}
+
+// layoutLoudnessSection places the recording's meter, its listening buttons
+// and its level's buttons from a top edge, and returns where they end.
+func (s *State) layoutLoudnessSection(left, top int) int {
+	trim := s.trim
+	trim.meterTop = top
+	top += ui.RowHeight + ui.LineHeight*levelLines
+	trim.choiceTop = top
+	hear := []*ui.Button{trim.hearRecorded, trim.hearEvened}
+	trim.hearCue.Rect = ui.Zero()
+	if cue, ok := s.selectedCue(); ok {
+		hear = append(hear, trim.hearCue)
+		trim.hearCue.Disabled = cue.Gain <= 0
+	}
+	s.segments(left+s.theme.TextWidth(playItLabel)+ui.Inset, top, hear...)
+	chosen := s.hearing()
+	trim.hearRecorded.On, trim.hearEvened.On, trim.hearCue.On = chosen == hearRecorded, chosen == hearEvened,
+		chosen == hearInCue
+	top += ui.ButtonH + ui.Gap + ui.LineHeight
+	recording, _ := s.focused()
+	buttons := []*ui.Button{trim.measure, trim.setLevel}
+	if recording.CalibrationMode == protocol.CalibrationManual || recording.TargetDB != 0 {
+		buttons = []*ui.Button{trim.useReference, trim.setLevel}
+	}
+	s.row(left, top, buttons...)
+	trim.measure.Disabled = trim.dirty() || recording.CalibrationMode == protocol.CalibrationAuto
+	trim.measure.Label = "Measure"
+	if recording.CalibrationMode == protocol.CalibrationAuto {
+		trim.measure.Label = "Measured"
+	}
 
 	return top + ui.ButtonH + ui.Inset
 }
 
-// levelLines counts the lines about a recording's level above its buttons:
-// its label, how its level is set, and the suggestion.
-const levelLines = 3
+// levelLines counts the lines about a recording's loudness under its meter:
+// as recorded, and as evened out.
+const levelLines = 2
+
+// playItLabel names the hear buttons.
+const playItLabel = "PLAY IT"
+
+// segments lays buttons out side by side with no gap, as one choice.
+func (s *State) segments(left, top int, buttons ...*ui.Button) {
+	for _, button := range buttons {
+		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
+		button.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
+		left += width
+	}
+}
+
+// hearing is how loud the waveform's Play plays: on a cue's screen, its
+// choice there, as the cue plays it at first; on a recording's own, evened
+// out at first.
+func (s *State) hearing() string {
+	if cue, ok := s.selectedCue(); ok {
+		if s.trim.hearOnCue == hearInCue && cue.Gain <= 0 {
+			return hearEvened
+		}
+
+		return s.trim.hearOnCue
+	}
+	if s.trim.hearAlone == hearInCue {
+		return hearEvened
+	}
+
+	return s.trim.hearAlone
+}
+
+// chooseHearing sets how loud the waveform's Play plays, on this screen.
+func (s *State) chooseHearing(hear string) {
+	if _, ok := s.selectedCue(); ok {
+		s.trim.hearOnCue = hear
+
+		return
+	}
+	s.trim.hearAlone = hear
+}
 
 // layoutWave gives the waveform what it shows.
 func (t *trimmer) layoutWave() {
@@ -300,10 +399,14 @@ func (s *State) updateTrim(input *ui.Input, ctx *frame.Context) {
 		trim.zoomOutOnce()
 	case trim.fit.Update(input):
 		trim.whole = true
-	case trim.playRegion.Update(input):
-		s.audition(ctx, trim.playRegion, copyWindow(trim.draft))
-	case trim.playWhole.Update(input):
-		s.audition(ctx, trim.playWhole, nil)
+	case trim.play.Update(input):
+		s.playPart(ctx)
+	case trim.partRegion.Update(input):
+		trim.wholeFile = false
+		s.replay(ctx)
+	case trim.partWhole.Update(input):
+		trim.wholeFile = true
+		s.replay(ctx)
 	default:
 		s.updateRegion(input, ctx)
 	}
@@ -323,13 +426,118 @@ func (s *State) updateRegion(input *ui.Input, ctx *frame.Context) {
 		s.applyRegion(ctx)
 	case trim.duplicate.Update(input):
 		s.duplicateRegion(ctx)
-	case trim.useSuggestion.Update(input):
-		s.edit(ctx, protocol.AudioAcceptCalibration, protocol.AudioItem{ID: trim.recording}, nil)
+	case trim.measure.Update(input):
+		s.edit(ctx, protocol.AudioAcceptCalibration, protocol.AudioItem{ID: trim.recording},
+			func(protocol.Result) { ctx.Frame.Status("Evened out to the reference. Undo puts it back.") })
+	case trim.useReference.Update(input):
+		s.edit(ctx, protocol.AudioUseReference, protocol.AudioItem{ID: trim.recording},
+			func(protocol.Result) { ctx.Frame.Status("Measured to the reference again. Undo puts it back.") })
 	case trim.setLevel.Update(input):
-		s.prompt = s.levelDialog(levelByHand, trim.recording, s.currentLevel())
-	case trim.setTarget.Update(input):
-		s.prompt = s.levelDialog(levelTarget, trim.recording, s.currentTarget())
+		s.prompt = s.levelDialog(trim.recording, s.currentLevel())
+	default:
+		s.updateHearing(input, ctx)
 	}
+}
+
+// updateHearing handles the choice of how loud Play plays.
+func (s *State) updateHearing(input *ui.Input, ctx *frame.Context) {
+	trim := s.trim
+	for hear, button := range map[string]*ui.Button{
+		hearRecorded: trim.hearRecorded, hearEvened: trim.hearEvened, hearInCue: trim.hearCue,
+	} {
+		if button.Update(input) {
+			s.chooseHearing(hear)
+			s.replay(ctx)
+		}
+	}
+}
+
+// replay plays again, as now chosen, what Play is playing, so a choice can
+// be compared with the last while it loops.
+func (s *State) replay(ctx *frame.Context) {
+	if s.trim.auditioned != s.trim.play || !auditioning(ctx.Sounds) {
+		return
+	}
+	s.trim.auditioned = nil
+	s.playPart(ctx)
+}
+
+// playPart plays, or stops, the recording in focus: the drafted region or
+// the whole file, as loud as chosen.
+func (s *State) playPart(ctx *frame.Context) {
+	trim := s.trim
+	window := copyWindow(trim.draft)
+	if trim.wholeFile {
+		window = nil
+	}
+	s.auditionAt(ctx, trim.play, window, s.hearingGain(window))
+}
+
+// hearingGain is the gain, in dB, Play plays part of the recording in focus
+// at, as loud as chosen.
+func (s *State) hearingGain(window *protocol.AudioWindow) float64 {
+	switch s.hearing() {
+	case hearRecorded:
+		return 0
+	case hearInCue:
+		if cue, ok := s.selectedCue(); ok && cue.Gain > 0 {
+			return s.evenedGain(window) + cueBoost(cue)
+		}
+	}
+
+	return s.evenedGain(window)
+}
+
+// playSentence says what Play plays, and how loud.
+func (s *State) playSentence() string {
+	what := "the region"
+	if s.trim.wholeFile {
+		what = "the whole file"
+	}
+	recording, _ := s.focused()
+	found := s.facts(recording)
+	hear := s.hearing()
+	cue, onCue := s.selectedCue()
+	switch {
+	case hear == hearRecorded && found.known:
+		return "Play plays " + what + " as recorded, unaltered: " + than(found.recordedDB, "the reference") + "."
+	case hear == hearRecorded:
+		return "Play plays " + what + " as recorded, unaltered."
+	case hear == hearInCue && onCue:
+		return "Play plays " + what + " as " + cue.Name + " plays it at " + s.stepLabel(cue) + ": evened out, " +
+			louderBy(cueBoost(cue)) + "."
+	case !found.level:
+		return "Play plays " + what + " as recorded: it is not evened out yet."
+	}
+
+	return "Play plays " + what + " evened out: at the reference, where every cue starts from."
+}
+
+// louderBy says how much louder or quieter a cue plays a recording than
+// evened out.
+func louderBy(boost float64) string {
+	if math.Abs(boost) < noAdjustmentDB {
+		return "at the reference"
+	}
+	louder := " louder"
+	if boost < 0 {
+		louder = " quieter"
+	}
+
+	return "then " + strconv.FormatFloat(math.Abs(boost), 'f', 1, 64) + " dB" + louder
+}
+
+// than says how much louder or quieter a loudness in dB is than another.
+func than(level float64, other string) string {
+	if math.Abs(level) < noAdjustmentDB {
+		return "as loud as " + other
+	}
+	louder := " louder than "
+	if level < 0 {
+		louder = " quieter than "
+	}
+
+	return strconv.FormatFloat(math.Abs(level), 'f', 1, 64) + " dB" + louder + other
 }
 
 // setDraft drafts a region, none when it is all of the recording.
@@ -371,10 +579,23 @@ func auditioning(sounds frame.Sounds) bool {
 	return playing
 }
 
-// audition plays part of the recording, at the gain it would play at: for a
-// measured recording, the gain suggested for the drafted region. Pressed
+// evenedGain is the level, in dB, the recording in focus plays part of
+// itself at: for a measured recording and a drafted region, the gain
+// suggested for the draft.
+func (s *State) evenedGain(window *protocol.AudioWindow) float64 {
+	recording, _ := s.focused()
+	analysis := s.trim.analysis
+	if recording.CalibrationMode == protocol.CalibrationAuto && analysis != nil && analysis.Calibration != nil &&
+		window != nil {
+		return analysis.Calibration.GainDB
+	}
+
+	return recording.CalibrationDB
+}
+
+// auditionAt plays part of the recording in focus at a gain in dB. Pressed
 // again while it plays, its button stops it.
-func (s *State) audition(ctx *frame.Context, button *ui.Button, window *protocol.AudioWindow) {
+func (s *State) auditionAt(ctx *frame.Context, button *ui.Button, window *protocol.AudioWindow, gainDB float64) {
 	trim := s.trim
 	if auditioning(ctx.Sounds) {
 		ctx.Sounds.Stop()
@@ -389,12 +610,7 @@ func (s *State) audition(ctx *frame.Context, button *ui.Button, window *protocol
 	if !ok {
 		return
 	}
-	gain := recording.CalibrationDB
-	if recording.CalibrationMode == protocol.CalibrationAuto && trim.analysis != nil && trim.analysis.Calibration != nil &&
-		window != nil {
-		gain = trim.analysis.Calibration.GainDB
-	}
-	ctx.Sounds.Audition(recording.ID, window, gain, trim.loop.On)
+	ctx.Sounds.Audition(recording.ID, window, gainDB, trim.loop.On)
 }
 
 // applyRegion saves the drafted region.
@@ -430,22 +646,6 @@ func (s *State) currentLevel() float64 {
 
 	return recording.CalibrationDB
 }
-
-// currentTarget is the loudness the focused recording's measurement aims at.
-func (s *State) currentTarget() float64 {
-	recording, _ := s.focused()
-	if recording.TargetDB != 0 {
-		return recording.TargetDB
-	}
-	if s.trim.analysis != nil && s.trim.analysis.Calibration != nil {
-		return s.trim.analysis.Calibration.TargetDB
-	}
-
-	return defaultTargetDB
-}
-
-// defaultTargetDB is berad-audio's default loudness target.
-const defaultTargetDB = -20.0
 
 // syncRegionFields shows the drafted region in its fields while they are
 // not being typed in, and drafts what is typed when Enter saves it.
@@ -508,32 +708,58 @@ func decibels(value float64) string {
 	return "+" + text
 }
 
-// levelText says how the recording's level is set, and what is suggested for
-// the drafted region.
-func (s *State) levelText(recording protocol.AudioRecording) (string, string) {
-	trim := s.trim
-	target := "its family's target"
-	if recording.TargetDB != 0 {
-		target = decibels(recording.TargetDB)
+// loudnessText says how loud the recording in focus is as recorded, and
+// how it is evened out, in words first.
+func (s *State) loudnessText(recording protocol.AudioRecording) (string, string, bool) {
+	found := s.facts(recording)
+	if !found.known {
+		return found.problem, "", false
 	}
-	now := "Not set: plays as recorded. Use the suggested level, or set one by hand."
-	switch recording.CalibrationMode {
-	case protocol.CalibrationAuto:
-		now = "Measured: " + decibels(recording.CalibrationDB) + ", aiming at " + target + "."
-	case protocol.CalibrationManual:
-		now = "Set by hand: " + decibels(recording.CalibrationDB) + ". The suggestion would measure it."
+	recorded := "As recorded: " + dbAmount(found.recordedDB) + " quieter than the reference."
+	if found.recordedDB >= 0 {
+		recorded = "As recorded: " + dbAmount(found.recordedDB) + " louder than the reference."
 	}
-	suggestion := "Measuring…"
-	if trim.analysis != nil && trim.analysis.Calibration != nil {
-		found := trim.analysis.Calibration
-		suggestion = "Suggested level for this region: " + decibels(found.GainDB) + " (it measures " +
-			decibels(found.MeasuredDB) + ", target " + decibels(found.TargetDB) + ")"
-		if found.Limited {
-			suggestion += ", limited so it does not clip"
-		}
+	status, problem := evenStatus(found)
+	switch {
+	case !found.level:
+		status = "Not measured yet: it plays as recorded. Measure evens it out."
+	case problem:
+		status += ", raised as far as it goes without distorting."
+	case found.manual:
+		status += ": " + decibels(recording.CalibrationDB) + ". Use the reference measures it again."
+	case recording.TargetDB != 0:
+		status = "Evened out to its own target, " + decibels(recording.TargetDB) + "."
+	default:
+		status = "Evened out to the reference automatically, the same in every cue that plays it."
 	}
 
-	return now, suggestion
+	return recorded, status, problem
+}
+
+// trimMarks is where the recording in focus sits on its meter: as recorded,
+// evened out and, on a cue's screen, as the cue plays it, the one Play
+// plays at ringed.
+func (s *State) trimMarks(recording protocol.AudioRecording, problem bool) meterMarks {
+	found := s.facts(recording)
+	marks := meterMarks{
+		recordedDB: found.recordedDB, playsDB: found.evenedDB, recorded: found.known, plays: found.known && found.level,
+		problem: problem, cueDB: 0, ringDB: found.recordedDB, cue: false, ring: found.known,
+	}
+	evened := found.recordedDB
+	if found.level {
+		evened = found.evenedDB
+	}
+	if cue, ok := s.selectedCue(); ok && found.known && cue.Gain > 0 {
+		marks.cueDB, marks.cue = evened+cueBoost(cue), true
+	}
+	switch s.hearing() {
+	case hearEvened:
+		marks.ringDB = evened
+	case hearInCue:
+		marks.ringDB, marks.ring = marks.cueDB, marks.cue
+	}
+
+	return marks
 }
 
 // drawTrim draws the waveform and its controls.
@@ -563,15 +789,40 @@ func (s *State) drawTrim(screen *ebiten.Image) {
 	trim.end.Draw(screen)
 	hint := "Drag the blue ends, or type the start and end in seconds."
 	s.theme.DrawText(screen, hint, left, trim.start.Rect.Max.Y+ui.Gap, ui.ColorSubdued())
-	recording, _ := s.focused()
-	now, suggestion := s.levelText(recording)
-	top := trim.useSuggestion.Rect.Min.Y - ui.LineHeight*levelLines
-	s.theme.DrawLabel(screen, "LEVEL · CHANGES EVERY CUE THAT PLAYS IT", left, top+ui.Gap, ui.ColorMuted())
-	s.theme.DrawText(screen, now, left, top+ui.LineHeight, ui.ColorInk())
-	s.theme.DrawText(screen, suggestion, left, top+ui.LineHeight*ui.Half, ui.ColorMuted())
+	s.drawLoudnessSection(screen, left, trim.wave.Rect.Max.X)
 	s.drawButtons(screen, trim.buttons()...)
-	if trim.useSuggestion.Disabled && trim.dirty() {
-		s.theme.DrawText(screen, "Apply the region to use its suggestion.", trim.setTarget.Rect.Max.X+ui.Inset,
-			trim.setTarget.Rect.Min.Y+ui.Gap, ui.ColorSubdued())
+	if trim.measure.Disabled && trim.dirty() {
+		s.theme.DrawText(screen, "Apply the region to measure it.", trim.setLevel.Rect.Max.X+ui.Inset,
+			trim.setLevel.Rect.Min.Y+ui.Gap, ui.ColorSubdued())
 	}
+}
+
+// drawLoudnessSection draws the recording's meter, what it says, and what
+// Play plays, between a left and a right edge.
+func (s *State) drawLoudnessSection(screen *ebiten.Image, left, right int) {
+	trim := s.trim
+	recording, _ := s.focused()
+	legend := "LOUDNESS · HOLLOW AS RECORDED, BLUE EVENED OUT, THE LINE THE REFERENCE"
+	if _, ok := s.selectedCue(); ok {
+		legend = "LOUDNESS · HOLLOW AS RECORDED, BLUE EVENED OUT, BLACK IN THIS CUE"
+	}
+	s.theme.DrawLabel(screen, legend, left, trim.meterTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
+	recorded, status, problem := s.loudnessText(recording)
+	drawMeter(screen, image.Rect(left, trim.meterTop+(ui.RowHeight-meterHeight)/ui.Half, right,
+		trim.meterTop+(ui.RowHeight-meterHeight)/ui.Half+meterHeight), s.trimMarks(recording, problem))
+	top := trim.meterTop + ui.RowHeight
+	s.theme.DrawText(screen, s.theme.FitText(recorded, right-left), left, top, ui.ColorInk())
+	ink := ui.ColorInk()
+	if problem {
+		ink = ui.ColorWarn()
+	}
+	s.theme.DrawText(screen, s.theme.FitText(status, right-left), left, top+ui.LineHeight, ink)
+	s.theme.DrawLabel(screen, playItLabel, left, trim.choiceTop+(ui.ButtonH-ui.LabelSize)/ui.Half, ui.ColorMuted())
+	chosen := trim.hearEvened.Rect.Max.X
+	if !trim.hearCue.Rect.Empty() {
+		chosen = trim.hearCue.Rect.Max.X
+	}
+	s.theme.DrawText(screen, "Ringed on the meter.", chosen+ui.Inset, trim.choiceTop+ui.Gap, ui.ColorSubdued())
+	s.theme.DrawText(screen, s.theme.FitText(s.playSentence(), right-left), left, trim.choiceTop+ui.ButtonH+ui.Gap,
+		ui.ColorInk())
 }

@@ -1,7 +1,6 @@
 package audioview
 
 import (
-	"path"
 	"strconv"
 	"strings"
 
@@ -18,7 +17,6 @@ const (
 	problemBroken     = "cannot be decoded"
 	stateNoSound      = "no sound yet"
 	sectionUsed       = sectionPrefix + "used"
-	sectionUnused     = sectionPrefix + "unused"
 	categorySectionOf = sectionPrefix + "category:"
 )
 
@@ -68,11 +66,15 @@ func unknown(value string) bool {
 }
 
 // problems lists what is wrong with a recording, starting with a file the
-// last check could not decode, while the file is the one checked.
+// last check could not decode, while the file is the one checked; then its
+// file's problems, and attribution that differs from its file's other pieces.
 func (s *State) problems(recording protocol.AudioRecording) []string {
 	found := fileProblems(recording)
 	if broken, checked := s.broken[recording.ID]; checked && broken == recording.Version {
 		found = append([]string{problemBroken}, found...)
+	}
+	if recording.File != "" && s.disagrees(recording) {
+		found = append(found, problemFileDisagrees)
 	}
 
 	return found
@@ -107,7 +109,7 @@ func (s *State) shows(found []string) bool {
 	switch s.filter {
 	case filterProblems:
 		return contains(found, problemMissing) || contains(found, problemTooLarge) || contains(found, problemUnknown) ||
-			contains(found, problemBroken)
+			contains(found, problemBroken) || contains(found, problemFileDisagrees)
 	case filterUncleared:
 		return contains(found, problemUncleared)
 	}
@@ -207,51 +209,9 @@ func (s *State) cueState(cue protocol.AudioCue) string {
 	return ""
 }
 
-// recordingRows lists the recordings cues play, then those no cue plays,
-// each with its file beside it and its first problem at the right.
-func (s *State) recordingRows() []ui.Row {
-	var used []protocol.AudioRecording
-	seen := map[string]bool{}
-	for _, cue := range s.library.Cues {
-		for _, recording := range cue.Recordings {
-			if !seen[recording.ID] {
-				seen[recording.ID] = true
-				used = append(used, recording)
-			}
-		}
-	}
-	rows := s.recordingSection(sectionUsed, "Played by cues", used)
-
-	return append(rows, s.recordingSection(sectionUnused, "Not used", s.library.Unused)...)
-}
-
-func (s *State) recordingSection(rowID, label string, recordings []protocol.AudioRecording) []ui.Row {
-	var shown []protocol.AudioRecording
-	for _, recording := range recordings {
-		if s.shows(s.problems(recording)) && s.matches(recordingTexts(recording)...) {
-			shown = append(shown, recording)
-		}
-	}
-	rows := []ui.Row{s.section(rowID, label, len(shown), false)}
-	if s.closed[rowID] && !s.searching() {
-		return rows
-	}
-	for _, recording := range shown {
-		row := ui.NewRow(recordingPrefix+recording.ID, recording.ID)
-		row.Icon, row.Aside = ui.IconSound, path.Base(recording.File)
-		if recording.File == "" {
-			row.Aside = ""
-		}
-		if found := s.problems(recording); len(found) > 0 {
-			row.Detail = found[0]
-		} else if recording.Status == protocol.RecordingNoFile {
-			row.Detail = stateNoSound
-		}
-		rows = append(rows, row)
-	}
-
-	return rows
-}
+// recordingRows lists the recordings under the files they were cut from,
+// then those with no file.
+func (s *State) recordingRows() []ui.Row { return s.fileRows() }
 
 // section returns a section heading with its count, open or closed; a
 // search opens every section.

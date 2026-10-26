@@ -32,6 +32,10 @@ const (
 	silenceDB   = -72.0
 	peakLevels  = 255
 	amplitudeDB = 20.0
+	// soundGapMs is the shortest silence that parts two sounds of one file.
+	soundGapMs = 150
+	// measuredKept bounds the measurements kept; past it they start afresh.
+	measuredKept = 4096
 )
 
 // errNoRecordingFile refuses to analyse a recording with no file.
@@ -47,12 +51,14 @@ type analysisDone struct {
 	reason  string
 }
 
-// audioAnalyses runs analyses and keeps the recordings they decoded.
+// audioAnalyses runs analyses and keeps the recordings they decoded, and
+// how loud each recording measured, by its file, region and policy.
 type audioAnalyses struct {
-	slots chan struct{}
-	done  chan analysisDone
-	mu    sync.Mutex
-	kept  []keptRecording
+	slots    chan struct{}
+	done     chan analysisDone
+	mu       sync.Mutex
+	kept     []keptRecording
+	measured map[string]protocol.RecordingLoudness
 }
 
 // keptRecording is a decoded recording, by its file and the file's version.
@@ -64,6 +70,7 @@ type keptRecording struct {
 func newAudioAnalyses() *audioAnalyses {
 	return &audioAnalyses{
 		slots: make(chan struct{}, analysesAtOnce), done: make(chan analysisDone), mu: sync.Mutex{}, kept: nil,
+		measured: map[string]protocol.RecordingLoudness{},
 	}
 }
 
@@ -101,6 +108,11 @@ func (o *Orchestrator) analysisFinished(answer analysisDone) {
 
 // answer works out an answer on its goroutine.
 func (a *audioAnalyses) answer(ctx context.Context, files audioFiles, message protocol.Message) analysisDone {
+	if message.Kind == protocol.KindAudioLoudness {
+		payload, err := a.loudness(ctx, files)
+
+		return answered(message.Kind, payload, err)
+	}
 	var payload any
 	var err error
 	if message.Kind == protocol.KindAudioCheck {
@@ -112,22 +124,31 @@ func (a *audioAnalyses) answer(ctx context.Context, files audioFiles, message pr
 			payload, err = a.analyse(ctx, files, asked)
 		}
 	}
-	if err != nil {
-		return analysisDone{to: nil, request: 0, kind: message.Kind, payload: nil, reason: err.Error()}
-	}
 
-	return analysisDone{to: nil, request: 0, kind: message.Kind, payload: payload, reason: ""}
+	return answered(message.Kind, payload, err)
 }
 
-// openForReading opens the library to read from, as it is on disk.
+// answered is an answer of a kind for the loop to send, or the reason it
+// failed.
+func answered(kind protocol.Kind, payload any, err error) analysisDone {
+	if err != nil {
+		return analysisDone{to: nil, request: 0, kind: kind, payload: nil, reason: err.Error()}
+	}
+
+	return analysisDone{to: nil, request: 0, kind: kind, payload: payload, reason: ""}
+}
+
+// openForReading opens the library to read from, as it is on disk, measuring
+// to its reference loudness.
 func openForReading(files audioFiles) (*authoring.LibraryEditor, error) {
-	options := authoring.DefaultEditorOptions(ebitengine.Decode)
+	options := evenedOptions(nil, func() float64 { return authoring.DefaultCalibrationOptions().TargetDB })
 	if data, err := os.ReadFile(files.descriptor); err == nil {
 		descriptor, err := authoring.ParseProjectDescriptor(data)
 		if err != nil {
 			return nil, fmt.Errorf("read the audio project: %w", err)
 		}
-		options = descriptor.EditorOptions(ebitengine.Decode)
+		reference := referenceOf(descriptor)
+		options = evenedOptions(&descriptor, func() float64 { return reference })
 	}
 	library, err := authoring.OpenLibraryProject(files.library, options)
 	if err != nil {
@@ -159,6 +180,9 @@ func (a *audioAnalyses) analyse(
 	asked.Peaks = peaks(clip, asked.From, asked.To, asked.Columns)
 	if suggested, ok := clip.SuggestedWindow(); ok {
 		asked.Suggested = &protocol.AudioWindow{StartMs: suggested.StartMs, EndMs: suggested.EndMs}
+	}
+	for _, sound := range clip.SuggestedWindows(soundGapMs) {
+		asked.Sounds = append(asked.Sounds, protocol.AudioWindow{StartMs: sound.StartMs, EndMs: sound.EndMs})
 	}
 	options, err := library.CalibrationOptionsFor(asked.Recording)
 	if err != nil {
@@ -270,4 +294,84 @@ func check(ctx context.Context, files audioFiles) (protocol.AudioCheck, error) {
 	}
 
 	return protocol.AudioCheck{Broken: broken}, nil
+}
+
+// loudness measures every recording with a file: how loud its region is, its
+// loudest sample and the target it is evened out to. A measurement is kept
+// until the file, region or policy changes, so asking again is quick.
+func (a *audioAnalyses) loudness(ctx context.Context, files audioFiles) (protocol.AudioLoudness, error) {
+	library, err := openForReading(files)
+	if err != nil {
+		return protocol.AudioLoudness{Recordings: nil}, err
+	}
+	limited, cancel := context.WithTimeout(ctx, analysisTimeout)
+	defer cancel()
+	var measured []protocol.RecordingLoudness
+	for _, id := range library.RecordingIDs() {
+		recording := library.Recording(id)
+		if recording.File == nil {
+			continue
+		}
+		measured = append(measured, a.measure(limited, library, id, recording))
+		if err := limited.Err(); err != nil {
+			return protocol.AudioLoudness{Recordings: nil}, fmt.Errorf("measure the recordings: %w", err)
+		}
+	}
+
+	return protocol.AudioLoudness{Recordings: measured}, nil
+}
+
+// measure measures one recording, or says why it cannot be.
+func (a *audioAnalyses) measure(
+	ctx context.Context, library *authoring.LibraryEditor, recordingID string, recording authoring.Recording,
+) protocol.RecordingLoudness {
+	result := protocol.RecordingLoudness{ID: recordingID, MeasuredDB: 0, PeakDB: 0, TargetDB: 0, Problem: ""}
+	path, err := library.RecordingPath(recordingID)
+	if err != nil {
+		result.Problem = errNoRecordingFile.Error()
+
+		return result
+	}
+	options, err := library.CalibrationOptionsFor(recordingID)
+	if err != nil {
+		result.Problem = authoringError(err).Error()
+
+		return result
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		result.Problem = "The file is missing."
+
+		return result
+	}
+	key := fmt.Sprintf("%s|%d-%d|%v|%s|%v", path, info.Size(), info.ModTime().UnixNano(), recording.PlaybackWindow,
+		options.Method, options.TargetDB)
+	a.mu.Lock()
+	kept, found := a.measured[key]
+	a.mu.Unlock()
+	if found {
+		kept.ID = recordingID
+
+		return kept
+	}
+	clip, err := authoring.LoadRecordingContext(ctx, path, ebitengine.Decode)
+	if err != nil {
+		result.Problem = "The file could not be decoded: " + authoringError(err).Error()
+
+		return result
+	}
+	suggestion, err := clip.SuggestCalibration(recording.PlaybackWindow, options)
+	if err != nil {
+		result.Problem = "It is silent, so there is nothing to even out."
+	} else {
+		result.MeasuredDB, result.PeakDB, result.TargetDB = suggestion.MeasuredDB, suggestion.PeakDB, suggestion.TargetDB
+	}
+	a.mu.Lock()
+	if len(a.measured) >= measuredKept {
+		clear(a.measured)
+	}
+	a.measured[key] = result
+	a.mu.Unlock()
+
+	return result
 }

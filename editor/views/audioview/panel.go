@@ -30,12 +30,17 @@ const (
 // plays in turn, or the selected recording and the cues that play it. It
 // scrolls when it is taller than the window.
 type panel struct {
-	play, addRecording, addLayer              *ui.Button
-	playRecording, up, down, takeOut, replace *ui.Button
-	// cues are the cues playing the selected recording, which select them.
-	cues []*ui.Button
-	// listTop is where the recordings, or the cues, start.
-	listTop int
+	play, addRecording, addLayer *ui.Button
+	up, down, takeOut, replace   *ui.Button
+	openRecording, openFile      *ui.Button
+	// cues are the cues playing the selected recording, which select them,
+	// and hearIn the Play beside each, by cue, which plays the recording as
+	// that cue plays it.
+	cues   []*ui.Button
+	hearIn map[string]*ui.Button
+	// listTop is where the recordings, or the cues, start; loudTop where a
+	// cue's loudness rows start, and chainTop how it plays.
+	listTop, loudTop, chainTop int
 	// scroll is how far it is scrolled down, at most furthest.
 	scroll, furthest int
 }
@@ -44,11 +49,12 @@ func newPanel() *panel {
 	button := ui.NewButton
 
 	return &panel{
-		play: button("play", "Play"), addRecording: button("add-recording", "Add recording…"),
-		addLayer:      button("add-layer", "Add to soundscape"),
-		playRecording: button("play-recording", "Play recording"), up: button("recording-up", "Up"),
+		play: button("play", labelPlayCue), addRecording: button("add-recording", "Add recording…"),
+		addLayer: button("add-layer", "Add to soundscape"), up: button("recording-up", "Up"),
 		down: button("recording-down", "Down"), takeOut: button("take-out", "Take out"),
-		replace: button("replace-file", "Replace file…"), cues: nil, listTop: 0, scroll: 0, furthest: 0,
+		replace: button("replace-file", "Replace file…"), openRecording: button("open-recording", "Open"),
+		openFile: button("open-file", "Open file"), cues: nil, hearIn: map[string]*ui.Button{}, listTop: 0, loudTop: 0,
+		chainTop: 0, scroll: 0, furthest: 0,
 	}
 }
 
@@ -89,9 +95,22 @@ func (s *State) layoutPanelContent() int {
 	for _, button := range pane.all() {
 		button.Rect = ui.Zero()
 	}
+	for _, hear := range pane.hearIn {
+		hear.Label = labelPlay
+	}
 	s.played.Rect = ui.Zero()
+	for _, button := range s.files.buttons() {
+		button.Rect = ui.Zero()
+	}
+	s.files.wave.Rect = ui.Zero()
 	if cue, ok := s.selectedCue(); ok {
 		return s.layoutCue(cue, left, area)
+	}
+	if file, ok := s.selectedFile(); ok {
+		top := s.layoutFile(file, left, right, s.panelTop()+headerLines(s.fileProblemsOf(file))*ui.LineHeight+ui.Gap)
+		s.layoutTrim(left, right, top)
+
+		return s.layoutAttribution(left, right, top)
 	}
 	recording, ok := s.selectedRecording()
 	if !ok {
@@ -101,14 +120,20 @@ func (s *State) layoutPanelContent() int {
 		return area.Min.Y
 	}
 	top := s.panelTop() + headerLines(s.problems(recording))*ui.LineHeight + ui.Gap
-	s.row(left, top, pane.play, pane.replace)
+	s.row(left, top, pane.replace)
+	if recording.File != "" {
+		s.row(pane.replace.Rect.Max.X+panelButtonGap, top, pane.openFile)
+	}
 	top = s.layoutTrim(left, right, top+ui.ButtonH+ui.Inset)
 	pane.listTop = s.layoutAttribution(left, right, top) + ui.LineHeight
 	pane.cues = pane.cues[:0]
 	for index, cue := range s.usedBy(recording.ID) {
-		button := ui.NewButton(cuePrefix+cue.ID, cue.Name)
+		hear := pane.hearButton(cue.ID)
 		rowTop := pane.listTop + index*(ui.ButtonH+ui.Gap)
-		button.Rect = image.Rect(left, rowTop, left+s.theme.TextWidth(cue.Name)+ui.Half*ui.Inset, rowTop+ui.ButtonH)
+		s.row(left, rowTop, hear)
+		button := ui.NewButton(cuePrefix+cue.ID, cue.Name)
+		button.Rect = image.Rect(hear.Rect.Max.X+panelButtonGap, rowTop,
+			hear.Rect.Max.X+panelButtonGap+s.theme.TextWidth(cue.Name)+ui.Half*ui.Inset, rowTop+ui.ButtonH)
 		pane.cues = append(pane.cues, button)
 	}
 
@@ -148,13 +173,16 @@ func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle)
 	}
 	shown := min(max(len(rows), 1), playedRows)
 	s.played.Rect = image.Rect(left, pane.listTop, area.Max.X-ui.Inset, pane.listTop+shown*ui.RowHeight)
-	s.row(left, s.played.Rect.Max.Y+ui.Gap, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace)
+	s.row(left, s.played.Rect.Max.Y+ui.Gap, pane.up, pane.down, pane.takeOut, pane.replace, pane.openRecording)
 	index, _ := s.playedIndex(cue)
 	pane.up.Disabled, pane.down.Disabled = index <= 0, index < 0 || index >= len(cue.Recordings)-1
 	pane.takeOut.Disabled = len(cue.Recordings) < minRecordings
-	top = s.layoutTrim(left, area.Max.X-ui.Inset, pane.playRecording.Rect.Max.Y+ui.Inset)
+	top = s.layoutTrim(left, area.Max.X-ui.Inset, pane.up.Rect.Max.Y+ui.Inset)
+	top = s.layoutAttribution(left, area.Max.X-ui.Inset, top)
+	pane.loudTop = top + ui.LineHeight
+	pane.chainTop = pane.loudTop + len(cue.Recordings)*(ui.RowHeight+loudRowGap) + ui.Inset
 
-	return s.layoutAttribution(left, area.Max.X-ui.Inset, top)
+	return pane.chainTop + chainHeight + ui.Inset
 }
 
 // row lays buttons out in a row, each as wide as its label.
@@ -166,10 +194,30 @@ func (s *State) row(left, top int, buttons ...*ui.Button) {
 	}
 }
 
+// panelButtons counts the panel's own buttons, before the Plays beside cues.
+const panelButtons = 9
+
 func (pane *panel) all() []*ui.Button {
-	return []*ui.Button{
-		pane.play, pane.addRecording, pane.addLayer, pane.playRecording, pane.up, pane.down, pane.takeOut, pane.replace,
+	buttons := make([]*ui.Button, 0, panelButtons+len(pane.hearIn))
+	buttons = append(buttons, pane.play, pane.addRecording, pane.addLayer, pane.up, pane.down, pane.takeOut,
+		pane.replace, pane.openRecording, pane.openFile)
+	for _, hear := range pane.hearIn {
+		buttons = append(buttons, hear)
 	}
+
+	return buttons
+}
+
+// hearButton is the Play beside a cue under Played by, kept from frame to
+// frame so it reads Stop while it plays.
+func (pane *panel) hearButton(cue string) *ui.Button {
+	hear, found := pane.hearIn[cue]
+	if !found {
+		hear = ui.NewButton(hearInPrefix+cue, labelPlay)
+		pane.hearIn[cue] = hear
+	}
+
+	return hear
 }
 
 // playedIndex returns the position of the recording selected among a cue's
@@ -222,6 +270,11 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateTrim(input, ctx)
 	s.updateAttribution(input, ctx)
+	if file, ok := s.selectedFile(); ok {
+		s.updateFile(input, ctx, file)
+
+		return
+	}
 	if cue, ok := s.selectedCue(); ok {
 		previous := s.played.Selected
 		if s.played.Update(input).Changed {
@@ -238,10 +291,15 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	switch {
-	case pane.play.Update(input):
-		s.listenRecording(ctx, recording.ID)
 	case pane.replace.Update(input):
 		s.chooseSound(ctx, soundTarget{cue: "", recording: recording.ID})
+	case pane.openFile.Update(input):
+		s.choose(ctx, filePrefix+recording.File)
+	}
+	for _, cue := range s.usedBy(recording.ID) {
+		if hear := pane.hearButton(cue.ID); hear.Update(input) {
+			s.auditionAt(ctx, hear, appliedWindow(recording), recording.CalibrationDB+cueBoost(cue))
+		}
 	}
 	for _, button := range pane.cues {
 		if button.Update(input) {
@@ -266,8 +324,6 @@ func (s *State) updateCue(input *ui.Input, ctx *frame.Context, cue protocol.Audi
 	case pane.addLayer.Update(input):
 		s.addToSoundscape(ctx, cue, pane.addLayer.Rect)
 	case !chosen:
-	case pane.playRecording.Update(input):
-		s.listenRecording(ctx, order[index])
 	case pane.up.Update(input):
 		order[index-1], order[index] = order[index], order[index-1]
 		s.reorder(ctx, cue, order)
@@ -278,6 +334,10 @@ func (s *State) updateCue(input *ui.Input, ctx *frame.Context, cue protocol.Audi
 		s.reorder(ctx, cue, slices.Delete(order, index, index+1))
 	case pane.replace.Update(input):
 		s.chooseSound(ctx, soundTarget{cue: "", recording: order[index]})
+	case pane.openRecording.Update(input):
+		s.guard.Ask(s.Unsaved(ctx.Docs), s.UnsavedName(ctx.Docs), func() {
+			s.mode, s.list.Selected = modeRecordings, recordingPrefix+order[index]
+		})
 	}
 }
 
@@ -297,15 +357,14 @@ func (s *State) listen(ctx *frame.Context, cue string) {
 	ctx.Sounds.Play(cue)
 }
 
-// listenRecording plays one recording on its own, or stops it while it plays.
-func (s *State) listenRecording(ctx *frame.Context, recording string) {
-	if ctx.Sounds.PlayingRecording(recording) {
-		ctx.Sounds.Stop()
-
-		return
+// appliedWindow is the part of its file a recording plays, nil for all of
+// it.
+func appliedWindow(recording protocol.AudioRecording) *protocol.AudioWindow {
+	if recording.EndMs <= recording.StartMs {
+		return nil
 	}
-	ctx.Sounds.Stop()
-	ctx.Sounds.PlayRecording(recording)
+
+	return &protocol.AudioWindow{StartMs: recording.StartMs, EndMs: recording.EndMs}
 }
 
 // drawPanel draws what is selected, within the panel: a cue and its
@@ -320,12 +379,9 @@ func (s *State) drawPanel(window *ebiten.Image) {
 	s.drawPanelScroll(screen)
 	left, top := area.Min.X+ui.Inset, s.panelTop()
 	if cue, ok := s.selectedCue(); ok {
-		s.panel.play.Label = playLabel(s.sounds != nil && s.sounds.Playing(cue.ID))
-		if index, chosen := s.playedIndex(cue); chosen && s.sounds != nil &&
-			s.sounds.PlayingRecording(cue.Recordings[index].ID) {
-			s.panel.playRecording.Label = "Stop recording"
-		} else {
-			s.panel.playRecording.Label = "Play recording"
+		s.panel.play.Label = labelPlayCue
+		if s.sounds != nil && s.sounds.Playing(cue.ID) {
+			s.panel.play.Label = labelStop
 		}
 		what := categoryLabel(cue.Category) + " · " + plays(len(cue.Recordings))
 		s.drawHeader(screen, left, top, cue.Name, cue.ID, what, s.cueProblems(cue))
@@ -336,8 +392,14 @@ func (s *State) drawPanel(window *ebiten.Image) {
 		s.theme.DrawLabel(screen, label, left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 		s.played.Draw(screen, s.theme)
 		s.drawButtons(screen, s.panel.all()...)
+		s.drawCueLoudness(screen, cue, left)
 		s.drawTrim(screen)
 		s.drawAttribution(screen)
+
+		return
+	}
+	if file, ok := s.selectedFile(); ok {
+		s.drawFilePanel(screen, file, left, top)
 
 		return
 	}
@@ -347,16 +409,54 @@ func (s *State) drawPanel(window *ebiten.Image) {
 
 		return
 	}
-	s.panel.play.Label = playLabel(s.sounds != nil && s.sounds.PlayingRecording(recording.ID))
-	s.drawHeader(screen, left, top, recording.ID, recording.File, recordingWhat(recording), s.problems(recording))
-	s.drawButtons(screen, s.panel.play, s.panel.replace)
+	s.drawRecordingPanel(screen, recording, left, top)
+}
+
+// drawRecordingPanel draws a recording: which piece of its file it is, its
+// waveform and loudness, its attribution, and the cues that play it.
+func (s *State) drawRecordingPanel(screen *ebiten.Image, recording protocol.AudioRecording, left, top int) {
+	where := recording.File
+	if where != "" {
+		where = "a piece of " + recording.File + " · " + spanText(recording)
+	}
+	s.drawHeader(screen, left, top, recording.ID, where, recordingWhat(recording), s.problems(recording))
+	s.drawButtons(screen, s.panel.replace, s.panel.openFile)
 	s.drawTrim(screen)
 	s.drawAttribution(screen)
-	s.theme.DrawLabel(screen, "PLAYED BY", left, s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
+	s.theme.DrawLabel(screen, "PLAYED BY · HOW LOUD IT PLAYS IS EACH CUE'S CHOICE", left,
+		s.panel.listTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 	if len(s.panel.cues) == 0 {
 		s.theme.DrawText(screen, "No cue plays this recording.", left, s.panel.listTop, ui.ColorSubdued())
 	}
 	s.drawButtons(screen, s.panel.cues...)
+	for _, cue := range s.usedBy(recording.ID) {
+		s.drawButtons(screen, s.panel.hearButton(cue.ID))
+	}
+	s.drawUsedLoudness(screen, recording)
+}
+
+// fileProblemsOf lists what is wrong with any piece of a file, each once.
+func (s *State) fileProblemsOf(file string) []string {
+	var found []string
+	for _, piece := range s.pieces(file) {
+		for _, problem := range s.problems(piece) {
+			if !contains(found, problem) {
+				found = append(found, problem)
+			}
+		}
+	}
+
+	return found
+}
+
+// drawFilePanel draws a file: what is wrong with any piece of it, its
+// waveform with its pieces, and its attribution.
+func (s *State) drawFilePanel(screen *ebiten.Image, file string, left, top int) {
+	pieces := s.pieces(file)
+	s.drawHeader(screen, left, top, path.Base(file), file, "A file · "+piecesText(len(pieces))+" cut from it",
+		s.fileProblemsOf(file))
+	s.drawFile(screen)
+	s.drawAttribution(screen)
 }
 
 // thumbWidth is the width of the panel's scroll thumb, in screen pixels.
@@ -375,16 +475,11 @@ func (s *State) drawPanelScroll(screen *ebiten.Image) {
 	ui.FillRound(screen, image.Rect(right-thumbWidth, top, right, top+height), ui.Half, ui.ColorRule())
 }
 
-// labelStop is what a play button reads while what it plays is playing.
-const labelStop = "Stop"
-
-func playLabel(playing bool) string {
-	if playing {
-		return labelStop
-	}
-
-	return "Play"
-}
+// What the cue's Play reads, and every Play while it plays.
+const (
+	labelPlayCue = "Play cue"
+	labelStop    = "Stop"
+)
 
 func plays(count int) string {
 	if count == 1 {

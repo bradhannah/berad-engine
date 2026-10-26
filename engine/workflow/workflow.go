@@ -23,10 +23,11 @@ import (
 
 // FormatName and FormatVersion identify workflow logic inside saved
 // envelopes; the Layout names identify its layout. Version 2 gave random
-// choices any number of options and waits a unit and a clock.
+// choices any number of options and waits a unit and a clock; version 3 gave
+// Play sound how loud to play its cue this time.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 2
+	FormatVersion       = 3
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 2
 )
@@ -357,7 +358,35 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 
 // Format returns the workflow logic's content format.
 func Format() content.Format {
-	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{1: upgradeFrom1}}
+	return content.Format{
+		Name: FormatName, Current: FormatVersion,
+		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2},
+	}
+}
+
+// upgradeFrom2 gives every Play sound the loudness of its cue, as it played
+// before version 3.
+func upgradeFrom2(data json.RawMessage) (json.RawMessage, error) {
+	var wire wireWorkflow
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	for index, node := range wire.Nodes {
+		if node.Kind != KindPlaySound {
+			continue
+		}
+		upgraded, err := node.WithParam("loudness", LoudnessAsCue)
+		if err != nil {
+			return nil, fmt.Errorf("%w: upgrade %s: %w", ErrData, node.ID, err)
+		}
+		wire.Nodes[index] = upgraded
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade workflow: %w", err)
+	}
+
+	return encoded, nil
 }
 
 // upgradeFrom1 turns a version 1 random choice's chance into two options

@@ -108,10 +108,11 @@ type Requests struct {
 	RecordingAsks []RecordingAsk
 	// AudioEdits are audio edits waiting for the test to answer.
 	AudioEdits []AudioEdit
-	// Analyses are waveform questions, and Checks file checks, waiting for
-	// the test to answer.
+	// Analyses are waveform questions, Checks file checks and Loudness
+	// loudness questions, waiting for the test to answer.
 	Analyses []Analysis
 	Checks   []func(protocol.AudioCheck, error)
+	Loudness []func(protocol.AudioLoudness, error)
 }
 
 // Analysis is a waveform question and how to answer it.
@@ -128,6 +129,11 @@ func (r *Requests) AudioAnalysis(asked protocol.AudioAnalysis, done func(protoco
 // AudioCheck records a file check; the test answers it.
 func (r *Requests) AudioCheck(done func(protocol.AudioCheck, error)) {
 	r.Checks = append(r.Checks, done)
+}
+
+// AudioLoudness records a loudness question; the test answers it.
+func (r *Requests) AudioLoudness(done func(protocol.AudioLoudness, error)) {
+	r.Loudness = append(r.Loudness, done)
 }
 
 // AudioEdit is a recorded audio edit and its reply callback.
@@ -252,6 +258,12 @@ func (s *Sounds) Play(cue string) {
 		s.Sounding = map[string]bool{}
 	}
 	s.Sounding[cue] = true
+}
+
+// PlayAt records a cue played at a step, as the cue, "@" and the step.
+func (s *Sounds) PlayAt(cue, step string) {
+	s.Play(cue)
+	s.Played[len(s.Played)-1] = cue + "@" + step
 }
 
 // Stop records a stop; nothing plays after it.

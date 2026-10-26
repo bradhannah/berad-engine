@@ -6,6 +6,7 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"github.com/bradhannah/berad-engine/engine/loudness"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -236,11 +237,7 @@ func Kinds() []Kind {
 			}},
 			Outputs: next,
 		},
-		{
-			Name: KindPlaySound, Label: "Play sound", Group: GroupAudio,
-			Params:  []Param{{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil}},
-			Outputs: next,
-		},
+		playSoundKind(next),
 		{
 			Name: KindNote, Label: "Note", Group: GroupAnnotate,
 			Params:  []Param{{Name: "text", Label: "Note", Type: TypeText, Default: mustJSON(""), Choices: nil}},
@@ -261,6 +258,31 @@ func randomKind() Kind {
 			}),
 		}},
 		Outputs: nil,
+	}
+}
+
+// LoudnessAsCue is a Play sound's loudness when it plays its cue at the cue's
+// own step; any other value is a step of package loudness, for this moment.
+const LoudnessAsCue = "cue"
+
+// playSoundKind declares Play sound: a cue, and how loud to play it this
+// time, as the cue is unless a moment must stand out or sit back.
+func playSoundKind(next []Output) Kind {
+	steps := loudness.Steps()
+	choices := make([]Choice, 0, 1+len(steps))
+	choices = append(choices, Choice{Value: LoudnessAsCue, Label: "As the cue is"})
+	for _, step := range steps {
+		choices = append(choices, Choice{Value: step.ID, Label: step.Label})
+	}
+
+	return Kind{
+		Name: KindPlaySound, Label: "Play sound", Group: GroupAudio,
+		Params: []Param{
+			{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil},
+			{Name: "loudness", Label: "Loudness this time", Type: TypeChoice, Default: mustJSON(LoudnessAsCue),
+				Choices: choices},
+		},
+		Outputs: next,
 	}
 }
 

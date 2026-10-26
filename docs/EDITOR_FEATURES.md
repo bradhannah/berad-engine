@@ -253,6 +253,20 @@ under consideration), **open** (undecided).
   **gain** means only a cue's, or a soundscape layer's, percentage.
 - **Agreed (2026-10-25):** on the waveform, only the region's two ends are
   dragged; a press elsewhere does nothing.
+- **Agreed (2026-10-25):** recordings sound equally loud without their
+  author judging them by ear: each is evened out to one reference loudness,
+  measured automatically, and the editor shows it on a meter. How loud a cue
+  is meant to sound is chosen on the cue, in a few named steps around the
+  reference; a Play sound node may choose another step for one moment.
+  Monitor levels and soundscape gains are for listening only. Five steps,
+  from −12 to +8 dB; one reference for every recording with an adjustment per
+  category; louder cues through berad-audio's schema 5 ([the eighth
+  build](EIGHTH_BUILD.md)).
+- **Agreed (2026-10-25):** a file is kept apart from its uses: one file can
+  be cut into many recordings, and one recording used by many cues, without
+  copying the file. Evening out belongs to the recording; how loud it is meant
+  to sound belongs to the cue. A file's pieces are seen together on its own
+  screen ([the ninth build](NINTH_BUILD.md)).
 - **Agreed:** the editor understands a cue's category: music, SFX or ambient.
 - **Agreed:** a Play sound node plays a cue once and the workflow carries on;
   most sounds can come from a node.

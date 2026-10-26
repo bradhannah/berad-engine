@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261025144737-ef07e3eed17c // indirect
+	github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261025224819-5c18d0d79b79 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20260820040257-d11f821a26a6 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect

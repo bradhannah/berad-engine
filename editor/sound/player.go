@@ -17,6 +17,7 @@ import (
 	ea "github.com/hajimehoshi/ebiten/v2/audio"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/engine/loudness"
 )
 
 // sampleRate is the rate a window's audio device opens at.
@@ -55,7 +56,10 @@ type Player struct {
 	fetching map[string]bool
 	// wanted are the cues to keep ready; queued are waiting to play.
 	wanted map[string]bool
-	queued []string
+	queued []queuedPlay
+	// adjustments are the library's category adjustments, in dB, as last
+	// listed, for playing a cue at a step of its own.
+	adjustments map[string]float64
 	// told is what has been reported, so each problem is said once.
 	told map[string]bool
 	// current plays; retiring are runtimes replaced while their sounds
@@ -89,6 +93,13 @@ type audition struct {
 	Loop          bool
 }
 
+// queuedPlay is a cue waiting to play, at a step of package loudness
+// instead of its own when step is set.
+type queuedPlay struct {
+	cue  string
+	step string
+}
+
 // heldRecording is a recording's bytes at a version, complete when it holds
 // size bytes.
 type heldRecording struct {
@@ -117,14 +128,15 @@ func New(requests Requests, report func(string)) *Player {
 		requests: requests, report: report, device: openDevice, decode: ebitengine.Decode, backend: nil,
 		listing: map[string]protocol.AudioCue{}, listed: false, asking: false, again: false,
 		held: map[string]heldRecording{}, fetching: map[string]bool{}, wanted: map[string]bool{}, queued: nil,
-		told: map[string]bool{}, current: nil, retiring: nil, audition: nil, loops: false, pending: nil,
+		adjustments: nil,
+		told:        map[string]bool{}, current: nil, retiring: nil, audition: nil, loops: false, pending: nil,
 		monitor: FullMonitor(), layers: map[string]*layerPlay{}, now: time.Now,
 	}
 }
 
-// Audition plays part of a recording, nil for all of it, at a calibration
-// gain in dB, again and again when loop is set, replacing whatever played
-// before, once the recording has arrived.
+// Audition plays part of a recording, nil for all of it, at a gain in dB,
+// which may pass the +12 dB a level reaches, again and again when loop is
+// set, replacing whatever played before, once the recording has arrived.
 func (s *Player) Audition(recording string, window *protocol.AudioWindow, calibrationDB float64, loop bool) {
 	asked := audition{Recording: recording, Window: window, CalibrationDB: calibrationDB, Loop: loop}
 	s.Stop()
@@ -140,15 +152,28 @@ func (s *Player) Audition(recording string, window *protocol.AudioWindow, calibr
 	s.Play(auditionCue)
 }
 
-// auditionOf is the cue that plays an audition of a listed recording.
+// The levels a recording plays at, in dB, as berad-audio accepts them.
+const (
+	quietestLevelDB = -48.0
+	loudestLevelDB  = 12.0
+)
+
+// auditionOf is the cue that plays an audition of a listed recording: at its
+// gain as the recording's level, and past the +12 dB a level reaches, the
+// rest as the cue's gain, as a cue meant to sound louder plays it.
 func auditionOf(recording protocol.AudioRecording, asked audition) *protocol.AudioCue {
-	recording.CalibrationDB, recording.StartMs, recording.EndMs = asked.CalibrationDB, 0, 0
+	gain := 1.0
+	recording.CalibrationDB = min(max(asked.CalibrationDB, quietestLevelDB), loudestLevelDB)
+	if asked.CalibrationDB > loudestLevelDB {
+		gain = min(loudness.Gain(asked.CalibrationDB-loudestLevelDB), audio.MaxGain)
+	}
+	recording.StartMs, recording.EndMs = 0, 0
 	if asked.Window != nil {
 		recording.StartMs, recording.EndMs = asked.Window.StartMs, asked.Window.EndMs
 	}
 
 	return &protocol.AudioCue{
-		ID: auditionCue, Name: recording.ID, Category: "", CategorySet: false, Gain: 1, HowToHear: "",
+		ID: auditionCue, Name: recording.ID, Category: "", CategorySet: false, Gain: gain, HowToHear: "",
 		SearchTerms: nil, Recordings: []protocol.AudioRecording{recording}, Profile: "", Ambient: nil,
 	}
 }
@@ -214,9 +239,13 @@ func (s *Player) Prepare(cues []string) {
 // Play plays a cue once its recordings have arrived. A cue already held
 // plays at once, without asking the orchestrator again; one the library did
 // not have when last listed is looked for in a fresh listing first.
-func (s *Player) Play(cue string) {
+func (s *Player) Play(cue string) { s.PlayAt(cue, "") }
+
+// PlayAt plays a cue once at a step of package loudness instead of its own,
+// or at its own when step is empty, once its recordings have arrived.
+func (s *Player) PlayAt(cue, step string) {
 	s.wanted[cue] = true
-	s.queued = append(s.queued, cue)
+	s.queued = append(s.queued, queuedPlay{cue: cue, step: step})
 	if _, known := s.listing[cue]; !s.listed || !known {
 		s.refresh()
 	}
@@ -236,7 +265,7 @@ func (s *Player) Stop() {
 
 // Playing reports whether a cue is playing or waiting to.
 func (s *Player) Playing(cue string) bool {
-	if slices.Contains(s.queued, cue) {
+	if slices.ContainsFunc(s.queued, func(queued queuedPlay) bool { return queued.cue == cue }) {
 		return true
 	}
 	for _, playing := range s.players() {
@@ -344,6 +373,7 @@ func (s *Player) list(library protocol.AudioLibrary) {
 			Ambient: nil,
 		}
 	}
+	s.adjustments = library.CategoryGainsDB
 	for _, cue := range library.Cues {
 		s.listing[cue.ID] = cue
 		for _, recording := range cue.Recordings {
@@ -464,11 +494,12 @@ func (s *Player) readinessOf(cue string) (readiness, string) {
 // play, and keeps those still waiting; then the soundscape's layers.
 func (s *Player) playQueued() {
 	waiting := s.queued[:0]
-	for _, cue := range s.queued {
+	for _, queued := range s.queued {
+		cue := queued.cue
 		state, problem := s.readinessOf(cue)
 		switch state {
 		case cueWaiting:
-			waiting = append(waiting, cue)
+			waiting = append(waiting, queued)
 			if s.listed && !s.asking {
 				s.fetchWanted()
 			}
@@ -476,7 +507,7 @@ func (s *Player) playQueued() {
 			delete(s.wanted, cue)
 			s.tell("cue:"+cue, problem)
 		case cueReady:
-			s.start(cue)
+			s.start(cue, queued.step)
 		case cueSilent:
 		}
 	}
@@ -484,8 +515,9 @@ func (s *Player) playQueued() {
 	s.startLayers()
 }
 
-// start plays a ready cue, building a runtime that can play it first.
-func (s *Player) start(cue string) {
+// start plays a ready cue, at a step instead of its own when step is set,
+// building a runtime that can play it first.
+func (s *Player) start(cue, step string) {
 	if s.current == nil || !s.current.cues[cue] || s.stale(s.current) {
 		if !s.rebuild() {
 			return
@@ -493,7 +525,7 @@ func (s *Player) start(cue string) {
 	}
 	options := audio.DefaultPlayOptions()
 	options.Loop = cue == auditionCue && s.loops
-	options.Gain = s.monitorGain(cue)
+	options.Gain = min(s.monitorGain(cue)*s.stepGain(cue, step), audio.MaxGain)
 	result, err := s.current.runtime.Play(audio.CueID(cue), options)
 	if err != nil {
 		s.tell("play:"+cue, "Can’t play “"+s.listing[cue].Name+"”: "+err.Error())
@@ -503,6 +535,19 @@ func (s *Player) start(cue string) {
 	if result.Outcome == audio.Admitted {
 		s.current.voices = append(s.current.voices, result.Voice)
 	}
+}
+
+// stepGain is what a cue's own gain is multiplied by to play it at a step
+// of package loudness in its category: 1 for its own, or for a step this
+// player does not know, or a cue that plays at no gain.
+func (s *Player) stepGain(cue, step string) float64 {
+	found, known := loudness.Find(step)
+	listed := s.listing[cue]
+	if !known || listed.Gain <= 0 || s.monitor.Reference {
+		return 1
+	}
+
+	return loudness.CueGain(found.DB, s.adjustments[listed.Category]) / listed.Gain
 }
 
 // stale reports whether a player was built from recordings that have

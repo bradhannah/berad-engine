@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 13
+const Version = 14
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -72,11 +72,13 @@ const (
 	// library changed, so windows that show it ask for it again.
 	KindAudioEdit    Kind = "audio-edit"
 	KindAudioChanged Kind = "audio-changed"
-	// KindAudioAnalysis asks for a recording's waveform and suggestions, and
-	// KindAudioCheck for every recording to be decoded; the orchestrator
-	// replies to each with the same kind, filled in.
+	// KindAudioAnalysis asks for a recording's waveform and suggestions,
+	// KindAudioCheck for every recording to be decoded, and KindAudioLoudness
+	// for how loud every recording measures; the orchestrator replies to each
+	// with the same kind, filled in.
 	KindAudioAnalysis Kind = "audio-analysis"
 	KindAudioCheck    Kind = "audio-check"
+	KindAudioLoudness Kind = "audio-loudness"
 )
 
 // Message is one framed protocol message.
@@ -455,6 +457,13 @@ type AudioLibrary struct {
 	// to 1, or none for even steps.
 	AmbientPreset *AmbientPreset `json:"ambientPreset,omitempty"`
 	SliderGains   []float64      `json:"sliderGains,omitempty"`
+	// ReferenceDB is the loudness every measured recording is evened out to;
+	// CategoryGainsDB the adjustment, in dB, each category's cues apply on top
+	// of their step, none for 0; MaxCueGain the largest gain a cue may have in
+	// the library's schema.
+	ReferenceDB     float64            `json:"referenceDb,omitempty"`
+	CategoryGainsDB map[string]float64 `json:"categoryGainsDb,omitempty"`
+	MaxCueGain      float64            `json:"maxCueGain,omitempty"`
 }
 
 // AudioProfile is a classification profile: the kind of moment a cue plays
@@ -556,8 +565,8 @@ type AudioWindow struct {
 // suggestion for Region, the recording's own when nil. The reply adds the
 // recording's version and length, the peaks, each the loudest moment of its
 // column from 0 for −72 dB or quieter to 255 for 0 dB, the region its sound
-// fills, and the suggestion; or Problem, such as a file that cannot be
-// decoded.
+// fills, each sound in it that silence separates from the next, and the
+// suggestion; or Problem, such as a file that cannot be decoded.
 type AudioAnalysis struct {
 	Recording   string            `json:"recording"`
 	From        int64             `json:"from,omitempty"`
@@ -568,8 +577,26 @@ type AudioAnalysis struct {
 	DurationMs  int64             `json:"durationMs,omitempty"`
 	Peaks       []byte            `json:"peaks,omitempty"`
 	Suggested   *AudioWindow      `json:"suggested,omitempty"`
+	Sounds      []AudioWindow     `json:"sounds,omitempty"`
 	Calibration *AudioCalibration `json:"calibration,omitempty"`
 	Problem     string            `json:"problem,omitempty"`
+}
+
+// AudioLoudness asks how loud every recording with a file measures. The
+// reply lists each, ordered by ID.
+type AudioLoudness struct {
+	Recordings []RecordingLoudness `json:"recordings,omitempty"`
+}
+
+// RecordingLoudness is how loud a recording's region measures, its loudest
+// sample and the target measuring aims it at, all in dB; or Problem when it
+// cannot be measured, such as silence or a file that cannot be decoded.
+type RecordingLoudness struct {
+	ID         string  `json:"id"`
+	MeasuredDB float64 `json:"measuredDb,omitempty"`
+	PeakDB     float64 `json:"peakDb,omitempty"`
+	TargetDB   float64 `json:"targetDb,omitempty"`
+	Problem    string  `json:"problem,omitempty"`
 }
 
 // AudioCalibration is a calibration suggestion: how loud the region measures
@@ -657,6 +684,23 @@ const (
 	// AudioSetFamily a recording's acoustic family, FamilyChange.
 	AudioSetProfile = "audio.set-profile"
 	AudioSetFamily  = "audio.set-family"
+	// AudioSetLoudness sets how loud a cue is meant to sound, LoudnessChange.
+	// AudioSetCategoryGain sets a category's adjustment, CategoryGainChange,
+	// and AudioSetReference the loudness recordings are evened out to,
+	// ReferenceChange; each changes every cue or recording it affects.
+	AudioSetLoudness     = "audio.set-loudness"
+	AudioSetCategoryGain = "audio.set-category-gain"
+	AudioSetReference    = "audio.set-reference"
+	// AudioMeasureAll measures every recording no level was set for, with no
+	// arguments; AudioUseReference measures one again, AudioItem, dropping a
+	// level or target set by hand.
+	AudioMeasureAll   = "audio.measure-all"
+	AudioUseReference = "audio.use-reference"
+	// AudioSetFileAttribution sets the attribution of every recording of a
+	// file, FileAttributionChange; AudioMakePieces makes a recording of each
+	// of several parts of one's file, MakePieces.
+	AudioSetFileAttribution = "audio.set-file-attribution"
+	AudioMakePieces         = "audio.make-pieces"
 )
 
 // AudioEdit asks for one change to the audio library: Edit names it and Args
@@ -785,6 +829,41 @@ type ProfileChange struct {
 type FamilyChange struct {
 	Recording string `json:"recording"`
 	Family    string `json:"family"`
+}
+
+// LoudnessChange sets how loud a cue is meant to sound: a step of package
+// loudness, such as "louder".
+type LoudnessChange struct {
+	Cue  string `json:"cue"`
+	Step string `json:"step"`
+}
+
+// CategoryGainChange sets the adjustment, in dB, every cue of a category
+// applies on top of its step.
+type CategoryGainChange struct {
+	Category string  `json:"category"`
+	GainDB   float64 `json:"gainDb"`
+}
+
+// ReferenceChange sets the loudness, in dB, every measured recording is
+// evened out to.
+type ReferenceChange struct {
+	TargetDB float64 `json:"targetDb"`
+}
+
+// FileAttributionChange sets the attribution of every recording whose file
+// is File, relative to the audio folder.
+type FileAttributionChange struct {
+	File        string      `json:"file"`
+	Attribution Attribution `json:"attribution"`
+}
+
+// MakePieces makes a new recording of each region of Recording's file, and
+// adds them, in order, to the recordings Cue plays in turn when Cue is set.
+type MakePieces struct {
+	Recording string        `json:"recording"`
+	Regions   []AudioWindow `json:"regions"`
+	Cue       string        `json:"cue,omitempty"`
 }
 
 // Recording asks for a recording's bytes from Offset. The reply carries its

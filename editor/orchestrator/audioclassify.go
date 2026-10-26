@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -44,7 +43,7 @@ func (s *audioSession) applyClassification(edit protocol.AudioEdit) (string, err
 		return withArgs(edit.Args, s.setFamily)
 	}
 
-	return "", fmt.Errorf("%w: %s", ErrUnknownEdit, edit.Edit)
+	return s.applyLoudness(edit)
 }
 
 // setAmbient sets an ambient cue's distance and fades, which berad-audio

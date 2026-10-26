@@ -79,7 +79,7 @@ func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit:
 		o.handleQuit(message.from, message.message)
 	case protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit, protocol.KindAudioAnalysis,
-		protocol.KindAudioCheck:
+		protocol.KindAudioCheck, protocol.KindAudioLoudness:
 		o.handleAudio(ctx, message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention,

@@ -10,6 +10,7 @@ import (
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/engine/loudness"
 )
 
 // audioAsks answers the sound player's questions as the test chooses.
@@ -157,6 +158,28 @@ func TestSoundsFetchThenPlay(t *testing.T) {
 	}
 }
 
+// TestSoundsPlayAtAStep plays a cue at a step of its own for one moment: its
+// gain is the step's plus its category's adjustment, whatever the cue's own.
+func TestSoundsPlayAtAStep(t *testing.T) {
+	t.Parallel()
+	player, asks, _, _ := newTestPlayer(t)
+	player.PlayAt("door/open", loudness.Louder)
+	library := testCues()
+	library.CategoryGainsDB = map[string]float64{protocol.CategorySFX: -2}
+	asks.libraries[0](library, nil)
+	asks.nextRecording(t).done(protocol.Recording{ID: "door_a", Offset: 0, Version: "v1", Size: 6,
+		Data: []byte("RIFF00")}, nil)
+	snapshot := player.current.runtime.Snapshot()
+	if len(snapshot) != 1 || !near(snapshot[0].TargetGain, loudness.Gain(4-2)) {
+		t.Fatalf("Louder in SFX 2 dB down plays at +2 dB: %+v", snapshot)
+	}
+	player.Play("door/open")
+	snapshot = player.current.runtime.Snapshot()
+	if len(snapshot) != 2 || !near(snapshot[1].TargetGain, 0.8) && !near(snapshot[0].TargetGain, 0.8) {
+		t.Fatalf("its own gain otherwise: %+v", snapshot)
+	}
+}
+
 // TestSoundsThatCannotPlay say once why a cue cannot play, and play nothing
 // for a silent slot without a word.
 func TestSoundsThatCannotPlay(t *testing.T) {
@@ -234,6 +257,21 @@ func TestSoundsPlayOneRecordingAndRelist(t *testing.T) {
 	player.Changed()
 	if len(asks.libraries) != 2 {
 		t.Fatal("a change lists the library again")
+	}
+}
+
+// TestSoundsAuditionLouderThanALevel plays an audition past the +12 dB a
+// level reaches through its cue's gain, as a louder cue plays it.
+func TestSoundsAuditionLouderThanALevel(t *testing.T) {
+	t.Parallel()
+	player, asks, _, _ := newTestPlayer(t)
+	player.Audition("door_a", nil, 16, false)
+	asks.libraries[0](testCues(), nil)
+	asks.nextRecording(t).done(protocol.Recording{ID: "door_a", Offset: 0, Version: "v1", Size: 6,
+		Data: []byte("RIFF00")}, nil)
+	snapshot := player.current.runtime.Snapshot()
+	if len(snapshot) != 1 || !near(snapshot[0].TargetGain, loudness.Gain(16)) {
+		t.Fatalf("plays 16 dB up: %+v", snapshot)
 	}
 }
 
