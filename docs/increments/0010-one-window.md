@@ -141,7 +141,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | 1. Panes | The window host split so a shell can run several: input, size, title, attention and On top come from outside; a window process behaves exactly as before | Existing view, window and real-window tests pass unchanged | Built |
 | 2. Hosting | Protocol version 15: a hello that hosts panes, a Host message naming the view, target and window to host, and Open's pop out. The orchestrator hosts in a connected shell what it would otherwise start, counts hosted windows when deciding whether one is open or opening, and quits when the shell's process ends | Codec round-trip tests; headless orchestrator tests with a fake shell | Built |
 | 3. The shell | `open --shell`; the window bar, with new icons for the project, the clock and Watch; tabs, focus, and routing of input and the input method; panes run hidden and are drawn only when shown; a crash closes one tab; Cmd+W and Cmd+Q; the window's title from the focused pane | A real-window test opening the browser, a Map and Audio as tabs | Built |
-| 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Planned |
+| 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Built |
 | 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Planned |
 | 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Planned |
 | 7. Measuring and judging | Frame time and command-to-event time with a Map and its Watch showing and a preview running, against separate windows | Numbers recorded here; judged by its author | Planned |
@@ -197,6 +197,18 @@ Where each step changes code:
   front, quits from the browser's tab, and finds one window process and no
   failures; unit tests for catching a pane's panic and removing tabs;
   `make check` and the other real-window tests.
+- **Pinned clock:** the shell asks for a Clock window as it starts, and keeps
+  it as a pane outside the tabs that always runs (`editor/window/clock.go`).
+  The bar reads it out at its right end, on every tab: the time, and while a
+  preview runs, "live" and its rate, in orange (the Clock view's new
+  `Readout`). Clicking the readout opens or closes the Clock view, unchanged,
+  in a panel under it; a preview starting, or the Map's Clock button, opens
+  it. The panel takes the mouse while the cursor is over it, and the keys
+  only while its time field is being typed in, so the arrow keys still walk a
+  preview. Verified with a real-window test that starts a preview in a Map,
+  brings a text document's tab to the front and moves the hidden preview on
+  an hour with the panel's +1h; a view test of the readout; `make check` and
+  the other real-window tests.
 
 ## Changed after its author tried it
 

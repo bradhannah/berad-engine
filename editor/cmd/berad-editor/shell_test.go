@@ -79,3 +79,31 @@ func TestShellShowsWindowsAsTabs(t *testing.T) {
 	}
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestShellPinsTheClock previews the sample zone in a Map tab, then brings a
+// text document's tab to the front (increment 10). The pinned clock reads
+// the preview out on the bar, its panel opens by itself, and its +1h moves
+// the hidden Map's preview on an hour.
+func TestShellPinsTheClock(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "shell-clock.png")
+	browserScript := script(
+		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(90), doubleClick("row:Notes"),
+		wait(300), step{Repeat: 2, Screenshot: shot}, keys("Cmd+W"), must("ui:quit", 300), wait(5),
+		click("ui:quit"), wait(60),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(5), keys("P"), click("cell:2,-2"), must("state:previewing", 300),
+	)
+	clockScript := script(
+		must("state:running", 1200), wait(10), click("ui:hour-on"), must("state:time:09:", 300), wait(10),
+	)
+	runShellEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "map": {mapScript}, "clock": {clockScript},
+	})
+	noCrashes(t, project)
+	shellLog(t, project)
+	t.Logf("screenshot: %s", shot)
+}

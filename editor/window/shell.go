@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/clockview"
 )
 
 // openedQueue is how many windows can finish connecting between two frames.
@@ -39,6 +40,11 @@ type shell struct {
 	title    string
 	// shots are screenshots the panes asked for, of the whole window.
 	shots []string
+	// clock is the pinned clock, clockOpen whether its panel shows, and
+	// clockLive whether a preview ran when it was last read.
+	clock     *pane
+	clockOpen bool
+	clockLive bool
 }
 
 // tab is one tab of the window bar.
@@ -87,6 +93,8 @@ func runShell(args Args, registry *plugin.Registry) error {
 	}
 	project.host.closeQuits = true
 	project.host.hosts = shown.host
+	// The pinned clock is a Clock window, always running.
+	project.host.Open(clockview.ViewName, args.Target, false)
 	ebiten.SetWindowTitle(project.host.view.Title(conn))
 	ebiten.SetWindowSize(windowWidth, windowHeight+barHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
@@ -106,11 +114,24 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
+		clock: nil, clockOpen: false, clockLive: false,
 	}
 }
 
 // addPane shows a connected window in a new tab, in front.
 func (s *shell) addPane(conn *client.Client, args Args) (*pane, error) {
+	shown, err := s.newPane(conn, args)
+	if err != nil {
+		return nil, err
+	}
+	s.tabs = append(s.tabs, &tab{panes: []*pane{shown}, focus: 0})
+	s.active = len(s.tabs) - 1
+
+	return shown, nil
+}
+
+// newPane runs a connected window's view in a pane.
+func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	script, err := loadScript(args.View)
 	if err != nil {
 		return nil, err
@@ -122,8 +143,6 @@ func (s *shell) addPane(conn *client.Client, args Args) (*pane, error) {
 	}
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
-	s.tabs = append(s.tabs, &tab{panes: []*pane{shown}, focus: 0})
-	s.active = len(s.tabs) - 1
 
 	return shown, nil
 }
@@ -157,7 +176,12 @@ func (s *shell) receiveOpened() {
 
 func (s *shell) show(opened openedPane) {
 	if opened.err == nil {
-		_, err := s.addPane(opened.conn, opened.args)
+		var err error
+		if opened.args.View == clockview.ViewName && s.clock == nil {
+			err = s.pinClock(opened.conn, opened.args)
+		} else {
+			_, err = s.addPane(opened.conn, opened.args)
+		}
 		if err == nil {
 			return
 		}
@@ -174,13 +198,15 @@ func (s *shell) Update() error {
 	s.receiveOpened()
 	s.layout()
 	focused := s.focused()
-	input := s.readInput(focused)
+	target := s.target(focused)
+	input := s.readInput(target)
 	s.updateBar(&input)
-	s.route(input, focused)
+	s.route(input, target, focused)
 	for _, shown := range s.panes() {
 		s.run(shown)
 	}
 	s.attend()
+	s.followClock()
 	s.retitle()
 	if len(s.tabs) == 0 {
 		return ebiten.Termination
@@ -198,6 +224,23 @@ func (s *shell) layout() {
 			shown.rect = area
 		}
 	}
+	if s.clock != nil {
+		s.clock.rect = s.panelRect()
+	}
+}
+
+// target is the pane that takes the frame's input: the clock's panel while
+// the cursor is over it or its time field is being typed in, and otherwise
+// the focused pane of the tab in front.
+func (s *shell) target(focused *pane) *pane {
+	if !s.clockOpen || s.clock == nil {
+		return focused
+	}
+	if image.Pt(ebiten.CursorPosition()).In(s.clock.rect) || s.clock.host.view.Focused() != nil {
+		return s.clock
+	}
+
+	return focused
 }
 
 // readInput reads the frame's input for the focused pane's text field.
@@ -211,21 +254,21 @@ func (s *shell) readInput(focused *pane) ui.Input {
 	return s.reader.read(field)
 }
 
-// route gives the focused pane the frame's input, in its own coordinates, and
+// route gives the target pane the frame's input, in its own coordinates, and
 // every other pane none. Closing the shell's window asks the focused pane to
 // quit the editor.
-func (s *shell) route(input ui.Input, focused *pane) {
+func (s *shell) route(input ui.Input, target, focused *pane) {
 	for _, shown := range s.panes() {
 		shown.place.input = ui.NewInput(outside())
 	}
-	if focused == nil {
-		return
-	}
-	if ebiten.IsWindowBeingClosed() {
+	if focused != nil && ebiten.IsWindowBeingClosed() {
 		focused.place.closing = closeQuit
 	}
-	input.Cursor = input.Cursor.Sub(focused.rect.Min)
-	focused.place.input = input
+	if target == nil {
+		return
+	}
+	input.Cursor = input.Cursor.Sub(target.rect.Min)
+	target.place.input = input
 }
 
 // run runs one pane's tick. A pane that ends or crashes closes alone.
@@ -283,6 +326,11 @@ func (s *shell) close(shown *pane, cause error) {
 
 // remove takes a pane out of its tab, and an empty tab off the bar.
 func (s *shell) remove(shown *pane) {
+	if shown == s.clock {
+		s.clock, s.clockOpen = nil, false
+
+		return
+	}
 	for index, each := range s.tabs {
 		for slot, candidate := range each.panes {
 			if candidate != shown {
@@ -303,8 +351,12 @@ func (s *shell) remove(shown *pane) {
 }
 
 // attend brings forward a pane that asked for attention: its tab is shown and
-// it is focused, and the window asks for attention when it is not in front.
+// it is focused, or the clock's panel opens, and the window asks for
+// attention when it is not in front.
 func (s *shell) attend() {
+	if s.clock != nil && s.clock.place.attention {
+		s.clock.place.attention, s.clockOpen = false, true
+	}
 	for index, each := range s.tabs {
 		for slot, shown := range each.panes {
 			if !shown.place.attention {
@@ -329,11 +381,14 @@ func (s *shell) retitle() {
 	ebiten.SetWindowTitle(s.title)
 }
 
-// panes lists every pane, shown or not.
+// panes lists every pane, shown or not, the pinned clock's last.
 func (s *shell) panes() []*pane {
 	var all []*pane
 	for _, each := range s.tabs {
 		all = append(all, each.panes...)
+	}
+	if s.clock != nil {
+		all = append(all, s.clock)
 	}
 
 	return all
@@ -358,6 +413,7 @@ func (s *shell) Draw(screen *ebiten.Image) {
 			drawPane(screen, shown)
 		}
 	}
+	s.drawClock(screen)
 	s.drawBar(screen)
 	for _, path := range s.shots {
 		if err := saveScreenshot(screen, path); err != nil {

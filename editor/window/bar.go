@@ -48,11 +48,11 @@ func viewIcon(view string) ui.Icon {
 	return ui.IconNone
 }
 
-// tabRect returns a tab's place on the bar.
+// tabRect returns a tab's place on the bar, left of the clock's readout.
 func (s *shell) tabRect(index int) image.Rectangle {
 	width := tabWidth
-	if count := len(s.tabs); count > 0 && s.size.X/count < width {
-		width = s.size.X / count
+	if count := len(s.tabs); count > 0 && (s.size.X-readoutWidth)/count < width {
+		width = (s.size.X - readoutWidth) / count
 	}
 
 	return image.Rect(index*width, 0, (index+1)*width, barHeight)
@@ -87,6 +87,7 @@ func (s *shell) updateBar(input *ui.Input) {
 	}
 	if input.Pressed {
 		s.pressTab(input.Cursor)
+		s.pressReadout(input.Cursor)
 	}
 	quietMouse(input)
 }
@@ -120,6 +121,7 @@ func (s *shell) drawBar(screen *ebiten.Image) {
 	for index := range s.tabs {
 		s.drawTab(screen, index)
 	}
+	s.drawReadout(screen)
 	ui.Divider(screen, image.Pt(0, barHeight-ui.Hairline), image.Pt(s.size.X, barHeight-ui.Hairline))
 }
 
