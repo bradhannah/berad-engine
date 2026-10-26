@@ -15,11 +15,53 @@ operating-system windows:
 | Browser or webview UI with a Go backend | Windows, tabs and mature widgets for free | Structures and widgets recreated in another language |
 | A native Go toolkit for forms plus Ebitengine processes for maps | Native windows in one process for forms | Two toolkits and looks; weaker sharing of game widgets |
 | One Ebitengine window with docked panels | Simplest shared state | Building a windowing system inside the editor |
+| One Ebitengine window hosting the views as tabs, any of which can pop out into its own process (being tried: [increment 10](increments/0010-one-window.md)) | One application; the views unchanged; a pinned clock and side-by-side panes | A view that crashes or hangs can take the others with it; the editor draws its own tabs |
+| One host window running today's window processes as Ebitengine VM guests | One application that keeps each view in its own process; the views unchanged | Experimental; several guests at once undocumented; every frame's drawing crosses processes |
 
 Ebitengine 2.10's experimental VM mode (`exp/vmhost`) lets a host draw a guest
 process's frames into its own window, inject input and receive audio. It does not
 create windows; its uses are embedding a playtest of a real game in an editor
 window and headless testing.
+
+### One application (researched 2026-10-25)
+
+On macOS each window process shows as an application of its own, with its own
+Dock icon, menu bar and Cmd+Tab entry. Findings when looking for one
+application:
+
+- **Ebitengine will not get multiple windows:** its author closed
+  [ebiten#1205](https://github.com/hajimehoshi/ebiten/issues/1205) in 2022,
+  pointing to separate processes instead. A fork would have to undo a global
+  user-interface singleton, one command queue and render thread, a Metal
+  driver holding one view, and a public API with no window parameter; by
+  estimate, weeks for a macOS-only version and months for a portable one,
+  then a rebase on every release.
+- **VM mode** ([ebiten#3438](https://github.com/hajimehoshi/ebiten/issues/3438),
+  [package](https://pkg.go.dev/github.com/hajimehoshi/ebiten/v2/exp/vmhost)):
+  the guest is an unchanged Ebitengine program built with the
+  `ebitenginevmguest` tag and given an endpoint. The host starts it; its
+  drawing is sent over a socket and replayed on the host's GPU. There is one
+  session per connection. Keys, the mouse, the wheel, typed text and the input
+  method (for guests using `exp/textinput`) are forwarded; the clipboard,
+  dropped files, the window title and focus are not. Host and guest must use
+  the same Ebitengine version.
+- **Application identity on macOS:** Ebitengine makes every process a regular
+  application at launch, overriding `LSUIElement`; changing the activation
+  policy after start would hide a process from the Dock and Cmd+Tab, though
+  which menu bar then shows is unchecked. `ebiten.SetWindowIcon` does nothing
+  on macOS; `NSApplication`'s `applicationIconImage` changes a process's Dock
+  icon while it runs. Menus can be added through `ebiten.RunOnMainThread`
+  (2.10) with purego's `objc` package, without cgo. Since macOS 14 one process
+  can bring another to the front only by yielding activation to it.
+- **Other toolkits** each mean rewriting the widgets and every view: Gio has
+  multiple windows but needs cgo on macOS and Linux; Fyne's input-method
+  support is weak ([fyne#618](https://github.com/fyne-io/fyne/issues/618));
+  SDL3 through purego has per-window text input with composition but needs a
+  new renderer; raylib has one window; Dear ImGui (cimgui-go) docks and pops
+  out viewports but needs cgo.
+- **Other editors:** Godot is one window whose docks can float; Aseprite turned
+  multiple windows off by default; Guigui, a GUI framework on Ebitengine by its
+  author, is one window and still alpha.
 
 UI toolkits for the windows: ebitenui (retained-mode widgets) for editor UI, and
 DebugUI for developer panels; the two can coexist.
