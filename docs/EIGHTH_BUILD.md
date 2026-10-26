@@ -142,7 +142,7 @@ Open:
   `SetDescriptorCalibrationTarget` sets the reference; and
   `CalibrationPeakCeilingDB` names the −3 dBFS ceiling. The format guard
   adds a schema-5 library and a version-2 descriptor. berad-engine pins the
-  last commit of PR #17.
+  last commit of PR #17, and later of PR #18 (below).
 - **Measuring by default and meant to sound:** protocol version 14 lists the
   reference, the adjustments and the largest cue gain, asks how loud every
   recording measures (`AudioLoudness`, kept by the orchestrator until a file,
@@ -188,6 +188,13 @@ Chosen while building, for its author to check:
   saved and the cue's step, not a region being drafted.
 - **The region's Whole file button reads Use whole file,** so it is not
   confused with the Whole file choice beside Play.
+
+Found by its author while trying it:
+
+- **With Loop on, the playhead stopped at the region's end** while the sound
+  kept playing. berad-audio held a looping voice's position at its end once
+  it had played through; berad-sdk PR #18 wraps it to where the loop has
+  reached, and berad-engine pins that commit.
 
 ## Not in this build
 
