@@ -45,14 +45,21 @@ func (a *audioAsks) nextRecording(t *testing.T) recordingAsk {
 	return ask
 }
 
-// silentDevice plays nothing, so tests make no sound.
-type silentDevice struct{ opened int }
+// silentDevice plays nothing, so tests make no sound. It keeps its
+// transports, so a test can move where they are.
+type silentDevice struct {
+	opened     int
+	transports []*silentTransport
+}
 
 func (d *silentDevice) SampleRate() int { return sampleRate }
 
 //nolint:ireturn // The runtime takes any transport.
 func (d *silentDevice) NewPlayer(io.ReadSeeker) (audio.Transport, error) {
-	return &silentTransport{playing: false, position: 0}, nil
+	transport := &silentTransport{playing: false, position: 0}
+	d.transports = append(d.transports, transport)
+
+	return transport, nil
 }
 
 type silentTransport struct {
@@ -89,7 +96,8 @@ func decodeSilence([]byte, string, int) (audio.PCMStream, error) {
 
 func newTestPlayer(t *testing.T) (*Player, *audioAsks, *[]string, *silentDevice) {
 	t.Helper()
-	asks, told, device := &audioAsks{libraries: nil, recordings: nil}, &[]string{}, &silentDevice{opened: 0}
+	asks, told := &audioAsks{libraries: nil, recordings: nil}, &[]string{}
+	device := &silentDevice{opened: 0, transports: nil}
 	player := New(asks, func(message string) { *told = append(*told, message) })
 	player.decode = decodeSilence
 	player.device = func() (audio.Backend, error) {
@@ -272,6 +280,20 @@ func TestSoundsAuditionLouderThanALevel(t *testing.T) {
 	snapshot := player.current.runtime.Snapshot()
 	if len(snapshot) != 1 || !near(snapshot[0].TargetGain, loudness.Gain(16)) {
 		t.Fatalf("plays 16 dB up: %+v", snapshot)
+	}
+}
+
+// TestSoundsLoopedAuditionWrapsWhereItIs says where a looping part is in its
+// recording after it has played through and started again.
+func TestSoundsLoopedAuditionWrapsWhereItIs(t *testing.T) {
+	t.Parallel()
+	player, asks, _, device := newTestPlayer(t)
+	player.Audition("door_a", &protocol.AudioWindow{StartMs: 100, EndMs: 200}, 0, true)
+	asks.libraries[0](testCues(), nil)
+	asks.nextRecording(t).done(protocol.Recording{ID: "door_a", Offset: 0, Version: "v1", Size: 6, Data: []byte("RIFF00")}, nil)
+	device.transports[len(device.transports)-1].position = 250 * time.Millisecond
+	if at, playing := player.AuditionAt(); !playing || at != 150 {
+		t.Fatalf("halfway through its third time, 150 ms into the recording: %d %v", at, playing)
 	}
 }
 
