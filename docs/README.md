@@ -30,4 +30,4 @@ accepted it.
 | [7. Ambient sounds and the soundscape](increments/0007-ambient-and-soundscape.md) | Ambient sounds and the soundscape: distance, profiles and families, monitor levels | Built |
 | [8. Loudness](increments/0008-loudness.md) | Loudness: recordings evened out to a reference, how a cue is meant to sound | Judged |
 | [9. Files and their pieces](increments/0009-files-and-pieces.md) | Files and their pieces: a file cut into recordings, its attribution, finding its sounds | Judged |
-| [10. One window](increments/0010-one-window.md) | One window (spike): the views as tabs, a pinned clock and side-by-side panes | Planned |
+| [10. One window](increments/0010-one-window.md) | One window (spike): the views as tabs, a pinned clock and side-by-side panes | Built |

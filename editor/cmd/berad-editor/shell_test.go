@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -163,4 +164,68 @@ func TestShellPopsATabOut(t *testing.T) {
 				col, got)
 		}
 	}
+}
+
+// frameScenario is the scenario increment 10 measures: a preview runs in the
+// sample zone with Watch open and the clock showing, eight strokes are
+// painted where the Map shows them beside Watch too, then everything runs for
+// ten seconds before the editor quits.
+func frameScenario() scripts {
+	strokes := []any{must("state:loaded", 600), wait(5), keys("P"), click("cell:2,-2"),
+		must("state:previewing", 300), click("ui:watch"), wait(60), keys("3")}
+	for row := 4; row < 12; row++ {
+		at := func(col int) string { return "cell:" + strconv.Itoa(col) + "," + strconv.Itoa(row) }
+		strokes = append(strokes, drag(at(-14), at(-13), at(-12)), wait(10))
+	}
+	browserScript := script(
+		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(1100),
+		keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	return scripts{
+		"browser": {browserScript}, "map": {script(append(strokes, wait(600))...)},
+		"watch": {script(must("state:previewing", 900))},
+	}
+}
+
+// measureFrames runs the frame scenario and returns each window process's
+// frame statistics, one line each.
+func measureFrames(t *testing.T, binary string, shell bool) []string {
+	t.Helper()
+	project := filepath.Join(t.TempDir(), "project")
+	stats := filepath.Join(t.TempDir(), "frames.jsonl")
+	args := []string{"open", "--project", project, "--sample"}
+	if shell {
+		args = append(args, "--shell")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.Env = append(os.Environ(), frameScenario().env(t), "BERAD_FRAME_STATS="+stats)
+	if output, err := cmd.CombinedOutput(); err != nil || ctx.Err() != nil {
+		t.Fatalf("editor: %v %v\n%s", err, ctx.Err(), output)
+	}
+	noCrashes(t, project)
+	raw, err := os.ReadFile(stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimSpace(string(raw)), "\n")
+}
+
+// TestShellFrameTimes measures increment 10's scenario as one window and as
+// separate windows, and logs each window's tick and draw times, frame rates
+// and command-to-event times for the increment's record.
+func TestShellFrameTimes(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	one := measureFrames(t, binary, true)
+	separate := measureFrames(t, binary, false)
+	if len(one) != 1 || !strings.Contains(one[0], `"view":"shell"`) {
+		t.Fatalf("one window's statistics: %q", one)
+	}
+	if len(separate) < 3 {
+		t.Fatalf("separate windows' statistics: %q", separate)
+	}
+	t.Logf("one window:\n%s", strings.Join(one, "\n"))
+	t.Logf("separate windows:\n%s", strings.Join(separate, "\n"))
 }

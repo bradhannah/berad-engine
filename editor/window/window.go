@@ -90,12 +90,14 @@ func Run(args Args, registry *plugin.Registry) error {
 	// Clock window, which opens by itself when a preview starts.
 	var options ebiten.RunGameOptions
 	options.InitUnfocused = game.script != nil || scripted() || args.View == clockview.ViewName
-	runErr := ebiten.RunGameWithOptions(game, &options)
+	stats := newFrameStats(args.View)
+	runErr := ebiten.RunGameWithOptions(timed(game, stats), &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil
 	}
+	stats.addLatencies(game.frame.Latencies())
 
-	return errors.Join(runErr, game.sounds.Close(), conn.Close())
+	return errors.Join(runErr, game.sounds.Close(), conn.Close(), stats.write())
 }
 
 // connect connects a window to the orchestrator and loads its target.

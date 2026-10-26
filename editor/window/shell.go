@@ -48,6 +48,8 @@ type shell struct {
 	clockLive bool
 	// dragging is set while the divider of a split tab is dragged.
 	dragging bool
+	// stats are the window's frame statistics, when they are asked for.
+	stats *frameStats
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -109,19 +111,19 @@ func runShell(args Args, registry *plugin.Registry) error {
 	ebiten.SetWindowClosingHandled(true)
 	var options ebiten.RunGameOptions
 	options.InitUnfocused = scripted()
-	runErr := ebiten.RunGameWithOptions(shown, &options)
+	runErr := ebiten.RunGameWithOptions(timed(shown, shown.stats), &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil
 	}
 
-	return errors.Join(runErr, shown.closeAll())
+	return errors.Join(runErr, shown.closeAll(), shown.stats.write())
 }
 
 func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
-		clock: nil, clockOpen: false, clockLive: false, dragging: false,
+		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
 	}
 }
 
@@ -335,6 +337,7 @@ func (s *shell) close(shown *pane, cause error) {
 			}
 		}
 	}
+	s.stats.addLatencies(shown.host.frame.Latencies())
 	if err := errors.Join(shown.host.sounds.Close(), shown.host.conn.Close()); err != nil {
 		logLine("close a " + shown.view + " pane: " + err.Error())
 	}
@@ -501,6 +504,7 @@ func (s *shell) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (s *shell) closeAll() error {
 	var err error
 	for _, shown := range s.panes() {
+		s.stats.addLatencies(shown.host.frame.Latencies())
 		err = errors.Join(err, shown.host.sounds.Close(), shown.host.conn.Close())
 	}
 

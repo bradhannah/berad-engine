@@ -1,6 +1,6 @@
 # Increment 10: One window (spike)
 
-**Status:** Planned
+**Status:** Built
 
 The tenth increment is a spike. It tries running the editor as one
 operating-system window, the **shell**, whose first tab is the project browser
@@ -90,9 +90,24 @@ Chosen for the spike, for its author to check:
   of its own; the tab closes once that window has joined, so the undo list
   they share carries over (an undo list ends when its last view leaves).
 
+Chosen while building, for its author to check:
+
+- **Each tab has its own pop-out box**, beside its close box, rather than one
+  on the bar for the tab in front, and Cmd+Shift+O pops out the focused
+  pane. The bar has no +: windows open from the project browser as before.
+- **A split tab shows both panes' icons** and the focused pane's title.
+- **The clock's panel opens when a preview starts**, as the Clock window did,
+  and stays until its readout is clicked; beside Watch it covers Watch's top.
+- **A pane's On top keeps the whole window above the others.**
+- **A pane's screenshot is of the whole window**, its tab bar included, even
+  while its tab is hidden.
+- **`BERAD_FRAME_STATS`** names a file each window process appends its frame
+  statistics to as it closes, for step 7's measurements.
+
 ## Wireframes
 
-Letters in brackets stand for each kind's icon.
+Letters in brackets stand for each kind's icon. As built, each tab has its
+own pop-out box beside its close box, and the bar has no +.
 
 The shell, with the project browser's tab first:
 
@@ -144,7 +159,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Built |
 | 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Built |
 | 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Built |
-| 7. Measuring and judging | Frame time and command-to-event time with a Map and its Watch showing and a preview running, against separate windows | Numbers recorded here; judged by its author | Planned |
+| 7. Measuring and judging | Frame time and command-to-event time with a Map and its Watch showing and a preview running, against separate windows | Numbers recorded here; judged by its author | Built; not yet judged |
 
 Where each step changes code:
 
@@ -231,6 +246,31 @@ Where each step changes code:
   the first stays, so the undo list carried over; two window processes ran,
   the shell and the popped-out Map. `make check` and the other real-window
   tests pass.
+- **Measuring:** a real-window test (`TestShellFrameTimes`) runs one
+  scenario as one window and as separate windows: a preview of the sample
+  zone with Watch open and the clock showing, eight strokes of three cells
+  painted, then ten seconds of running. Measured on its author's Mac on
+  2026-10-25; the times are the processor time of each tick and draw, not
+  the graphics card's:
+
+  | Window | Ticks a second | Tick median / p95 / max (ms) | Draw median / p95 / max (ms) | Command to event median / max (ms) |
+  | --- | --- | --- | --- | --- |
+  | One window (the shell) | 59.9 | 0.08 / 0.13 / 1.30 | 2.91 / 3.10 / 5.35 | 0.51 / 0.55 (24 commands) |
+  | Separate: Map | 60.0 | 0.04 / 0.06 / 0.70 | 2.77 / 3.24 / 8.49 | 1.42 / 2.10 (24 commands) |
+  | Separate: Watch | 60.0 | 0.00 / 0.01 / 0.03 | 0.26 / 0.31 / 2.13 | none sent |
+  | Separate: Clock | 60.1 | 0.01 / 0.01 / 0.03 | 0.52 / 0.61 / 3.13 | none sent |
+  | Separate: project browser | 60.0 | 0.03 / 0.04 / 0.13 | 1.38 / 1.54 / 4.17 | none sent |
+
+  One window kept 60 frames a second, and its whole frame, every pane that
+  shows and the bar, took about 3 ms of the 16 ms budget (D12), its worst
+  draw 5.4 ms. It draws only what shows, so the hidden project browser costs
+  only its ticks; separate windows each draw every frame in their own
+  process. Its command-to-event times were shorter than the separate Map
+  window's. A second run, within the whole real-window suite, agreed to a
+  few tenths of a millisecond (one window: draw median 3.0 ms, worst 5.4;
+  command to event 0.52 ms against the Map window's 1.57). The first measurement painted cells that the Map, narrowed
+  beside Watch, did not show, so it sent no commands; the scenario now paints
+  where both layouts show the cells.
 
 ## Changed after its author tried it
 

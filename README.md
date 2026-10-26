@@ -34,6 +34,9 @@ make demo     # build the editor and open a sample project in .cache/demo-projec
 ```
 
 The project browser and a Map window open on a sample zone with two floors.
+`make demo-shell` opens the same project as one window instead, with a tab
+for each window, the clock pinned to its bar, and Watch beside its Map: a
+spike, [increment 10](docs/increments/0010-one-window.md).
 
 - **Project browser:** create zones, floors and text documents; rename in the
   inspector (Enter or the Rename button saves); delete with a where-used check;
