@@ -66,6 +66,13 @@ type host struct {
 	reported   protocol.Unsaved
 	// floating is whether the window was last asked to stay on top.
 	floating bool
+	// closeQuits makes closing this window quit the editor, as closing a
+	// shell's project browser does; hosts is told of the windows a shell is
+	// asked to show (increment 10).
+	closeQuits bool
+	hosts      func(protocol.Host)
+	// saveShot saves a screenshot; a shell saves its whole window instead.
+	saveShot func(screen *ebiten.Image, path string) error
 }
 
 func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn surface) *host {
@@ -81,7 +88,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		floating: false,
+		floating: false, closeQuits: false, hosts: nil, saveShot: saveScreenshot,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -171,6 +178,11 @@ func (h *host) close() {
 		return
 	}
 	h.frame.Closing = false
+	if h.closeQuits {
+		h.askQuit()
+
+		return
+	}
 	if saver, ok := h.view.(frame.Saver); ok {
 		saver.Leave(&h.ctx, func() { h.frame.Quit = true })
 
@@ -208,6 +220,13 @@ func (h *host) drainUpdates() bool {
 func (h *host) onUpdate(update client.Update) {
 	if update.Latency > 0 {
 		h.frame.AddLatency(update.Latency)
+	}
+	if update.Host != nil {
+		if h.hosts != nil {
+			h.hosts(*update.Host)
+		}
+
+		return
 	}
 	if update.Result != nil {
 		if done, ok := h.pending[update.Request]; ok {
@@ -522,7 +541,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 		h.shot = h.screenshot
 	}
 	if h.shot != "" {
-		if err := saveScreenshot(screen, h.shot); err != nil {
+		if err := h.saveShot(screen, h.shot); err != nil {
 			h.frame.Status(err.Error())
 		}
 		h.shot = ""

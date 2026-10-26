@@ -58,13 +58,16 @@ type inputReader struct {
 	// controlClick is true from a Control-click on macOS until its release:
 	// the whole click is a right-click.
 	controlClick bool
+	// offset is where the focused field's view is drawn in the window, for a
+	// shell's pane, so the input method shows its choices by the caret.
+	offset image.Point
 }
 
 func newInputReader() *inputReader {
 	reader := &inputReader{
 		names: keyNames(), composer: newComposer(), field: nil, before: "", after: "",
 		text: strings.Builder{}, replace: nil, compose: "", lastPress: time.Time{}, lastPoint: image.Pt(0, 0),
-		controlClick: false,
+		controlClick: false, offset: image.Pt(0, 0),
 	}
 	reader.composer.OnNewSession = reader.newSession
 	reader.composer.OnComposition = func(composition *textinput.Composition) { reader.compose = composition.Text() }
@@ -86,7 +89,7 @@ func (r *inputReader) newSession() *textinput.SessionOptions {
 	caret, before, after := r.field.Session()
 	r.before, r.after = before, after
 
-	return &textinput.SessionOptions{CaretBounds: caret, TextBeforeCaret: before, TextAfterCaret: after}
+	return &textinput.SessionOptions{CaretBounds: caret.Add(r.offset), TextBeforeCaret: before, TextAfterCaret: after}
 }
 
 // commit queues committed text, or a replacement of the text around the

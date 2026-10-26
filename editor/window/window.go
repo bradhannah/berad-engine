@@ -39,46 +39,29 @@ const (
 // ErrUnknownView reports a view this program does not provide.
 var ErrUnknownView = errors.New("unknown window view")
 
-// Args identifies the window to run.
+// Args identifies the window to run. Shell runs it as a shell, which shows
+// every window the orchestrator opens after it as one of its panes
+// (increment 10).
 type Args struct {
 	Socket string
 	View   string
 	Target ids.ULID
 	Window ids.ULID
 	Build  string
+	Shell  bool
 }
 
 // Run connects, opens the window and blocks until it closes. It must be called
 // from the main goroutine, as Ebitengine requires.
 func Run(args Args, registry *plugin.Registry) error {
-	switch args.View {
-	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
-		clockview.ViewName, audioview.ViewName:
-	default:
-		return fmt.Errorf("%w: %q", ErrUnknownView, args.View)
+	if args.Shell {
+		return runShell(args, registry)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-	// Views of one map, or of one workflow, share an undo list (D3); the
-	// Audio window, of which there is one, has its own.
-	group := ""
-	switch args.View {
-	case mapview.ViewName:
-		group = "map:" + args.Target.String()
-	case workflowview.ViewName:
-		group = "workflow:" + args.Target.String()
-	case audioview.ViewName:
-		group = audioview.UndoGroup
-	}
-	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
-		Protocol: protocol.Version, Build: args.Build, Window: args.Window, View: args.View,
-		Target: args.Target, UndoGroup: group, Hosts: false,
-	}, registry)
+	conn, err := connect(ctx, args, registry)
 	if err != nil {
-		return fmt.Errorf("connect window: %w", err)
-	}
-	if err := conn.Subscribe(ctx, args.Target); err != nil {
-		return errors.Join(fmt.Errorf("open document: %w", err), conn.Close())
+		return err
 	}
 	theme, err := ui.NewTheme()
 	if err != nil {
@@ -113,6 +96,44 @@ func Run(args Args, registry *plugin.Registry) error {
 	}
 
 	return errors.Join(runErr, game.sounds.Close(), conn.Close())
+}
+
+// connect connects a window to the orchestrator and loads its target.
+func connect(ctx context.Context, args Args, registry *plugin.Registry) (*client.Client, error) {
+	switch args.View {
+	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
+		clockview.ViewName, audioview.ViewName:
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrUnknownView, args.View)
+	}
+	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
+		Protocol: protocol.Version, Build: args.Build, Window: args.Window, View: args.View,
+		Target: args.Target, UndoGroup: undoGroup(args), Hosts: args.Shell,
+	}, registry)
+	if err != nil {
+		return nil, fmt.Errorf("connect window: %w", err)
+	}
+	if err := conn.Subscribe(ctx, args.Target); err != nil {
+		return nil, errors.Join(fmt.Errorf("open document: %w", err), conn.Close())
+	}
+
+	return conn, nil
+}
+
+// undoGroup is the undo list a window shares: views of one map, or of one
+// workflow, share one (D3); the Audio window, of which there is one, has its
+// own.
+func undoGroup(args Args) string {
+	switch args.View {
+	case mapview.ViewName:
+		return "map:" + args.Target.String()
+	case workflowview.ViewName:
+		return "workflow:" + args.Target.String()
+	case audioview.ViewName:
+		return audioview.UndoGroup
+	}
+
+	return ""
 }
 
 // windowSize is the size a window opens at: small for the Clock window.

@@ -80,8 +80,9 @@ Chosen for the spike, for its author to check:
   leaves the other.
 - **The Clock pane always runs,** so the bar can show its time. A preview
   starting, or the Map's Clock button, opens the clock's panel instead of a
-  tab. The shell offers no On top: the pinned clock was its main use.
-- **Each pane keeps its own status bar** for now.
+  tab.
+- **Each pane keeps its own status bar** for now, and its On top keeps the
+  whole window above the others.
 - **A crash in a pane** is caught: that pane's connection closes, the tab says
   it closed, and the stack goes to the shell's log. The orchestrator's crash
   report and its notice to other windows still cover processes only.
@@ -139,7 +140,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | --- | --- | --- | --- |
 | 1. Panes | The window host split so a shell can run several: input, size, title, attention and On top come from outside; a window process behaves exactly as before | Existing view, window and real-window tests pass unchanged | Built |
 | 2. Hosting | Protocol version 15: a hello that hosts panes, a Host message naming the view, target and window to host, and Open's pop out. The orchestrator hosts in a connected shell what it would otherwise start, counts hosted windows when deciding whether one is open or opening, and quits when the shell's process ends | Codec round-trip tests; headless orchestrator tests with a fake shell | Built |
-| 3. The shell | `open --shell`; the window bar, with new icons for the project, the clock and Watch; tabs, focus, and routing of input and the input method; panes run hidden and are drawn only when shown; a crash closes one tab; Cmd+W and Cmd+Q; the window's title from the focused pane | A real-window test opening the browser, a Map and Audio as tabs | Planned |
+| 3. The shell | `open --shell`; the window bar, with new icons for the project, the clock and Watch; tabs, focus, and routing of input and the input method; panes run hidden and are drawn only when shown; a crash closes one tab; Cmd+W and Cmd+Q; the window's title from the focused pane | A real-window test opening the browser, a Map and Audio as tabs | Built |
 | 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Planned |
 | 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Planned |
 | 6. Pop out | A tab moved to its own window process, keeping its undo | A real-window test: undo in the popped-out Map undoes a stroke made in its tab | Planned |
@@ -179,6 +180,23 @@ Where each step changes code:
   quitting when a shell process ends, which fails without that rule), the
   codec round-trip tests, `make check` and the real-window tests. The
   command-line flags come with the shell, in step 3.
+- **The shell:** `berad-editor open --shell` starts the project browser's
+  window as a shell (`editor/window/shell.go`, `bar.go`, `pane.go`). Each
+  window the orchestrator asks it to host connects off the frame loop and
+  opens as a tab in front, with its kind's icon (new ones for the project,
+  the clock and Watch) and its title. One input reader serves the window: the
+  tab in front gets the frame's input in its own coordinates, including the
+  input method's caret, and every other pane gets none but still runs. A
+  pane that ends closes its tab; one that panics is caught, closes alone, and
+  the others show a notice, with the failure in the shell's log. Closing the
+  project browser's tab, or the window, asks to quit the editor; a tab's
+  close box asks its view first, as Cmd+W does. The window's title follows
+  the tab in front, and a pane's screenshot is of the whole window. Verified
+  with a real-window test that opens a Map, a text document and the Audio
+  window from the browser as tabs, paints the Map while another tab is in
+  front, quits from the browser's tab, and finds one window process and no
+  failures; unit tests for catching a pane's panic and removing tabs;
+  `make check` and the other real-window tests.
 
 ## Changed after its author tried it
 

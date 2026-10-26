@@ -13,7 +13,8 @@ import (
 type Icon int
 
 // Icons of the document types, of a folder, which holds documents of one
-// type, and of a sound: a cue or a recording of the audio library.
+// type, and of a sound: a cue or a recording of the audio library. The
+// project, the clock and Watch mark the windows that show no one document.
 const (
 	IconNone Icon = iota
 	IconZone
@@ -23,6 +24,9 @@ const (
 	IconText
 	IconFolder
 	IconSound
+	IconProject
+	IconClock
+	IconWatch
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -43,6 +47,12 @@ const (
 	iconSpeaker = 4
 	iconWave    = 4
 	quarterTurn = math.Pi / 4
+	// The project is a list of rows; a clock's hands stop this far short of
+	// its rim; an eye's lids curve towards points this far from its middle.
+	iconRows   = 3
+	iconRowGap = IconSize / iconRows
+	iconHand   = 4
+	iconLid    = 8
 )
 
 // IconColor returns the muted colour of an icon's type.
@@ -60,7 +70,9 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorSound()
 	case IconFolder:
 		return ColorMuted()
-	case IconNone:
+	case IconWatch:
+		return ColorLive()
+	case IconNone, IconProject, IconClock:
 	}
 
 	return ColorInk()
@@ -115,8 +127,52 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 		drawFolder(screen, corner, ink)
 	case IconSound:
 		drawSpeaker(screen, left, top, ink)
+	case IconProject, IconClock, IconWatch:
+		drawWindowIcon(screen, icon, left, top, ink)
 	case IconNone:
 	}
+}
+
+// drawWindowIcon draws the icon of a window that shows no one document.
+func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.RGBA) {
+	switch icon {
+	case IconProject:
+		drawList(screen, left, top, ink)
+	case IconClock:
+		drawClock(screen, left, top, ink)
+	case IconWatch:
+		drawEye(screen, left, top, ink)
+	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound:
+	}
+}
+
+// drawList draws the project: rows, each a dot and a line.
+func drawList(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	for row := range iconRows {
+		rowY := top + float32(row*iconRowGap) + iconRowGap/Half
+		vector.FillCircle(screen, left+iconDot/Half+1, rowY, iconDot/Half, ink, true)
+		vector.StrokeLine(screen, left+iconDot+iconLineGap, rowY, left+IconSize-1, rowY, iconStroke, ink, true)
+	}
+}
+
+// drawClock draws a clock face with its hands at three o'clock.
+func drawClock(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	centreX, centreY := left+IconSize/Half, top+IconSize/Half
+	vector.StrokeCircle(screen, centreX, centreY, IconSize/Half-1, iconStroke, ink, true)
+	vector.StrokeLine(screen, centreX, centreY, centreX, top+iconHand, iconStroke, ink, true)
+	vector.StrokeLine(screen, centreX, centreY, left+IconSize-iconHand, centreY, iconStroke, ink, true)
+}
+
+// drawEye draws an eye: two lids around its pupil.
+func drawEye(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	middle := top + IconSize/Half
+	var lids vector.Path
+	lids.MoveTo(left, middle)
+	lids.QuadTo(left+IconSize/Half, middle-iconLid, left+IconSize, middle)
+	lids.QuadTo(left+IconSize/Half, middle+iconLid, left, middle)
+	lids.Close()
+	strokePath(screen, &lids, ink)
+	vector.FillCircle(screen, left+IconSize/Half, middle, iconDot, ink, true)
 }
 
 // drawFolder draws a folder: a tab on the back of its body.
@@ -142,9 +198,13 @@ func drawSpeaker(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	var wave vector.Path
 	centre := left + iconSpeaker*Half + 1
 	wave.Arc(centre, middle, iconWave, -quarterTurn, quarterTurn, vector.Clockwise)
+	strokePath(screen, &wave, ink)
+}
+
+func strokePath(screen *ebiten.Image, path *vector.Path, ink color.Color) {
 	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	options.ColorScale.ScaleWithColor(ink)
-	vector.StrokePath(screen, &wave, &vector.StrokeOptions{
+	vector.StrokePath(screen, path, &vector.StrokeOptions{
 		Width: iconStroke, LineCap: vector.LineCapRound, LineJoin: vector.LineJoinRound, MiterLimit: 0,
 	}, options)
 }
