@@ -19,7 +19,7 @@ var testID = ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
 func everyMessage(t *testing.T) []protocol.Message {
 	t.Helper()
 	payloads := map[protocol.Kind]any{
-		protocol.KindHello:     protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g"},
+		protocol.KindHello:     protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g", Hosts: true},
 		protocol.KindWelcome:   protocol.Welcome{Window: testID},
 		protocol.KindSubscribe: protocol.Subscribe{Document: testID},
 		protocol.KindSnapshot:  protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
@@ -27,7 +27,7 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID, Item: "door/open"},
 		protocol.KindEvent:     protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
 		protocol.KindSession:   protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
-		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true, Item: "door/open"},
+		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true, Item: "door/open", PopOut: testID},
 		protocol.KindShutdown:  protocol.Shutdown{Reason: "bye", Save: true},
 		protocol.KindUnsaved:   protocol.Unsaved{Count: 2, Name: "NPC 1"},
 		protocol.KindQuitAsk: protocol.QuitAsk{Windows: 3, Unsaved: []protocol.UnsavedWindow{
@@ -39,6 +39,7 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindQuery:        protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
 		protocol.KindAnswer:       protocol.Answer{Uses: []protocol.Use{{Document: testID, Name: "n", Format: "f", Label: "l"}}},
 		protocol.KindAttention:    protocol.Attention{Item: "door/open"},
+		protocol.KindHost:         protocol.Host{View: "map", Target: testID, Window: testID},
 		protocol.KindPickAsk:      protocol.PickAsk{What: protocol.PickAnchor, Maps: []protocol.PickMap{{Window: testID, Zone: testID, Shows: true}}},
 		protocol.KindPickStart:    protocol.PickStart{Pick: "p", What: protocol.PickAnchor, Label: "l", Window: testID, Zone: testID, From: testID},
 		protocol.KindPickAnswer:   protocol.PickAnswer{Pick: "p", Floor: testID, Item: "i"},
@@ -181,6 +182,8 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.Recording](message)
 		case protocol.KindAttention:
 			check = roundTrip[protocol.Attention](message)
+		case protocol.KindHost:
+			check = roundTrip[protocol.Host](message)
 		case protocol.KindAudioEdit:
 			check = roundTrip[protocol.AudioEdit](message)
 		case protocol.KindAudioChanged:

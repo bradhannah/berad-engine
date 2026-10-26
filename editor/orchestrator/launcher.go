@@ -24,18 +24,20 @@ type Launcher interface {
 	Command(request LaunchRequest) (*exec.Cmd, error)
 }
 
-// LaunchRequest describes a window to start.
+// LaunchRequest describes a window to start. Shell asks for a shell: a window
+// whose process shows the other windows as its panes (increment 10).
 type LaunchRequest struct {
 	View   string
 	Target ids.ULID
 	Window ids.ULID
 	Socket string
 	Build  string
+	Shell  bool
 }
 
 // WindowArgs returns the command-line arguments a window process receives.
 func WindowArgs(request LaunchRequest) []string {
-	return []string{
+	args := []string{
 		"window",
 		"--socket", request.Socket,
 		"--view", request.View,
@@ -43,6 +45,11 @@ func WindowArgs(request LaunchRequest) []string {
 		"--window", request.Window.String(),
 		"--build", request.Build,
 	}
+	if request.Shell {
+		args = append(args, "--shell")
+	}
+
+	return args
 }
 
 // ExecutableLauncher starts windows by running an executable, normally the
@@ -87,8 +94,18 @@ type childExit struct {
 	err    error
 }
 
-// launch starts a window process and watches for its exit.
+// launch opens a window: as a pane of the connected shell, or else as a
+// window process of its own.
 func (o *Orchestrator) launch(view string, target ids.ULID) (ids.ULID, error) {
+	if o.hosting.shell != nil {
+		return o.hostWindow(view, target)
+	}
+
+	return o.start(view, target, false)
+}
+
+// start starts a window process, a shell if asked, and watches for its exit.
+func (o *Orchestrator) start(view string, target ids.ULID, shell bool) (ids.ULID, error) {
 	if o.cfg.Launcher == nil {
 		return ids.ULID{}, ErrNoLauncher
 	}
@@ -96,7 +113,9 @@ func (o *Orchestrator) launch(view string, target ids.ULID) (ids.ULID, error) {
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("window id: %w", err)
 	}
-	request := LaunchRequest{View: view, Target: target, Window: window, Socket: o.cfg.SocketPath, Build: o.cfg.Build}
+	request := LaunchRequest{
+		View: view, Target: target, Window: window, Socket: o.cfg.SocketPath, Build: o.cfg.Build, Shell: shell,
+	}
 	cmd, err := o.cfg.Launcher.Command(request)
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("prepare window: %w", err)
@@ -130,6 +149,7 @@ func (o *Orchestrator) childExited(exit childExit) {
 	started, found := o.children[exit.window]
 	delete(o.children, exit.window)
 	defer delete(o.recent, exit.window)
+	o.shellExited(exit.window)
 	if (o.cfg.QuitWhenLastWindowCloses || o.quitting) && len(o.children) == 0 {
 		o.quit = true
 	}
@@ -215,5 +235,15 @@ func (o *Orchestrator) LaunchWindow(view string, target ids.ULID) (ids.ULID, err
 		return ids.ULID{}, ErrRunning
 	}
 
-	return o.launch(view, target)
+	return o.start(view, target, false)
+}
+
+// LaunchShell starts a shell before Run: a window whose process shows every
+// window opened after it as one of its panes, until it closes (increment 10).
+func (o *Orchestrator) LaunchShell(view string, target ids.ULID) (ids.ULID, error) {
+	if o.running.Load() {
+		return ids.ULID{}, ErrRunning
+	}
+
+	return o.start(view, target, true)
 }

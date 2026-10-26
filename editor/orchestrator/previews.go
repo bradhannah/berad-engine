@@ -100,6 +100,9 @@ func (o *Orchestrator) openClock() {
 			return
 		}
 	}
+	if o.hostedView(ClockView) {
+		return
+	}
 	if _, err := o.launch(ClockView, projectindex.IndexID()); err != nil && !errors.Is(err, ErrNoLauncher) {
 		o.cfg.Logger.Warn("could not open the Clock window", "error", err)
 	}

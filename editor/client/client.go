@@ -79,6 +79,8 @@ type Update struct {
 	// PreviewControl asks the window running a preview to watch, pause,
 	// resume or step its NPCs.
 	PreviewControl *protocol.PreviewControl
+	// Host asks a shell to show a window as one of its panes.
+	Host *protocol.Host
 }
 
 // Client is one window's connection.
@@ -268,7 +270,9 @@ func (c *Client) Redo(ctx context.Context) (protocol.Result, error) {
 // Open asks the orchestrator to open a window, or to draw attention to the
 // window already showing that view and target unless newView is set.
 func (c *Client) Open(ctx context.Context, view string, target ids.ULID, newView bool) (protocol.Result, error) {
-	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target, NewView: newView, Item: ""})
+	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{
+		View: view, Target: target, NewView: newView, Item: "", PopOut: ids.ULID{},
+	})
 	if err != nil {
 		return protocol.Result{}, err
 	}
@@ -315,7 +319,23 @@ func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error
 // OpenItem asks the orchestrator to open a window and show an item in it, such
 // as a cue in the Audio window, or to show it in the window already open.
 func (c *Client) OpenItem(ctx context.Context, view string, target ids.ULID, item string) (protocol.Result, error) {
-	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{View: view, Target: target, NewView: false, Item: item})
+	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{
+		View: view, Target: target, NewView: false, Item: item, PopOut: ids.ULID{},
+	})
+	if err != nil {
+		return protocol.Result{}, err
+	}
+
+	return resultOf(reply)
+}
+
+// PopOut asks for a shell's pane to move into a window process of its own,
+// and waits for the result; the pane is told to close once the window has
+// joined.
+func (c *Client) PopOut(ctx context.Context, view string, target, pane ids.ULID) (protocol.Result, error) {
+	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{
+		View: view, Target: target, NewView: true, Item: "", PopOut: pane,
+	})
 	if err != nil {
 		return protocol.Result{}, err
 	}

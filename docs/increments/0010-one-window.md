@@ -138,7 +138,7 @@ A Map and its Watch sharing a tab; the focused pane is outlined in blue:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Panes | The window host split so a shell can run several: input, size, title, attention and On top come from outside; a window process behaves exactly as before | Existing view, window and real-window tests pass unchanged | Built |
-| 2. Hosting | Protocol version 15: a hello that hosts panes, a Host message naming the view, target and window to host, and Open's pop out. The orchestrator hosts in a connected shell what it would otherwise start, counts hosted windows when deciding whether one is open or opening, and quits when the shell's process ends | Codec round-trip tests; headless orchestrator tests with a fake shell | Planned |
+| 2. Hosting | Protocol version 15: a hello that hosts panes, a Host message naming the view, target and window to host, and Open's pop out. The orchestrator hosts in a connected shell what it would otherwise start, counts hosted windows when deciding whether one is open or opening, and quits when the shell's process ends | Codec round-trip tests; headless orchestrator tests with a fake shell | Built |
 | 3. The shell | `open --shell`; the window bar, with new icons for the project, the clock and Watch; tabs, focus, and routing of input and the input method; panes run hidden and are drawn only when shown; a crash closes one tab; Cmd+W and Cmd+Q; the window's title from the focused pane | A real-window test opening the browser, a Map and Audio as tabs | Planned |
 | 4. Pinned clock | The Clock pane always running; the bar's readout from it, orange while a preview runs; its panel under the readout; a preview starting, or the Map's Clock button, opens the panel | A real-window test that starts a preview, switches tabs and reads the clock | Planned |
 | 5. Split | Watch beside a Map of its zone; a divider to drag; closing either pane | A real-window test with a preview running and Watch beside its Map | Planned |
@@ -151,9 +151,9 @@ Where each step changes code:
   from whoever runs it).
 - **Hosting:** `editor/protocol`, `editor/client`, and in `editor/orchestrator`
   launching (`launch`), opening (`openWindow`) and the Clock window
-  (`openClock`); `editor/cmd/berad-editor` for the flags.
-- **The shell, pinned clock, split and pop out:** new files in `editor/window`
-  for the shell and its bar; a short summary of the time from
+  (`openClock`).
+- **The shell, pinned clock, split and pop out:** `editor/cmd/berad-editor`
+  for the flags; new files in `editor/window` for the shell and its bar; a short summary of the time from
   `editor/views/clockview` for the bar; window-kind icons in `editor/ui`.
 
 ## Step results
@@ -165,7 +165,20 @@ Where each step changes code:
   changed; a shell can give each pane a part of its window instead. Verified
   with `make check` (no lint findings, race tests passing), a new test that
   the close button asks the view to close, and all 23 real-window tests
-  (`make gui-test`) passing unchanged. Not yet committed.
+  (`make gui-test`) passing unchanged.
+- **Hosting:** protocol version 15. A hello can say its window hosts others
+  (`Hosts`); the orchestrator then sends it a `Host` message, naming the view,
+  target and window, for every window it opens instead of starting a
+  process, and the pane connects as that window. `Open` can name a pane to
+  pop out: its window starts as a process of its own, and the pane is told to
+  close, saving first, once that window has joined. `LaunchShell` starts the
+  shell's process with `--shell`, and when that process ends the editor quits,
+  telling any window still open on its own to close. The hosting state is in
+  `editor/orchestrator/hosting.go`. Verified with headless tests against a
+  fake shell (hosting, attention to a pane, the quit count, pop out, and
+  quitting when a shell process ends, which fails without that rule), the
+  codec round-trip tests, `make check` and the real-window tests. The
+  command-line flags come with the shell, in step 3.
 
 ## Changed after its author tried it
 

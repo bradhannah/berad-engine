@@ -72,7 +72,7 @@ func Run(args Args, registry *plugin.Registry) error {
 	}
 	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
 		Protocol: protocol.Version, Build: args.Build, Window: args.Window, View: args.View,
-		Target: args.Target, UndoGroup: group,
+		Target: args.Target, UndoGroup: group, Hosts: false,
 	}, registry)
 	if err != nil {
 		return fmt.Errorf("connect window: %w", err)

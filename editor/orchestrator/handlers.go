@@ -27,6 +27,7 @@ func (o *Orchestrator) join(joined *window) {
 	for topic, value := range o.session {
 		o.send(joined, mustMessage(protocol.KindSession, 0, protocol.Session{Topic: topic, Value: value}))
 	}
+	o.hostJoined(joined)
 	o.pickJoined(joined)
 	o.previewJoined(joined)
 	if item, ok := o.attentions[joined.id]; ok {
@@ -48,6 +49,7 @@ func (o *Orchestrator) leave(left *window) {
 	close(left.out)
 	o.endPicksWith(left.id)
 	o.previewLeft(left.id)
+	o.hostLeft(left)
 }
 
 func (o *Orchestrator) handle(ctx context.Context, message inbound) {
@@ -83,7 +85,7 @@ func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 		o.handleAudio(ctx, message.from, message.message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention,
-		protocol.KindAudioChanged:
+		protocol.KindAudioChanged, protocol.KindHost:
 		o.reply(message.from, request, reasonUnexpected, 0)
 	default:
 		o.reply(message.from, request, reasonUnexpected, 0)
@@ -386,6 +388,11 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 
 		return
 	}
+	if !request.PopOut.IsZero() {
+		o.openPopOut(from, message.Request, request)
+
+		return
+	}
 	if !request.NewView {
 		for _, open := range o.windows {
 			if open.hello.View == request.View && open.hello.Target == request.Target {
@@ -406,6 +413,20 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 		o.attentions[launched] = request.Item
 	}
 	o.reply(from, message.Request, "", 0)
+}
+
+// openPopOut opens a window of its own for a shell's pane.
+func (o *Orchestrator) openPopOut(from *window, requested uint64, request protocol.Open) {
+	launched, err := o.popOut(request.View, request.Target, request.PopOut)
+	if err != nil {
+		o.reply(from, requested, err.Error(), 0)
+
+		return
+	}
+	if request.Item != "" {
+		o.attentions[launched] = request.Item
+	}
+	o.reply(from, requested, "", 0)
 }
 
 // reply answers a request; an empty reason means success.
