@@ -57,11 +57,11 @@ under consideration), **open** (undecided).
 - **Agreed:** a visual map editor, with a floating zoom control in the map's
   bottom-right corner (−, the zoom as a percentage, + and Fit). Scrolling
   pans the Map, Workflow and Watch windows the same way.
-- **Agreed:** **stand-in tiles** let an author lay out a map before its art
+- **Agreed:** **stand-ins** let an author lay out a map before its art
   exists. Stand-ins are typed (for example ground, generic wall, generic door,
   stairs up and down, small or medium pickup) so their role is recognisable. Default behaviour and
   how stand-ins are replaced are open.
-- **Agreed:** a tile definition editor, separate as a function from drawing art.
+- **Agreed:** a definition editor, separate as a function from drawing art.
 - **Agreed:** **wall families** (meta-tiles): the author picks a family such as
   "old brick" and the editor chooses each corner and edge variant from its
   neighbours, without routine manual tweaking; manual overrides remain possible.
@@ -72,13 +72,31 @@ under consideration), **open** (undecided).
   used. The family is a property that can be changed for a whole selection: a
   connected run, a room, or every wall in an area, plus a replace-everywhere
   command. Floors and roads can follow the same pattern.
-- **Agreed:** walls **occupy whole tiles** (a wall is one tile thick and a
-  doorway is a tile), not tile edges.
-- **Agreed:** a cell has a **ground** tile and at most **one thing on top** (a
+- **Agreed:** walls **occupy whole cells** (a wall is one cell thick and a
+  doorway is a cell), not cell edges.
+- **Agreed:** a cell has its **ground** and at most **one thing on top** (a
   wall, a door, stairs or a pickup stand-in). Objects and placements come
   later.
 - **Agreed:** **stairs** are stand-ins, up or down. Walking onto them takes the
   player to the same cell one floor up or down.
+- **Agreed (2026-10-25):** stairs are **one-way** or **two-way**. One-way
+  stairs, such as a hole, lead to the floor below and need only their down
+  end. Two-way stairs record an up end and a down end: placing one end places
+  the other on the floor above or below, in the same cell, and deleting one
+  end asks about the other.
+- **Agreed (2026-10-25):** the engine fixes the map's **draw order** for every
+  game, with nothing to configure: the ground first, then what stands on the
+  map, then whatever is marked to draw over everything, such as roof tops.
+- **Agreed (2026-10-25):** what stands on the map, objects and characters
+  alike, is drawn in order of its **base row**, the row where it touches the
+  ground, so whatever is lower on screen is drawn in front. Walking behind a
+  tree's trunk puts the player under its canopy; walking in front of it puts
+  them over it. Each sprite has one base row, its bottom row unless its author
+  chooses another. Flat things such as rugs and shadows stay with the ground.
+  Fully top-down art loses nothing: every base row is then its sprite's only
+  row. (Rejected: heights authored per tile or pixel, as too costly to author
+  and to reason about; and marking each tile under or over characters, which
+  breaks when sprites overlap neighbouring cells.)
 - **Agreed:** doors are simply passable for now; opening and closing come
   later.
 - **Agreed:** stand-ins are **built in** for now; editable definitions arrive
@@ -87,7 +105,7 @@ under consideration), **open** (undecided).
   the **floor below shown faintly** (it can be turned off). All views of a zone
   share one undo list.
 - **Agreed:** pan and zoom the map; integer cell sizes keep pixel art uniformly
-  scaled once real tiles replace stand-ins.
+  scaled once sprites replace stand-ins.
 - **Agreed:** beyond the floor bounds the map is shaded, with a fainter grid of
   the same cells, so the space around the floor can be pictured.
 - **Agreed:** right-click on the map opens a menu of what can be done at that
@@ -105,8 +123,9 @@ under consideration), **open** (undecided).
   visibility editing) and enrich it over time.
 - **Agreed:** portal-linked maps do not need to be shown stitched together;
   convenient access through their doorways is enough.
-- **Candidate:** tile discovery through an atlas, a tree, keyword search, packs,
-  or a combination, with the same tile possibly appearing in several groups.
+- **Candidate:** finding what to paint through an atlas, a tree, keyword
+  search, packs, or a combination, with the same definition possibly appearing
+  in several groups.
 - **Agreed:** tile size and base resolution are settings each game chooses, not
   hard-coded. A game decides its tile size up front and redraws its art if that
   changes; tiles of an incompatible size are flagged.
@@ -116,15 +135,30 @@ under consideration), **open** (undecided).
 - **Tentative:** **composition, not inheritance.** Walls, floors, roads, doors and
   items share one basic object type and differ by their characteristics (a wall
   is placed and static; a door is similar but changes state). One definition
-  editor therefore covers what might otherwise be separate tile and item editors.
+  editor therefore covers what might otherwise be separate editors for walls,
+  floors and items.
 - **Agreed:** definitions can grow new properties as a game needs them. Example
   properties: gettable, weight, passable, blocks sight (independent of
   passable), emits light (with an amount and a type whose meaning is open),
   moveable, strength needed to move, and whether other objects can sit on top.
-- **Agreed:** background tiles sit on the bottom layer, under other tiles, and
+- **Agreed:** the ground sits on the bottom layer, under everything else, and
   cannot be picked up.
-- **Agreed:** an object can cover several tiles while staying one entity, with
-  its look combining several sprite cells.
+- **Agreed:** an object can cover several cells while staying one entity; its
+  sprite is a grid of tiles (see [the pixel editor](#pixel-editor)).
+- **Agreed (2026-10-25):** a definition's characteristics decide which sprites
+  it needs, as a wall family needs one per neighbour arrangement. A door's
+  state needs a closed and an open sprite, with optional opening and closing
+  sprites that play once; two-way stairs need an up and a down sprite; a
+  character's Moves characteristic needs a sprite for each facing and action
+  (stand, walk), and walk frames advance one per step, so a slow walker never
+  slides. Each game sets how many facings it uses. The game's state picks which
+  sprite shows, and the sprite animates itself; one sprite can serve several
+  definitions. (Rejected: one sprite with named sequences the game jumps
+  between; separate definitions for each state.)
+- **Agreed (2026-10-25):** moss, damage, snow and the like are **overlays**:
+  a definition lists sprites drawn over its own, each shown when a state or
+  flag is set, so they combine freely. A wall family's overlay is a family
+  too.
 - **Agreed:** interactions start as simple flags (can pick up, can move).
   **Candidate:** an optional workflow attached to using an object, which might
   occasionally pause for player input.
@@ -144,16 +178,104 @@ under consideration), **open** (undecided).
   tools (pencil, line, rectangle, circle, ellipse, fill, select, eyedropper),
   with filled and outline modes. Gradients and similar come later.
 - **Agreed:** no vector art; shape tools produce pixel art.
-- **Candidate:** per-map palettes for ambience. *Open:* whether art is stored as
-  palette indices so a palette recolours it.
+- **Agreed (2026-10-25):** art is drawn only in the built-in pixel editor.
+  Nothing is imported from, or round-tripped with, other tools such as
+  Aseprite.
 - **Candidate:** editing an item's art and definition together.
-- *Open:* importing from or round-tripping with other tools such as Aseprite.
+
+Asked for by its author on 2026-10-25, paraphrased: an editor in the spirit of
+Aseprite that understands the game (its tile size, what is a wall, what can be
+picked up), restricts what may be painted where the game needs it (stairs),
+treats palettes as central (a default for the game's look, others for a
+feeling), understands transparency and semi-transparency (glass), and animates
+with frames of varying length and optional parts, starting simple. Agreed by
+its author on 2026-10-25, over several rounds of questions and wireframes:
+
+### Tiles and sprites
+
+- **Agreed (2026-10-25):** a **tile** is one cell-sized piece of art; a
+  **sprite** is one or more tiles, and is what a definition shows. The grid
+  position on a map is a **cell** (see [the vocabulary](VOCABULARY.md)).
+- **Agreed (2026-10-25):** a sprite bigger than one cell has a grid of tiles in
+  each frame: a 3 × 2 table has six, and a longer table repeats the middle
+  ones. Overhang, such as a canopy above a trunk, is a tile in the
+  neighbouring cell. A big sprite is drawn on one canvas, with its tile
+  boundaries shown. (Rejected: one larger image per frame.)
+- **Agreed (2026-10-25):** reusing a tile **copies** it by default. **Paste
+  linked** shares one tile instead, so a change follows everywhere; a linked
+  tile shows its other uses and can be made unique again.
+- **Agreed (2026-10-25):** no sheets. Tiles are found with folders and tags
+  like other documents; how they are packed into image files on disk is the
+  editor's business.
+- **Agreed (2026-10-25):** a sprite can list **alternatives** with weights,
+  such as three grasses. Each cell picks one from its position, so the choice
+  is stable and the same in the editor and the game, and a placement can pin
+  one by hand.
+
+### Animation
+
+- **Agreed (2026-10-25):** a sprite animates as a graph of **sequences**. A
+  sequence is frames in order, each shown for its own duration; when it ends,
+  weighted choices pick the sequence that plays next, so a torch burns, now
+  and then glints, and burns on. Sequences chain one into another. The
+  smallest sprite is one sequence of one frame. (Rejected: marking single
+  frames optional with a chance, since an optional moment can need several
+  frames.)
+- **Agreed (2026-10-25):** whether a sprite's placements animate **in step**
+  or each from its own point is chosen per sprite: water in step, so
+  neighbouring cells join up; torches offset, so they don't flicker in unison.
+  The offset comes from the cell, so the editor and the game always agree.
+- **Candidate:** palette cycling: a ramp turning its shades over time, so
+  everything painted with it shimmers without extra frames.
+
+### Palettes and transparency
+
+- **Agreed (2026-10-25):** a pixel refers to a palette colour by its **scoped
+  name**, such as `shared / grass 2` or `gloomy / smoke 1`, never by number or
+  value, so changing a palette colour changes every tile that uses it.
+- **Candidate:** each name sits on a permanent ID, as anchors do, so renaming a
+  ramp never breaks a tile.
+- **Agreed (2026-10-25):** colours come in **ramps** named for their use, not
+  their hue, numbered dark to light ("grass" 1 to 6); in its author's words,
+  "It's not green - it's grassColor1". This is how pixel art is shaded, and
+  keeps names few. (Rejected: a name on every colour.)
+- **Agreed (2026-10-25):** **palettes** are documents of their own: one shared
+  palette for the game's look, and further palettes named for a feeling rather
+  than a place, such as "gloomy". A further palette adds colours; it never
+  recolours the shared ones. A tile can use colours from any palette and keeps
+  them wherever it is placed, so a palette matters while drawing, not while
+  placing. A zone can refer to a palette, so the editor offers it first while
+  drawing that zone's art.
+- **Agreed (2026-10-25):** no colour budget: the editor does not limit how
+  many colours a palette holds or a zone shows.
+- **Agreed (2026-10-25):** each palette colour can carry its own **opacity**
+  ("glass 1, 40%"), so painting with it is see-through; one colour is fully
+  clear. (Rejected: opacity steps per pixel, dither-only transparency, and one
+  opacity for a whole sprite.)
+
+### Drawing
+
+- **Agreed (2026-10-25):** a **template** can keep part of a tile clear, where
+  the pencil cannot paint, so the floor below shows through stairs or a hole,
+  besides the guides it gives to draw to, such as a step angle or a floor
+  height. Guides are never part of the tile.
+- **Agreed (2026-10-25):** **drawing layers** (base, detail, shading) while
+  painting a tile, kept by the editor for later edits and flattened into one
+  tile for the game. (Moss and the like are overlays, not layers: see
+  [objects and definitions](#objects-and-definitions).)
+- **Agreed (2026-10-25):** the **dither** tool is a pencil with a pattern. It
+  paints the two current colours at 25%, 50% or 75%; the second colour starts
+  as the next shade of the ramp, and any colour can be chosen instead. Nothing
+  cleverer.
+- **Tentative:** characteristics such as wall or gettable belong to the
+  definition, shown beside the art in the editor, and the art itself knows
+  nothing of them, since one sprite can serve several definitions.
 
 ## World state, quests and rules
 
 - **Agreed:** tracked state (flags), including state set by conversations, can
-  change NPC behaviour, which objects appear and where, which variant of a tile
-  or object is shown, and access to parts of a map. Logic flags work for access
+  change NPC behaviour, which objects appear and where, which sprite a
+  definition shows, and access to parts of a map. Logic flags work for access
   rules, not only for dialogue.
 - **Tentative:** placement conditions refer to flags, not to the conversations
   that set them, so any workflow can set the flag.
@@ -291,16 +413,16 @@ under consideration), **open** (undecided).
   zone, and can control ambient sounds as well as music. It is not based on
   turns and pauses when the game pauses; *open:* whether a second loop runs by
   turn.
-- **Agreed:** an ambient sound is heard from a number of tiles, N, growing
+- **Agreed:** an ambient sound is heard from a number of cells, N, growing
   louder as the player comes closer, with Ultima V Redux's curve
-  (berad-audio's `QuadraticDistanceGain`): full volume within one tile, then
-  1 − (distance ÷ N)², silent at N. Distance is a straight line between tiles,
+  (berad-audio's `QuadraticDistanceGain`): full volume within one cell, then
+  1 − (distance ÷ N)², silent at N. Distance is a straight line between cells,
   and walls are ignored. Only the loudest source of each cue plays, the
   nearest when two are equally loud; different cues still play together.
 - **Candidate:** N comes from the cue, and an object definition, placement or
   NPC can override it and the volume in the game's data, so the audio formats
   stay unchanged.
-- **Candidate:** each floor between the player and a sound adds 6 tiles to the
+- **Candidate:** each floor between the player and a sound adds 6 cells to the
   distance before the curve applies, as one project-wide setting tuned by ear.
 - Sound on the map, such as a layer showing where ambient sounds are heard,
   is set aside for later.
@@ -364,7 +486,7 @@ What the engine provides to games, as far as decided:
 **Agreed candidates** for what the editor covers: maps and tiles, the pixel
 editor, object and NPC definitions, behaviour and conversation workflows,
 schedules, quests, world state (flags, stats, skills, capabilities) and the rules
-catalogue. Many overlap: object and tile definitions are one editor; schedules
+catalogue. Many overlap: definitions of objects, walls and floors are one editor; schedules
 are part of workflows; quests and rules are views of world state. Audio editing
 moves into the editor (see [Sound](#sound)).
 

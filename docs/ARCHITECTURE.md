@@ -345,7 +345,7 @@ each node sits and the bends of lines moved by hand. *Open:* chunking very large
 - **Several views of one map** are allowed through an explicit "New view"; all
   views show every change and share undo (D3). During preview, every view of the
   map shows the live entities.
-- **Pick on map:** a parameter decides what can be picked (a tile, an anchor, an
+- **Pick on map:** a parameter decides what can be picked (a cell, an anchor, an
   area, an object, another NPC). If no Map window is open, the editor asks which
   zone and opens one; with one open, it is used; with several, the editor asks
   which, marking the maps that show the thing being picked. Picking uses four
@@ -369,7 +369,7 @@ back with a short reason the window shows.
 
 ## D15 — Preview
 
-- Start by pressing Preview, then clicking the start tile. One preview at a time.
+- Start by pressing Preview, then clicking the start cell. One preview at a time.
 - State from a preview (items picked up, flags set) is kept when it stops, until
   Reset. Preview never changes the project.
 - Editing during preview is allowed; entities using the edited thing restart

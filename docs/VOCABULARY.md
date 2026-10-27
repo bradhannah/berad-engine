@@ -12,13 +12,14 @@ interface, and do not introduce synonyms.
 | **Floor** | A zone's vertical level (its "z"). |
 | **Area** | An authored, named region, defined only when something needs to refer to it ("wander in area X"). Areas can be indoors or outdoors, may overlap, and can sit inside other areas. A kind (for example building or room) may add detail. |
 | **Anchor** | A single named point that other content refers to, such as a destination or a place to stand. |
-| **Tile** | One grid cell. |
+| **Cell** | One grid position on a floor. Every map coordinate names a cell. |
 | **Zone origin** | Cell 0,0, the fixed point every floor of a zone is positioned from. Columns count to the right and rows downwards; cells left of or above it have negative numbers. |
 | **Floor bounds** | The rectangle of cells a floor covers, around the zone origin. Resizing a floor changes its bounds. |
 | **Placement** | An object or NPC put on a map. One definition can have many placements. |
 
 Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
-(use area), "instance" (use placement), "vertical slice" (use floor).
+(use area), "instance" (use placement), "vertical slice" (use floor), "tile"
+for a grid position (use cell).
 
 ## Boundaries
 
@@ -39,6 +40,27 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 - A placement's presence can depend on logic, so one NPC can have placements in
   several zones and appear in whichever applies; only one zone is simulated at a
   time.
+
+## Art terms
+
+| Term | Meaning |
+| --- | --- |
+| **Tile** | One cell-sized piece of art, drawn in the pixel editor; the game sets its size |
+| **Sprite** | What a definition shows: one or more tiles. A static sprite has one frame; a sprite bigger than one cell has a grid of tiles in each frame |
+| **Frame** | One picture of a sprite, a tile or a grid of tiles, shown for its own duration |
+| **Sequence** | A sprite's frames played in order; when it ends, weighted choices pick the sequence that plays next |
+| **Alternative** | One of a sprite's interchangeable tiles, such as one of three grasses; each cell picks one by weight from its position |
+| **Linked tile** | A tile shared by several places, so a change to it follows everywhere; reuse copies a tile unless it is pasted linked |
+| **Base row** | The row of a sprite where it touches the ground; what stands on the map is drawn in order of base row, lower on screen in front |
+| **Overlay** | A sprite drawn over a definition's own, shown when a state or flag is set, such as moss |
+| **Palette** | A document of named colours art is painted with: the shared palette, and further palettes named for a feeling, such as "gloomy" |
+| **Ramp** | A palette's shades for one use, named for that use and numbered dark to light, such as `shared / grass 2` |
+| **Opacity** | How see-through a palette colour is, such as glass at 40%; one colour is fully clear |
+| **Template** | Guides to draw a tile to, and parts of it kept clear, shown while drawing and never part of the tile |
+| **Drawing layer** | One layer of a tile while it is painted, such as shading; the game receives the layers flattened into one tile |
+
+Retired synonyms: "cel" and "raw tile" (use tile). The engine's `tiles` package
+was named before these terms; it holds definitions and stand-ins, not art.
 
 ## Workflow terms
 
@@ -69,7 +91,7 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Target** | The loudness a measured recording's level aims at; its family's unless its author sets one |
 | **Acoustic family** | A group of recordings that sound alike, which sets the target measuring aims at |
 | **Profile** | What kind of moment a cue plays for, such as a door starting to open, which a search finds it by |
-| **Distance** | How many tiles away an ambient cue is heard, louder closer; 0 is everywhere, as a background |
+| **Distance** | How many cells away an ambient cue is heard, louder closer; 0 is everywhere, as a background |
 | **Soundscape** | Up to four cues the Audio window plays together, two ambient, one music and one SFX, to hear how they sit together; never saved |
 | **Layer** | One cue of the soundscape, with its own gain, mute and solo |
 | **Monitor level** | How loud the Audio window plays a category while its author listens, standing in for a player's volume settings; never saved |
@@ -84,9 +106,9 @@ Retired synonyms: "meta map" and "major map area" (use zone), "site" and "space"
 | **Edit** | One kind of change, implemented by a plug-in, that knows how to undo itself |
 | **Project data** / **Session state** | Saved, undoable content / live, unsaved, never-undone state |
 | **Project index** | The orchestrator's list of every document; creating, renaming and deleting documents are edits on it |
-| **Stand-in** | A typed placeholder tile (ground, wall, door, stairs, pickup) used until real art exists |
-| **Wall family** | A kind of wall (for example "old brick"); art for a family supplies one variant per neighbour arrangement |
-| **Ground** / **on top** | The two layers of a cell: its ground tile, and at most one tile sitting on it |
+| **Stand-in** | A typed placeholder (ground, wall, door, stairs, pickup), drawn in a flat colour until it has a sprite |
+| **Wall family** | A kind of wall (for example "old brick"); a family supplies one sprite, its variant, per neighbour arrangement |
+| **Ground** / **on top** | The two layers of a cell: its ground, and at most one thing standing on it |
 | **Draft** | A text field's unsaved text; Save, Cmd+S, or Enter in a one-line field saves it as an ordinary edit |
 | **Save bar** | The strip at the foot of an inspector, or of the Text window, that says how many changes are unsaved and holds Revert and Save |
 | **Section** | A group of one document type in the project browser, such as Zones or NPCs, with a count and a [+] |
