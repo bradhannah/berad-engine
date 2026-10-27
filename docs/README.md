@@ -31,3 +31,4 @@ accepted it.
 | [8. Loudness](increments/0008-loudness.md) | Loudness: recordings evened out to a reference, how a cue is meant to sound | Judged |
 | [9. Files and their pieces](increments/0009-files-and-pieces.md) | Files and their pieces: a file cut into recordings, its attribution, finding its sounds | Judged |
 | [10. One window](increments/0010-one-window.md) | One window (spike): the views as tabs, a pinned clock and side-by-side panes | Built |
+| [11. Drawing tiles](increments/0011-drawing-tiles.md) | The first pixel editor: the tile size, the shared palette's named ramps, drawing a tile and seeing its sprite on the map | Planned |
