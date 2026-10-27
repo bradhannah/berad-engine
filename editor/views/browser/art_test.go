@@ -310,3 +310,23 @@ func TestSharedPaletteKeepsItsName(t *testing.T) {
 		t.Fatalf("a palette folder: %+v", change)
 	}
 }
+
+// TestSpriteOpensInThePixelEditor opens a sprite in a Pixel editor, from the
+// inspector's button and from a double-click; a palette has nothing to open.
+func TestSpriteOpensInThePixelEditor(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withArt(f)
+	f.click("row:Lantern", false)
+	f.click("ui:open", false)
+	f.click("row:Lantern", true)
+	opened := f.requests.Opened
+	if len(opened) != 2 || opened[0].View != "sprite" || opened[0].Target != lanternID || opened[1] != opened[0] {
+		t.Fatalf("opened %+v", opened)
+	}
+	f.rightClick("row:Shared")
+	f.click("menu:context-open", false)
+	if len(f.requests.Opened) != 2 {
+		t.Fatalf("a palette opens nothing: %+v", f.requests.Opened)
+	}
+}

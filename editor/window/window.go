@@ -1,7 +1,7 @@
 // Package window runs one editor window process: it connects to the
 // orchestrator, subscribes to its target document and runs the Ebitengine
 // window for its view (the project browser, a Map, Text, Workflow, Watch,
-// Clock or Audio window).
+// Clock, Audio or Pixel editor window).
 package window
 
 import (
@@ -24,6 +24,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/clockview"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
+	"github.com/bradhannah/berad-engine/editor/views/pixelview"
 	"github.com/bradhannah/berad-engine/editor/views/textview"
 	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
@@ -104,7 +105,7 @@ func Run(args Args, registry *plugin.Registry) error {
 func connect(ctx context.Context, args Args, registry *plugin.Registry) (*client.Client, error) {
 	switch args.View {
 	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
-		clockview.ViewName, audioview.ViewName:
+		clockview.ViewName, audioview.ViewName, pixelview.ViewName:
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
@@ -122,9 +123,9 @@ func connect(ctx context.Context, args Args, registry *plugin.Registry) (*client
 	return conn, nil
 }
 
-// undoGroup is the undo list a window shares: views of one map, or of one
-// workflow, share one (D3); the Audio window, of which there is one, has its
-// own.
+// undoGroup is the undo list a window shares: views of one map, of one
+// workflow, or of one sprite share one (D3); the Audio window, of which there
+// is one, has its own.
 func undoGroup(args Args) string {
 	switch args.View {
 	case mapview.ViewName:
@@ -133,6 +134,8 @@ func undoGroup(args Args) string {
 		return "workflow:" + args.Target.String()
 	case audioview.ViewName:
 		return audioview.UndoGroup
+	case pixelview.ViewName:
+		return "sprite:" + args.Target.String()
 	}
 
 	return ""
@@ -162,6 +165,8 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return workflowview.New(window, args.Target, theme)
 	case watchview.ViewName:
 		return watchview.New(window, args.Target, theme)
+	case pixelview.ViewName:
+		return pixelview.New(window, args.Target, theme)
 	default:
 		return mapview.New(window, args.Target, theme)
 	}

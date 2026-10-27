@@ -576,6 +576,75 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 	t.Logf("screenshots: %s %s %s", shot, settingsShot, paletteShot)
 }
 
+// TestPixelEditorPaintsAndUndoes makes a sprite in the project browser and
+// opens it in a Pixel editor, which paints a stroke in grey 3 and another in
+// grey 5, then undoes the second in one step. Then it adds a ramp, names it
+// glass, types its shade's colour and a 40% opacity, saves them, and paints
+// with it. The saved tile keeps the first stroke and the glass, and the
+// shared palette the glass ramp.
+func TestPixelEditorPaintsAndUndoes(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	painted, undone := shotPath(t, "pixel-editor.png"), shotPath(t, "pixel-editor-undone.png")
+	glassShot := shotPath(t, "pixel-editor-glass.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(600), quit(),
+	)
+	spriteScript := script(
+		must("state:loaded", 600), wait(5),
+		click("swatch:grey 3"), must("state:color:grey 3", 60),
+		drag("pixel:1,1", "pixel:2,1", "pixel:3,1"), must("state:pixel:3,1:grey 3", 120),
+		click("swatch:grey 5"), drag("pixel:1,3", "pixel:2,3", "pixel:3,3"), must("state:pixel:3,3:grey 5", 120),
+		step{Repeat: 2, Screenshot: painted},
+		keys("Cmd+Z"), must("state:pixel:1,3:clear", 120), must("state:pixel:3,3:clear", 60),
+		must("state:pixel:2,1:grey 3", 60), step{Repeat: 2, Screenshot: undone},
+		click("ui:add-ramp"), must("state:color:new ramp 1", 120),
+		click("ui:ramp-name"), keys("Cmd+A"), typed("glass"),
+		click("ui:shade-color"), keys("Cmd+A"), typed("#3060C0"),
+		click("ui:shade-opacity"), keys("Cmd+A"), typed("40"),
+		click("ui:save"), must("state:color:glass 1", 120), must("state:saved", 120),
+		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:glass 1", 120),
+		step{Repeat: 2, Screenshot: glassShot}, quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
+
+	tileFile := readEnvelope(t, project, "tiles/tile-1--*.json")
+	tile, err := art.DecodeTile(tileFile.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for col := range tile.Size() {
+		first, _ := tile.At(col, 1)
+		second, _ := tile.At(col, 3)
+		if want := col >= 1 && col <= 3 || col == 5; first.IsClear() == want || !second.IsClear() {
+			t.Fatalf("pixel %d: the first stroke is saved and the second undone: %+v %+v", col, first, second)
+		}
+	}
+	if first, _ := tile.At(2, 1); first.Shade != art.StarterShadeID(3) {
+		t.Fatalf("the first stroke is grey 3: %+v", first)
+	}
+	palette, err := art.DecodePalette(readEnvelope(t, project, "palettes/*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ramps := palette.Ramps()
+	if len(ramps) != 2 || ramps[1].Name != "glass" || len(ramps[1].Shades) != 1 ||
+		ramps[1].Shades[0].Color != 0x3060c0 || ramps[1].Shades[0].Opacity != 40 {
+		t.Fatalf("the glass ramp is saved: %+v", ramps)
+	}
+	for row := range 3 {
+		if ref, _ := tile.At(5, row); ref.Ramp != ramps[1].ID || ref.Shade != ramps[1].Shades[0].ID {
+			t.Fatalf("pixel 5,%d is glass: %+v", row, ref)
+		}
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s %s", painted, undone, glassShot)
+}
+
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes
 // the first view's stroke, because views of one zone share one undo list.
 func TestViewsShareUndo(t *testing.T) {

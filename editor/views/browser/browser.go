@@ -43,6 +43,7 @@ const (
 	mapView      = "map"
 	textView     = "text"
 	workflowView = "workflow"
+	spriteView   = "sprite"
 )
 
 // New floors match the zone's top floor, or this size centred on the zone
@@ -744,8 +745,8 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 }
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
-// document in a Text window, and a workflow, or an NPC's behaviour workflow,
-// in a Workflow window. A folder opens or closes.
+// document in a Text window, a workflow, or an NPC's behaviour workflow, in a
+// Workflow window, and a sprite in a Pixel editor. A folder opens or closes.
 func (s *State) openSelected(ctx *frame.Context) {
 	if s.openCue(ctx) {
 		return
@@ -780,6 +781,8 @@ func (s *State) openSelected(ctx *frame.Context) {
 		ctx.Requests.Open(textView, entry.ID, false)
 	case flow.FormatName:
 		ctx.Requests.Open(workflowView, entry.ID, false)
+	case art.SpriteFormatName:
+		ctx.Requests.Open(spriteView, entry.ID, false)
 	case npc.FormatName:
 		if found, loaded := s.npcOf(ctx.Docs, entry.ID); loaded && !found.Behaviour.IsZero() {
 			ctx.Requests.Open(workflowView, found.Behaviour, false)

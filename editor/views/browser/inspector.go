@@ -54,7 +54,7 @@ func kindOf(format string) kind {
 	case textdoc.FormatName:
 		return kind{label: "Text document", noun: "text document", icon: ui.IconText, open: "Open text"}
 	case art.SpriteFormatName:
-		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: ""}
+		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: "Open sprite"}
 	case art.PaletteFormatName:
 		return kind{label: "Palette", noun: "palette", icon: ui.IconPalette, open: ""}
 	}
@@ -164,7 +164,7 @@ func (s *State) layoutActions(docs frame.Docs, entry project.Entry, left, width,
 		s.down.Rect = image.Rect(left+half+buttonGap, top, left+width, top+ui.ButtonH)
 		_, inZone := s.zoneOf(docs, entry.ID)
 		s.open.Disabled, s.up.Disabled, s.down.Disabled = !inZone, !inZone, !inZone
-	case flow.FormatName, textdoc.FormatName:
+	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName:
 		s.open.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	}
 

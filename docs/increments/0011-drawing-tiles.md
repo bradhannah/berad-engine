@@ -161,11 +161,47 @@ Chosen while building, for its author to check:
   Deleting a sprite deletes its tile with it, in one step.
 - **The shared palette shows its name without a field,** and its Rename and
   Delete are disabled, since the orchestrator refuses them.
-- **A sprite or palette opens nothing yet:** Open is disabled until the Pixel
-  editor exists.
+- **A sprite opens in the Pixel editor,** from Open, a double-click or its
+  right-click menu. A palette opens nothing, since its panel is part of the
+  Pixel editor.
 - **Icons:** a sprite is a heart drawn in big pixels and a palette a ramp of
   three swatches, dark to light, both in a muted teal (#267378); the Settings
   row has two sliders, in ink.
+
+- **The Pixel editor's view is `sprite`,** its target a sprite, and views of
+  one sprite share an undo list, as views of a map do. The window bar names
+  the kind Sprites, with the sprite's icon, and a tab shows the sprite's
+  name.
+- **Tool keys are Aseprite's:** B for the pencil, E the eraser, G the fill and
+  I the eyedropper. Cmd+= and Cmd+− step the zoom and Cmd+0 fits it; the
+  wheel pans and Cmd with the wheel zooms.
+- **Zoom steps** are 1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48 and 64
+  times. Fit chooses the largest whole number that fits, so a 32-pixel tile
+  opens at 19 times in a window of the usual size. The pixel grid shows from
+  4 times.
+- **The checkerboard follows the tile's pixels:** from 8 times each pixel
+  holds two by two checks, so the grid never cuts a check.
+- **The pencil paints only pixels whose colour changes,** and fills in the
+  pixels between the positions a fast drag passes.
+- **Fill joins pixels side by side, never at a corner,** stays within the
+  tile, and is one undo step.
+- **Painting needs a shade.** Choosing a ramp by its name chooses its first
+  shade, or the ramp alone when it has none, which paints nothing and says
+  so.
+- **The panel shows the shared palette only.** A colour of another palette,
+  picked with the eyedropper, paints but shows no fields; no other palette
+  exists yet.
+- **+ Ramp adds "new ramp"** (then "new ramp 2"…) with one shade of mid grey,
+  #808080, and chooses it. + Shade copies the chosen shade into the place
+  after it, or adds mid grey at the end of a ramp chosen alone. Removing a
+  shade chooses its neighbour; removing a ramp chooses clear.
+- **A shade's colour and opacity save together,** as one edit, and the
+  opacity can be typed with or without "%". With a typed change unsaved,
+  choosing another colour asks Save, Don't save or Cancel first.
+- **The readout is below the canvas, not in the status bar,** which shows
+  messages: the pixel under the cursor and its colour, or the tool's help,
+  with the tile's size at the right. A second line, in red, flags a tile of
+  another size than the project's, or pixels whose colour cannot be found.
 
 ## Wireframes
 
@@ -215,7 +251,7 @@ PALETTES    1
 | 1. Art model | `engine/art`: palette, tile, sprite, settings and stand-in sprite formats at version 1; a tile drawn as an image from its palette, opacity included | Unit tests of the formats, of colours resolved by ID after a rename, and of an image drawn with a see-through shade over a known ground | Built |
 | 2. Art plug-in | `editor/plugins/art`: the document types and edit kinds (add, rename and remove a ramp; add, set and remove a shade; paint pixels; set the tile size; set a stand-in's sprite); the shared palette and settings added on open; removal refused while in use | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests of opening an older project and of a refused removal | Built |
 | 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Built |
-| 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Planned |
+| 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Built |
 | 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Planned |
 | 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Planned |
 
@@ -227,8 +263,9 @@ Where each step changes code:
   opening, to add the shared palette and settings.
 - **Project browser:** `editor/views/browser` (the tree's sections) and
   `editor/ui` (icons).
-- **Pixel editor:** a new `editor/views/pixelview`, and the window kinds in
-  `editor/window/kinds.go`.
+- **Pixel editor:** a new `editor/views/pixelview`, the window kinds in
+  `editor/window/kinds.go` and `editor/window/window.go`, and the project
+  browser's Open.
 - **On the map:** `editor/views/mapview` (drawing a cell, and the zoom steps
   in `camera.go`).
 
@@ -293,6 +330,38 @@ Where each step changes code:
   real-window tests pass. `make check` shows no lint findings, and every
   package passes except the orchestrator's audio test that times out under
   load, which passes with `go test -parallel 2`.
+- **Pixel editor:** a new `editor/views/pixelview` shows a sprite's tile
+  magnified by a whole number over a checkerboard, with a pixel grid, and
+  paints it with a pencil, an eraser, a fill and an eyedropper. Its palette
+  panel shows the shared palette's ramps, chooses the colour to paint with,
+  adds and removes ramps and shades, and types a ramp's name and a shade's
+  colour and opacity, saved with its save bar. Below the canvas it names the
+  pixel under the cursor and its colour, and flags a tile of another size or
+  a colour that cannot be found. It is a window kind of its own, Sprites,
+  after Audio on the window bar, and the project browser opens a sprite in
+  it. Verified with view tests: opening subscribes to the tile, the shared
+  palette and the settings, and fits the tile; a pencil drag paints the
+  pixels between frames in one gesture, skipping pixels already that colour,
+  and the next stroke has its own gesture; the eraser, and the pencil with
+  clear, clear pixels; a fill paints the 24 pixels left of a wall as one
+  step, never passes through a corner, and sends nothing over its own
+  colour; the eyedropper picks a colour, or clear, and changes nothing; the
+  zoom steps through whole numbers, Fit restores it, and pixels are found at
+  any zoom; + Ramp and + Shade send a unique name and a copy and choose what
+  they add; a typed colour and opacity wait for Save, refuse "#12" and 0%,
+  and save together; Enter renames a ramp; a refused removal says why;
+  removing a ramp's last shade leaves the ramp chosen, and removing the ramp
+  chooses clear; a typed change asks before another colour is chosen; the
+  tile's colours are premultiplied for drawing, so a see-through shade shows
+  its true colour. A browser view test opens a sprite from Open and a
+  double-click, and a palette not at all. Real-window tests: in a window of
+  its own, the Pixel editor paints a stroke in grey 3 and another in grey 5,
+  and Cmd+Z undoes the second in one step; then it adds a ramp, names it
+  glass, types #3060C0 at 40%, saves, and paints with it. The saved tile
+  holds the first stroke and the glass, and the shared palette the glass
+  ramp. In the shell, the sprite opens as a tab under Sprites and paints
+  there, with no other window process; all 32 real-window tests pass.
+  `make check` shows no lint findings, with every package passing.
 
 ## Changed after its author tried it
 
