@@ -198,3 +198,23 @@ func TestClockRunsThePreview(t *testing.T) {
 		t.Fatal("after the preview the next start shows again")
 	}
 }
+
+// TestClockReadoutForTheWindowBar sums the clock up for a shell's bar: the
+// next start before a preview, and the preview's time, rate and whether it
+// is stopped while one runs.
+func TestClockReadoutForTheWindowBar(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	if text, live := f.state.Readout(); text != "08:00" || live {
+		t.Fatalf("before a preview %q %v", text, live)
+	}
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID}}, f.ctx)
+	f.preview(9*3600+30*60, 60, false, 1)
+	if text, live := f.state.Readout(); text != "09:30 · live · 1 min/s" || !live {
+		t.Fatalf("during a preview %q %v", text, live)
+	}
+	f.preview(9*3600+30*60, 60, true, 2)
+	if text, _ := f.state.Readout(); text != "09:30 · live · stopped" {
+		t.Fatalf("with the clock stopped %q", text)
+	}
+}

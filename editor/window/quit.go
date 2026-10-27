@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hajimehoshi/ebiten/v2"
-
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -22,23 +20,24 @@ const (
 )
 
 // windowKeys handles what every window does the same way, before its view
-// sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, and the close
-// button asks to close the window. On macOS, Cmd+Q reaches a window as a
-// close request while Cmd is held, so that is how it is told apart from the
-// close button.
+// sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, the close
+// button asks to close the window, and in a shell Cmd+Shift+O moves a pane
+// into a window of its own.
 func (h *host) windowKeys(input *ui.Input) {
-	if ebiten.IsWindowBeingClosed() {
-		if ebiten.IsKeyPressed(ebiten.KeyMeta) {
-			h.askQuit()
-		} else {
-			h.frame.Closing = true
-		}
+	switch h.surface.Closing() {
+	case closeQuit:
+		h.askQuit()
+	case closeWindow:
+		h.frame.Closing = true
+	case closeNone:
 	}
 	switch {
 	case input.Consume(ui.KeyQ, ui.Cmd()):
 		h.askQuit()
 	case input.Consume(ui.KeyS, ui.Cmd()):
 		h.save()
+	case h.popOut != nil && input.Consume(ui.KeyO, ui.CmdShift()):
+		h.popOut()
 	}
 }
 

@@ -94,6 +94,7 @@ type Orchestrator struct {
 	subscribed map[ids.ULID]map[ids.ULID]*window
 	recent     map[ids.ULID]*ring
 	children   map[ids.ULID]*child
+	hosting    *hosting
 	picks      *picks
 	preview    *preview
 	// audio answers windows' questions about the project's audio library,
@@ -163,6 +164,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		subscribed: map[ids.ULID]map[ids.ULID]*window{},
 		recent:     map[ids.ULID]*ring{},
 		children:   map[ids.ULID]*child{},
+		hosting:    newHosting(),
 		picks:      newPicks(),
 		preview:    nil,
 		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir},

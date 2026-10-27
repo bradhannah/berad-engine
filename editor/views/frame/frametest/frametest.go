@@ -296,12 +296,12 @@ func (r *Requests) Subscribe(document ids.ULID, done func(error)) {
 
 // Open records a window request.
 func (r *Requests) Open(view string, target ids.ULID, newView bool) {
-	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: newView, Item: ""})
+	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: newView, Item: "", PopOut: ids.ULID{}})
 }
 
 // OpenItem records a window request that shows an item.
 func (r *Requests) OpenItem(view string, target ids.ULID, item string) {
-	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: false, Item: item})
+	r.Opened = append(r.Opened, protocol.Open{View: view, Target: target, NewView: false, Item: item, PopOut: ids.ULID{}})
 }
 
 // Publish records session state set.

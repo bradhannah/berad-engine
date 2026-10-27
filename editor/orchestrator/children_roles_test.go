@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -31,8 +32,11 @@ const (
 	roleCrashWindow  = "crash-window"
 	roleIdleWindow   = "idle-window"
 	rolePickWindow   = "pick-window"
-	envPickFloor     = "BERAD_TEST_PICK_FLOOR"
-	envPickItem      = "BERAD_TEST_PICK_ITEM"
+	roleShellWindow  = "shell-window"
+	// closeShell is the marker a shell window waits for before it exits.
+	closeShell   = "close-shell"
+	envPickFloor = "BERAD_TEST_PICK_FLOOR"
+	envPickItem  = "BERAD_TEST_PICK_ITEM"
 )
 
 func runChildRole(role string) int {
@@ -46,6 +50,8 @@ func runChildRole(role string) int {
 		err = childWindow(false)
 	case rolePickWindow:
 		err = childPickWindow()
+	case roleShellWindow:
+		err = childShellWindow()
 	default:
 		err = fmt.Errorf("unknown role %q", role)
 	}
@@ -177,4 +183,36 @@ func childPickWindow() error {
 		}
 	}
 	return nil
+}
+
+// childShellWindow connects as a shell when it was started as one, then
+// exits once the test leaves the closeShell marker, as a shell does when its
+// author closes the project browser.
+func childShellWindow() error {
+	args, err := parseWindowArgs(os.Args[1:])
+	if err != nil {
+		return err
+	}
+	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin())
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	connection, err := client.Dial(ctx, args.socket, protocol.Hello{
+		Build: args.build, Window: args.window, View: args.view, Target: args.target,
+		Hosts: slices.Contains(os.Args, "--shell"),
+	}, registry)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = connection.Close() }()
+	marker := filepath.Join(os.Getenv(envMarkerDir), closeShell)
+	for ctx.Err() == nil {
+		if _, err := os.Stat(marker); err == nil {
+			return nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return ctx.Err()
 }

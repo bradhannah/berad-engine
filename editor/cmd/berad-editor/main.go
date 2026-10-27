@@ -96,10 +96,11 @@ func run(args []string, stderr io.Writer) int {
 
 func usage(stderr io.Writer) {
 	report(stderr, `usage:
-  berad-editor open [--project DIR] [--sample] [--tap FILE] [--no-window] [--exit-after DURATION]
+  berad-editor open [--project DIR] [--sample] [--shell] [--tap FILE] [--no-window] [--exit-after DURATION]
       Open a project: start its orchestrator, the project browser and a Map
-      window on the first zone.
-  berad-editor window --socket PATH --view map|browser|text --target ID --window ID
+      window on the first zone. With --shell, open one window instead: the
+      project browser, with every window opened after it as one of its tabs.
+  berad-editor window --socket PATH --view VIEW --target ID --window ID [--shell]
       Run one editor window (started by the orchestrator).
 `)
 }
@@ -136,6 +137,7 @@ func buildID() string {
 type openOptions struct {
 	project   string
 	sample    bool
+	shell     bool
 	tap       string
 	noWindow  bool
 	exitAfter time.Duration
@@ -146,6 +148,7 @@ func parseOpen(args []string) (openOptions, error) {
 	var options openOptions
 	flags.StringVar(&options.project, "project", ".", "project folder")
 	flags.BoolVar(&options.sample, "sample", false, "create a sample zone if the project is empty")
+	flags.BoolVar(&options.shell, "shell", false, "open one window with a tab for each window (increment 10)")
 	flags.StringVar(&options.tap, "tap", "", "write every protocol message to this file")
 	flags.BoolVar(&options.noWindow, "no-window", false, "run without opening a window")
 	flags.DurationVar(&options.exitAfter, "exit-after", 0, "stop after this long (for smoke tests)")
@@ -190,7 +193,7 @@ func runOpen(args []string, stderr io.Writer) error {
 		return errors.Join(err, orch.Close())
 	}
 	if !options.noWindow {
-		if err := launchFirstWindows(orch, firstZone); err != nil {
+		if err := launchFirstWindows(orch, firstZone, options.shell); err != nil {
 			return errors.Join(err, orch.Close())
 		}
 	}
@@ -237,8 +240,15 @@ func openConfig(options openOptions, stderr io.Writer) (orchestrator.Config, fun
 }
 
 // launchFirstWindows opens the project browser and, when the project has a
-// zone, a Map window on it.
-func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID) error {
+// zone, a Map window on it. A shell opens the project browser alone.
+func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID, shell bool) error {
+	if shell {
+		if _, err := orch.LaunchShell(browser.ViewName, project.IndexID()); err != nil {
+			return fmt.Errorf("open the project browser: %w", err)
+		}
+
+		return nil
+	}
 	if _, err := orch.LaunchWindow(browser.ViewName, project.IndexID()); err != nil {
 		return fmt.Errorf("open the project browser: %w", err)
 	}
@@ -400,6 +410,7 @@ func runWindow(args []string) error {
 	target := flags.String("target", "", "document ID")
 	windowID := flags.String("window", "", "window ID")
 	flags.String("build", "", "orchestrator build (informational)")
+	shell := flags.Bool("shell", false, "run as a shell, showing other windows as panes")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("window: %w", err)
 	}
@@ -416,7 +427,7 @@ func runWindow(args []string) error {
 		return err
 	}
 	if err := window.Run(window.Args{
-		Socket: *socket, View: *view, Target: targetID, Window: parsedWindow, Build: buildID(),
+		Socket: *socket, View: *view, Target: targetID, Window: parsedWindow, Build: buildID(), Shell: *shell,
 	}, registry); err != nil {
 		return fmt.Errorf("window: %w", err)
 	}

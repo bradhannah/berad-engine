@@ -45,8 +45,12 @@ func (b *Button) Update(input *Input) bool {
 	return true
 }
 
-// Draw renders the button: a rounded box with an ink outline.
+// Draw renders the button: a rounded box with an ink outline. A button laid
+// out nowhere, as a hidden one is, is not drawn.
 func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
+	if b.Rect.Empty() {
+		return
+	}
 	fill, ink, edge := ColorBackground(), ColorInk(), ColorInk()
 	switch {
 	case b.Disabled:

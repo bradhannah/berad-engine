@@ -44,7 +44,7 @@ func (c *Client) dispatch(message protocol.Message) {
 	case protocol.KindAnswer, protocol.KindQuitAsk, protocol.KindAudioLibrary, protocol.KindRecording,
 		protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness:
 		c.deliver(message)
-	case protocol.KindAttention, protocol.KindAudioChanged:
+	case protocol.KindAttention, protocol.KindAudioChanged, protocol.KindHost:
 		c.dispatchNotice(message)
 	case protocol.KindPickAsk, protocol.KindPickStart, protocol.KindPickAnswer, protocol.KindPickCancel:
 		c.dispatchPick(message)
@@ -61,10 +61,20 @@ func (c *Client) dispatch(message protocol.Message) {
 }
 
 // dispatchNotice delivers what a window is told without asking: to draw
-// attention to itself, perhaps showing an item, or that the audio library
-// changed.
+// attention to itself, perhaps showing an item, that the audio library
+// changed, or, to a shell, a window to show as a pane.
 func (c *Client) dispatchNotice(message protocol.Message) {
 	update := newUpdate()
+	if message.Kind == protocol.KindHost {
+		host, err := protocol.DecodePayload[protocol.Host](message)
+		if err != nil {
+			return
+		}
+		update.Host = &host
+		c.emit(update)
+
+		return
+	}
 	if message.Kind == protocol.KindAudioChanged {
 		changed, err := protocol.DecodePayload[protocol.AudioChanged](message)
 		if err != nil {
@@ -115,7 +125,8 @@ func (c *Client) dispatchPick(message protocol.Message) {
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPreviewStart, protocol.KindPreviewState,
 		protocol.KindPreviewStop, protocol.KindPreviewControl, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
-		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness:
+		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness,
+		protocol.KindHost:
 		return
 	default:
 		return
@@ -151,7 +162,8 @@ func (c *Client) dispatchPreview(message protocol.Message) {
 		protocol.KindAnswer, protocol.KindAttention, protocol.KindPickAsk, protocol.KindPickStart,
 		protocol.KindPickAnswer, protocol.KindPickCancel, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
-		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness:
+		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness,
+		protocol.KindHost:
 		return
 	default:
 		return
@@ -321,6 +333,6 @@ func newUpdate() Update {
 	return Update{
 		Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Session: nil, Shutdown: nil,
 		Attention: false, Item: "", AudioChanged: nil, PickStart: nil, PickAnswer: nil, PickCancel: nil,
-		PreviewStart: nil, PreviewState: nil, PreviewStop: nil, PreviewControl: nil,
+		PreviewStart: nil, PreviewState: nil, PreviewStop: nil, PreviewControl: nil, Host: nil,
 	}
 }

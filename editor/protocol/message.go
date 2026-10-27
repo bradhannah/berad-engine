@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 14
+const Version = 15
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -44,6 +44,9 @@ const (
 	// KindAttention asks a window to draw attention to itself, for example
 	// when something already open in it is opened again.
 	KindAttention Kind = "attention"
+	// KindHost asks a shell, a window whose process shows other windows as
+	// its panes, to show a window (increment 10).
+	KindHost Kind = "host"
 	// The four pick-on-map messages (D13).
 	KindPickAsk    Kind = "pick-ask"
 	KindPickStart  Kind = "pick-start"
@@ -99,6 +102,9 @@ type Hello struct {
 	// UndoGroup names the undo list this window shares. Views of the same map
 	// share one; other windows use their own.
 	UndoGroup string `json:"undoGroup"`
+	// Hosts says this window's process is a shell: the orchestrator asks it
+	// to show the windows it opens as panes, instead of starting processes.
+	Hosts bool `json:"hosts,omitempty"`
 }
 
 // Welcome accepts a Hello.
@@ -196,17 +202,30 @@ type Notice struct {
 // is already open draws attention to that window instead, unless NewView asks
 // for another view of it. Item, when set, is something in the window to show,
 // such as a cue in the Audio window; the window is sent an Attention naming it.
+// PopOut names a shell's pane to move into a window process of its own: the
+// window opens as a process even while a shell is connected, and the pane is
+// told to close once the window has joined, so the undo list they share
+// carries over.
 type Open struct {
 	View    string   `json:"view"`
 	Target  ids.ULID `json:"target"`
 	NewView bool     `json:"newView,omitempty"`
 	Item    string   `json:"item,omitempty"`
+	PopOut  ids.ULID `json:"popOut,omitzero"`
 }
 
 // Attention asks a window to draw attention to itself and, when Item is set,
 // to show that item.
 type Attention struct {
 	Item string `json:"item,omitempty"`
+}
+
+// Host asks a shell to show a window as one of its panes. The pane connects
+// with Window as its ID, so it is the window the orchestrator opened.
+type Host struct {
+	View   string   `json:"view"`
+	Target ids.ULID `json:"target"`
+	Window ids.ULID `json:"window"`
 }
 
 // QuestionWhereUsed asks which documents refer to a document, or to one item

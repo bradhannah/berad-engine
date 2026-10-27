@@ -38,13 +38,14 @@ type starter interface {
 // host runs one view as an Ebitengine game: it applies what the orchestrator
 // sends, builds input, runs the view and carries out its requests.
 type host struct {
-	conn   *client.Client
-	view   frame.View
-	theme  *ui.Theme
-	frame  *frame.Frame
-	ctx    frame.Context
-	reader *inputReader
-	script *inputScript
+	conn  *client.Client
+	view  frame.View
+	theme *ui.Theme
+	frame *frame.Frame
+	ctx   frame.Context
+	// surface is the window the host is shown in.
+	surface surface
+	script  *inputScript
 	// sounds plays the project's cues in this window.
 	sounds     *sound.Player
 	callbacks  chan func()
@@ -63,26 +64,33 @@ type host struct {
 	quitAsking bool
 	quitSaving bool
 	reported   protocol.Unsaved
-	// floating is whether the window was last asked to stay on top, and
-	// float asks; tests replace it.
+	// floating is whether the window was last asked to stay on top.
 	floating bool
-	float    func(bool)
+	// closeQuits makes closing this window quit the editor, as closing a
+	// shell's project browser does; hosts is told of the windows a shell is
+	// asked to show (increment 10).
+	closeQuits bool
+	hosts      func(protocol.Host)
+	// saveShot saves a screenshot; a shell saves its whole window instead.
+	saveShot func(screen *ebiten.Image, path string) error
+	// popOut moves a shell's pane into a window of its own, for Cmd+Shift+O.
+	popOut func()
 }
 
-func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme) *host {
+func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn surface) *host {
 	created := &host{
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
 			Docs: nil, Requests: nil, Sounds: nil, Soundscape: nil, Files: nil, Clipboard: nil,
 			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil,
 		},
-		reader: newInputReader(), script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
+		surface: shownIn, script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		floating: false, float: ebiten.SetWindowFloating,
+		floating: false, closeQuits: false, hosts: nil, saveShot: saveScreenshot, popOut: nil,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -115,7 +123,7 @@ func (h *host) Update() error {
 	if h.script != nil {
 		input = h.script.next(h, h.conn)
 	} else {
-		input = h.reader.read(h.view.Focused())
+		input = h.surface.Input(h.view.Focused())
 	}
 	h.frame.UpdateStatus(&input, h.ctx.Size)
 	h.applyOnTop()
@@ -138,7 +146,7 @@ func (h *host) Update() error {
 	}
 	if title := h.view.Title(h.conn); title != h.title {
 		h.title = title
-		ebiten.SetWindowTitle(title)
+		h.surface.SetTitle(title)
 	}
 
 	return nil
@@ -151,7 +159,7 @@ func (h *host) applyOnTop() {
 		return
 	}
 	h.floating = h.frame.OnTop.On
-	h.float(h.floating)
+	h.surface.SetFloating(h.floating)
 }
 
 // save saves a Saver's typed changes for Cmd+S, or says there is nothing
@@ -172,6 +180,11 @@ func (h *host) close() {
 		return
 	}
 	h.frame.Closing = false
+	if h.closeQuits {
+		h.askQuit()
+
+		return
+	}
 	if saver, ok := h.view.(frame.Saver); ok {
 		saver.Leave(&h.ctx, func() { h.frame.Quit = true })
 
@@ -210,6 +223,13 @@ func (h *host) onUpdate(update client.Update) {
 	if update.Latency > 0 {
 		h.frame.AddLatency(update.Latency)
 	}
+	if update.Host != nil {
+		if h.hosts != nil {
+			h.hosts(*update.Host)
+		}
+
+		return
+	}
 	if update.Result != nil {
 		if done, ok := h.pending[update.Request]; ok {
 			delete(h.pending, update.Request)
@@ -219,7 +239,7 @@ func (h *host) onUpdate(update client.Update) {
 		return
 	}
 	if update.Attention {
-		ebiten.RequestAttention()
+		h.surface.RequestAttention()
 		if update.Item == "" {
 			return
 		}
@@ -523,7 +543,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 		h.shot = h.screenshot
 	}
 	if h.shot != "" {
-		if err := saveScreenshot(screen, h.shot); err != nil {
+		if err := h.saveShot(screen, h.shot); err != nil {
 			h.frame.Status(err.Error())
 		}
 		h.shot = ""
