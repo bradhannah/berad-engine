@@ -109,6 +109,25 @@ building:
 - **The Pixel editor is a window kind of its own,** Sprites, after Audio on the
   window bar, and opens as a tab or, without the shell, as a window process.
 
+Chosen while building, for its author to check:
+
+- **Clear is the empty colour,** not a ramp: a pixel that names no shade is
+  clear, saved as 00, and every palette offers it.
+- **A shade's opacity runs from 1% to 100%;** 0% is refused, since that is
+  what clear is for.
+- **Ramp names are unique within a palette,** so `shared / grey 3` always
+  means one colour, and colours are saved as `#RRGGBB`.
+- **Tiles are square, from 8 to 128 pixels,** and one tile uses at most 255
+  colours besides clear, since a saved pixel is two hexadecimal digits. A
+  palette holds up to 256 ramps of up to 64 shades.
+- **A pixel whose colour cannot be found is drawn clear,** and the count of
+  such pixels is reported, for the Pixel editor to say so. Removing a shade a
+  tile uses is refused, so this happens only with a missing palette.
+- **The starter ramp, "grey", runs from #202020 to #DCDCDC** in five even
+  steps.
+- **Format names:** `palette`, `tile`, `sprite`, `art-settings` and
+  `standin-sprites`.
+
 ## Wireframes
 
 The Pixel editor in the first slice, as a tab. Letters in brackets stand for
@@ -154,7 +173,7 @@ PALETTES    1
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Art model | `engine/art`: palette, tile, sprite, settings and stand-in sprite formats at version 1; a tile drawn as an image from its palette, opacity included | Unit tests of the formats, of colours resolved by ID after a rename, and of an image drawn with a see-through shade over a known ground | Planned |
+| 1. Art model | `engine/art`: palette, tile, sprite, settings and stand-in sprite formats at version 1; a tile drawn as an image from its palette, opacity included | Unit tests of the formats, of colours resolved by ID after a rename, and of an image drawn with a see-through shade over a known ground | Built |
 | 2. Art plug-in | `editor/plugins/art`: the document types and edit kinds (add, rename and remove a ramp; add, set and remove a shade; paint pixels; set the tile size; set a stand-in's sprite); the shared palette and settings added on open; removal refused while in use | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests of opening an older project and of a refused removal | Planned |
 | 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Planned |
 | 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Planned |
@@ -176,7 +195,19 @@ Where each step changes code:
 
 ## Step results
 
-None yet.
+- **Art model:** a new `engine/art` package holds palettes (ramps of shades,
+  each with a colour and an opacity), tiles (square, each pixel naming a
+  palette, ramp and shade by ID, saved as a table of colours and rows of
+  hexadecimal digits), sprites (one tile for now), the art settings (the tile
+  size, 32 to start) and the stand-in sprites (which sprite shows each
+  stand-in, walls refused). Each has a format at version 1. A tile draws as
+  an image from the palettes it names, with a see-through shade's opacity as
+  alpha. Verified with unit tests: each format round-trips and refuses bad
+  data; changing one pixel changes one saved row, and equal tiles save the
+  same way; renaming a ramp draws the same, and changing a shade recolours
+  the tile; a 40% blue over red composites to the expected colour; a tile
+  holds 255 colours and refuses one more. `make check` passes: no lint
+  findings, race tests passing.
 
 ## Changed after its author tried it
 
