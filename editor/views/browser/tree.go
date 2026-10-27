@@ -9,6 +9,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -26,17 +27,20 @@ const (
 	sectionLoose     = sectionPrefix + "loose"
 )
 
-// sectionNew returns what a section's [+] creates.
+// sectionNew returns what a section's [+] creates, or "" for a section
+// without one, such as Palettes.
 func sectionNew(section string) string {
 	return map[string]string{
 		sectionZones: newZone, sectionWorkflows: newWorkflow, sectionNPCs: newNPC, sectionText: newText,
-		sectionAudio: newSound,
+		sectionAudio: newSound, sectionSprites: newSprite,
 	}[section]
 }
 
 // newSection returns the section whose [+] creates an item, or "".
 func newSection(item string) string {
-	for _, section := range []string{sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio} {
+	for _, section := range []string{
+		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio, sectionSprites,
+	} {
 		if sectionNew(section) == item {
 			return section
 		}
@@ -50,13 +54,15 @@ func newSection(item string) string {
 func sectionFormat(section string) string {
 	return map[string]string{
 		sectionZones: zone.FormatName, sectionWorkflows: flow.FormatName, sectionNPCs: npc.FormatName,
-		sectionText: textdoc.FormatName,
+		sectionText: textdoc.FormatName, sectionSprites: art.SpriteFormatName, sectionPalettes: art.PaletteFormatName,
 	}[section]
 }
 
 // formatSection returns the section listing a document type, or "".
 func formatSection(format string) string {
-	for _, section := range []string{sectionZones, sectionWorkflows, sectionNPCs, sectionText} {
+	for _, section := range []string{
+		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionSprites, sectionPalettes,
+	} {
 		if sectionFormat(section) == format {
 			return section
 		}
@@ -65,11 +71,11 @@ func formatSection(format string) string {
 	return ""
 }
 
-// rows lists the project as a tree: a section for each type with a count
-// and a [+], its folders and documents, zones with their floors (top floor
-// first), and floors in no zone. Each document row has its type's icon, a
-// short detail and its tags. A search shows only what matches, with every
-// section and folder open.
+// rows lists the project as a tree: the Settings row, a section for each
+// type with a count and a [+], its folders and documents, zones with their
+// floors (top floor first), and floors in no zone. Each document row has its
+// type's icon, a short detail and its tags. A search shows only what
+// matches, with every section and folder open.
 func (s *State) rows(docs frame.Docs) []ui.Row {
 	index := s.index(docs)
 	match := newMatcher(s.search.Field.Value())
@@ -93,9 +99,10 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 
 		return false
 	}
-	rows := s.typeRows(sectionZones, "Zones", index, zoneMatch, func(entry project.Entry, depth int) []ui.Row {
+	rows := s.settingsRows(docs, match)
+	rows = append(rows, s.typeRows(sectionZones, "Zones", index, zoneMatch, func(entry project.Entry, depth int) []ui.Row {
 		return s.zoneRows(index, entry, floors[entry.ID], depth, match.active())
-	})
+	})...)
 	uses := s.uses(docs, index)
 	rows = append(rows, s.typeRows(sectionWorkflows, "Workflows", index, match.entry,
 		func(entry project.Entry, depth int) []ui.Row {
@@ -113,6 +120,15 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 		return []ui.Row{item(entry, ui.IconText, "", depth)}
 	})...)
 	rows = append(rows, s.audioRows(match)...)
+	for _, artSection := range []struct {
+		section, label string
+		icon           ui.Icon
+	}{{sectionSprites, "Sprites", ui.IconSprite}, {sectionPalettes, "Palettes", ui.IconPalette}} {
+		rows = append(rows, s.typeRows(artSection.section, artSection.label, index, match.entry,
+			func(entry project.Entry, depth int) []ui.Row {
+				return []ui.Row{item(entry, artSection.icon, "", depth)}
+			})...)
+	}
 
 	return append(rows, s.looseRows(index, listed, match)...)
 }
@@ -155,7 +171,7 @@ func (s *State) typeRows(
 			shown = append(shown, entry)
 		}
 	}
-	rows := []ui.Row{s.section(section, label, len(shown), true, match.active())}
+	rows := []ui.Row{s.section(section, label, len(shown), sectionNew(section) != "", match.active())}
 	if s.closed[section] && !match.active() {
 		return rows
 	}

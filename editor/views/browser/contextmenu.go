@@ -8,6 +8,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -27,7 +28,7 @@ const (
 func typeLabel(format string) string {
 	return map[string]string{
 		zone.FormatName: "zone", flow.FormatName: "workflow", npc.FormatName: npcLabel,
-		textdoc.FormatName: "text document",
+		textdoc.FormatName: "text document", art.SpriteFormatName: "sprite", art.PaletteFormatName: "palette",
 	}[format]
 }
 
@@ -35,13 +36,24 @@ func typeLabel(format string) string {
 func typeIcon(format string) ui.Icon {
 	return map[string]ui.Icon{
 		zone.FormatName: ui.IconZone, flow.FormatName: ui.IconWorkflow, npc.FormatName: ui.IconNPC,
-		textdoc.FormatName: ui.IconText,
+		textdoc.FormatName: ui.IconText, art.SpriteFormatName: ui.IconSprite, art.PaletteFormatName: ui.IconPalette,
 	}[format]
 }
 
 // newItem is the item that makes a document of a type.
 func newItem(format string) ui.MenuItem {
 	return contextItem(sectionNew(formatSection(format)), "New "+typeLabel(format), typeIcon(format))
+}
+
+// makeItems lists what makes a document of a type and a folder for it. A
+// type whose section has no [+], such as palettes, makes only folders.
+func makeItems(format, folderLabel string) []ui.MenuItem {
+	folder := contextItem(newFolderPrefix+format, folderLabel, ui.IconFolder)
+	if sectionNew(formatSection(format)) == "" {
+		return []ui.MenuItem{folder}
+	}
+
+	return []ui.MenuItem{newItem(format), folder}
 }
 
 // contextClick is a right-click waiting for the selection to settle: the row
@@ -125,21 +137,18 @@ func (s *State) contextItems(docs frame.Docs, row string) []ui.MenuItem {
 			return nil
 		}
 
-		return []ui.MenuItem{
-			newItem(format), contextItem(newFolderPrefix+format, "New "+typeLabel(format)+" folder", ui.IconFolder),
-		}
+		return makeItems(format, "New "+typeLabel(format)+" folder")
 	}
 	if folder, isFolder := parseFolderRow(row); isFolder {
 		index := s.index(docs)
 		remove := ruled(dangerous(contextItem(contextDelete, "Delete folder", ui.IconNone)))
 		remove.Disabled = hasChildren(index.Folders(folder.Format), index.OfFormat(folder.Format), folder.Path)
 
-		return []ui.MenuItem{
-			newItem(folder.Format), contextItem(newFolderPrefix+folder.Format, "New folder", ui.IconFolder),
+		return append(makeItems(folder.Format, "New folder"),
 			ruled(contextItem(contextRename, "Rename", ui.IconNone)),
 			contextItem(contextMove, "Move to…", ui.IconNone),
 			remove,
-		}
+		)
 	}
 	entry, ok := s.selected(docs)
 	if !ok {
@@ -158,27 +167,30 @@ func dangerous(item ui.MenuItem) ui.MenuItem {
 	return item
 }
 
-// documentItems lists a zone's, workflow's, NPC's or text document's
-// right-click menu. A zone can gain a floor; an NPC opens its behaviour.
+// documentItems lists a zone's, workflow's, NPC's, text document's,
+// sprite's or palette's right-click menu. A zone can gain a floor; an NPC
+// opens its behaviour. A document every project holds keeps its name and
+// cannot be deleted.
 func (s *State) documentItems(docs frame.Docs, entry project.Entry) []ui.MenuItem {
 	open := contextItem(contextOpen, "Open", ui.IconNone)
+	open.Disabled = kindOf(entry.Format).open == ""
 	if entry.Format == npc.FormatName {
 		open.Label = "Open behaviour"
 		found, loaded := s.npcOf(docs, entry.ID)
 		open.Disabled = !loaded || found.Behaviour.IsZero()
 	}
-	items := []ui.MenuItem{
-		open, ruled(newItem(entry.Format)), contextItem(newFolderPrefix+entry.Format, "New folder", ui.IconFolder),
-	}
+	makes := makeItems(entry.Format, "New folder")
+	makes[0] = ruled(makes[0])
+	items := append([]ui.MenuItem{open}, makes...)
 	if entry.Format == zone.FormatName {
 		items = append(items, contextItem(newFloor, "Add floor", ui.IconFloor))
 	}
+	fixed := everyProjectHolds(entry.ID)
+	rename := ruled(contextItem(contextRename, "Rename", ui.IconNone))
+	remove := ruled(dangerous(contextItem(contextDelete, "Delete", ui.IconNone)))
+	rename.Disabled, remove.Disabled = fixed, fixed
 
-	return append(items,
-		ruled(contextItem(contextRename, "Rename", ui.IconNone)),
-		contextItem(contextMove, "Move to…", ui.IconNone),
-		ruled(dangerous(contextItem(contextDelete, "Delete", ui.IconNone))),
-	)
+	return append(items, rename, contextItem(contextMove, "Move to…", ui.IconNone), remove)
 }
 
 // floorItems lists a floor's right-click menu. A floor stays with its zone,

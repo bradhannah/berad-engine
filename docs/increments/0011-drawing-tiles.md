@@ -149,6 +149,24 @@ Chosen while building, for its author to check:
 - **A project holding only the documents every project holds counts as
   empty,** so `--sample` still makes the sample there.
 
+- **The Settings row is the list's first row,** above Zones, showing the tile
+  size. Selecting it shows the tile size in the inspector, typed and saved
+  with the save bar; a size outside 8 to 128 is refused there, and stays to
+  correct.
+- **Sprites and Palettes come after Audio.** Palettes have no [+], since the
+  shared palette is the only palette, but can be put in folders and tagged.
+- **A new sprite's tile is made first,** named "Tile 1" at the project's tile
+  size, then the sprite naming it, as one undo step. If the sprite is
+  refused, the tile is deleted again, so no tile is left without a sprite.
+  Deleting a sprite deletes its tile with it, in one step.
+- **The shared palette shows its name without a field,** and its Rename and
+  Delete are disabled, since the orchestrator refuses them.
+- **A sprite or palette opens nothing yet:** Open is disabled until the Pixel
+  editor exists.
+- **Icons:** a sprite is a heart drawn in big pixels and a palette a ramp of
+  three swatches, dark to light, both in a muted teal (#267378); the Settings
+  row has two sliders, in ink.
+
 ## Wireframes
 
 The Pixel editor in the first slice, as a tab. Letters in brackets stand for
@@ -196,7 +214,7 @@ PALETTES    1
 | --- | --- | --- | --- |
 | 1. Art model | `engine/art`: palette, tile, sprite, settings and stand-in sprite formats at version 1; a tile drawn as an image from its palette, opacity included | Unit tests of the formats, of colours resolved by ID after a rename, and of an image drawn with a see-through shade over a known ground | Built |
 | 2. Art plug-in | `editor/plugins/art`: the document types and edit kinds (add, rename and remove a ramp; add, set and remove a shade; paint pixels; set the tile size; set a stand-in's sprite); the shared palette and settings added on open; removal refused while in use | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests of opening an older project and of a refused removal | Built |
-| 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Planned |
+| 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Built |
 | 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Planned |
 | 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Planned |
 | 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Planned |
@@ -252,6 +270,29 @@ Where each step changes code:
   orchestrator's audio tests, which time out under load: unchanged `main`
   fails the same tests in two runs of three on the same machine, and both
   pass with `go test -parallel 2`.
+- **Project browser:** the browser lists a Settings row first, showing the
+  tile size, and Sprites and Palettes sections after Audio, with folders,
+  tags and search like the others. The Settings row's inspector types the
+  tile size and saves it with the save bar. A new sprite, from the Sprites
+  [+], New ▾ or a right-click menu, comes with one tile at the tile size, as
+  one undo step, and deleting a sprite deletes its tile. Sprites and palettes
+  have new icons in a muted teal, and the Settings row its own. Verified
+  with view tests: the Settings row comes first with the tile size; Sprites
+  has a [+] and Palettes none; a sprite's tile, the settings and the
+  stand-in sprites are not listed as documents; a tag search finds a sprite,
+  and searching for "tile" finds the Settings row; a new sprite makes its
+  tile at the tile size, then the sprite naming it in the selected folder, in
+  one gesture, and a refused sprite deletes its tile in the same gesture; the
+  tile size is saved with Save, and 7, 129 and "big" are refused and kept to
+  correct; deleting a sprite asks where it and its tile are used, then
+  deletes both in one step; the shared palette has no name field, and Delete,
+  Cmd+Backspace and Rename leave it alone. A real-window test sets the tile
+  size to 24, makes a sprite folder from the Sprites heading's right-click
+  menu, then a sprite inside it from the folder's menu: the saved sprite is in
+  `sprites/Lights/` and names its tile, which is 24 pixels square; all 30
+  real-window tests pass. `make check` shows no lint findings, and every
+  package passes except the orchestrator's audio test that times out under
+  load, which passes with `go test -parallel 2`.
 
 ## Changed after its author tried it
 

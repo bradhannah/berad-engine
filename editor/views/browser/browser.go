@@ -1,10 +1,10 @@
 // Package browser is the project browser window: the project's zones with
-// their floors, its workflows, NPCs and text documents, in folders, and the
-// audio library's cues, which open in the Audio window. Authors
-// create, rename, delete and open documents here, from the toolbar, the
-// inspector or a right-click menu, keep them in folders and tag them,
-// search them, reorder a zone's floors, and choose each NPC's behaviour and
-// write its notes.
+// their floors, its workflows, NPCs and text documents, in folders, the
+// audio library's cues, which open in the Audio window, its sprites and
+// palettes, and its settings. Authors create, rename, delete and open
+// documents here, from the toolbar, the inspector or a right-click menu,
+// keep them in folders and tag them, search them, reorder a zone's floors,
+// choose each NPC's behaviour and write its notes, and set the tile size.
 package browser
 
 import (
@@ -26,6 +26,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -89,11 +90,13 @@ type State struct {
 	closed map[string]bool
 	focus  ui.Focus
 	// search filters the list; name and tags edit what is selected, and
-	// named is the row whose name and tags the fields hold.
-	search *ui.TextField
-	name   *ui.TextField
-	tags   *ui.TextField
-	named  string
+	// named is the row whose name and tags the fields hold. tileSize edits
+	// the settings' tile size.
+	search   *ui.TextField
+	name     *ui.TextField
+	tags     *ui.TextField
+	named    string
+	tileSize *ui.TextField
 
 	newMenu                             *ui.Button
 	menu                                ui.Menu
@@ -127,14 +130,15 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		list:    &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
-		closed:  map[string]bool{},
-		focus:   ui.Focus{},
-		search:  ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
-		name:    ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
-		tags:    ui.NewTextField("tags", textedit.NewField("", false, searchBytes*ui.Half), false, theme),
-		named:   "",
-		newMenu: button("new", "New"), menu: ui.Menu{Items: menuItems(), Width: 0},
+		list:     &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		closed:   map[string]bool{},
+		focus:    ui.Focus{},
+		search:   ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
+		name:     ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
+		tags:     ui.NewTextField("tags", textedit.NewField("", false, searchBytes*ui.Half), false, theme),
+		named:    "",
+		tileSize: ui.NewTextField("tile-size", textedit.NewField("", false, tileSizeBytes), false, theme),
+		newMenu:  button("new", "New"), menu: ui.Menu{Items: menuItems(), Width: 0},
 		open: button("open", "Open"), floorButton: button(newFloor, "Add floor"), up: button("move-up", "Move up"),
 		down: button("move-down", "Move down"), remove: button("delete", "Delete"),
 		moveBn: button("move-to", "Move to…"), newFolderBn: button("new-folder", "New folder"),
@@ -148,7 +152,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
-	view.focus.Register(view.search, view.name, view.tags, view.npc.notes)
+	view.focus.Register(view.search, view.name, view.tags, view.npc.notes, view.tileSize)
 
 	return view
 }
@@ -162,6 +166,7 @@ func menuItems() []ui.MenuItem {
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
 		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
+		{ID: newSprite, Label: "Sprite", Icon: ui.IconSprite, Disabled: false, Danger: false, Rule: false},
 		{ID: newFolderPrefix + zone.FormatName, Label: "Zone folder", Icon: ui.IconFolder, Disabled: false, Danger: false,
 			Rule: true},
 		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
@@ -169,6 +174,10 @@ func menuItems() []ui.MenuItem {
 		{ID: newFolderPrefix + npc.FormatName, Label: npcLabel + " folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
 		{ID: newFolderPrefix + textdoc.FormatName, Label: "Text folder", Icon: ui.IconFolder, Disabled: false,
+			Danger: false, Rule: false},
+		{ID: newFolderPrefix + art.SpriteFormatName, Label: "Sprite folder", Icon: ui.IconFolder, Disabled: false,
+			Danger: false, Rule: false},
+		{ID: newFolderPrefix + art.PaletteFormatName, Label: "Palette folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
 	}
 }
@@ -179,9 +188,11 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
-// Start subscribes to the project index and lists the audio library.
+// Start subscribes to the project index and the art settings, and lists
+// the audio library.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
+	s.subscribe(art.SettingsID(), ctx)
 	s.askAudio(ctx)
 }
 
@@ -197,9 +208,10 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 	})
 }
 
-// Changed subscribes to every zone, so their floors can be listed, and to
-// every NPC, so the list can say which workflow each follows. It lists the
-// audio library again when it changes.
+// Changed subscribes to every zone, so their floors can be listed, to every
+// NPC, so the list can say which workflow each follows, and to every sprite,
+// so its tile goes with it. It lists the audio library again when it
+// changes.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.AudioChanged != nil {
 		s.askAudio(ctx)
@@ -207,8 +219,10 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.Event == nil && update.Snapshot == nil {
 		return
 	}
-	for _, entry := range append(s.entries(ctx.Docs, zone.FormatName), s.entries(ctx.Docs, npc.FormatName)...) {
-		s.subscribe(entry.ID, ctx)
+	for _, format := range []string{zone.FormatName, npc.FormatName, art.SpriteFormatName} {
+		for _, entry := range s.entries(ctx.Docs, format) {
+			s.subscribe(entry.ID, ctx)
+		}
 	}
 }
 
@@ -317,6 +331,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.syncName(ctx.Docs)
+	s.syncSettings(ctx.Docs)
 	s.syncNPC(ctx)
 	s.syncCueUses(ctx)
 	s.updateFields(input, ctx)
@@ -344,6 +359,8 @@ func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
 		s.commitName(ctx)
 	case field == s.tags && outcome == textedit.OutcomeCommit:
 		s.commitTags(ctx)
+	case field == s.tileSize && outcome == textedit.OutcomeCommit:
+		s.commitTileSize(ctx)
 	}
 }
 
@@ -535,6 +552,8 @@ func (s *State) create(ctx *frame.Context, item string) {
 		s.createText(ctx)
 	case newSound:
 		s.addSound(ctx)
+	case newSprite:
+		s.createSprite(ctx)
 	}
 }
 
@@ -813,9 +832,15 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 	if !ok {
 		return
 	}
-	targets := []ids.ULID{entry.ID}
-	if entry.Format == zone.FormatName {
-		targets = append(targets, s.floorsOf(ctx.Docs, entry.ID)...)
+	if everyProjectHolds(entry.ID) {
+		ctx.Frame.Status("Every project holds “" + entry.Name + "”, so it cannot be deleted")
+
+		return
+	}
+	floors := s.floorsOf(ctx.Docs, entry.ID)
+	targets := append([]ids.ULID{entry.ID}, floors...)
+	if tile, isSprite := s.tileOf(ctx.Docs, entry.ID); isSprite {
+		targets = append(targets, tile)
 	}
 	containing, _ := s.zoneOf(ctx.Docs, entry.ID)
 	var uses []protocol.Use
@@ -831,7 +856,7 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 				}
 			}
 			if remaining == 0 {
-				s.confirmDelete(entry, len(targets)-1, uses)
+				s.confirmDelete(entry, len(floors), uses)
 			}
 		})
 	}
@@ -884,7 +909,7 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 }
 
 // deleteDocument deletes a document in one gesture: a floor is first taken out
-// of its zone; a zone takes its floors with it.
+// of its zone; a zone takes its floors with it, and a sprite its tile.
 func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 	entry, ok := s.index(ctx.Docs).Entry(documentID)
 	if !ok {
@@ -906,18 +931,23 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 			s.command(ctx, zoneID, zoneplugin.RemoveFloorEdit, gesture, out, nil, nil)
 		}
 	}
+	tile, isSprite := s.tileOf(ctx.Docs, documentID)
 	remove(documentID)
+	if isSprite {
+		remove(tile)
+	}
 	s.list.Selected = ""
 	ctx.Frame.Status("Deleted “" + entry.Name + "”. Undo brings it back.")
 }
 
 // Locate finds a named part of the window for input scripts: "row:<name>"
-// for a document by name, "toggle:<name>" for its disclosure triangle,
-// "section:<zones|workflows|npcs|text>" for a section heading,
-// "ui:<button id>", "ui:name", "ui:notes", an item of New ▾ or the
-// right-click menu while it is open, or a dialog button or list row.
-// "ui:new-zone", "ui:new-workflow",
-// "ui:new-npc" and "ui:new-text" are their section's [+].
+// for a document by name or the Settings row, "toggle:<name>" for its
+// disclosure triangle, "section:<zones|workflows|npcs|text|audio|sprites|
+// palettes>" for a section heading, "ui:<button id>", "ui:name",
+// "ui:notes", "ui:tile-size", an item of New ▾ or the right-click menu while
+// it is open, or a dialog button or list row. "ui:new-zone",
+// "ui:new-workflow", "ui:new-npc", "ui:new-text", "ui:new-sound" and
+// "ui:new-sprite" are their section's [+].
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
@@ -970,7 +1000,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes} {
+	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes, s.tileSize} {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}

@@ -17,6 +17,7 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/content"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -531,6 +532,48 @@ func TestBrowserRightClickMenu(t *testing.T) {
 	readEnvelope(t, project, "workflows/Routines/workflow-1--*[^t].json")
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
+}
+
+// TestBrowserMakesASpriteInAFolder sets the tile size to 24 in the Settings
+// row's inspector, makes a sprite folder from the Sprites heading's
+// right-click menu and names it, then a sprite inside it from the folder's
+// own menu. The saved sprite is in the folder and names its tile, which is
+// 24 pixels square.
+func TestBrowserMakesASpriteInAFolder(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot, settingsShot := shotPath(t, "browser-sprite.png"), shotPath(t, "browser-settings.png")
+	paletteShot := shotPath(t, "browser-palette.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		click("row:Settings"), click("ui:tile-size"), keys("Cmd+A"), typed("24"), step{Repeat: 2, Screenshot: settingsShot},
+		click("ui:save"), must("row:Settings", 60), wait(30),
+		click("row:Shared"), wait(5), step{Repeat: 2, Screenshot: paletteShot},
+		rightClick("section:sprites"), must("menu:new-folder-sprite", 60),
+		click("menu:new-folder-sprite"), wait(30), typed("Lights"), keys("Enter"),
+		must("row:Lights", 300), wait(5),
+		rightClick("row:Lights"), must("menu:new-sprite", 60),
+		click("menu:new-sprite"), must("row:Sprite 1", 300), wait(30), step{Repeat: 2, Screenshot: shot}, quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	settings, err := art.DecodeSettings(readEnvelope(t, project, "art-settings/*.json").Data)
+	if err != nil || settings.TileSize != 24 {
+		t.Fatalf("the tile size is saved: %+v %v", settings, err)
+	}
+	sprite, err := art.DecodeSprite(readEnvelope(t, project, "sprites/Lights/sprite-1--*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tileFile := readEnvelope(t, project, "tiles/tile-1--*.json")
+	tile, err := art.DecodeTile(tileFile.Data)
+	if err != nil || tileFile.ID != sprite.Tile || tile.Size() != 24 {
+		t.Fatalf("the sprite's tile is 24 pixels square: %+v %v", tileFile, err)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s %s", shot, settingsShot, paletteShot)
 }
 
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes

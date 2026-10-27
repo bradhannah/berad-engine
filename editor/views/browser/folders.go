@@ -91,6 +91,12 @@ func (m matcher) folder(path string) bool { return !m.tags && m.folderName(proje
 
 func (m matcher) folderName(name string) bool { return strings.Contains(strings.ToLower(name), m.text) }
 
+// words reports whether a row that is not a document, such as Settings,
+// matches by its own words. A search for tags finds none.
+func (m matcher) words(texts ...string) bool {
+	return !m.tags && slices.ContainsFunc(texts, m.folderName)
+}
+
 // selectedFolder returns the selected folder.
 func (s *State) selectedFolder() (project.Folder, bool) { return parseFolderRow(s.list.Selected) }
 
