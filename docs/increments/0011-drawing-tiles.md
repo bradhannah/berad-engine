@@ -125,8 +125,29 @@ Chosen while building, for its author to check:
   tile uses is refused, so this happens only with a missing palette.
 - **The starter ramp, "grey", runs from #202020 to #DCDCDC** in five even
   steps.
-- **Format names:** `palette`, `tile`, `sprite`, `art-settings` and
-  `standin-sprites`.
+- **Format names:** `palette`, `tile`, `sprite`, `art-setting` and
+  `standin-sprite`, since a document's folder is its format's name with an s
+  (`art-settings/`, `standin-sprites/`).
+
+- **Documents every project holds** are a new part of a plug-in. The art
+  plug-in names three, with fixed IDs whose time part is zero: the shared
+  palette ("Shared"), the art settings ("Art settings") and the stand-in
+  sprites ("Stand-in sprites"). The orchestrator adds any a project lacks
+  when it opens, before replaying the journal, and refuses to delete or
+  rename them. The starter ramp and its shades have fixed IDs too, so the
+  shared palette is the same every time it is made, and a project reopened
+  after a crash replays its strokes onto the same colours.
+- **An edit that removes something names it** (a new seam, `model.Remover`),
+  and the orchestrator refuses it while another document refers to it,
+  naming those documents: a tile refers to each ramp and shade it uses, and
+  is named by its sprite. Undo and redo check before changing anything, so a
+  refused undo stays on the list and works once nothing uses the colour.
+- **A sprite's tile is its part,** as a zone's floors are, so its name is
+  unique only within the sprite.
+- **Renaming a ramp and changing its shades touch different items,** so
+  they never clash in undo across windows.
+- **A project holding only the documents every project holds counts as
+  empty,** so `--sample` still makes the sample there.
 
 ## Wireframes
 
@@ -174,7 +195,7 @@ PALETTES    1
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Art model | `engine/art`: palette, tile, sprite, settings and stand-in sprite formats at version 1; a tile drawn as an image from its palette, opacity included | Unit tests of the formats, of colours resolved by ID after a rename, and of an image drawn with a see-through shade over a known ground | Built |
-| 2. Art plug-in | `editor/plugins/art`: the document types and edit kinds (add, rename and remove a ramp; add, set and remove a shade; paint pixels; set the tile size; set a stand-in's sprite); the shared palette and settings added on open; removal refused while in use | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests of opening an older project and of a refused removal | Planned |
+| 2. Art plug-in | `editor/plugins/art`: the document types and edit kinds (add, rename and remove a ramp; add, set and remove a shade; paint pixels; set the tile size; set a stand-in's sprite); the shared palette and settings added on open; removal refused while in use | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests of opening an older project and of a refused removal | Built |
 | 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Planned |
 | 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Planned |
 | 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Planned |
@@ -208,6 +229,29 @@ Where each step changes code:
   the tile; a 40% blue over red composites to the expected colour; a tile
   holds 255 colours and refuses one more. `make check` passes: no lint
   findings, race tests passing.
+- **Art plug-in:** `editor/plugins/art` holds the five document types and
+  nine edit kinds: add, rename and remove a ramp; add, set and remove a
+  shade; paint pixels; set the tile size; and choose a stand-in's sprite.
+  Adding a ramp or shade gives it permanent IDs before it is applied. It is
+  registered in the editor's plug-in list, and the orchestrator adds the
+  shared palette, art settings and stand-in sprites to a project that lacks
+  them (`editor/orchestrator/required.go`). Verified with unit tests: every
+  edit kind passes the shared apply-then-undo test, including a pixel
+  painted twice in one command; preparing gives new IDs once and leaves
+  complete arguments alone; a tile refers to its ramps and shades; refused
+  edits leave their document unchanged; and the registry refuses a required
+  document of an unknown format or listed twice. Headless orchestrator
+  tests: a project made without art gains the three documents, once, saved
+  in `palettes/`, `art-settings/` and `standin-sprites/`, and reopening
+  adds nothing more; removing grey 3 or the grey ramp while the sprite
+  Lantern uses it is refused with "used by Lantern", and an unused shade
+  goes; deleting the shared palette or renaming the settings is refused; an
+  undo that would remove a ramp another window has painted with is refused,
+  and the same undo works once the pixel is erased. `make check` shows no
+  lint findings in either module and every package passing except the
+  orchestrator's audio tests, which time out under load: unchanged `main`
+  fails the same tests in two runs of three on the same machine, and both
+  pass with `go test -parallel 2`.
 
 ## Changed after its author tried it
 

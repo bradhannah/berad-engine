@@ -66,19 +66,12 @@ type wirePalette struct {
 func NewPalette() *Palette { return &Palette{ramps: nil} }
 
 // StarterPalette returns the palette a project's shared palette starts with:
-// one ramp, "grey", of five shades. newID supplies the permanent IDs.
-func StarterPalette(newID func() (ids.ULID, error)) (*Palette, error) {
-	rampID, err := newID()
-	if err != nil {
-		return nil, fmt.Errorf("starter palette: %w", err)
-	}
-	ramp := Ramp{ID: rampID, Name: StarterRampName, Shades: nil}
-	for _, value := range []RGB{starterGrey1, starterGrey2, starterGrey3, starterGrey4, starterGrey5} {
-		shadeID, err := newID()
-		if err != nil {
-			return nil, fmt.Errorf("starter palette: %w", err)
-		}
-		ramp.Shades = append(ramp.Shades, Shade{ID: shadeID, Color: value, Opacity: MaxOpacity})
+// one ramp, "grey", of five shades. Its IDs are fixed, so it is the same in
+// every project and every time it is made.
+func StarterPalette() (*Palette, error) {
+	ramp := Ramp{ID: StarterRampID(), Name: StarterRampName, Shades: nil}
+	for number, value := range []RGB{starterGrey1, starterGrey2, starterGrey3, starterGrey4, starterGrey5} {
+		ramp.Shades = append(ramp.Shades, Shade{ID: StarterShadeID(number + 1), Color: value, Opacity: MaxOpacity})
 	}
 	palette := NewPalette()
 	if err := palette.InsertRamp(0, ramp); err != nil {

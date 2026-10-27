@@ -156,6 +156,27 @@ type Container interface {
 	Parts() []ids.ULID
 }
 
+// Remover is implemented by edit kinds that remove items other documents may
+// refer to, such as a palette's shade that tiles are painted with. It names
+// the items the edit would remove, as references name them. The orchestrator
+// refuses the edit, and an undo or redo that would apply it, while another
+// document refers to any of them.
+type Remover interface {
+	Removes(document Document, args json.RawMessage) ([]string, error)
+}
+
+// RequiredDocument is a document every project holds, with a fixed ID, such
+// as the shared palette. The orchestrator adds it, from Data, to a project
+// that lacks it when the project opens, before replaying the journal, and
+// refuses to delete or rename it. Data must be the same every time, so a
+// project reopened after a crash adds the same document again.
+type RequiredDocument struct {
+	ID     ids.ULID
+	Format string
+	Name   string
+	Data   func() (json.RawMessage, error)
+}
+
 // Pickable is implemented by documents that hold things a pick on map can
 // choose, such as a floor holding anchors.
 type Pickable interface {

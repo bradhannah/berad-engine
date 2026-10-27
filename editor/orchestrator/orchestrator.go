@@ -236,7 +236,9 @@ func (o *Orchestrator) load() error {
 			dirty:    document.upgraded(),
 		}
 	}
-
+	if err := o.addRequired(); err != nil {
+		return err
+	}
 	if err := o.replay(); err != nil {
 		return err
 	}

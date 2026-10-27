@@ -11,6 +11,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/engine/content"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // ErrDuplicate reports a plug-in, document format or edit name used twice.
@@ -19,11 +20,13 @@ var ErrDuplicate = errors.New("duplicate plug-in registration")
 // ErrInvalid reports an incomplete plug-in.
 var ErrInvalid = errors.New("invalid plug-in")
 
-// Plugin contributes document types and edit kinds.
+// Plugin contributes document types and edit kinds, and the documents every
+// project must hold.
 type Plugin struct {
 	Name      string
 	Documents []model.DocumentType
 	Edits     []model.EditKind
+	Required  []model.RequiredDocument
 }
 
 // Registry is the immutable set of plug-ins a program was built with.
@@ -32,6 +35,7 @@ type Registry struct {
 	documents map[string]model.DocumentType
 	edits     map[string]model.EditKind
 	formats   *content.Registry
+	required  []model.RequiredDocument
 }
 
 // NewRegistry validates and registers plug-ins in the order given.
@@ -41,6 +45,7 @@ func NewRegistry(plugins ...Plugin) (*Registry, error) {
 		documents: map[string]model.DocumentType{},
 		edits:     map[string]model.EditKind{},
 		formats:   content.NewRegistry(),
+		required:  nil,
 	}
 	for _, entry := range plugins {
 		if err := registry.add(entry); err != nil {
@@ -78,9 +83,40 @@ func (r *Registry) add(entry Plugin) error {
 		}
 		r.edits[kind.Name()] = kind
 	}
+	if err := r.addRequired(entry); err != nil {
+		return err
+	}
 	r.names = append(r.names, entry.Name)
 
 	return nil
+}
+
+func (r *Registry) addRequired(entry Plugin) error {
+	for _, required := range entry.Required {
+		if required.ID.IsZero() || required.Name == "" || required.Data == nil {
+			return fmt.Errorf("%w: %q has an incomplete required document", ErrInvalid, entry.Name)
+		}
+		if _, ok := r.documents[required.Format]; !ok {
+			return fmt.Errorf("%w: %q requires a %q document, a format no plug-in has", ErrInvalid, entry.Name, required.Format)
+		}
+		if r.IsRequired(required.ID) {
+			return fmt.Errorf("%w: required document %s", ErrDuplicate, required.ID)
+		}
+		r.required = append(r.required, required)
+	}
+
+	return nil
+}
+
+// Required returns the documents every project must hold, in registration
+// order.
+func (r *Registry) Required() []model.RequiredDocument {
+	return slices.Clone(r.required)
+}
+
+// IsRequired reports whether a document is one every project must hold.
+func (r *Registry) IsRequired(id ids.ULID) bool {
+	return slices.ContainsFunc(r.required, func(required model.RequiredDocument) bool { return required.ID == id })
 }
 
 // Plugins returns plug-in names in registration order.

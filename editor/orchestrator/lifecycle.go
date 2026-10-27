@@ -56,6 +56,9 @@ func (o *Orchestrator) prepareLifecycle(edit string, args json.RawMessage) (json
 		if !ok || isIndex(rename.ID) {
 			return nil, ids.ULID{}, fmt.Errorf("%w: %s", ErrUnknownDocument, rename.ID)
 		}
+		if err := o.refuseRequired(rename.ID); err != nil {
+			return nil, ids.ULID{}, err
+		}
 		if err := o.checkName(entry.info.Format, rename.Name, rename.ID, o.containerOf(rename.ID)); err != nil {
 			return nil, ids.ULID{}, err
 		}
@@ -119,6 +122,9 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 	entry, ok := o.docs[deletion.ID]
 	if !ok || isIndex(deletion.ID) {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownDocument, deletion.ID)
+	}
+	if err := o.refuseRequired(deletion.ID); err != nil {
+		return nil, err
 	}
 	data, err := entry.document.Encode()
 	if err != nil {

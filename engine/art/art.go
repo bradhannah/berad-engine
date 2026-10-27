@@ -11,17 +11,20 @@ package art
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/bradhannah/berad-engine/engine/content"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// Format names inside saved envelopes.
+// Format names inside saved envelopes. A document's folder is its format's
+// name with an s.
 const (
 	PaletteFormatName  = "palette"
 	TileFormatName     = "tile"
 	SpriteFormatName   = "sprite"
-	SettingsFormatName = "art-settings"
-	StandInsFormatName = "standin-sprites"
+	SettingsFormatName = "art-setting"
+	StandInsFormatName = "standin-sprite"
 )
 
 // Format versions this package writes.
@@ -32,6 +35,42 @@ const (
 	SettingsVersion = 1
 	StandInsVersion = 1
 )
+
+// Names of the documents every project holds.
+const (
+	SharedPaletteName = "Shared"
+	SettingsName      = "Art settings"
+	StandInsName      = "Stand-in sprites"
+)
+
+// Fixed IDs. Their time part is zero, so no generated ID ever equals them.
+const (
+	sharedPaletteID = "00000000000000000000000010"
+	settingsID      = "00000000000000000000000011"
+	standInsID      = "00000000000000000000000012"
+	starterRampID   = "00000000000000000000000020"
+	starterShades   = "000000000000000000000000%02d"
+	starterFirst    = 20
+)
+
+// SharedPaletteID is the ID of the palette every project holds, which its art
+// starts from.
+func SharedPaletteID() ids.ULID { return ids.MustParse(sharedPaletteID) }
+
+// SettingsID is the ID of a project's art settings.
+func SettingsID() ids.ULID { return ids.MustParse(settingsID) }
+
+// StandInsID is the ID of the record of which sprite shows each stand-in.
+func StandInsID() ids.ULID { return ids.MustParse(standInsID) }
+
+// StarterRampID is the ID of the shared palette's starter ramp, "grey".
+func StarterRampID() ids.ULID { return ids.MustParse(starterRampID) }
+
+// StarterShadeID is the ID of one shade of the starter ramp, by its number
+// from 1 to 5.
+func StarterShadeID(number int) ids.ULID {
+	return ids.MustParse(fmt.Sprintf(starterShades, starterFirst+number))
+}
 
 // MaxNameLength bounds a ramp's name, in bytes.
 const MaxNameLength = 200

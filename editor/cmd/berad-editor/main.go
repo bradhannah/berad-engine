@@ -13,11 +13,13 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
@@ -109,7 +111,7 @@ func usage(stderr io.Writer) {
 func plugins() (*plugin.Registry, error) {
 	registry, err := plugin.NewRegistry(
 		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
-		npcplugin.Plugin(),
+		npcplugin.Plugin(), artplugin.Plugin(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)
@@ -188,7 +190,7 @@ func runOpen(args []string, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open project: %w", err)
 	}
-	firstZone, err := ensureDocuments(orch, options.sample, options.project)
+	firstZone, err := ensureDocuments(orch, cfg.Registry, options.sample, options.project)
 	if err != nil {
 		return errors.Join(err, orch.Close())
 	}
@@ -263,13 +265,19 @@ func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID, she
 }
 
 // ensureDocuments returns the first zone by name, creating the sample project,
-// with its audio, in an empty project when asked to.
-func ensureDocuments(orch *orchestrator.Orchestrator, sample bool, projectDir string) (ids.ULID, error) {
+// with its audio, in an empty project when asked to. A project is empty when
+// it holds only the documents every project holds.
+func ensureDocuments(
+	orch *orchestrator.Orchestrator, registry *plugin.Registry, sample bool, projectDir string,
+) (ids.ULID, error) {
 	documents, err := orch.Documents()
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("list documents: %w", err)
 	}
-	if len(documents) == 0 {
+	authored := slices.ContainsFunc(documents, func(document orchestrator.DocumentInfo) bool {
+		return !registry.IsRequired(document.ID)
+	})
+	if !authored {
 		if !sample {
 			return ids.ULID{}, ErrNoDocuments
 		}

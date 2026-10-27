@@ -183,5 +183,6 @@ func Plugin() plugin.Plugin {
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits:     []model.EditKind{InsertFloor{}, RemoveFloor{}, MoveFloor{}},
+		Required:  nil,
 	}
 }

@@ -16,20 +16,9 @@ func id(number int) ids.ULID {
 	return ids.MustParse(fmt.Sprintf("01J0000000000000000000%04d", number))
 }
 
-// sequence returns an ID source counting up from a number.
-func sequence(start int) func() (ids.ULID, error) {
-	next := start
-
-	return func() (ids.ULID, error) {
-		next++
-
-		return id(next), nil
-	}
-}
-
 func starter(t *testing.T) *art.Palette {
 	t.Helper()
-	palette, err := art.StarterPalette(sequence(100))
+	palette, err := art.StarterPalette()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,9 +41,18 @@ func TestStarterPalette(t *testing.T) {
 			t.Fatal("starter shades must run dark to light")
 		}
 	}
-	name, ok := palette.ShadeName(ramps[0].ID, ramps[0].Shades[2].ID)
+	name, ok := palette.ShadeName(art.StarterRampID(), art.StarterShadeID(3))
 	if !ok || name != "grey 3" {
 		t.Fatalf("shade name %q", name)
+	}
+	again, err := art.StarterPalette()
+	if err != nil || !again.Equal(palette) {
+		t.Fatal("the starter palette must be the same every time")
+	}
+	for _, fixed := range []ids.ULID{art.SharedPaletteID(), art.SettingsID(), art.StandInsID(), art.StarterRampID()} {
+		if fixed.IsZero() || !fixed.Time().Equal(ids.ULID{}.Time()) {
+			t.Fatalf("fixed ID %s must have a zero time part", fixed)
+		}
 	}
 }
 

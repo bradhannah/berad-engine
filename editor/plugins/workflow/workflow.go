@@ -414,6 +414,7 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{
 			Format: flow.Format(), Decode: Decode, Layout: &layout, Prepare: Prepare,
 		}},
-		Edits: []model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+		Edits:    []model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+		Required: nil,
 	}
 }

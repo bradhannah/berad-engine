@@ -342,5 +342,6 @@ func Plugin() plugin.Plugin {
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits:     []model.EditKind{Create{}, Delete{}, Rename{}, Move{}, FolderChange{}, Retag{}},
+		Required:  nil,
 	}
 }
