@@ -176,6 +176,11 @@ func (o *Orchestrator) applyEdit(
 	if err != nil {
 		return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)
 	}
+	if remover, ok := kind.(model.Remover); ok {
+		if err := o.checkRemoval(documentID, entry.document, remover, args); err != nil {
+			return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)
+		}
+	}
 	applied, err := kind.Apply(entry.document, args)
 	if err != nil {
 		return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)
@@ -274,6 +279,12 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 
 		return
 	}
+	if err := o.refusedRemoval(candidate.actions, true); err != nil {
+		o.history.pushUndo(from.group, candidate)
+		o.reply(from, request, err.Error(), 0)
+
+		return
+	}
 	if isAudioStep(candidate) {
 		o.queueAudio(audioJob{from: from, request: request, kind: audioUndoJob, edit: noAudioEdit(), step: candidate})
 
@@ -311,6 +322,12 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 	if o.history.clash(from.group, candidate) {
 		o.history.pushRedo(from.group, candidate)
 		o.reply(from, request, reasonClash, 0)
+
+		return
+	}
+	if err := o.refusedRemoval(candidate.actions, false); err != nil {
+		o.history.pushRedo(from.group, candidate)
+		o.reply(from, request, err.Error(), 0)
 
 		return
 	}

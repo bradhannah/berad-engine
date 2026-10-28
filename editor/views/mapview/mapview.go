@@ -136,7 +136,9 @@ type State struct {
 	tool   Tool
 	tile   map[Tool]string
 	camera camera
-	size   image.Point
+	// sprites is the art drawn for stand-ins that sprites show.
+	sprites *spriteArt
+	size    image.Point
 	// hover is the cell under the cursor: hovering when it is on the floor,
 	// outside when it is beyond the floor bounds.
 	hover    Cell
@@ -212,9 +214,10 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, theme: theme, floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
-		camera: newCamera(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false, outside: false,
-		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
-		rect:   nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
+		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
+		outside: false,
+		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0)},
+		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, behaviour: ids.ULID{}, menu: nil, openLoaded: ids.ULID{},
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
@@ -291,8 +294,12 @@ const shortID = 6
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
-// Changed reacts to the orchestrator: the zone's floors, picks.
+// Changed reacts to the orchestrator: the zone's floors, picks, and the art
+// that sprites show stand-ins with.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
+	if update.Event != nil || update.Snapshot != nil {
+		s.syncArt(ctx)
+	}
 	switch {
 	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
 		s.previewChanged(update, ctx)
@@ -325,9 +332,11 @@ func labelOr(value, fallback string) string {
 }
 
 // Start subscribes to what the window shows. The window has already
-// subscribed to the zone; this adds the project index for names.
+// subscribed to the zone; this adds the project index for names and the art
+// sprites show stand-ins with.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
+	s.syncArt(ctx)
 	s.syncZone(ctx)
 }
 
@@ -418,6 +427,7 @@ func (s *State) Grid() image.Rectangle {
 
 // layoutWidgets places the panel widgets for the window size.
 func (s *State) layoutWidgets(docs frame.Docs) {
+	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
 	rowY := ui.Inset + headingSpace
 	s.toolList.Rect = image.Rect(0, rowY, PanelWidth, rowY+toolRows*ui.RowHeight)
@@ -1388,7 +1398,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // current floor has arrived and is in view, "picking" while answering a pick,
 // "floor:N" when the Nth floor from the bottom is shown,
 // "bounds:C,R,W,H" when the current floor has those bounds, "zoom:N" when
-// the zoom control shows N%, "previewing"
+// the zoom control shows N%, "sprite:…" and "art:…" for the art sprites
+// show stand-ins with (hasArt), "previewing"
 // while this window runs a preview, "player:C,R" or "remote-player:C,R"
 // when this window's or another window's player stands on that cell, and
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
@@ -1403,6 +1414,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return !s.floor.IsZero() && s.framed && docs.View(s.floor, func(client.Document) {})
 	case strings.HasPrefix(state, "bounds:"):
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
+	case strings.HasPrefix(state, "sprite:"), strings.HasPrefix(state, "art:"):
+		return s.hasArt(state)
 	case strings.HasPrefix(state, "zoom:"):
 		s.zoom.layout(s.Grid(), s.camera)
 
@@ -1418,12 +1431,17 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 
 		return s.hasPlayer(cell, which == "remote-player")
 	case strings.HasPrefix(state, "floor:"):
-		number, err := strconv.Atoi(strings.TrimPrefix(state, "floor:"))
-
-		return err == nil && number >= 1 && number <= len(s.floors) && s.floors[number-1] == s.floor
+		return s.showsFloor(strings.TrimPrefix(state, "floor:"))
 	}
 
 	return false
+}
+
+// showsFloor reports whether the Nth floor from the bottom is shown.
+func (s *State) showsFloor(value string) bool {
+	number, err := strconv.Atoi(value)
+
+	return err == nil && number >= 1 && number <= len(s.floors) && s.floors[number-1] == s.floor
 }
 
 // locateFloor finds the Nth floor from the bottom in the floor list.

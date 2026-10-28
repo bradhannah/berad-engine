@@ -4,31 +4,54 @@ import (
 	"image"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/engine/art"
 )
 
-// Cell sizes on screen, one per zoom level. Integer sizes keep pixel art
-// scaled uniformly once real tiles replace stand-ins.
-func zoomSizes() []int { return []int{6, 12, 18, 24, 36, 48, 72, 96} }
+// zoomSizes returns the cell sizes on screen, one per zoom level, for the
+// project's tile size: a quarter and a half of it, then one to four times it,
+// so a sprite is magnified by a whole number or reduced uniformly.
+func zoomSizes(tile int) []int {
+	return []int{max(tile/quarter, minCell), max(tile/ui.Half, minCell), tile, ui.Half * tile, triple * tile,
+		quarter * tile}
+}
 
 const (
-	defaultZoom = 3
+	// defaultZoom shows a sprite at its actual size, one screen pixel for
+	// each of its pixels: 100%.
+	defaultZoom = 2
 	gridMargin  = 16
+	quarter     = 4
+	triple      = 3
+	minCell     = 2
 )
 
-// camera maps zone cells to screen positions: a zoom level and the screen
+// camera maps zone cells to screen positions: a zoom level, the screen
 // offset of the zone origin (the top-left corner of cell 0,0) within the grid
-// area. Every floor of a zone shares the origin, so switching floors keeps
-// the view still.
+// area, and the tile size the zoom levels follow. Every floor of a zone
+// shares the origin, so switching floors keeps the view still.
 type camera struct {
 	zoom   int
 	offset image.Point
+	tile   int
 }
 
 func newCamera() camera {
-	return camera{zoom: defaultZoom, offset: image.Pt(gridMargin, gridMargin)}
+	return camera{zoom: defaultZoom, offset: image.Pt(gridMargin, gridMargin), tile: art.DefaultTileSize}
 }
 
-func (c camera) cellSize() int { return zoomSizes()[c.zoom] }
+func (c camera) cellSize() int { return zoomSizes(c.tile)[c.zoom] }
+
+// setTile follows a change to the project's tile size, keeping the zoom
+// level and scaling the view about the grid's top-left corner.
+func (c *camera) setTile(size int) {
+	if size <= 0 || size == c.tile {
+		return
+	}
+	before := c.cellSize()
+	c.tile = size
+	after := c.cellSize()
+	c.offset = image.Pt(c.offset.X*after/before, c.offset.Y*after/before)
+}
 
 // cellAt returns the cell under a screen point, and whether the point is in
 // the grid area. Cells left of and above the origin have negative numbers.
@@ -78,11 +101,11 @@ func (c camera) inView(grid image.Rectangle) image.Rectangle {
 
 // zoomBy changes the zoom level, keeping the point under focus still.
 func (c *camera) zoomBy(steps int, focus image.Point, grid image.Rectangle) {
-	next := min(max(c.zoom+steps, 0), len(zoomSizes())-1)
+	next := min(max(c.zoom+steps, 0), len(zoomSizes(c.tile))-1)
 	if next == c.zoom {
 		return
 	}
-	before, after := c.cellSize(), zoomSizes()[next]
+	before, after := c.cellSize(), zoomSizes(c.tile)[next]
 	local := focus.Sub(grid.Min)
 	if !focus.In(grid) {
 		local = image.Pt(grid.Dx()/ui.Half, grid.Dy()/ui.Half)
@@ -97,7 +120,9 @@ func (c *camera) zoomBy(steps int, focus image.Point, grid image.Rectangle) {
 // frame returns to the default zoom with the top-left corner of bounds in
 // view.
 func (c *camera) frame(bounds image.Rectangle) {
+	tile := c.tile
 	*c = newCamera()
+	c.tile = tile
 	size := c.cellSize()
 	c.offset = image.Pt(gridMargin-bounds.Min.X*size, gridMargin-bounds.Min.Y*size)
 }
@@ -106,7 +131,7 @@ func (c *camera) frame(bounds image.Rectangle) {
 func (c *camera) fit(bounds, grid image.Rectangle) {
 	room := grid.Inset(gridMargin)
 	c.zoom = 0
-	for level, size := range zoomSizes() {
+	for level, size := range zoomSizes(c.tile) {
 		if bounds.Dx()*size <= room.Dx() && bounds.Dy()*size <= room.Dy() {
 			c.zoom = level
 		}

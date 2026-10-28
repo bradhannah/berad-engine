@@ -571,5 +571,6 @@ func Plugin() plugin.Plugin {
 			Paint{}, Resize{}, AddAnchor{}, RemoveAnchor{}, UpdateAnchor{},
 			AddPlacement{}, RemovePlacement{}, UpdatePlacement{},
 		},
+		Required: nil,
 	}
 }

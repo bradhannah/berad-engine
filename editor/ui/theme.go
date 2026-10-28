@@ -80,6 +80,7 @@ const (
 	hexNPC      = 0x4c6377
 	hexText     = 0x7a6248
 	hexSound    = 0x8a4b72
+	hexArt      = 0x267378
 )
 
 // Embedded IBM Plex fonts (SIL Open Font License; see fonts/OFL.txt).
@@ -163,6 +164,9 @@ func ColorText() color.RGBA { return Hex(hexText) }
 
 // ColorSound tints the icons of cues and recordings.
 func ColorSound() color.RGBA { return Hex(hexSound) }
+
+// ColorArt tints the icons of sprites and palettes.
+func ColorArt() color.RGBA { return Hex(hexArt) }
 
 // ColorLive is the colour of anything happening now in a preview.
 func ColorLive() color.RGBA { return Hex(hexLive) }

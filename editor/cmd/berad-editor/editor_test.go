@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,8 +19,10 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/content"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/tiles"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -115,6 +119,36 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 		t.Fatalf("sample zone: %v", err)
 	}
 	readEnvelope(t, project, "texts/notes--*.json")
+	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
+	sprite, err := art.DecodeSprite(lantern.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tile, err := art.DecodeTile(readEnvelope(t, project, "tiles/lantern--*.json").Data)
+	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
+		t.Fatalf("the lantern's tile: %v", err)
+	}
+	shared, err := art.DecodePalette(readEnvelope(t, project, "palettes/*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ramps := shared.Ramps()
+	if len(ramps) != 2 || ramps[1].Name != "glass" || len(ramps[1].Shades) != 2 || ramps[1].Shades[0].Opacity != 40 {
+		t.Fatalf("the shared palette gains the glass ramp: %+v", ramps)
+	}
+	glassUsed := 0
+	for _, ref := range tile.Colors() {
+		if ref.Ramp == ramps[1].ID {
+			glassUsed++
+		}
+	}
+	if glassUsed != 2 {
+		t.Fatalf("the lantern is painted with both shades of glass: %+v", tile.Colors())
+	}
+	standIns, err := art.DecodeStandInSprites(readEnvelope(t, project, "standin-sprites/*.json").Data)
+	if shown, ok := standIns.Sprite("pickup.small"); err != nil || !ok || shown != lantern.ID {
+		t.Fatalf("the lantern shows the small pickup: %v %v %v", shown, ok, err)
+	}
 }
 
 // step is one input-script step (see window/script.go).
@@ -293,14 +327,14 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	zoomed, menuShot := shotPath(t, "map-zoom.png"), shotPath(t, "map-menu.png")
 	keysShot := shotPath(t, "map-keys.png")
 	mapScript := script(
-		expect("state:loaded", 600), wait(5),
+		expect("state:loaded", 600), wait(5), click("ui:zoom-fit"), wait(5),
 		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
 		keys("W"), keys("3"), drag("cell:4,10", "cell:5,10", "cell:6,10"), wait(10),
 		keys("Cmd+Z"), wait(60),
 		keys("R"), click("ui:grow-top"), expect("state:bounds:-16,-13,32,25", 300), wait(5),
 		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
 		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(10),
-		click("ui:zoom-in"), must("state:zoom:150", 60), click("ui:zoom-fit"), wait(5),
+		click("ui:zoom-in"), must("state:zoom:100", 60), click("ui:zoom-fit"), wait(5),
 		step{Repeat: 2, Screenshot: zoomed}, wait(5),
 		rightClick("cell:-10,5"), must("menu:add-anchor", 60), step{Repeat: 2, Screenshot: menuShot},
 		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30),
@@ -531,6 +565,228 @@ func TestBrowserRightClickMenu(t *testing.T) {
 	readEnvelope(t, project, "workflows/Routines/workflow-1--*[^t].json")
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
+}
+
+// TestBrowserMakesASpriteInAFolder sets the tile size to 24 in the Settings
+// row's inspector, makes a sprite folder from the Sprites heading's
+// right-click menu and names it, then a sprite inside it from the folder's
+// own menu. The saved sprite is in the folder and names its tile, which is
+// 24 pixels square.
+func TestBrowserMakesASpriteInAFolder(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot, settingsShot := shotPath(t, "browser-sprite.png"), shotPath(t, "browser-settings.png")
+	paletteShot := shotPath(t, "browser-palette.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		click("row:Settings"), click("ui:tile-size"), keys("Cmd+A"), typed("24"), step{Repeat: 2, Screenshot: settingsShot},
+		click("ui:save"), must("row:Settings", 60), wait(30),
+		click("row:Shared"), wait(5), step{Repeat: 2, Screenshot: paletteShot},
+		rightClick("section:sprites"), must("menu:new-folder-sprite", 60),
+		click("menu:new-folder-sprite"), wait(30), typed("Lights"), keys("Enter"),
+		must("row:Lights", 300), wait(5),
+		rightClick("row:Lights"), must("menu:new-sprite", 60),
+		click("menu:new-sprite"), must("row:Sprite 1", 300), wait(30), step{Repeat: 2, Screenshot: shot}, quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+
+	settings, err := art.DecodeSettings(readEnvelope(t, project, "art-settings/*.json").Data)
+	if err != nil || settings.TileSize != 24 {
+		t.Fatalf("the tile size is saved: %+v %v", settings, err)
+	}
+	sprite, err := art.DecodeSprite(readEnvelope(t, project, "sprites/Lights/sprite-1--*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tileFile := readEnvelope(t, project, "tiles/tile-1--*.json")
+	tile, err := art.DecodeTile(tileFile.Data)
+	if err != nil || tileFile.ID != sprite.Tile || tile.Size() != 24 {
+		t.Fatalf("the sprite's tile is 24 pixels square: %+v %v", tileFile, err)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s %s", shot, settingsShot, paletteShot)
+}
+
+// TestPixelEditorPaintsAndUndoes makes a sprite in the project browser and
+// opens it in a Pixel editor, which paints a stroke in grey 3 and another in
+// grey 5, then undoes the second in one step. Then it adds a ramp, names it
+// pane, types its shade's colour and a 40% opacity, saves them, and paints
+// with it. The saved tile keeps the first stroke and the pane, and the
+// shared palette the pane ramp, after the sample's grey and glass.
+func TestPixelEditorPaintsAndUndoes(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	painted, undone := shotPath(t, "pixel-editor.png"), shotPath(t, "pixel-editor-undone.png")
+	glassShot := shotPath(t, "pixel-editor-glass.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(600), quit(),
+	)
+	spriteScript := script(
+		must("state:loaded", 600), wait(5),
+		click("swatch:grey 3"), must("state:color:grey 3", 60),
+		drag("pixel:1,1", "pixel:2,1", "pixel:3,1"), must("state:pixel:3,1:grey 3", 120),
+		click("swatch:grey 5"), drag("pixel:1,3", "pixel:2,3", "pixel:3,3"), must("state:pixel:3,3:grey 5", 120),
+		step{Repeat: 2, Screenshot: painted},
+		keys("Cmd+Z"), must("state:pixel:1,3:clear", 120), must("state:pixel:3,3:clear", 60),
+		must("state:pixel:2,1:grey 3", 60), step{Repeat: 2, Screenshot: undone},
+		click("ui:add-ramp"), must("state:color:new ramp 1", 120),
+		click("ui:ramp-name"), keys("Cmd+A"), typed("pane"),
+		click("ui:shade-color"), keys("Cmd+A"), typed("#3060C0"),
+		click("ui:shade-opacity"), keys("Cmd+A"), typed("40"),
+		click("ui:save"), must("state:color:pane 1", 120), must("state:saved", 120),
+		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:pane 1", 120),
+		step{Repeat: 2, Screenshot: glassShot}, quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
+
+	tileFile := readEnvelope(t, project, "tiles/tile-1--*.json")
+	tile, err := art.DecodeTile(tileFile.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for col := range tile.Size() {
+		first, _ := tile.At(col, 1)
+		second, _ := tile.At(col, 3)
+		if want := col >= 1 && col <= 3 || col == 5; first.IsClear() == want || !second.IsClear() {
+			t.Fatalf("pixel %d: the first stroke is saved and the second undone: %+v %+v", col, first, second)
+		}
+	}
+	if first, _ := tile.At(2, 1); first.Shade != art.StarterShadeID(3) {
+		t.Fatalf("the first stroke is grey 3: %+v", first)
+	}
+	palette, err := art.DecodePalette(readEnvelope(t, project, "palettes/*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ramps := palette.Ramps()
+	pane := len(ramps) - 1
+	if len(ramps) != 3 || ramps[pane].Name != "pane" || len(ramps[pane].Shades) != 1 ||
+		ramps[pane].Shades[0].Color != 0x3060c0 || ramps[pane].Shades[0].Opacity != 40 {
+		t.Fatalf("the pane ramp is saved: %+v", ramps)
+	}
+	for row := range 3 {
+		if ref, _ := tile.At(5, row); ref.Ramp != ramps[pane].ID || ref.Shade != ramps[pane].Shades[0].ID {
+			t.Fatalf("pixel 5,%d is the pane: %+v", row, ref)
+		}
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s %s", painted, undone, glassShot)
+}
+
+// TestSpriteShowsOnTheMap makes a sprite show the small pickup, then draws
+// it in the Pixel editor while the Map shows the pickup at 200%: a stroke in
+// a magenta shade shows on the map as it is drawn, giving the shade a new
+// colour, cyan, recolours it there, and a fill of a 40% blue pane shows the
+// pickup's floor through it. Each is checked in the Map's screenshots. The
+// sprite takes the small pickup over from the sample's lantern, whose amber
+// glass shows the floor through it first.
+func TestSpriteShowsOnTheMap(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	stroke, recoloured := shotPath(t, "map-sprite-stroke.png"), shotPath(t, "map-sprite-recoloured.png")
+	glassShot, lanternShot := shotPath(t, "map-sprite-glass.png"), shotPath(t, "map-lantern.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(600), quit(),
+	)
+	shade := func(ramp, colour, opacity string) []step {
+		return script(
+			click("ui:add-ramp"), must("state:color:new ramp 1", 120),
+			click("ui:ramp-name"), keys("Cmd+A"), typed(ramp),
+			click("ui:shade-color"), keys("Cmd+A"), typed(colour),
+			click("ui:shade-opacity"), keys("Cmd+A"), typed(opacity),
+			click("ui:save"), must("state:color:"+ramp+" 1", 120), must("state:saved", 120),
+		)
+	}
+	spriteScript := script(
+		must("state:loaded", 600), wait(5),
+		click("ui:shows"), must("menu:standin:pickup.small", 60), click("menu:standin:pickup.small"),
+		must("state:shows:pickup.small", 120),
+		shade("ink", "#FF00FF", "100"),
+		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:ink 1", 120), wait(240),
+		click("ui:shade-color"), keys("Cmd+A"), typed("#00FFFF"), click("ui:save"), must("state:saved", 120),
+		wait(240),
+		shade("pane", "#3060C0", "40"),
+		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:pane 1", 120), wait(240), quit(),
+	)
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		click("ui:zoom-fit"), click("ui:zoom-reset"), click("ui:zoom-in"), must("state:zoom:200", 60),
+		must("state:sprite:pickup.small", 1800), step{Repeat: 2, Screenshot: lanternShot},
+		must("state:art:pickup.small:16,4:#FF00FF", 1200), step{Repeat: 2, Screenshot: stroke},
+		must("state:art:pickup.small:16,4:#00FFFF", 1200), step{Repeat: 2, Screenshot: recoloured},
+		must("state:art:pickup.small:0,0:#3060C0", 1200), step{Repeat: 2, Screenshot: glassShot},
+		quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
+
+	if got := countColor(t, lanternShot, over(0xb8702a, 40, tiles.ColorOf("floor")), 3); got < 64 {
+		t.Fatalf("the floor shows through the lantern's glass: %d pixels", got)
+	}
+	magenta, cyan := color.RGBA{R: 0xff, G: 0, B: 0xff, A: 0xff}, color.RGBA{R: 0, G: 0xff, B: 0xff, A: 0xff}
+	if got := countColor(t, stroke, magenta, 0); got < 64 {
+		t.Fatalf("the stroke shows on the map: %d magenta pixels", got)
+	}
+	if got, gone := countColor(t, recoloured, cyan, 0), countColor(t, recoloured, magenta, 0); got < 64 || gone != 0 {
+		t.Fatalf("the new colour recolours it: %d cyan pixels, %d magenta", got, gone)
+	}
+	if got := countColor(t, glassShot, over(0x3060c0, 40, tiles.ColorOf("floor")), 3); got < 256 {
+		t.Fatalf("the floor shows through the glass: %d pixels", got)
+	}
+	sprite := readEnvelope(t, project, "sprites/sprite-1--*.json")
+	standIns, err := art.DecodeStandInSprites(readEnvelope(t, project, "standin-sprites/*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shown, ok := standIns.Sprite("pickup.small"); !ok || shown != sprite.ID {
+		t.Fatalf("Sprite 1 shows the small pickup: %s %v", shown, ok)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s %s %s", lanternShot, stroke, recoloured, glassShot)
+}
+
+// countColor counts a screenshot's pixels within a tolerance of a colour.
+func countColor(t *testing.T, path string, want color.RGBA, tolerance int) int {
+	t.Helper()
+	file, err := os.Open(path) //nolint:gosec // The test's own screenshot.
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close() //nolint:errcheck // Read only.
+	shot, err := png.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	near := func(a, b uint8) bool { return max(int(a)-int(b), int(b)-int(a)) <= tolerance }
+	count := 0
+	bounds := shot.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			got := color.RGBAModel.Convert(shot.At(x, y)).(color.RGBA) //nolint:forcetypeassert // RGBAModel's own type.
+			if near(got.R, want.R) && near(got.G, want.G) && near(got.B, want.B) {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// over is a colour at an opacity, in percent, drawn over an opaque ground.
+func over(colour uint32, opacity int, ground uint32) color.RGBA {
+	alpha := opacity * 255 / 100
+	channel := func(shift int) uint8 {
+		top, below := int(colour>>shift&0xff), int(ground>>shift&0xff)
+		return uint8(top*alpha/255 + below*(255-alpha)/255)
+	}
+	return color.RGBA{R: channel(16), G: channel(8), B: channel(0), A: 0xff}
 }
 
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes

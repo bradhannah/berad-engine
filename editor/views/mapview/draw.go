@@ -60,6 +60,7 @@ const (
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layoutWidgets(docs)
+	s.sprites.refresh(docs, s.camera.tile)
 	screen.Fill(ui.ColorBackground())
 	grid := s.Grid()
 	area, ok := screen.SubImage(grid).(*ebiten.Image)
@@ -172,11 +173,24 @@ func (s *State) drawFaintCell(area *ebiten.Image, floorData *floor.Floor, cell C
 	ground, _ := floorData.Ground(cell.X, cell.Y) //nolint:errcheck // Inside the floor.
 	top, _ := floorData.Top(cell.X, cell.Y)       //nolint:errcheck // Inside the floor.
 	if ground != "" {
-		ui.FillRect(area, rect, tint(ground, belowAlpha))
+		s.drawGround(area, rect, ground, belowAlpha)
 	}
 	if top != "" {
 		s.drawTop(area, floorData, cell, rect, top, belowAlpha)
 	}
+}
+
+// drawGround draws a cell's ground: the sprite that shows it, over the
+// window's background, or its flat colour.
+func (s *State) drawGround(area *ebiten.Image, rect image.Rectangle, ground string, alpha uint8) {
+	picture, shown := s.sprites.image(ground)
+	if !shown {
+		ui.FillRect(area, rect, tint(ground, alpha))
+
+		return
+	}
+	ui.FillRect(area, rect, ui.HexAlpha(hexWhite, alpha))
+	drawSprite(area, picture, rect, alpha)
 }
 
 // drawCell draws one cell of the current floor. Unassigned ground shows a dot
@@ -187,7 +201,7 @@ func (s *State) drawCell(area *ebiten.Image, floorData *floor.Floor, cell Cell, 
 	top, _ := floorData.Top(cell.X, cell.Y)       //nolint:errcheck // Inside the floor.
 	switch {
 	case ground != "":
-		ui.FillRect(area, rect, tint(ground, fullAlpha))
+		s.drawGround(area, rect, ground, fullAlpha)
 	case !s.below.On:
 		ui.FillRect(area, rect, ui.ColorBackground())
 	}
@@ -226,12 +240,18 @@ func tint(id string, alpha uint8) color.RGBA {
 	return ui.HexAlpha(tiles.ColorOf(id), alpha)
 }
 
-// drawTop draws what sits on a cell. Walls are a core with an arm towards
-// each neighbour they join, the stand-in for the variant art a wall family
-// supplies per neighbour mask.
+// drawTop draws what sits on a cell: the sprite that shows it, filling the
+// cell, or its stand-in. Walls are a core with an arm towards each neighbour
+// they join, the stand-in for the variant art a wall family supplies per
+// neighbour mask.
 func (s *State) drawTop(
 	area *ebiten.Image, floorData *floor.Floor, cell Cell, rect image.Rectangle, top string, alpha uint8,
 ) {
+	if picture, shown := s.sprites.image(top); shown {
+		drawSprite(area, picture, rect, alpha)
+
+		return
+	}
 	definition, known := tiles.Lookup(top)
 	fill := ui.HexAlpha(tiles.ColorOf(top), alpha)
 	size := rect.Dx()

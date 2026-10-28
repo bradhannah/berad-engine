@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/art"
 )
 
 // runShellEditor opens the sample project as one window (increment 10) with
@@ -146,7 +147,8 @@ func TestShellPopsATabOut(t *testing.T) {
 		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	inTab := script(
-		must("state:loaded", 600), wait(5), keys("3"), drag("cell:4,8", "cell:5,8"), wait(30),
+		must("state:loaded", 600), wait(5), click("ui:zoom-fit"), wait(5), keys("3"),
+		drag("cell:4,8", "cell:5,8"), wait(30),
 		drag("cell:6,8", "cell:7,8"), wait(30), keys("Cmd+Shift+O"), wait(60),
 	)
 	poppedOut := script(must("state:loaded", 600), wait(30), keys("Cmd+Z"), wait(60))
@@ -250,5 +252,39 @@ func TestShellGroupsTabsByKind(t *testing.T) {
 	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript, idle, idle}})
 	noCrashes(t, project)
 	shellLog(t, project)
+	t.Logf("screenshot: %s", shot)
+}
+
+// TestShellOpensASpriteAsATab makes a sprite in the project browser and opens
+// it as a tab under Sprites, after Audio on the bar (increment 11). The Pixel
+// editor paints a stroke there, and no other window process starts.
+func TestShellOpensASpriteAsATab(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "shell-sprite.png")
+	browserScript := script(
+		must("row:Notes", 600), wait(5),
+		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(360), step{Repeat: 2, Screenshot: shot},
+		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	spriteScript := script(
+		must("state:loaded", 600), wait(5), click("swatch:grey 2"),
+		drag("pixel:2,2", "pixel:6,2", "pixel:6,6"), must("state:pixel:6,6:grey 2", 120),
+	)
+	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "sprite": {spriteScript}})
+	noCrashes(t, project)
+	shellLog(t, project)
+
+	tile, err := art.DecodeTile(readEnvelope(t, project, "tiles/tile-1--*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pixel := range [][2]int{{2, 2}, {4, 2}, {6, 2}, {6, 4}, {6, 6}} {
+		if ref, _ := tile.At(pixel[0], pixel[1]); ref.Shade != art.StarterShadeID(2) {
+			t.Fatalf("pixel %v painted in the Sprites tab is %+v", pixel, ref)
+		}
+	}
 	t.Logf("screenshot: %s", shot)
 }

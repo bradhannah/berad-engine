@@ -166,5 +166,6 @@ func Plugin() plugin.Plugin {
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: npc.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits:     []model.EditKind{SetBehaviour{}, SetNotes{}},
+		Required:  nil,
 	}
 }

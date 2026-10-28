@@ -14,7 +14,8 @@ type Icon int
 
 // Icons of the document types, of a folder, which holds documents of one
 // type, and of a sound: a cue or a recording of the audio library. The
-// project, the clock and Watch mark the windows that show no one document.
+// project, the clock and Watch mark the windows that show no one document,
+// and Settings the project's settings.
 const (
 	IconNone Icon = iota
 	IconZone
@@ -27,6 +28,9 @@ const (
 	IconProject
 	IconClock
 	IconWatch
+	IconSprite
+	IconPalette
+	IconSettings
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -53,6 +57,13 @@ const (
 	iconRowGap = IconSize / iconRows
 	iconHand   = 4
 	iconLid    = 8
+	// A sprite is drawn in pixels this big; a palette is a ramp of swatches
+	// this wide, each lighter than the last by fadeStep; a setting's slider
+	// has its knob this far from one end.
+	iconPixel  = 2
+	iconSwatch = 4
+	fadeStep   = 0x55
+	iconKnob   = 4
 )
 
 // IconColor returns the muted colour of an icon's type.
@@ -72,7 +83,9 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorMuted()
 	case IconWatch:
 		return ColorLive()
-	case IconNone, IconProject, IconClock:
+	case IconSprite, IconPalette:
+		return ColorArt()
+	case IconNone, IconProject, IconClock, IconSettings:
 	}
 
 	return ColorInk()
@@ -115,21 +128,28 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 		shoulders := image.Rect(corner.X+1, corner.Y+IconSize/Half+1, corner.X+IconSize-1, corner.Y+IconSize)
 		FillRound(screen, shoulders, IconSize/Half, ink)
 	case IconText:
-		// A page with lines of writing.
-		page := image.Rect(corner.X+iconPageGap, corner.Y, corner.X+IconSize-iconPageGap, corner.Y+IconSize)
-		StrokeRound(screen, page, iconPageGap, iconStroke, ink)
-		for line := range 3 {
-			lineY := top + float32(iconLineGap*(line+1)+1)
-			start, end := left+iconPageGap*Half, left+IconSize-iconPageGap*Half
-			vector.StrokeLine(screen, start, lineY, end, lineY, Hairline, ink, true)
-		}
+		drawPage(screen, corner, ink)
 	case IconFolder:
 		drawFolder(screen, corner, ink)
 	case IconSound:
 		drawSpeaker(screen, left, top, ink)
 	case IconProject, IconClock, IconWatch:
 		drawWindowIcon(screen, icon, left, top, ink)
+	case IconSprite, IconPalette, IconSettings:
+		drawArtIcon(screen, icon, left, top, ink)
 	case IconNone:
+	}
+}
+
+// drawPage draws a text document: a page with lines of writing.
+func drawPage(screen *ebiten.Image, corner image.Point, ink color.RGBA) {
+	left, top := float32(corner.X), float32(corner.Y)
+	page := image.Rect(corner.X+iconPageGap, corner.Y, corner.X+IconSize-iconPageGap, corner.Y+IconSize)
+	StrokeRound(screen, page, iconPageGap, iconStroke, ink)
+	for line := range 3 {
+		lineY := top + float32(iconLineGap*(line+1)+1)
+		start, end := left+iconPageGap*Half, left+IconSize-iconPageGap*Half
+		vector.StrokeLine(screen, start, lineY, end, lineY, Hairline, ink, true)
 	}
 }
 
@@ -142,7 +162,69 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 		drawClock(screen, left, top, ink)
 	case IconWatch:
 		drawEye(screen, left, top, ink)
-	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound:
+	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconSprite,
+		IconPalette, IconSettings:
+	}
+}
+
+// drawArtIcon draws the icon of a sprite, a palette or the settings.
+func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.RGBA) {
+	switch icon {
+	case IconSprite:
+		drawHeart(screen, left, top, ink)
+	case IconPalette:
+		drawRamp(screen, left, top, ink)
+	case IconSettings:
+		drawSliders(screen, left, top, ink)
+	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconProject,
+		IconClock, IconWatch:
+	}
+}
+
+// heartRows is a sprite's icon, a heart in pixels, one string per row.
+func heartRows() []string {
+	return []string{".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."}
+}
+
+// drawHeart draws a sprite: a heart drawn in big pixels.
+func drawHeart(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	rows := heartRows()
+	top += float32(IconSize-len(rows)*iconPixel) / Half
+	for row, pixels := range rows {
+		for col := range len(pixels) {
+			if pixels[col] == 'X' {
+				pixelX, pixelY := left+float32(col*iconPixel), top+float32(row*iconPixel)
+				vector.FillRect(screen, pixelX, pixelY, iconPixel, iconPixel, ink, false)
+			}
+		}
+	}
+}
+
+// drawRamp draws a palette: a ramp of three swatches, dark to light.
+func drawRamp(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	for swatch := range 3 {
+		alpha := uint8(opaque - swatch*fadeStep) //nolint:gosec // At most 255 by construction.
+		swatchLeft := left + float32(swatch*(iconSwatch+1))
+		vector.FillRect(screen, swatchLeft, top+iconPixel+1, iconSwatch, IconSize-iconPixel*Half-Half, fade(ink, alpha),
+			false)
+	}
+}
+
+// fade returns a premultiplied colour with its alpha scaled.
+func fade(ink color.RGBA, alpha uint8) color.RGBA {
+	scale := func(channel uint8) uint8 {
+		return uint8(uint32(channel) * uint32(alpha) / opaque) //nolint:gosec // At most 255 by construction.
+	}
+
+	return color.RGBA{R: scale(ink.R), G: scale(ink.G), B: scale(ink.B), A: scale(ink.A)}
+}
+
+// drawSliders draws the settings: two sliders, their knobs set apart.
+func drawSliders(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	for slider, knob := range []float32{iconKnob, IconSize - iconKnob} {
+		lineY := top + float32(iconKnob+slider*(IconSize-iconKnob*Half))
+		vector.StrokeLine(screen, left+1, lineY, left+IconSize-1, lineY, iconStroke, ink, true)
+		vector.FillCircle(screen, left+knob, lineY, iconDot, ink, true)
 	}
 }
 

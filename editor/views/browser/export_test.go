@@ -10,3 +10,12 @@ func (s *State) Rows(docs frame.Docs) []ui.Row { return s.rows(docs) }
 
 // SelectedRow returns the selected row, for tests.
 func (s *State) SelectedRow() (ui.Row, bool) { return s.list.SelectedRow() }
+
+// DialogLines returns the open dialog's lines, for tests.
+func (s *State) DialogLines() []string {
+	if s.dialog == nil {
+		return nil
+	}
+
+	return s.dialog.Lines
+}

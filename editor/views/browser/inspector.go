@@ -12,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -52,13 +53,19 @@ func kindOf(format string) kind {
 		return kind{label: npcLabel, noun: npcLabel, icon: ui.IconNPC, open: ""}
 	case textdoc.FormatName:
 		return kind{label: "Text document", noun: "text document", icon: ui.IconText, open: "Open text"}
+	case art.SpriteFormatName:
+		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: "Open sprite"}
+	case art.PaletteFormatName:
+		return kind{label: "Palette", noun: "palette", icon: ui.IconPalette, open: ""}
 	}
 
 	return kind{label: "Document", noun: "document", icon: ui.IconNone, open: ""}
 }
 
 // layoutInspector places the inspector for what is selected: a document's
-// fields and actions, or a folder's, the save bar and Delete at the foot.
+// fields and actions, or a folder's or the settings', the save bar and
+// Delete at the foot. A document every project holds keeps its name and
+// cannot be deleted.
 func (s *State) layoutInspector(docs frame.Docs) {
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
@@ -66,7 +73,13 @@ func (s *State) layoutInspector(docs frame.Docs) {
 		button.Rect = ui.Zero()
 	}
 	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
-	s.name.Rect, s.tags.Rect, s.save.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	s.name.Rect, s.tags.Rect, s.save.Rect, s.tileSize.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
+	if s.list.Selected == settingsRow {
+		s.layoutSettings(docs, left, width)
+		s.layoutNPC(docs, left, width, 0, 0)
+
+		return
+	}
 	if _, isCue := s.selectedCue(); isCue {
 		s.layoutCue(left, width)
 		s.layoutNPC(docs, left, width, 0, 0)
@@ -92,6 +105,9 @@ func (s *State) layoutInspector(docs frame.Docs) {
 		return
 	}
 	s.remove.Label = "Delete " + kindOf(entry.Format).noun + "…"
+	if everyProjectHolds(entry.ID) {
+		s.name.Rect, s.remove.Disabled = ui.Zero(), true
+	}
 	top := s.layoutTags(entry, left, width)
 	top = s.layoutActions(docs, entry, left, width, top)
 	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
@@ -148,7 +164,7 @@ func (s *State) layoutActions(docs frame.Docs, entry project.Entry, left, width,
 		s.down.Rect = image.Rect(left+half+buttonGap, top, left+width, top+ui.ButtonH)
 		_, inZone := s.zoneOf(docs, entry.ID)
 		s.open.Disabled, s.up.Disabled, s.down.Disabled = !inZone, !inZone, !inZone
-	case flow.FormatName, textdoc.FormatName:
+	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName:
 		s.open.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	}
 
@@ -175,6 +191,7 @@ func (s *State) syncName(docs frame.Docs) {
 		s.focus.Set(nil)
 		s.name.Field.Revert()
 		s.tags.Field.Revert()
+		s.tileSize.Field.Revert()
 		s.named = s.list.Selected
 	}
 	if folder, ok := s.selectedFolder(); ok {
@@ -202,7 +219,7 @@ func (s *State) guardSelection(ctx *frame.Context) {
 	if unsaved == 0 {
 		return
 	}
-	name := s.name.Field.Saved()
+	name := s.UnsavedName(ctx.Docs)
 	wanted := s.list.Selected
 	s.list.Selected = s.named
 	s.focus.Set(nil)
@@ -210,9 +227,9 @@ func (s *State) guardSelection(ctx *frame.Context) {
 }
 
 // Unsaved counts the inspector's typed changes not saved yet: the name, a
-// document's tags, and a selected NPC's notes.
+// document's tags, a selected NPC's notes and the tile size.
 func (s *State) Unsaved(frame.Docs) int {
-	count := frame.UnsavedFields(s.name, s.tags)
+	count := frame.UnsavedFields(s.name, s.tags, s.tileSize)
 	if !s.npc.npc.IsZero() {
 		count += frame.UnsavedFields(s.npc.notes)
 	}
@@ -220,9 +237,12 @@ func (s *State) Unsaved(frame.Docs) int {
 	return count
 }
 
-// Save saves the name, the tags and an NPC's notes. They are separate
-// changes, so saving several is several undo steps.
+// Save saves the name, the tags, an NPC's notes and the tile size. They are
+// separate changes, so saving several is several undo steps.
 func (s *State) Save(ctx *frame.Context) bool {
+	if s.tileSize.Field.Unsaved() {
+		s.commitTileSize(ctx)
+	}
 	if s.name.Field.Unsaved() {
 		s.commitName(ctx)
 	}
@@ -236,8 +256,12 @@ func (s *State) Save(ctx *frame.Context) bool {
 	return true
 }
 
-// UnsavedName names the document or folder whose changes are unsaved.
+// UnsavedName names the document, folder or settings whose changes are
+// unsaved.
 func (s *State) UnsavedName(frame.Docs) string {
+	if s.named == settingsRow {
+		return art.SettingsName
+	}
 	if name := s.name.Field.Saved(); name != "" {
 		return name
 	}
@@ -256,6 +280,7 @@ func (s *State) discard() {
 	s.name.Field.Revert()
 	s.tags.Field.Revert()
 	s.npc.notes.Field.Revert()
+	s.tileSize.Field.Revert()
 }
 
 // commitName renames the selected document or folder.
@@ -287,11 +312,16 @@ func (s *State) commitName(ctx *frame.Context) {
 
 // drawInspector draws what is selected: a document's type and name, its
 // name field and ID, its tags and folder, its actions, its NPC panel, the
-// save bar and Delete; or a folder's.
+// save bar and Delete; or a folder's, a cue's or the settings'.
 func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	panel := frame.Inspector(s.size)
 	left := panel.Min.X + ui.Inset
+	if s.list.Selected == settingsRow {
+		s.drawSettings(screen, left)
+
+		return
+	}
 	if folder, ok := s.selectedFolder(); ok {
 		s.drawFolder(screen, docs, folder, left)
 
@@ -314,8 +344,13 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	about := kindOf(entry.Format)
 	s.drawHeader(screen, about.icon, about.label, entry.Name, left)
 	s.theme.Heading(screen, "NAME", left, nameFieldTop-ui.LineHeight)
-	s.name.Draw(screen)
-	s.theme.DrawText(screen, "ID "+entry.ID.String(), left, s.name.Rect.Max.Y+ui.Gap, ui.ColorSubdued())
+	if s.name.Rect.Empty() {
+		s.theme.DrawText(screen, "Every project holds it, so it keeps its name.", left,
+			nameFieldTop+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
+	} else {
+		s.name.Draw(screen)
+	}
+	s.theme.DrawText(screen, "ID "+entry.ID.String(), left, nameFieldTop+ui.ButtonH+ui.Gap, ui.ColorSubdued())
 	s.theme.Heading(screen, "TAGS", left, tagsFieldTop-ui.LineHeight)
 	s.tags.Draw(screen)
 	for _, chip := range s.tagBns {
