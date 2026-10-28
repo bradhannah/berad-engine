@@ -458,6 +458,16 @@ a game starts with is the game's own choice. Modern Old Game chose a
   unless `--sample` filled it. Verified with a headless test that opens a
   folder that does not exist yet, twice: it gains the shared palette, the art
   settings and the stand-in sprites, and no sample.
+- **The palette panel's swatches scroll** when they do not fit, found while
+  making Modern Old Game's project: its 256 colours ran under Shows and the
+  save bar, and the last ramps could not be reached. + Ramp, the chosen
+  ramp's name, the chosen shade's colour and opacity, Shows and the save bar
+  stay at the foot of the panel; the clear colour and the ramps fill the
+  space above, scroll with the wheel between the top and the last row, and
+  show a scroll bar. A swatch an input script names is scrolled into view.
+  Verified with a view test of sixteen more ramps of sixteen shades: the
+  last swatch is scrolled to and chosen, the fields stay below the
+  swatches, and the wheel stops at the top and at the last row.
 
 ## Not in this increment
 

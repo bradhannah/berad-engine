@@ -78,6 +78,8 @@ type State struct {
 	zoomFit *ui.Button
 	grid    *ui.Toggle
 	panel   panelLayout
+	// scroll is how far the palette panel's swatches are scrolled.
+	scroll int
 	// named is the ramp and shade the typed fields hold.
 	named        art.ColorRef
 	rampName     *ui.TextField
@@ -109,7 +111,7 @@ func New(window, sprite ids.ULID, theme *ui.Theme) *State {
 		tools: nil, zoomOut: ui.NewButton("zoom-out", "−"), zoomIn: ui.NewButton("zoom-in", "+"),
 		zoomFit: ui.NewButton("zoom-fit", "Fit"),
 		grid:    &ui.Toggle{ID: "grid", Label: "Grid", Rect: ui.Zero(), On: true},
-		panel:   newPanelLayout(), named: clearColor(),
+		panel:   newPanelLayout(), scroll: 0, named: clearColor(),
 		rampName:     field("ramp-name", art.MaxNameLength),
 		shadeColor:   field("shade-color", colorBytes),
 		shadeOpacity: field("shade-opacity", opacityBytes),
