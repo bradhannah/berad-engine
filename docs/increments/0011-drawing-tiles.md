@@ -1,6 +1,6 @@
 # Increment 11: Drawing tiles
 
-**Status:** Built
+**Status:** Judged by its author on 2026-10-27
 
 The eleventh increment is the first slice of the pixel editor. An author
 sets the game's tile size, builds the shared palette from ramps named for
@@ -298,7 +298,7 @@ PALETTES    1
 | 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Built |
 | 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Built |
 | 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Built |
-| 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Built; not yet judged |
+| 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Judged |
 
 Where each step changes code:
 
@@ -446,7 +446,28 @@ Where each step changes code:
 
 ## Changed after its author tried it
 
-None yet.
+Tried by its author on 2026-10-27, who said "yes it looks good" and found the
+starter palette "a little sparse". The starter stays as it was: which colours
+a game starts with is the game's own choice. Modern Old Game chose a
+256-colour palette, DawnBringer's Aurora, recorded in its research.
+
+- **Opening a folder with no project makes one,** holding only the documents
+  every project holds. Asked for by its author on 2026-10-27, choosing this
+  over a flag for new projects, so a game's project can start with nothing
+  but its palette. Before, `open` refused a project with nothing authored
+  unless `--sample` filled it. Verified with a headless test that opens a
+  folder that does not exist yet, twice: it gains the shared palette, the art
+  settings and the stand-in sprites, and no sample.
+- **The palette panel's swatches scroll** when they do not fit, found while
+  making Modern Old Game's project: its 256 colours ran under Shows and the
+  save bar, and the last ramps could not be reached. + Ramp, the chosen
+  ramp's name, the chosen shade's colour and opacity, Shows and the save bar
+  stay at the foot of the panel; the clear colour and the ramps fill the
+  space above, scroll with the wheel between the top and the last row, and
+  show a scroll bar. A swatch an input script names is scrolled into view.
+  Verified with a view test of sixteen more ramps of sixteen shades: the
+  last swatch is scrolled to and chosen, the fields stay below the
+  swatches, and the wheel stops at the top and at the last row.
 
 ## Not in this increment
 

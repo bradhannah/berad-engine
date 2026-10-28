@@ -13,8 +13,8 @@ import (
 // Locate finds a named part of the window for input scripts: "ui:<id>" for
 // a button, a field or the grid toggle, "pixel:<col>,<row>" for a tile pixel,
 // "swatch:<colour>" for a colour in the palette panel ("swatch:clear",
-// "swatch:grey 3") and "ramp:<name>" for a ramp's name. "state:…" answers
-// scripts waiting for the window.
+// "swatch:grey 3") and "ramp:<name>" for a ramp's name, each scrolled into
+// view. "state:…" answers scripts waiting for the window.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	shared, _ := palette(docs, art.SharedPaletteID())
 	s.layout(docs, shared)
@@ -49,13 +49,13 @@ func (s *State) locatePanel(kind, value string) (image.Point, bool) {
 	case "swatch":
 		for _, offered := range s.panel.swatches {
 			if offered.name == value {
-				return ui.Center(offered.rect), true
+				return ui.Center(s.reveal(offered.rect)), true
 			}
 		}
 	case "ramp":
 		for _, label := range s.panel.ramps {
 			if label.ramp.Name == value {
-				return ui.Center(label.rect), true
+				return ui.Center(s.reveal(label.rect)), true
 			}
 		}
 	}

@@ -59,9 +59,6 @@ const (
 	stairsRow      = -2
 )
 
-// ErrNoDocuments reports a project with nothing to edit.
-var ErrNoDocuments = errors.New("the project has no documents; run with --sample to create one")
-
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
 }
@@ -100,8 +97,10 @@ func usage(stderr io.Writer) {
 	report(stderr, `usage:
   berad-editor open [--project DIR] [--sample] [--shell] [--tap FILE] [--no-window] [--exit-after DURATION]
       Open a project: start its orchestrator, the project browser and a Map
-      window on the first zone. With --shell, open one window instead: the
-      project browser, with every window opened after it as one of its tabs.
+      window on the first zone. A folder with no project becomes one, holding
+      only what every project holds; with --sample, an empty project gets a
+      sample to try. With --shell, open one window instead: the project
+      browser, with every window opened after it as one of its tabs.
   berad-editor window --socket PATH --view VIEW --target ID --window ID [--shell]
       Run one editor window (started by the orchestrator).
 `)
@@ -166,10 +165,8 @@ func runOpen(args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if options.sample {
-		if err := os.MkdirAll(options.project, dirPerm); err != nil {
-			return fmt.Errorf("create project: %w", err)
-		}
+	if err := os.MkdirAll(options.project, dirPerm); err != nil {
+		return fmt.Errorf("create project: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -266,7 +263,8 @@ func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID, she
 
 // ensureDocuments returns the first zone by name, creating the sample project,
 // with its audio, in an empty project when asked to. A project is empty when
-// it holds only the documents every project holds.
+// it holds only the documents every project holds; without the sample it
+// opens as it is, with no zone.
 func ensureDocuments(
 	orch *orchestrator.Orchestrator, registry *plugin.Registry, sample bool, projectDir string,
 ) (ids.ULID, error) {
@@ -279,7 +277,7 @@ func ensureDocuments(
 	})
 	if !authored {
 		if !sample {
-			return ids.ULID{}, ErrNoDocuments
+			return ids.ULID{}, nil
 		}
 		if err := sampleAudio(projectDir); err != nil {
 			return ids.ULID{}, err

@@ -28,6 +28,7 @@ const (
 	opacityWidth = 56
 	buttonWidth  = 112
 	chosenWidth  = 2
+	scrollBar    = 4
 	// A new ramp is named newRampName, numbered after the first, and starts
 	// with one shade of newShade.
 	newRampName = "new ramp"
@@ -50,10 +51,13 @@ type rampLabel struct {
 }
 
 // panelLayout is where the palette panel's parts are this frame: the
-// swatches and ramp names, and the tops of its headings.
+// swatches and ramp names, the area they scroll in and how tall they are,
+// and the tops of its headings.
 type panelLayout struct {
 	swatches  []swatch
 	ramps     []rampLabel
+	area      image.Rectangle
+	content   int
 	rampTop   int
 	shadeTop  int
 	shadeName string
@@ -61,7 +65,9 @@ type panelLayout struct {
 }
 
 func newPanelLayout() panelLayout {
-	return panelLayout{swatches: nil, ramps: nil, rampTop: 0, shadeTop: 0, shadeName: "", showsTop: 0}
+	return panelLayout{
+		swatches: nil, ramps: nil, area: ui.Zero(), content: 0, rampTop: 0, shadeTop: 0, shadeName: "", showsTop: 0,
+	}
 }
 
 // chosenRamp returns the shared palette's ramp the panel shows, and its
@@ -83,9 +89,10 @@ func (s *State) chosenRamp(shared *art.Palette) (art.Ramp, art.Shade, int, bool)
 	return ramp, shade, number, true
 }
 
-// layoutPanel places the palette panel: the clear colour and each ramp's
-// shades, + Ramp, the chosen ramp's name, the chosen shade's colour and
-// opacity with their buttons, and at the foot Shows and the save bar.
+// layoutPanel places the palette panel. At its foot are the save bar, Shows,
+// and above them + Ramp, the chosen ramp's name and the chosen shade's colour
+// and opacity with their buttons; the clear colour and each ramp's shades
+// fill the space above, scrolling when they do not fit.
 func (s *State) layoutPanel(docs frame.Docs, shared *art.Palette) {
 	inspector := frame.Inspector(s.size)
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
@@ -103,13 +110,41 @@ func (s *State) layoutPanel(docs frame.Docs, shared *art.Palette) {
 	if shared == nil {
 		return
 	}
-	top := s.layoutSwatches(shared, left, width)
-	s.addRamp.Rect = image.Rect(left, top, left+buttonWidth, top+ui.ButtonH)
-	ramp, shade, number, chosen := s.chosenRamp(shared)
-	if !chosen {
-		return
+	top := s.layoutEditing(shared, left, width, s.panel.showsTop-ui.Inset)
+	area := image.Rect(left-ui.Half*chosenWidth, ui.Inset+ui.LineHeight, left+width, top-ui.Gap)
+	s.layoutSwatches(shared, left, width, area)
+}
+
+// layoutEditing places + Ramp and the chosen ramp's and shade's fields and
+// buttons, pinned with their foot at bottom however long the palette, and
+// returns their top.
+func (s *State) layoutEditing(shared *art.Palette, left, width, bottom int) int {
+	s.addRamp.Rect = image.Rect(left, 0, left+buttonWidth, ui.ButtonH)
+	end := s.addRamp.Rect.Max.Y
+	if ramp, shade, number, chosen := s.chosenRamp(shared); chosen {
+		end = s.layoutChosen(ramp, shade, number, left, width, end+ui.Inset)
 	}
-	top = s.addRamp.Rect.Max.Y + ui.Inset
+	shift := image.Pt(0, bottom-end)
+	for _, button := range []*ui.Button{s.addRamp, s.addShade, s.removeShade, s.removeRamp} {
+		if !button.Rect.Empty() {
+			button.Rect = button.Rect.Add(shift)
+		}
+	}
+	for _, field := range []*ui.TextField{s.rampName, s.shadeColor, s.shadeOpacity} {
+		if !field.Rect.Empty() {
+			field.Rect = field.Rect.Add(shift)
+		}
+	}
+	s.panel.rampTop += shift.Y
+	s.panel.shadeTop += shift.Y
+
+	return s.addRamp.Rect.Min.Y
+}
+
+// layoutChosen places the chosen ramp's name and its buttons, with the
+// chosen shade's colour and opacity between, from top down, and returns
+// their foot.
+func (s *State) layoutChosen(ramp art.Ramp, shade art.Shade, number, left, width, top int) int {
 	s.panel.rampTop = top
 	s.rampName.Rect = image.Rect(left, top+ui.LineHeight, left+width, top+ui.LineHeight+ui.ButtonH)
 	top = s.rampName.Rect.Max.Y + ui.Inset
@@ -127,18 +162,26 @@ func (s *State) layoutPanel(docs frame.Docs, shared *art.Palette) {
 	}
 	top = s.addShade.Rect.Max.Y + ui.Gap
 	s.removeRamp.Rect = image.Rect(left, top, left+buttonWidth, top+ui.ButtonH)
+
+	return s.removeRamp.Rect.Max.Y
 }
 
-// layoutSwatches places the clear colour and every ramp's name and shades,
-// a ramp's shades wrapping onto further rows, and returns the top of what
-// follows.
-func (s *State) layoutSwatches(shared *art.Palette, left, width int) int {
-	top := ui.Inset + ui.LineHeight
+// layoutSwatches places the clear colour and every ramp's name and shades in
+// an area, a ramp's shades wrapping onto further rows, scrolled by the
+// panel's scroll, which it keeps within what there is to show.
+func (s *State) layoutSwatches(shared *art.Palette, left, width int, area image.Rectangle) {
+	perRow := max(1, (width-rampColumn)/swatchStep)
+	s.panel.area = area
+	s.panel.content = swatchStep
+	for _, ramp := range shared.Ramps() {
+		s.panel.content += max(1, (len(ramp.Shades)+perRow-1)/perRow) * swatchStep
+	}
+	s.scrollPanel(0)
+	top := area.Min.Y - s.scroll
 	s.panel.swatches = append(s.panel.swatches, swatch{
 		rect: image.Rect(left, top, left+swatchSize, top+swatchSize), color: clearColor(), name: "clear",
 	})
 	top += swatchStep
-	perRow := max(1, (width-rampColumn)/swatchStep)
 	for _, ramp := range shared.Ramps() {
 		s.panel.ramps = append(s.panel.ramps, rampLabel{
 			rect: image.Rect(left, top, left+rampColumn-ui.Gap, top+swatchSize), ramp: ramp,
@@ -156,8 +199,26 @@ func (s *State) layoutSwatches(shared *art.Palette, left, width int) int {
 		}
 		top += swatchStep
 	}
+}
 
-	return top + ui.Gap
+// scrollPanel scrolls the swatches by a distance, kept between the top and
+// the last row.
+func (s *State) scrollPanel(distance int) {
+	s.scroll = min(max(s.scroll+distance, 0), max(s.panel.content-s.panel.area.Dy(), 0))
+}
+
+// reveal scrolls the swatches so a part of them is in view, and returns
+// where it is then.
+func (s *State) reveal(rect image.Rectangle) image.Rectangle {
+	area, before := s.panel.area, s.scroll
+	switch {
+	case rect.Min.Y < area.Min.Y:
+		s.scrollPanel(rect.Min.Y - area.Min.Y)
+	case rect.Max.Y > area.Max.Y:
+		s.scrollPanel(rect.Max.Y - area.Max.Y)
+	}
+
+	return rect.Sub(image.Pt(0, s.scroll-before))
 }
 
 // updatePanel handles the panel's buttons and a click on a swatch or a ramp's
@@ -174,7 +235,10 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context, shared *art.Pal
 		s.removeChosenRamp(ctx, shared)
 	case s.shows.Update(input):
 		s.openShows(ctx.Docs)
-	case input.Pressed:
+	case input.Cursor.In(s.panel.area) && input.WheelY != 0:
+		s.scrollPanel(-input.WheelPan().Y)
+		input.WheelX, input.WheelY = 0, 0
+	case input.Pressed && input.Cursor.In(s.panel.area):
 		s.choosePanel(input)
 	}
 }
@@ -498,18 +562,7 @@ func (s *State) drawPanel(screen *ebiten.Image, shared *art.Palette) {
 
 		return
 	}
-	s.theme.DrawText(screen, "clear", left+swatchSize+ui.Gap*ui.Half, ui.Inset+ui.LineHeight+ui.Gap/ui.Half,
-		ui.ColorMuted())
-	for _, label := range s.panel.ramps {
-		s.theme.DrawText(screen, s.theme.FitText(label.ramp.Name, label.rect.Dx()), label.rect.Min.X,
-			label.rect.Min.Y+ui.Gap/ui.Half, ui.ColorInk())
-		if s.color.Ramp == label.ramp.ID && s.color.Shade.IsZero() {
-			ui.StrokeRound(screen, label.rect.Inset(-chosenWidth), ui.Radius, chosenWidth, ui.ColorSelect())
-		}
-	}
-	for _, offered := range s.panel.swatches {
-		s.drawSwatch(screen, shared, offered)
-	}
+	s.drawSwatches(screen, shared)
 	s.addRamp.Draw(screen, s.theme)
 	if !s.rampName.Rect.Empty() {
 		s.theme.Heading(screen, "RAMP", left, s.panel.rampTop)
@@ -536,6 +589,34 @@ func (s *State) drawPanel(screen *ebiten.Image, shared *art.Palette) {
 
 // drawSwatch draws one colour: see-through shades over a checkerboard, and
 // the chosen colour outlined in blue.
+// drawSwatches draws the clear colour and every ramp's name and shades,
+// clipped to their area, with a scroll bar when they do not fit.
+func (s *State) drawSwatches(screen *ebiten.Image, shared *art.Palette) {
+	area, clipped := screen.SubImage(s.panel.area).(*ebiten.Image)
+	if !clipped || len(s.panel.swatches) == 0 {
+		return
+	}
+	empty := s.panel.swatches[0].rect
+	s.theme.DrawText(area, "clear", empty.Max.X+ui.Gap*ui.Half, empty.Min.Y+ui.Gap/ui.Half, ui.ColorMuted())
+	for _, label := range s.panel.ramps {
+		s.theme.DrawText(area, s.theme.FitText(label.ramp.Name, label.rect.Dx()), label.rect.Min.X,
+			label.rect.Min.Y+ui.Gap/ui.Half, ui.ColorInk())
+		if s.color.Ramp == label.ramp.ID && s.color.Shade.IsZero() {
+			ui.StrokeRound(area, label.rect.Inset(-chosenWidth), ui.Radius, chosenWidth, ui.ColorSelect())
+		}
+	}
+	for _, offered := range s.panel.swatches {
+		if offered.rect.Overlaps(s.panel.area) {
+			s.drawSwatch(area, shared, offered)
+		}
+	}
+	if view := s.panel.area.Dy(); s.panel.content > view {
+		top := s.panel.area.Min.Y + s.scroll*view/s.panel.content
+		bar := image.Rect(s.panel.area.Max.X-scrollBar, top, s.panel.area.Max.X, top+view*view/s.panel.content)
+		ui.FillRound(screen, bar, scrollBar/ui.Half, ui.ColorSubdued())
+	}
+}
+
 func (s *State) drawSwatch(screen *ebiten.Image, shared *art.Palette, offered swatch) {
 	rect := offered.rect
 	half := rect.Dx() / ui.Half

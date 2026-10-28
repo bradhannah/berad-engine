@@ -2,8 +2,10 @@ package pixelview_test
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -612,4 +614,68 @@ func TestShowsChoosesTheStandInItReplaces(t *testing.T) {
 	if !f.has("shows:") || f.status() != "Shows nothing: Medium pickup is its flat colour again" {
 		t.Fatalf("shows nothing: %q", f.status())
 	}
+}
+
+// TestALongPaletteScrolls gives the shared palette sixteen more ramps of
+// sixteen shades, too many to fit. The swatches scroll with the wheel, between
+// the top and their last row, while + Ramp, the chosen shade's fields, Shows
+// and the save bar stay below them; a swatch out of view is scrolled to and
+// chosen.
+func TestALongPaletteScrolls(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.docs.View(art.SharedPaletteID(), func(document client.Document) {
+		shared := document.Model.(*artplugin.PaletteDocument).Palette
+		for number := range 16 {
+			ramp := art.Ramp{ID: longID(number * 20), Name: "r" + strconv.Itoa(number), Shades: nil}
+			for shade := range 16 {
+				ramp.Shades = append(ramp.Shades, art.Shade{
+					ID: longID(number*20 + shade + 1), Color: art.RGB(0x0f0f0f * (shade + 1)), Opacity: 100,
+				})
+			}
+			if err := shared.InsertRamp(len(shared.Ramps()), ramp); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	f.docs.Touch(art.SharedPaletteID())
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	area := f.state.PanelArea()
+	if f.state.PanelScroll() != 0 || area.Empty() {
+		t.Fatalf("the swatches start at the top: %d in %v", f.state.PanelScroll(), area)
+	}
+	last := f.at("swatch:r15 16")
+	if f.state.PanelScroll() == 0 || !last.In(area) {
+		t.Fatalf("the last swatch is scrolled into view: %v in %v, scrolled %d", last, area, f.state.PanelScroll())
+	}
+	f.click("swatch:r15 16")
+	if !f.has("color:r15 16") {
+		t.Fatal("the last swatch is chosen")
+	}
+	area = f.state.PanelArea()
+	for _, widget := range []string{"ui:add-ramp", "ui:shade-color", "ui:shade-opacity", "ui:shows"} {
+		if at := f.at(widget); at.Y <= area.Max.Y {
+			t.Fatalf("%s stays below the swatches: %v, area %v", widget, at, area)
+		}
+	}
+	wheel := func(amount float64) int {
+		input := ui.NewInput(ui.Center(area))
+		input.WheelY = amount
+		f.frame(input)
+
+		return f.state.PanelScroll()
+	}
+	if top := wheel(-1000); top != 0 {
+		t.Fatalf("scrolling up stops at the top: %d", top)
+	}
+	bottom := wheel(1000)
+	if bottom <= 0 || bottom != wheel(10) {
+		t.Fatalf("scrolling down stops at the last row: %d", bottom)
+	}
+}
+
+// longID is a test ID for a long palette's ramps and shades, beyond the
+// fixture's.
+func longID(number int) ids.ULID {
+	return ids.MustParse(fmt.Sprintf("01ARZ3NDEKTSV4RRFFQ69G%04d", number))
 }
