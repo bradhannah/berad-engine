@@ -27,6 +27,7 @@ var (
 	tileID       = frametest.ID(2)
 	glassRampID  = frametest.ID(3)
 	glassShadeID = frametest.ID(4)
+	chestID      = frametest.ID(5)
 )
 
 // grey is a shade of the starter ramp, by its number.
@@ -51,7 +52,8 @@ type fixture struct {
 }
 
 // newFixture opens the sprite Lantern, whose tile is 8 pixels square, with
-// the shared palette's grey ramp and a ramp "glass" of one shade at 40%.
+// the shared palette's grey ramp and a ramp "glass" of one shade at 40%. The
+// sprite Chest shows the medium pickup.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	theme, err := ui.NewTheme()
@@ -77,7 +79,13 @@ func newFixture(t *testing.T) *fixture {
 		{ID: tileID, Name: "Tile 1", Format: art.TileFormatName},
 		{ID: art.SharedPaletteID(), Name: art.SharedPaletteName, Format: art.PaletteFormatName},
 		{ID: art.SettingsID(), Name: art.SettingsName, Format: art.SettingsFormatName},
+		{ID: chestID, Name: "Chest", Format: art.SpriteFormatName},
 	}))
+	standIns := art.NewStandInSprites()
+	if _, err := standIns.Set("pickup.medium", chestID); err != nil {
+		t.Fatal(err)
+	}
+	docs.Put(art.StandInsID(), art.StandInsName, &artplugin.StandInsDocument{Sprites: standIns})
 	docs.Put(art.SharedPaletteID(), art.SharedPaletteName, &artplugin.PaletteDocument{Palette: palette})
 	docs.Put(art.SettingsID(), art.SettingsName, &artplugin.SettingsDocument{Settings: art.Settings{TileSize: tileSize}})
 	docs.Put(tileID, "Tile 1", &artplugin.TileDocument{Tile: tile})
@@ -562,14 +570,46 @@ func itoa(value int) string {
 	return string(rune('0' + value))
 }
 
-// TestGlassIsPremultipliedForDrawing checks the tile picture's colours are
-// scaled by their alpha, as Ebitengine takes them, so a 40% blue over white
-// shows a pale blue, not a brighter colour.
-func TestGlassIsPremultipliedForDrawing(t *testing.T) {
+// TestShowsChoosesTheStandInItReplaces makes the sprite show the small
+// pickup, then the medium pickup, taking it over from Chest in one step that
+// also puts the small pickup back to its flat colour, then nothing. Walls
+// are not offered.
+func TestShowsChoosesTheStandInItReplaces(t *testing.T) {
 	t.Parallel()
-	got := pixelview.Premultiply([]byte{0x30, 0x60, 0xc0, 102, 255, 128, 0, 255, 9, 9, 9, 0})
-	want := []byte{19, 38, 76, 102, 255, 128, 0, 255, 0, 0, 0, 0}
-	if !slices.Equal(got, want) {
-		t.Fatalf("premultiplied %v, want %v", got, want)
+	f := newFixture(t)
+	if !f.has("shows:") {
+		t.Fatal("a new sprite shows nothing")
+	}
+	f.click("ui:shows")
+	if _, offered := f.state.Locate("menu:standin:wall.a", f.docs); offered {
+		t.Fatal("a wall family cannot be shown by a sprite")
+	}
+	f.click("menu:standin:pickup.small")
+	f.applyAll()
+	if !f.has("shows:pickup.small") || f.status() != "Shows Small pickup on every map" {
+		t.Fatalf("shows the small pickup: %q", f.status())
+	}
+	before := len(f.requests.Commands)
+	f.click("ui:shows")
+	f.click("menu:standin:pickup.medium")
+	sent := f.requests.Commands[before:]
+	var cleared, set artplugin.StandInArgs
+	if len(sent) != 2 || sent[0].Command.Gesture != sent[1].Command.Gesture ||
+		sent[0].Decode(&cleared) != nil || sent[1].Decode(&set) != nil {
+		t.Fatalf("one step of two commands: %+v", sent)
+	}
+	if cleared.StandIn != "pickup.small" || !cleared.Sprite.IsZero() || set.StandIn != "pickup.medium" ||
+		set.Sprite != spriteID {
+		t.Fatalf("cleared %+v, set %+v", cleared, set)
+	}
+	f.applyAll()
+	if !f.has("shows:pickup.medium") || !strings.Contains(f.status(), "in place of Chest") {
+		t.Fatalf("takes over the medium pickup: %q", f.status())
+	}
+	f.click("ui:shows")
+	f.click("menu:standin:")
+	f.applyAll()
+	if !f.has("shows:") || f.status() != "Shows nothing: Medium pickup is its flat colour again" {
+		t.Fatalf("shows nothing: %q", f.status())
 	}
 }

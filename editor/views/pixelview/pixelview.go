@@ -87,10 +87,13 @@ type State struct {
 	addShade     *ui.Button
 	removeShade  *ui.Button
 	removeRamp   *ui.Button
-	save         *ui.SaveBar
-	guard        frame.Guard
-	focus        ui.Focus
-	picture      picture
+	// shows opens showsMenu, which chooses the stand-in the sprite shows.
+	shows     *ui.Button
+	showsMenu ui.Menu
+	save      *ui.SaveBar
+	guard     frame.Guard
+	focus     ui.Focus
+	picture   picture
 }
 
 // New returns the Pixel editor for a sprite.
@@ -113,9 +116,11 @@ func New(window, sprite ids.ULID, theme *ui.Theme) *State {
 		addRamp:      ui.NewButton("add-ramp", "+ Ramp"), addShade: ui.NewButton("add-shade", "+ Shade"),
 		removeShade: ui.NewButton("remove-shade", "Remove shade"),
 		removeRamp:  ui.NewButton("remove-ramp", "Remove ramp"),
-		save:        ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picture: newPicture(),
+		shows:       ui.NewButton("shows", "Nothing"), showsMenu: ui.Menu{Items: nil, Width: 0},
+		save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picture: newPicture(),
 	}
 	view.removeRamp.Danger = true
+	view.shows.Caret = true
 	for _, info := range tools() {
 		view.tools = append(view.tools, ui.NewButton("tool-"+string(info.tool), info.label))
 	}
@@ -155,10 +160,12 @@ func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
 // Start subscribes to what the window shows. The window has already
 // subscribed to the sprite; this adds the project index for names, the art
-// settings for the tile size, the shared palette, and the sprite's tile.
+// settings for the tile size, the stand-in sprites for Shows, the shared
+// palette, and the sprite's tile.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
 	s.subscribe(art.SettingsID(), ctx)
+	s.subscribe(art.StandInsID(), ctx)
 	s.syncSubscriptions(ctx)
 }
 
@@ -340,6 +347,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if s.showsMenu.IsOpen() {
+		s.updateShows(input, ctx)
+
+		return
+	}
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -404,6 +416,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.drawToolbar(screen)
 	s.drawReadout(screen, docs)
 	s.drawPanel(screen, shared)
+	s.showsMenu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
 }
 

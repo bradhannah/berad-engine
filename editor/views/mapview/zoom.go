@@ -39,7 +39,8 @@ func newZoomControl() *zoomControl {
 func (z *zoomControl) buttons() []*ui.Button { return []*ui.Button{z.out, z.reset, z.in, z.fit} }
 
 // layout places the control in the grid's bottom-right corner and labels the
-// zoom as a percentage of the default cell size.
+// zoom as a percentage of the tile size, so 100% shows sprites at their
+// actual size.
 func (z *zoomControl) layout(grid image.Rectangle, view camera) {
 	widths := []int{zoomStep, zoomLabel, zoomStep, zoomFit}
 	total := zoomPad
@@ -53,8 +54,8 @@ func (z *zoomControl) layout(grid image.Rectangle, view camera) {
 		button.Rect = image.Rect(left, z.card.Rect.Min.Y+zoomPad, left+widths[index], z.card.Rect.Max.Y-zoomPad)
 		left += widths[index] + zoomPad
 	}
-	z.reset.Label = strconv.Itoa(view.cellSize()*zoomPercent/zoomSizes()[defaultZoom]) + "%"
-	z.out.Disabled, z.in.Disabled = view.zoom == 0, view.zoom == len(zoomSizes())-1
+	z.reset.Label = strconv.Itoa(view.cellSize()*zoomPercent/view.tile) + "%"
+	z.out.Disabled, z.in.Disabled = view.zoom == 0, view.zoom == len(zoomSizes(view.tile))-1
 }
 
 // update handles the control's buttons, and keeps any press on the card from

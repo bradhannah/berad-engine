@@ -109,6 +109,17 @@ building:
 - **The Pixel editor is a window kind of its own,** Sprites, after Audio on the
   window bar, and opens as a tab or, without the shell, as a window process.
 
+Asked of its author on 2026-10-27, before step 5, and answered:
+
+- **The Map opens at a sprite's actual size:** 100% is one screen pixel for
+  each of a sprite's pixels, so a 32-pixel tile fills a 32-pixel cell, where
+  the Map's cells were 24 pixels before. Its zoom steps are a quarter, a
+  half, and one to four times the tile size.
+- **A sprite shows one stand-in,** chosen from a dropdown under Shows, as the
+  wireframe has it, and each stand-in has at most one sprite.
+- **Step 6's sprite is a lantern drawn for it,** shown as the small pickup,
+  in grey with an amber glass ramp at 40%.
+
 Chosen while building, for its author to check:
 
 - **Clear is the empty colour,** not a ramp: a pixel that names no shade is
@@ -203,6 +214,30 @@ Chosen while building, for its author to check:
   with the tile's size at the right. A second line, in red, flags a tile of
   another size than the project's, or pixels whose colour cannot be found.
 
+- **Shows sits at the foot of the palette panel,** above the save bar. Its
+  menu offers Nothing and every stand-in but the walls, naming the sprite
+  that already shows one. Choosing a stand-in takes it over, and the
+  stand-in the sprite showed before goes back to its flat colour, in one
+  undo step.
+- **A sprite fills its cell on the Map,** whether it shows ground or what
+  sits on it: a pickup is no longer drawn smaller than its cell, a door has
+  no wall arms and stairs no chevron. A ground sprite's see-through pixels
+  show white; anything else's show the cell's ground.
+- **The quarter and half zooms are smoothed;** the others are drawn without
+  smoothing. A tile size that does not divide by four rounds the quarter
+  down, to at least 2 pixels.
+- **The zoom shows a percentage of the tile size,** so 100% is actual size,
+  and a new tile size keeps the zoom level.
+- **The floor below shows its sprites faintly,** as it shows stand-ins.
+- **Deleting a sprite leaves its stand-in naming it,** as deleting any
+  document leaves references to it; the Map draws the stand-in's flat colour
+  until undo brings the sprite back.
+- **The Pixel editor and the Map draw a tile the same way,** with a new
+  package, `editor/views/tileart`, that keeps a tile's picture until the
+  tile or one of its palettes changes.
+- **Real-window tests that paint the far side of the sample floor fit it
+  first,** since at 100% its cells are bigger and some are out of view.
+
 ## Wireframes
 
 The Pixel editor in the first slice, as a tab. Letters in brackets stand for
@@ -252,7 +287,7 @@ PALETTES    1
 | 2. Art plug-in | `editor/plugins/art`: the document types and edit kinds (add, rename and remove a ramp; add, set and remove a shade; paint pixels; set the tile size; set a stand-in's sprite); the shared palette and settings added on open; removal refused while in use | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests of opening an older project and of a refused removal | Built |
 | 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Built |
 | 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Built |
-| 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Planned |
+| 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Built |
 | 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Planned |
 
 Where each step changes code:
@@ -267,7 +302,8 @@ Where each step changes code:
   `editor/window/kinds.go` and `editor/window/window.go`, and the project
   browser's Open.
 - **On the map:** `editor/views/mapview` (drawing a cell, and the zoom steps
-  in `camera.go`).
+  in `camera.go`), Shows in `editor/views/pixelview`, and a new
+  `editor/views/tileart` that both draw tiles with.
 
 ## Step results
 
@@ -362,6 +398,25 @@ Where each step changes code:
   ramp. In the shell, the sprite opens as a tab under Sprites and paints
   there, with no other window process; all 32 real-window tests pass.
   `make check` shows no lint findings, with every package passing.
+- **On the map:** the Pixel editor's Shows chooses the stand-in a sprite
+  replaces on every map, and the Map draws that sprite's tile to fill each
+  cell of the stand-in, live as it is painted, at zoom steps from the tile
+  size: a quarter, a half, and one to four times, with 100% the actual
+  size. A tile of another size keeps the stand-in's flat colour. Verified
+  with view tests: Shows sends the sprite for the small pickup, then takes
+  the medium pickup over from Chest in one step that puts the small pickup
+  back, then nothing, and offers no wall; the Map subscribes to the art
+  settings, the stand-in sprites and each sprite, tile and palette, draws
+  the door with its sprite and leaves grass, whose tile is another size,
+  flat; a painted pixel and a shade's new colour show at once, and taking
+  the sprite away brings the flat colour back; the zoom steps for a
+  24-pixel tile are 6, 12, 24, 48, 72 and 96. A real-window test makes a
+  sprite show the small pickup and draws it while the sample's Map shows
+  the pickup at 200%: in the Map's screenshots a magenta stroke shows as it
+  is drawn, giving its shade a new colour turns it cyan with no magenta
+  left, and a fill of 40% blue glass shows the pickup's floor through it,
+  matched to the composited colour; the saved stand-in sprites name the
+  sprite. All 33 real-window tests pass.
 
 ## Changed after its author tried it
 

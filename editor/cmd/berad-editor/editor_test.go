@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +22,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/content"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/tiles"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -294,14 +297,14 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 	zoomed, menuShot := shotPath(t, "map-zoom.png"), shotPath(t, "map-menu.png")
 	keysShot := shotPath(t, "map-keys.png")
 	mapScript := script(
-		expect("state:loaded", 600), wait(5),
+		expect("state:loaded", 600), wait(5), click("ui:zoom-fit"), wait(5),
 		keys("3"), drag("cell:4,8", "cell:5,8", "cell:6,8", "cell:7,8"), wait(5),
 		keys("W"), keys("3"), drag("cell:4,10", "cell:5,10", "cell:6,10"), wait(10),
 		keys("Cmd+Z"), wait(60),
 		keys("R"), click("ui:grow-top"), expect("state:bounds:-16,-13,32,25", 300), wait(5),
 		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
 		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(10),
-		click("ui:zoom-in"), must("state:zoom:150", 60), click("ui:zoom-fit"), wait(5),
+		click("ui:zoom-in"), must("state:zoom:100", 60), click("ui:zoom-fit"), wait(5),
 		step{Repeat: 2, Screenshot: zoomed}, wait(5),
 		rightClick("cell:-10,5"), must("menu:add-anchor", 60), step{Repeat: 2, Screenshot: menuShot},
 		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30),
@@ -643,6 +646,111 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	}
 	noCrashes(t, project)
 	t.Logf("screenshots: %s %s %s", painted, undone, glassShot)
+}
+
+// TestSpriteShowsOnTheMap makes a sprite show the small pickup, then draws
+// it in the Pixel editor while the Map shows the pickup at 200%: a stroke in
+// a magenta shade shows on the map as it is drawn, giving the shade a new
+// colour, cyan, recolours it there, and a fill of 40% blue glass shows the
+// pickup's floor through it. Each is checked in the Map's screenshots.
+func TestSpriteShowsOnTheMap(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	stroke, recoloured := shotPath(t, "map-sprite-stroke.png"), shotPath(t, "map-sprite-recoloured.png")
+	glassShot := shotPath(t, "map-sprite-glass.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5),
+		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(600), quit(),
+	)
+	shade := func(ramp, colour, opacity string) []step {
+		return script(
+			click("ui:add-ramp"), must("state:color:new ramp 1", 120),
+			click("ui:ramp-name"), keys("Cmd+A"), typed(ramp),
+			click("ui:shade-color"), keys("Cmd+A"), typed(colour),
+			click("ui:shade-opacity"), keys("Cmd+A"), typed(opacity),
+			click("ui:save"), must("state:color:"+ramp+" 1", 120), must("state:saved", 120),
+		)
+	}
+	spriteScript := script(
+		must("state:loaded", 600), wait(5),
+		click("ui:shows"), must("menu:standin:pickup.small", 60), click("menu:standin:pickup.small"),
+		must("state:shows:pickup.small", 120),
+		shade("ink", "#FF00FF", "100"),
+		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:ink 1", 120), wait(240),
+		click("ui:shade-color"), keys("Cmd+A"), typed("#00FFFF"), click("ui:save"), must("state:saved", 120),
+		wait(240),
+		shade("glass", "#3060C0", "40"),
+		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:glass 1", 120), wait(240), quit(),
+	)
+	mapScript := script(
+		expect("state:loaded", 600), wait(5),
+		click("ui:zoom-fit"), click("ui:zoom-reset"), click("ui:zoom-in"), must("state:zoom:200", 60),
+		must("state:sprite:pickup.small", 1800),
+		must("state:art:pickup.small:16,4:#FF00FF", 1200), step{Repeat: 2, Screenshot: stroke},
+		must("state:art:pickup.small:16,4:#00FFFF", 1200), step{Repeat: 2, Screenshot: recoloured},
+		must("state:art:pickup.small:0,0:#3060C0", 1200), step{Repeat: 2, Screenshot: glassShot},
+		quit(),
+	)
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
+
+	magenta, cyan := color.RGBA{R: 0xff, G: 0, B: 0xff, A: 0xff}, color.RGBA{R: 0, G: 0xff, B: 0xff, A: 0xff}
+	if got := countColor(t, stroke, magenta, 0); got < 64 {
+		t.Fatalf("the stroke shows on the map: %d magenta pixels", got)
+	}
+	if got, gone := countColor(t, recoloured, cyan, 0), countColor(t, recoloured, magenta, 0); got < 64 || gone != 0 {
+		t.Fatalf("the new colour recolours it: %d cyan pixels, %d magenta", got, gone)
+	}
+	if got := countColor(t, glassShot, over(0x3060c0, 40, tiles.ColorOf("floor")), 3); got < 256 {
+		t.Fatalf("the floor shows through the glass: %d pixels", got)
+	}
+	sprite := readEnvelope(t, project, "sprites/sprite-1--*.json")
+	standIns, err := art.DecodeStandInSprites(readEnvelope(t, project, "standin-sprites/*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shown, ok := standIns.Sprite("pickup.small"); !ok || shown != sprite.ID {
+		t.Fatalf("Sprite 1 shows the small pickup: %s %v", shown, ok)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s %s", stroke, recoloured, glassShot)
+}
+
+// countColor counts a screenshot's pixels within a tolerance of a colour.
+func countColor(t *testing.T, path string, want color.RGBA, tolerance int) int {
+	t.Helper()
+	file, err := os.Open(path) //nolint:gosec // The test's own screenshot.
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close() //nolint:errcheck // Read only.
+	shot, err := png.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	near := func(a, b uint8) bool { return max(int(a)-int(b), int(b)-int(a)) <= tolerance }
+	count := 0
+	bounds := shot.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			got := color.RGBAModel.Convert(shot.At(x, y)).(color.RGBA) //nolint:forcetypeassert // RGBAModel's own type.
+			if near(got.R, want.R) && near(got.G, want.G) && near(got.B, want.B) {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// over is a colour at an opacity, in percent, drawn over an opaque ground.
+func over(colour uint32, opacity int, ground uint32) color.RGBA {
+	alpha := opacity * 255 / 100
+	channel := func(shift int) uint8 {
+		top, below := int(colour>>shift&0xff), int(ground>>shift&0xff)
+		return uint8(top*alpha/255 + below*(255-alpha)/255)
+	}
+	return color.RGBA{R: channel(16), G: channel(8), B: channel(0), A: 0xff}
 }
 
 // TestViewsShareUndo opens a second view with Cmd+N; the second view undoes

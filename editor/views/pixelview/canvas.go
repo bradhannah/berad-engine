@@ -4,16 +4,12 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
-	"github.com/bradhannah/berad-engine/editor/client"
-	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
-	"github.com/bradhannah/berad-engine/engine/art"
-	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/editor/views/tileart"
 )
 
 // Toolbar and canvas geometry, in screen pixels.
@@ -209,84 +205,21 @@ func (s *State) panAndZoom(input *ui.Input, canvas image.Rectangle) {
 // picture is the tile drawn at one image pixel per tile pixel, kept until
 // the tile or a palette changes, and the checkerboard drawn under it.
 type picture struct {
-	key         pictureKey
-	image       *ebiten.Image
-	missing     int
+	tile        *tileart.Picture
 	checker     *ebiten.Image
 	checkerZoom int
 }
 
-// pictureKey says what a picture was drawn from: the tile and its revision,
-// and the sum of the palettes' revisions, which grows with any change.
-type pictureKey struct {
-	tile      ids.ULID
-	revision  uint64
-	palettes  uint64
-	available int
-}
-
 func newPicture() picture {
-	return picture{
-		key:   pictureKey{tile: ids.ULID{}, revision: 0, palettes: 0, available: 0},
-		image: nil, missing: 0, checker: nil, checkerZoom: 0,
-	}
+	return picture{tile: tileart.NewPicture(), checker: nil, checkerZoom: 0}
 }
 
 // refresh redraws the picture when the tile or a palette changed. It
 // reports whether there is a tile to show.
 func (s *State) refresh(docs frame.Docs) bool {
 	tileID, ok := s.tileID(docs)
-	if !ok {
-		return false
-	}
-	key := pictureKey{tile: tileID, revision: 0, palettes: 0, available: 0}
-	for _, paletteID := range s.palettes {
-		docs.View(paletteID, func(document client.Document) {
-			key.palettes += document.Revision
-			key.available++
-		})
-	}
-	docs.View(tileID, func(document client.Document) { key.revision = document.Revision })
-	if key == s.picture.key && s.picture.image != nil {
-		return true
-	}
-	colors := art.Palettes{}
-	for _, paletteID := range s.palettes {
-		if found, ok := palette(docs, paletteID); ok {
-			colors[paletteID] = found
-		}
-	}
-	loaded := docs.View(tileID, func(document client.Document) {
-		tileDoc, isTile := document.Model.(*artplugin.TileDocument)
-		if !isTile {
-			return
-		}
-		drawn, missing := tileDoc.Tile.Image(colors)
-		if s.picture.image == nil || s.picture.image.Bounds().Size() != drawn.Bounds().Size() {
-			s.picture.image = ebiten.NewImage(drawn.Bounds().Dx(), drawn.Bounds().Dy())
-		}
-		s.picture.image.WritePixels(premultiply(drawn.Pix))
-		s.picture.key, s.picture.missing = key, missing
-	})
 
-	return loaded && s.picture.image != nil
-}
-
-// premultiply returns colours with straight alpha, as a tile draws them,
-// with each channel scaled by its alpha, as Ebitengine takes them.
-func premultiply(straight []byte) []byte {
-	const channels, alpha = 4, 3
-	scaled := make([]byte, len(straight))
-	for start := 0; start+alpha < len(straight); start += channels {
-		opacity := uint32(straight[start+alpha])
-		for channel := range alpha {
-			value := uint32(straight[start+channel]) * opacity / math.MaxUint8
-			scaled[start+channel] = byte(value) //nolint:gosec // A channel times an alpha, over 255, is at most 255.
-		}
-		scaled[start+alpha] = straight[start+alpha]
-	}
-
-	return scaled
+	return ok && s.picture.tile.Refresh(docs, tileID)
 }
 
 // checkerboard returns the checkerboard for a tile shown at a size, drawn
@@ -341,7 +274,7 @@ func (s *State) drawCanvas(screen *ebiten.Image, docs frame.Docs) {
 	var magnify ebiten.DrawImageOptions
 	magnify.GeoM.Scale(float64(s.zoom), float64(s.zoom))
 	magnify.GeoM.Translate(float64(rect.Min.X), float64(rect.Min.Y))
-	area.DrawImage(s.picture.image, &magnify)
+	area.DrawImage(s.picture.tile.Image(), &magnify)
 	if s.grid.On && s.zoom >= minGridZoom {
 		ink := ui.HexAlpha(0, gridAlpha)
 		for line := 1; line < size; line++ {
@@ -405,7 +338,7 @@ func (s *State) problem(docs frame.Docs, size int) string {
 	if project, ok := projectTileSize(docs); ok && project != size {
 		return fmt.Sprintf("This tile is %d × %d, but the project's tiles are %d × %d.", size, size, project, project)
 	}
-	switch missing := s.picture.missing; {
+	switch missing := s.picture.tile.Missing(); {
 	case missing == 1:
 		return "1 pixel's colour cannot be found in its palette, so it shows clear."
 	case missing > 1:

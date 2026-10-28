@@ -22,6 +22,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if s.guard.Active() {
 		return s.guard.Locate(value, s.size)
 	}
+	if kind == "menu" {
+		return s.showsMenu.Locate(value)
+	}
 	switch kind {
 	case "ui":
 		return s.locateWidget(value)
@@ -66,7 +69,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return point, true
 	}
 	buttons := append([]*ui.Button{s.zoomOut, s.zoomIn, s.zoomFit, s.addRamp, s.addShade, s.removeShade,
-		s.removeRamp}, s.tools...)
+		s.removeRamp, s.shows}, s.tools...)
 	for _, button := range buttons {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
@@ -87,7 +90,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 // hasState answers input scripts waiting for the window: "loaded" once the
 // tile and the shared palette are, "tool:<tool>", "color:<colour>",
 // "zoom:<whole number>", "pixel:<col>,<row>:<colour>" once a pixel is that
-// colour, and "saved" once no typed change waits.
+// colour, "saved" once no typed change waits, and "shows:<stand-in>" once
+// the sprite shows that stand-in ("shows:" for none).
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	kind, value, _ := strings.Cut(state, ":")
 	switch kind {
@@ -105,15 +109,9 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	case "zoom":
 		return strconv.Itoa(s.zoom) == value
 	case "pixel":
-		at, colour, _ := strings.Cut(value, ":")
-		pixel, ok := parsePixel(at)
-		if !ok {
-			return false
-		}
-		ref, found := s.pixelColor(docs, pixel)
-		name, named := s.colorName(docs, ref)
-
-		return found && named && name == colour
+		return s.hasPixel(value, docs)
+	case "shows":
+		return s.shownStandIn(docs) == value
 	case "saved":
 		for _, field := range s.fields() {
 			if field.Field.Unsaved() || field.Field.Pending() {
@@ -125,6 +123,20 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	}
 
 	return false
+}
+
+// hasPixel reports whether a pixel, written "<col>,<row>:<colour>", is that
+// colour.
+func (s *State) hasPixel(value string, docs frame.Docs) bool {
+	at, colour, _ := strings.Cut(value, ":")
+	pixel, ok := parsePixel(at)
+	if !ok {
+		return false
+	}
+	ref, found := s.pixelColor(docs, pixel)
+	name, named := s.colorName(docs, ref)
+
+	return found && named && name == colour
 }
 
 // parsePixel reads a pixel written as "<col>,<row>".

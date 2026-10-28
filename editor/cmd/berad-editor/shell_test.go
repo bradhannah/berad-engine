@@ -147,7 +147,8 @@ func TestShellPopsATabOut(t *testing.T) {
 		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	inTab := script(
-		must("state:loaded", 600), wait(5), keys("3"), drag("cell:4,8", "cell:5,8"), wait(30),
+		must("state:loaded", 600), wait(5), click("ui:zoom-fit"), wait(5), keys("3"),
+		drag("cell:4,8", "cell:5,8"), wait(30),
 		drag("cell:6,8", "cell:7,8"), wait(30), keys("Cmd+Shift+O"), wait(60),
 	)
 	poppedOut := script(must("state:loaded", 600), wait(30), keys("Cmd+Z"), wait(60))

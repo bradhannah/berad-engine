@@ -57,10 +57,11 @@ type panelLayout struct {
 	rampTop   int
 	shadeTop  int
 	shadeName string
+	showsTop  int
 }
 
 func newPanelLayout() panelLayout {
-	return panelLayout{swatches: nil, ramps: nil, rampTop: 0, shadeTop: 0, shadeName: ""}
+	return panelLayout{swatches: nil, ramps: nil, rampTop: 0, shadeTop: 0, shadeName: "", showsTop: 0}
 }
 
 // chosenRamp returns the shared palette's ramp the panel shows, and its
@@ -84,7 +85,7 @@ func (s *State) chosenRamp(shared *art.Palette) (art.Ramp, art.Shade, int, bool)
 
 // layoutPanel places the palette panel: the clear colour and each ramp's
 // shades, + Ramp, the chosen ramp's name, the chosen shade's colour and
-// opacity with their buttons, and the save bar at the foot.
+// opacity with their buttons, and at the foot Shows and the save bar.
 func (s *State) layoutPanel(docs frame.Docs, shared *art.Palette) {
 	inspector := frame.Inspector(s.size)
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
@@ -98,6 +99,7 @@ func (s *State) layoutPanel(docs frame.Docs, shared *art.Palette) {
 	bottom := inspector.Max.Y - ui.Inset
 	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
 	s.save.Unsaved = s.Unsaved(docs)
+	s.layoutShows(docs, left, width)
 	if shared == nil {
 		return
 	}
@@ -170,6 +172,8 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context, shared *art.Pal
 		s.removeChosenShade(ctx, shared)
 	case s.removeRamp.Update(input):
 		s.removeChosenRamp(ctx, shared)
+	case s.shows.Update(input):
+		s.openShows(ctx.Docs)
 	case input.Pressed:
 		s.choosePanel(input)
 	}
@@ -488,6 +492,7 @@ func (s *State) drawPanel(screen *ebiten.Image, shared *art.Palette) {
 	inspector := frame.Inspector(s.size)
 	left := inspector.Min.X + ui.Inset
 	s.theme.Heading(screen, "PALETTE · "+strings.ToUpper(art.SharedPaletteName), left, ui.Inset)
+	s.drawShows(screen, left)
 	if shared == nil {
 		s.theme.DrawText(screen, "Loading…", left, ui.Inset+ui.LineHeight, ui.ColorMuted())
 

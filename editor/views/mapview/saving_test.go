@@ -19,26 +19,27 @@ func (f *fixture) typed(text string) {
 }
 
 // TestZoomControl steps the zoom with − and +, returns to 100% from the
-// label, fits the floor, and never paints the map underneath.
+// label, fits the floor, and never paints the map underneath. Until the art
+// settings load, 100% is the default tile size, 32 pixels.
 func TestZoomControl(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	if f.cellSize() != 24 {
+	if f.cellSize() != 32 {
 		t.Fatalf("default cell %d", f.cellSize())
 	}
 	f.click("ui:zoom-in")
-	if f.cellSize() != 36 {
+	if f.cellSize() != 64 || !f.has("zoom:200") {
 		t.Fatalf("zoomed in %d", f.cellSize())
 	}
 	f.click("ui:zoom-reset")
 	f.click("ui:zoom-out")
-	if f.cellSize() != 18 {
+	if f.cellSize() != 16 || !f.has("zoom:50") {
 		t.Fatalf("back to 100%%, then out: %d", f.cellSize())
 	}
 	f.click("ui:zoom-fit")
 	grid := f.state.Grid()
 	floorRect := image.Rectangle{Min: f.at("cell:0,0"), Max: f.at("cell:11,9")}
-	if f.cellSize() <= 24 || !floorRect.In(grid) {
+	if f.cellSize() != 32 || !floorRect.In(grid) {
 		t.Fatalf("fit: cell %d, floor %v in %v", f.cellSize(), floorRect, grid)
 	}
 	if len(paints(t, f.requests)) != 0 {
