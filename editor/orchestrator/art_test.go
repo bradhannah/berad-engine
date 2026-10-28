@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bradhannah/berad-engine/editor/client"
+	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -221,5 +222,53 @@ func TestUndoNeverRemovesAColourInUse(t *testing.T) {
 	}
 	if _, err := redo(t, palettes); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestChangeDocumentBeforeRun changes a document every project holds before
+// the orchestrator runs, as the sample does, and saves it at once; a change
+// that fails and an unknown document are reported.
+func TestChangeDocumentBeforeRun(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	createProject(t, dir)
+	cfg := baseConfig(t, dir, shortSocket(t))
+	cfg.Registry = artRegistry(t)
+	orch, err := orchestrator.New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = orch.Close() })
+	lantern := ids.MustParse("01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	err = orch.ChangeDocument(art.StandInsID(), func(document model.Document) error {
+		_, setErr := document.(*artplugin.StandInsDocument).Sprites.Set("pickup.small", lantern)
+
+		return setErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "standin-sprites", "*.json"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("saved at once: %v %v", files, err)
+	}
+	raw, err := os.ReadFile(files[0]) //nolint:gosec // A file the test just wrote.
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := content.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := art.DecodeStandInSprites(envelope.Data)
+	if shown, ok := saved.Sprite("pickup.small"); err != nil || !ok || shown != lantern {
+		t.Fatalf("the saved stand-in sprites: %v %v %v", shown, ok, err)
+	}
+	failing := errors.New("refused")
+	if err := orch.ChangeDocument(art.StandInsID(), func(model.Document) error { return failing }); !errors.Is(err, failing) {
+		t.Fatalf("a failed change is reported: %v", err)
+	}
+	if err := orch.ChangeDocument(ids.MustParse("01ARZ3NDEKTSV4RRFFQ69G5FAW"), func(model.Document) error { return nil }); !errors.Is(err, orchestrator.ErrUnknownDocument) {
+		t.Fatalf("an unknown document is reported: %v", err)
 	}
 }

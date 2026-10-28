@@ -1,6 +1,6 @@
 # Increment 11: Drawing tiles
 
-**Status:** Planned
+**Status:** Built
 
 The eleventh increment is the first slice of the pixel editor. An author
 sets the game's tile size, builds the shared palette from ramps named for
@@ -238,6 +238,16 @@ Chosen while building, for its author to check:
 - **Real-window tests that paint the far side of the sample floor fit it
   first,** since at 100% its cells are bigger and some are out of view.
 
+- **The sample's lantern** is grey, the starter ramp's shades for its ring,
+  cap, frame and base, with a ramp named "glass" of two shades at 40%, a dark
+  amber #B8702A and a light amber #F2B544, and a light grey glow in the
+  middle. Its tile is named Lantern.
+- **The orchestrator can change a document before it runs**
+  (`ChangeDocument`), as it can create one, so the sample adds its glass to
+  the shared palette and its lantern to the stand-in sprites.
+- **Tests that named a ramp "glass" now call it "pane,"** since ramp names
+  are unique and the sample's palette has glass.
+
 ## Wireframes
 
 The Pixel editor in the first slice, as a tab. Letters in brackets stand for
@@ -288,7 +298,7 @@ PALETTES    1
 | 3. Project browser | Sprites and Palettes sections, the Settings row and its tile size field; a new sprite with its tile; icons | View tests of the sections, and a real-window test that makes a sprite in a folder | Built |
 | 4. Pixel editor | `editor/views/pixelview`: the canvas, whole-number zoom, pixel grid and checkerboard; pencil, eraser, fill and eyedropper; the palette panel and its save bar; the Sprites window kind | View tests of each tool and of fill's bounds; a real-window test that paints a stroke and undoes it | Built |
 | 5. On the map | "Shows" in the Pixel editor; the Map drawing a stand-in's sprite, zoom steps from the tile size, and tiles of another size flagged | A real-window test: a stroke in the Pixel editor shows in a Map's screenshot as it is drawn, a shade's new colour recolours it, and a glass pixel shows the ground through it | Built |
-| 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Planned |
+| 6. Trying it | The demo project's sample zone with one sprite shown, for its author to try | Judged by its author | Built; not yet judged |
 
 Where each step changes code:
 
@@ -304,6 +314,8 @@ Where each step changes code:
 - **On the map:** `editor/views/mapview` (drawing a cell, and the zoom steps
   in `camera.go`), Shows in `editor/views/pixelview`, and a new
   `editor/views/tileart` that both draw tiles with.
+- **Trying it:** the sample in `editor/cmd/berad-editor` (`sampleart.go`),
+  and the orchestrator's `ChangeDocument`.
 
 ## Step results
 
@@ -417,6 +429,20 @@ Where each step changes code:
   left, and a fill of 40% blue glass shows the pickup's floor through it,
   matched to the composited colour; the saved stand-in sprites name the
   sprite. All 33 real-window tests pass.
+- **Trying it:** the sample project now has a lantern, drawn in the starter
+  greys and a ramp of amber glass at 40%, shown as the small pickup by the
+  desk, so the Map shows it in place of the yellow square, with the floor
+  through its glass. The sample is made only in an empty project, so an
+  existing demo project keeps its content; a new one has the lantern:
+  `make demo-shell DEMO_PROJECT=.cache/demo-lantern`. Verified with a
+  headless test that the saved sample holds the lantern's sprite and tile,
+  painted with both shades of glass, the shared palette's glass ramp and the
+  small pickup shown by the lantern; a headless orchestrator test of
+  changing a document before it runs, saved at once, with a failed change
+  and an unknown document reported; and the real-window test's first Map
+  screenshot, where the floor shows through the lantern's glass at 200%.
+  All 33 real-window tests pass, and `make check` shows no lint findings,
+  with every package passing.
 
 ## Changed after its author tried it
 

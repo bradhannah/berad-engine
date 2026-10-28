@@ -119,6 +119,36 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 		t.Fatalf("sample zone: %v", err)
 	}
 	readEnvelope(t, project, "texts/notes--*.json")
+	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
+	sprite, err := art.DecodeSprite(lantern.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tile, err := art.DecodeTile(readEnvelope(t, project, "tiles/lantern--*.json").Data)
+	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
+		t.Fatalf("the lantern's tile: %v", err)
+	}
+	shared, err := art.DecodePalette(readEnvelope(t, project, "palettes/*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ramps := shared.Ramps()
+	if len(ramps) != 2 || ramps[1].Name != "glass" || len(ramps[1].Shades) != 2 || ramps[1].Shades[0].Opacity != 40 {
+		t.Fatalf("the shared palette gains the glass ramp: %+v", ramps)
+	}
+	glassUsed := 0
+	for _, ref := range tile.Colors() {
+		if ref.Ramp == ramps[1].ID {
+			glassUsed++
+		}
+	}
+	if glassUsed != 2 {
+		t.Fatalf("the lantern is painted with both shades of glass: %+v", tile.Colors())
+	}
+	standIns, err := art.DecodeStandInSprites(readEnvelope(t, project, "standin-sprites/*.json").Data)
+	if shown, ok := standIns.Sprite("pickup.small"); err != nil || !ok || shown != lantern.ID {
+		t.Fatalf("the lantern shows the small pickup: %v %v %v", shown, ok, err)
+	}
 }
 
 // step is one input-script step (see window/script.go).
@@ -582,9 +612,9 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 // TestPixelEditorPaintsAndUndoes makes a sprite in the project browser and
 // opens it in a Pixel editor, which paints a stroke in grey 3 and another in
 // grey 5, then undoes the second in one step. Then it adds a ramp, names it
-// glass, types its shade's colour and a 40% opacity, saves them, and paints
-// with it. The saved tile keeps the first stroke and the glass, and the
-// shared palette the glass ramp.
+// pane, types its shade's colour and a 40% opacity, saves them, and paints
+// with it. The saved tile keeps the first stroke and the pane, and the
+// shared palette the pane ramp, after the sample's grey and glass.
 func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -605,11 +635,11 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 		keys("Cmd+Z"), must("state:pixel:1,3:clear", 120), must("state:pixel:3,3:clear", 60),
 		must("state:pixel:2,1:grey 3", 60), step{Repeat: 2, Screenshot: undone},
 		click("ui:add-ramp"), must("state:color:new ramp 1", 120),
-		click("ui:ramp-name"), keys("Cmd+A"), typed("glass"),
+		click("ui:ramp-name"), keys("Cmd+A"), typed("pane"),
 		click("ui:shade-color"), keys("Cmd+A"), typed("#3060C0"),
 		click("ui:shade-opacity"), keys("Cmd+A"), typed("40"),
-		click("ui:save"), must("state:color:glass 1", 120), must("state:saved", 120),
-		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:glass 1", 120),
+		click("ui:save"), must("state:color:pane 1", 120), must("state:saved", 120),
+		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:pane 1", 120),
 		step{Repeat: 2, Screenshot: glassShot}, quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
@@ -635,13 +665,14 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	ramps := palette.Ramps()
-	if len(ramps) != 2 || ramps[1].Name != "glass" || len(ramps[1].Shades) != 1 ||
-		ramps[1].Shades[0].Color != 0x3060c0 || ramps[1].Shades[0].Opacity != 40 {
-		t.Fatalf("the glass ramp is saved: %+v", ramps)
+	pane := len(ramps) - 1
+	if len(ramps) != 3 || ramps[pane].Name != "pane" || len(ramps[pane].Shades) != 1 ||
+		ramps[pane].Shades[0].Color != 0x3060c0 || ramps[pane].Shades[0].Opacity != 40 {
+		t.Fatalf("the pane ramp is saved: %+v", ramps)
 	}
 	for row := range 3 {
-		if ref, _ := tile.At(5, row); ref.Ramp != ramps[1].ID || ref.Shade != ramps[1].Shades[0].ID {
-			t.Fatalf("pixel 5,%d is glass: %+v", row, ref)
+		if ref, _ := tile.At(5, row); ref.Ramp != ramps[pane].ID || ref.Shade != ramps[pane].Shades[0].ID {
+			t.Fatalf("pixel 5,%d is the pane: %+v", row, ref)
 		}
 	}
 	noCrashes(t, project)
@@ -651,14 +682,16 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 // TestSpriteShowsOnTheMap makes a sprite show the small pickup, then draws
 // it in the Pixel editor while the Map shows the pickup at 200%: a stroke in
 // a magenta shade shows on the map as it is drawn, giving the shade a new
-// colour, cyan, recolours it there, and a fill of 40% blue glass shows the
-// pickup's floor through it. Each is checked in the Map's screenshots.
+// colour, cyan, recolours it there, and a fill of a 40% blue pane shows the
+// pickup's floor through it. Each is checked in the Map's screenshots. The
+// sprite takes the small pickup over from the sample's lantern, whose amber
+// glass shows the floor through it first.
 func TestSpriteShowsOnTheMap(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	stroke, recoloured := shotPath(t, "map-sprite-stroke.png"), shotPath(t, "map-sprite-recoloured.png")
-	glassShot := shotPath(t, "map-sprite-glass.png")
+	glassShot, lanternShot := shotPath(t, "map-sprite-glass.png"), shotPath(t, "map-lantern.png")
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
 		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
@@ -681,13 +714,13 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:ink 1", 120), wait(240),
 		click("ui:shade-color"), keys("Cmd+A"), typed("#00FFFF"), click("ui:save"), must("state:saved", 120),
 		wait(240),
-		shade("glass", "#3060C0", "40"),
-		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:glass 1", 120), wait(240), quit(),
+		shade("pane", "#3060C0", "40"),
+		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:pane 1", 120), wait(240), quit(),
 	)
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
 		click("ui:zoom-fit"), click("ui:zoom-reset"), click("ui:zoom-in"), must("state:zoom:200", 60),
-		must("state:sprite:pickup.small", 1800),
+		must("state:sprite:pickup.small", 1800), step{Repeat: 2, Screenshot: lanternShot},
 		must("state:art:pickup.small:16,4:#FF00FF", 1200), step{Repeat: 2, Screenshot: stroke},
 		must("state:art:pickup.small:16,4:#00FFFF", 1200), step{Repeat: 2, Screenshot: recoloured},
 		must("state:art:pickup.small:0,0:#3060C0", 1200), step{Repeat: 2, Screenshot: glassShot},
@@ -695,6 +728,9 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
 
+	if got := countColor(t, lanternShot, over(0xb8702a, 40, tiles.ColorOf("floor")), 3); got < 64 {
+		t.Fatalf("the floor shows through the lantern's glass: %d pixels", got)
+	}
 	magenta, cyan := color.RGBA{R: 0xff, G: 0, B: 0xff, A: 0xff}, color.RGBA{R: 0, G: 0xff, B: 0xff, A: 0xff}
 	if got := countColor(t, stroke, magenta, 0); got < 64 {
 		t.Fatalf("the stroke shows on the map: %d magenta pixels", got)
@@ -714,7 +750,7 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		t.Fatalf("Sprite 1 shows the small pickup: %s %v", shown, ok)
 	}
 	noCrashes(t, project)
-	t.Logf("screenshots: %s %s %s", stroke, recoloured, glassShot)
+	t.Logf("screenshots: %s %s %s %s", lanternShot, stroke, recoloured, glassShot)
 }
 
 // countColor counts a screenshot's pixels within a tolerance of a colour.

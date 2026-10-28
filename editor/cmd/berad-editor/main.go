@@ -297,8 +297,8 @@ func ensureDocuments(
 }
 
 // createSample creates placeholder content: a zone with a walled building on
-// the ground floor and its upper floor, an anchor at a desk, and a text
-// document. It holds no game content.
+// the ground floor and its upper floor, an anchor at a desk, a lantern shown
+// as the small pickup, and a text document. It holds no game content.
 func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	desk, err := orch.NewID()
 	if err != nil {
@@ -329,6 +329,9 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	if err := sampleLantern(orch); err != nil {
+		return ids.ULID{}, err
 	}
 	notes := textdoc.NewDocument()
 	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."

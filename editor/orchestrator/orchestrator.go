@@ -360,6 +360,26 @@ func (o *Orchestrator) CreateDocument(name string, document model.Document) (ids
 	return documentID, nil
 }
 
+// ChangeDocument changes a document in place and saves it immediately, for
+// content made before Run, such as a sample project's additions to a
+// document every project holds. A change that fails must leave the document
+// as it was. Call before Run.
+func (o *Orchestrator) ChangeDocument(documentID ids.ULID, change func(model.Document) error) error {
+	if o.running.Load() {
+		return ErrRunning
+	}
+	entry, ok := o.docs[documentID]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrUnknownDocument, documentID)
+	}
+	if err := change(entry.document); err != nil {
+		return fmt.Errorf("change %s: %w", entry.info.Name, err)
+	}
+	entry.dirty = true
+
+	return o.save(entry)
+}
+
 // NewID returns a new permanent ID from the orchestrator's generator (D4),
 // for content created before Run such as a sample project's anchors.
 func (o *Orchestrator) NewID() (ids.ULID, error) {
