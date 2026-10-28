@@ -151,6 +151,27 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	}
 }
 
+// TestOpenMakesAProjectInAnEmptyFolder opens a folder that does not exist yet
+// without --sample: it becomes a project holding only what every project
+// holds, the shared palette, the art settings and the stand-in sprites, and
+// opens again as it is.
+func TestOpenMakesAProjectInAnEmptyFolder(t *testing.T) {
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "new project")
+	for range 2 {
+		cmd := exec.Command(binary, "open", "--project", project, "--no-window", "--exit-after", "1s")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("open: %v\n%s", err, output)
+		}
+	}
+	for _, pattern := range []string{"palettes/*.json", "art-settings/*.json", "standin-sprites/*.json"} {
+		readEnvelope(t, project, pattern)
+	}
+	if zones, _ := filepath.Glob(filepath.Join(project, "zones", "*.json")); len(zones) != 0 {
+		t.Fatalf("no sample without --sample: %v", zones)
+	}
+}
+
 // step is one input-script step (see window/script.go).
 type step struct {
 	Repeat     int             `json:"repeat,omitempty"`

@@ -34,6 +34,9 @@ make demo     # build the editor and open a sample project in .cache/demo-projec
 ```
 
 The project browser and a Map window open on a sample zone with two floors.
+To start a project of your own, open a folder that has none:
+`.cache/bin/berad-editor open --project DIR` makes one there, holding only the
+shared palette, the art settings and the stand-in sprites.
 `make demo-shell` opens the same project as one window instead, with a tab
 for each window, the clock pinned to its bar, and Watch beside its Map: a
 spike, [increment 10](docs/increments/0010-one-window.md).
