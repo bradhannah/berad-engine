@@ -53,8 +53,12 @@ for a grid position (use cell).
 | **Linked tile** | A tile shared by several places, so a change to it follows everywhere; reuse copies a tile unless it is pasted linked |
 | **Base row** | The row of a sprite where it touches the ground; what stands on the map is drawn in order of base row, lower on screen in front |
 | **Overlay** | A sprite drawn over a definition's own, shown when a state or flag is set, such as moss |
-| **Palette** | A document of named colours art is painted with: the shared palette, and further palettes named for a feeling, such as "gloomy" |
-| **Ramp** | A palette's shades for one use, named for that use and numbered dark to light, such as `shared / grass 2` |
+| **Palette** | A document of named colours in ramps that art is painted with: Default, built in and read only, and a game's own palettes, such as "gloomy" |
+| **Default** | The engine's built-in palette of 256 colours, the same in every game; its colours are copied, never changed |
+| **Ramp** | A palette's named list of colours for one use, numbered dark to light, such as `default / grass 2` |
+| **Label** | A colour's optional short name, at most 15 characters, unique within its palette |
+| **Gradient** | A tool that fills a ramp from a left colour, a right colour and a number of steps |
+| **Loose colour** | A pixel's colour that names no palette, left when a palette is removed from a tile; flagged until repainted |
 | **Opacity** | How see-through a palette colour is, such as glass at 40%; one colour is fully clear |
 | **Template** | Guides to draw a tile to, and parts of it kept clear, shown while drawing and never part of the tile |
 | **Drawing layer** | One layer of a tile while it is painted, such as shading; the game receives the layers flattened into one tile |
