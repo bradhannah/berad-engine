@@ -275,12 +275,55 @@ func defaultPalette() (json.RawMessage, error) {
 	return data, nil
 }
 
+// preparePalette gives a new palette's ramps and shades their permanent IDs,
+// as a palette made from colours chosen out of another needs.
+func preparePalette(data json.RawMessage, newID model.IDSource) (json.RawMessage, error) {
+	var wire struct {
+		Ramps []art.Ramp  `json:"ramps"`
+		Moved []art.Moved `json:"moved,omitempty"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	changed := false
+	for at := range wire.Ramps {
+		ramp := &wire.Ramps[at]
+		for _, slot := range append([]*ids.ULID{&ramp.ID}, shadeIDs(ramp.Shades)...) {
+			if !slot.IsZero() {
+				continue
+			}
+			made, err := newID()
+			if err != nil {
+				return nil, fmt.Errorf("palette id: %w", err)
+			}
+			*slot, changed = made, true
+		}
+	}
+	if !changed {
+		return data, nil
+	}
+	if wire.Ramps == nil {
+		wire.Ramps = []art.Ramp{}
+	}
+
+	return encode(wire)
+}
+
+func shadeIDs(shades []art.Shade) []*ids.ULID {
+	found := make([]*ids.ULID, 0, len(shades))
+	for at := range shades {
+		found = append(found, &shades[at].ID)
+	}
+
+	return found
+}
+
 // Plugin returns the art plug-in.
 func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name: PluginName,
 		Documents: []model.DocumentType{
-			{Format: art.PaletteFormat(), Decode: DecodePalette, Layout: nil, Prepare: nil},
+			{Format: art.PaletteFormat(), Decode: DecodePalette, Layout: nil, Prepare: preparePalette},
 			{Format: art.TileFormat(), Decode: DecodeTile, Layout: nil, Prepare: nil},
 			{Format: art.SpriteFormat(), Decode: DecodeSprite, Layout: nil, Prepare: nil},
 			{Format: art.SettingsFormat(), Decode: DecodeSettings, Layout: nil, Prepare: nil},

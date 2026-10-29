@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -69,6 +71,7 @@ type fixture struct {
 	// made the IDs given to new ramps and shades.
 	applied int
 	made    byte
+	screen  *ebiten.Image
 }
 
 // newFixture opens the sprite Lantern, whose tile is 8 pixels square, in a
@@ -112,14 +115,18 @@ func newFixture(t *testing.T) *fixture {
 	ctx := frametest.Context(docs, requests, image.Pt(1200, 800))
 	state := pixelview.New(frametest.ID(99), spriteID, theme)
 	state.Start(ctx)
-	f := &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx}
+	f := &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx, screen: ebiten.NewImage(1200, 800)}
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	f.click("palette:gloomy")
 
 	return f
 }
 
-func (f *fixture) frame(input ui.Input) { f.state.Update(&input, f.ctx) }
+// frame runs one frame of input, then draws the window, as every frame does.
+func (f *fixture) frame(input ui.Input) {
+	f.state.Update(&input, f.ctx)
+	f.state.Draw(f.screen, f.docs)
+}
 
 func (f *fixture) at(name string) image.Point {
 	f.t.Helper()

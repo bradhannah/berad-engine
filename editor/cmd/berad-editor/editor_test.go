@@ -698,9 +698,11 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 }
 
 // TestSpriteShowsOnTheMap makes a sprite show the small pickup, then draws
-// it in the Pixel editor while the Map shows the pickup at 200%: a stroke in
-// a magenta shade shows on the map as it is drawn, giving the shade a new
-// colour, cyan, recolours it there, and a fill of a 40% blue pane shows the
+// it in the Pixel editor while the Map shows the pickup at 200%. The Pixel
+// editor's Edit palette… opens the sample's palette in a Palette Editor,
+// which adds a ramp of magenta ink: a stroke in it shows on the map as it is
+// drawn, and giving the colour a new value, cyan, recolours it there. A fill
+// of a 40% blue pane, another ramp the Palette Editor adds, shows the
 // pickup's floor through it. Each is checked in the Map's screenshots. The
 // sprite takes the small pickup over from the sample's lantern, whose amber
 // glass shows the floor through it first.
@@ -710,30 +712,38 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	stroke, recoloured := shotPath(t, "map-sprite-stroke.png"), shotPath(t, "map-sprite-recoloured.png")
 	glassShot, lanternShot := shotPath(t, "map-sprite-glass.png"), shotPath(t, "map-lantern.png")
+	paletteShot := shotPath(t, "palette-editor.png")
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
 		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
-		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(600), quit(),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(1200), quit(),
 	)
-	shade := func(ramp, colour, opacity string) []step {
+	ramp := func(name, colour, opacity string) []step {
 		return script(
-			click("ui:add-ramp"), must("state:color:new ramp 1", 120),
-			click("ui:ramp-name"), keys("Cmd+A"), typed(ramp),
-			click("ui:shade-color"), keys("Cmd+A"), typed(colour),
-			click("ui:shade-opacity"), keys("Cmd+A"), typed(opacity),
-			click("ui:save"), must("state:color:"+ramp+" 1", 120), must("state:saved", 120),
+			click("ui:add-ramp"), must("state:chosen:new ramp 1", 120),
+			click("ui:ramp-name"), keys("Cmd+A"), typed(name),
+			click("ui:colour"), keys("Cmd+A"), typed(colour),
+			click("ui:opacity"), keys("Cmd+A"), typed(opacity),
+			click("ui:save"), must("state:colour:"+name+" 1:"+colour, 120), must("state:saved", 120),
 		)
 	}
+	paletteScript := script(
+		must("state:loaded", 600), wait(5),
+		ramp("ink", "#FF00FF", "100"), wait(240),
+		ramp("pane", "#3060C0", "40"), wait(480), step{Repeat: 2, Screenshot: paletteShot},
+		click("swatch:ink 1"), must("state:chosen:ink 1", 60),
+		click("ui:colour"), keys("Cmd+A"), typed("#00FFFF"), click("ui:save"), must("state:colour:ink 1:#00FFFF", 120),
+		wait(240), quit(),
+	)
 	spriteScript := script(
 		must("state:loaded", 600), wait(5),
 		click("ui:shows"), must("menu:standin:pickup.small", 60), click("menu:standin:pickup.small"),
 		must("state:shows:pickup.small", 120),
-		shade("ink", "#FF00FF", "100"),
-		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:ink 1", 120), wait(240),
-		click("ui:shade-color"), keys("Cmd+A"), typed("#00FFFF"), click("ui:save"), must("state:saved", 120),
-		wait(240),
-		shade("pane", "#3060C0", "40"),
-		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:pane 1", 120), wait(240), quit(),
+		click("swatch:Sample / glass 1"), must("state:color:Sample / glass 1", 60), click("ui:edit-palette"),
+		must("swatch:Sample / ink 1", 1200), click("swatch:Sample / ink 1"),
+		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:Sample / ink 1", 120),
+		must("swatch:Sample / pane 1", 1200), click("swatch:Sample / pane 1"),
+		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:Sample / pane 1", 120), wait(900), quit(),
 	)
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
@@ -744,7 +754,9 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		must("state:art:pickup.small:0,0:#3060C0", 1200), step{Repeat: 2, Screenshot: glassShot},
 		quit(),
 	)
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
+	runEditor(t, binary, project, scripts{
+		"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}, "palette": {paletteScript},
+	})
 
 	if got := countColor(t, lanternShot, over(0xb8702a, 40, tiles.ColorOf("floor")), 3); got < 64 {
 		t.Fatalf("the floor shows through the lantern's glass: %d pixels", got)
@@ -768,7 +780,7 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		t.Fatalf("Sprite 1 shows the small pickup: %s %v", shown, ok)
 	}
 	noCrashes(t, project)
-	t.Logf("screenshots: %s %s %s %s", lanternShot, stroke, recoloured, glassShot)
+	t.Logf("screenshots: %s %s %s %s %s", lanternShot, stroke, recoloured, glassShot, paletteShot)
 }
 
 // countColor counts a screenshot's pixels within a tolerance of a colour.
