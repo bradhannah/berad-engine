@@ -96,7 +96,8 @@ func (f *fixture) status() string {
 }
 
 // TestArtSections lists the Settings row first with the tile size, then,
-// after Audio, Sprites with its folders and a [+], and Palettes without one.
+// after Audio, Sprites with its folders and a [+], and Palettes with one,
+// Default marked.
 // A sprite's tile, the settings and the stand-in sprites are not listed as
 // documents.
 func TestArtSections(t *testing.T) {
@@ -113,8 +114,11 @@ func TestArtSections(t *testing.T) {
 	}
 	sprites, _ := f.row("section:sprites")
 	palettes, _ := f.row("section:palettes")
-	if sprites.Detail != "1" || !sprites.Add || palettes.Detail != "1" || palettes.Add {
-		t.Fatalf("Sprites has a [+], Palettes none: %+v %+v", sprites, palettes)
+	if sprites.Detail != "1" || !sprites.Add || palettes.Detail != "1" || !palettes.Add {
+		t.Fatalf("Sprites and Palettes have a [+]: %+v %+v", sprites, palettes)
+	}
+	if defaults, _ := f.row(art.DefaultPaletteID().String()); defaults.Detail != "default · read only" {
+		t.Fatalf("Default is marked: %+v", defaults)
 	}
 	if got := f.rowsIn("section:sprites"); !slices.Equal(got, []string{"Lights/0", "Lantern/1"}) {
 		t.Fatalf("sprites %v", got)
@@ -312,7 +316,8 @@ func TestDefaultPaletteKeepsItsName(t *testing.T) {
 }
 
 // TestSpriteOpensInThePixelEditor opens a sprite in a Pixel editor, from the
-// inspector's button and from a double-click; a palette has nothing to open.
+// inspector's button and from a double-click, and a palette in the Palette
+// Editor.
 func TestSpriteOpensInThePixelEditor(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -326,7 +331,8 @@ func TestSpriteOpensInThePixelEditor(t *testing.T) {
 	}
 	f.rightClick("row:Default")
 	f.click("menu:context-open", false)
-	if len(f.requests.Opened) != 2 {
-		t.Fatalf("a palette opens nothing: %+v", f.requests.Opened)
+	if len(f.requests.Opened) != 3 || f.requests.Opened[2].View != "palette" ||
+		f.requests.Opened[2].Target != art.DefaultPaletteID() {
+		t.Fatalf("a palette opens in the Palette Editor: %+v", f.requests.Opened)
 	}
 }

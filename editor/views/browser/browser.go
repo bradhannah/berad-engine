@@ -26,6 +26,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/paletteview"
+	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -124,6 +126,10 @@ type State struct {
 	dialogKind dialogKind
 	deleting   ids.ULID
 	gestures   int
+	// zonePalettes are a selected zone's palettes, and spritePalettes the
+	// palettes a selected sprite's tile is painted with.
+	zonePalettes   *zonepalettes.List
+	spritePalettes []spritePalette
 }
 
 // New returns the project browser.
@@ -148,6 +154,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		contextMenu: ui.Menu{Items: nil, Width: 0}, contextAt: image.Pt(0, 0), context: noContextClick(),
 		npc: newNPCPanel(theme), audio: newAudioState(),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
+		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
@@ -168,6 +175,7 @@ func menuItems() []ui.MenuItem {
 		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
 		{ID: newSprite, Label: "Sprite", Icon: ui.IconSprite, Disabled: false, Danger: false, Rule: false},
+		{ID: newPalette, Label: "Palette", Icon: ui.IconPalette, Disabled: false, Danger: false, Rule: false},
 		{ID: newFolderPrefix + zone.FormatName, Label: "Zone folder", Icon: ui.IconFolder, Disabled: false, Danger: false,
 			Rule: true},
 		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
@@ -329,8 +337,13 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 
 		return
+	case s.zonePalettes.Active():
+		s.zonePalettes.Update(input, ctx)
+
+		return
 	}
 	s.guardSelection(ctx)
+	s.syncArt(ctx)
 	s.syncName(ctx.Docs)
 	s.syncSettings(ctx.Docs)
 	s.syncNPC(ctx)
@@ -472,7 +485,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	if s.saveBar(input, ctx) {
+	if s.saveBar(input, ctx) || s.updateArt(input, ctx) {
 		return
 	}
 	switch {
@@ -555,6 +568,8 @@ func (s *State) create(ctx *frame.Context, item string) {
 		s.addSound(ctx)
 	case newSprite:
 		s.createSprite(ctx)
+	case newPalette:
+		s.createPalette(ctx)
 	}
 }
 
@@ -783,6 +798,8 @@ func (s *State) openSelected(ctx *frame.Context) {
 		ctx.Requests.Open(workflowView, entry.ID, false)
 	case art.SpriteFormatName:
 		ctx.Requests.Open(spriteView, entry.ID, false)
+	case art.PaletteFormatName:
+		ctx.Requests.Open(paletteView, entry.ID, false)
 	case npc.FormatName:
 		if found, loaded := s.npcOf(ctx.Docs, entry.ID); loaded && !found.Behaviour.IsZero() {
 			ctx.Requests.Open(workflowView, found.Behaviour, false)
@@ -859,10 +876,23 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 				}
 			}
 			if remaining == 0 {
-				s.confirmDelete(entry, len(floors), uses)
+				s.askDelete(ctx, entry, len(floors), uses)
 			}
 		})
 	}
+}
+
+// askDelete asks before deleting, once where it is used is known. A palette
+// that is used opens in its Palette Editor instead, which lists each use to
+// remove first.
+func (s *State) askDelete(ctx *frame.Context, entry project.Entry, floors int, uses []protocol.Use) {
+	if entry.Format == art.PaletteFormatName && len(uses) > 0 {
+		ctx.Requests.OpenItem(paletteView, entry.ID, paletteview.ItemDelete)
+		ctx.Frame.Status("“" + entry.Name + "” is used. Its Palette Editor lists each use to remove first.")
+
+		return
+	}
+	s.confirmDelete(entry, floors, uses)
 }
 
 func contains(list []ids.ULID, id ids.ULID) bool {
@@ -965,6 +995,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.contextMenu.Locate(value)
 	case s.moveMenu.IsOpen():
 		return s.moveMenu.Locate(movePrefix + value)
+	case s.zonePalettes.Active():
+		return s.zonePalettes.Locate(name)
 	}
 	switch kind {
 	case "row", "toggle":
@@ -1014,7 +1046,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		}
 	}
 
-	return image.Pt(0, 0), false
+	return s.locateArt(widget)
 }
 
 // allButtons lists the window's buttons outside dialogs.

@@ -59,6 +59,7 @@ for a grid position (use cell).
 | **Label** | A colour's optional short name, at most 15 characters, unique within its palette |
 | **Gradient** | A tool that fills a ramp from a left colour, a right colour and a number of steps |
 | **Loose colour** | A pixel's colour that names no palette, left when a palette is removed from a tile; flagged until repainted |
+| **Shadow record** | A palette's note of a colour's old place after the colour moves to another ramp, so tiles painted with it still find it |
 | **Opacity** | How see-through a palette colour is, such as glass at 40%; one colour is fully clear |
 | **Template** | Guides to draw a tile to, and parts of it kept clear, shown while drawing and never part of the tile |
 | **Drawing layer** | One layer of a tile while it is painted, such as shading; the game receives the layers flattened into one tile |

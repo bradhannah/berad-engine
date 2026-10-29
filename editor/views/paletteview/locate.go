@@ -95,7 +95,7 @@ func (s *State) locateSource(kind, value string) (image.Point, bool) {
 	if kind == "sourceramp" {
 		for _, label := range s.copying.ramps {
 			if label.ramp.Name == value {
-				return ui.Center(label.rect), true
+				return ui.Center(s.revealSource(label.rect)), true
 			}
 		}
 

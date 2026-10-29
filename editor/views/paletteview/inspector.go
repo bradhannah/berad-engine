@@ -565,7 +565,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs, palette *ar
 	if !s.ReadOnly() {
 		s.theme.Heading(screen, "RAMP", left, s.rampTop)
 		s.rampName.Draw(screen)
-		count := strconv.Itoa(len(ramp.Shades)) + " colours · ramp names are unique in a palette"
+		count := strconv.Itoa(len(ramp.Shades)) + " colours"
 		s.theme.DrawText(screen, s.theme.FitText(count, width), left, s.rampName.Rect.Max.Y+ui.Gap, ui.ColorMuted())
 		s.inspect.gradientInto.Draw(screen, s.theme)
 		s.inspect.removeRamp.Draw(screen, s.theme)

@@ -1,6 +1,6 @@
 # Increment 12: Palettes
 
-**Status:** Planned
+**Status:** Built
 
 The twelfth increment gives palettes a window of their own. The engine ships
 one built-in palette, Default, of 256 colours in named ramps, the same in
@@ -102,6 +102,63 @@ Agreed by its author on 2026-10-28, before building:
 - **No migrations:** projects made before this increment are not upgraded.
   Their tiles and the old shared palette may be discarded.
 
+Asked of its author on 2026-10-28, before building, and answered:
+
+- **The old shared palette goes:** nothing drawn before matters, so it is not
+  converted; a project that still has one keeps it as an ordinary palette.
+- **Default's nine unfinished ramps are generated in the style of the
+  others:** amber, yellow, lime, moss, teal, cyan, sky, violet and magenta.
+
+Chosen while building, for its author to check:
+
+- **Default's ramps,** in order: grey, red, orange, amber, yellow, lime,
+  green, moss, teal, cyan, sky, blue, violet, magenta, skin, earth and slate.
+  The nine generated ramps step evenly in OKLCH lightness, from 0.17 to 0.94,
+  their colour strongest in the middle and their hue turning slightly warmer
+  as they lighten, clipped to what a screen shows.
+- **Default is made again whenever a project opens,** from the engine's own
+  data, so a changed copy on disk is put back; its folder and tags are kept.
+  It has fixed IDs, as the old shared palette had.
+- **A pixel's name uses its palette's name as written:** `Default / grey 3`,
+  `gloomy / smoke 1`.
+- **Palettes and tiles are saved at version 2,** which reads version 1 as it
+  is, since version 2 only added labels, shadow records and loose colours.
+- **A palette is not deleted while something refers to it,** a new seam
+  (`model.KeptWhileUsed`) the orchestrator checks; deleting a palette that is
+  used from the project browser opens its Palette Editor at Delete palette….
+- **Ramps are reordered by dragging their names,** and colours by dragging
+  them; no copying by Alt-drag.
+- **A shadow record stays in the palette's file,** so undoing a repaint still
+  finds the colour; Moved colours shows it while a tile refers to both the
+  ramp the colour left and the colour, and hides it after.
+- **A labelled colour has a dot under its swatch,** and every swatch's tip
+  shows its name, label, value and opacity.
+- **The gradient starts mixing the colour only;** Use chosen takes either end
+  from the chosen colour, and choosing an existing ramp starts it from that
+  ramp's ends and length. Its settings never wait for Save.
+- **Copy colours from… takes a whole ramp by its name,** and new copies go to
+  a new ramp named after their source ramp, or the end of a ramp chosen.
+  From Default's window, Copy to palette sends each source ramp's colours to
+  the ramp of that name, or a new one.
+- **A new palette is made two ways:** the Palettes section's [+] makes an
+  empty one, "Palette 1", and opens it; New palette from these, in Default's
+  window, makes one from the picked colours. There is no dialog in the
+  project browser.
+- **A sprite's inspector lists the palettes its tile uses,** Default aside,
+  each with Remove….
+- **A loose colour draws as its value;** the Pixel editor warns about it and
+  about colours that have moved, Show them outlines those pixels, and the
+  eyedropper does not pick a loose colour.
+- **A sprite is placed in a zone** when a stand-in it shows is on a floor of
+  that zone. The panel's folds belong to the window and are not saved.
+- **A zone's palettes show in the Map's inspector under the zone's name**
+  while nothing is selected, and in the project browser's under the zone's
+  buttons; + Palette never offers Default.
+- **The window bar names the kind Palette Editor,** after Sprites, and the
+  windows of one palette share an undo list.
+- **The sample paints its lantern in Default's grey 3, 5, 8, 11 and 14** and
+  the glass of a palette of its own, "Sample", which the sample zone lists.
+
 ## Wireframes
 
 The Palette Editor, as a tab, editing a palette of its own. Letters in
@@ -152,13 +209,13 @@ The Pixel editor's panel, pick-only:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Art model | `engine/art`: Default's 256 colours with fixed IDs; labels; moving ramps and colours, with shadow records; loose colours in tiles; a palette dropped from a tile; the gradient's OKLab steps | Unit tests of Default's size, IDs and order; label length and uniqueness; a moved colour found through its shadow record; loose colours saved and drawn; a dropped palette mapped to Default's exact matches; gradient end points and steps | Planned |
-| 2. Plug-ins and orchestrator | Default as the palette every project holds, read only; edit kinds to move a ramp and a colour; a shade's label; a zone's palettes and their references; the sample's palette | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests that Default is added, refused every edit, rename and delete, and that a palette a zone lists is not deleted | Planned |
-| 3. Palette Editor | `editor/views/paletteview`: the window kind; ramps and colours; the inspector with its save bar; adding, renaming, reordering, moving and removing; labels; Moved colours; Default read only; renaming and deleting the palette, with its references | View tests of each action and of Default's refusals; a real-window test that adds a ramp, moves a colour and saves a label | Planned |
-| 4. Gradient and copying | The gradient panel; Copy colours from…; New palette from Default's colours | View tests of a gradient into a new and an existing ramp and of copied colours without labels | Planned |
-| 5. Pick-only Pixel editor | The panel grouped by palette, in the agreed order, folding; the chosen colour's name and label; hover; Edit palette…; warnings for moved and loose colours | View tests of the order, of Edit palette… and of each warning; the real-window tests updated | Planned |
-| 6. Browser and zones | Palettes [+] and its New palette dialog; Default marked; opening a palette; a zone's palettes in the Map's and the browser's inspectors; a sprite's palettes and Remove… | View tests of the dialog, of a zone's palettes and of a palette removed from a tile | Planned |
-| 7. Trying it | The demo project with Default, a palette of its own and a zone listing it, for its author to try | Judged by its author | Planned |
+| 1. Art model | `engine/art`: Default's 256 colours with fixed IDs; labels; moving ramps and colours, with shadow records; loose colours in tiles; a palette dropped from a tile; the gradient's OKLab steps | Unit tests of Default's size, IDs and order; label length and uniqueness; a moved colour found through its shadow record; loose colours saved and drawn; a dropped palette mapped to Default's exact matches; gradient end points and steps | Built |
+| 2. Plug-ins and orchestrator | Default as the palette every project holds, read only; edit kinds to move a ramp and a colour; a shade's label; a zone's palettes and their references; the sample's palette | Every edit kind passes the shared apply-then-undo test; headless orchestrator tests that Default is added, refused every edit, rename and delete, and that a palette a zone lists is not deleted | Built |
+| 3. Palette Editor | `editor/views/paletteview`: the window kind; ramps and colours; the inspector with its save bar; adding, renaming, reordering, moving and removing; labels; Moved colours; Default read only; renaming and deleting the palette, with its references | View tests of each action and of Default's refusals; a real-window test that adds a ramp, moves a colour and saves a label | Built |
+| 4. Gradient and copying | The gradient panel; Copy colours from…; New palette from Default's colours | View tests of a gradient into a new and an existing ramp and of copied colours without labels | Built |
+| 5. Pick-only Pixel editor | The panel grouped by palette, in the agreed order, folding; the chosen colour's name and label; hover; Edit palette…; warnings for moved and loose colours | View tests of the order, of Edit palette… and of each warning; the real-window tests updated | Built |
+| 6. Browser and zones | Palettes [+]; Default marked; opening a palette; a zone's palettes in the Map's and the browser's inspectors; a sprite's palettes and Remove… | View tests of the [+], of a zone's palettes and of a palette removed from a tile; a real-window test that makes a palette and edits it | Built |
+| 7. Trying it | The demo project with Default, a palette of its own and a zone listing it, for its author to try | Judged by its author | Built |
 
 Where each step changes code:
 
@@ -175,6 +232,84 @@ Where each step changes code:
 
 ## Step results
 
+- **Art model:** `engine/art` holds Default, 256 colours in seventeen ramps
+  with fixed IDs whose time part is zero; shade labels of up to 15
+  characters, unique within a palette; moving a ramp, and moving a colour
+  within or between ramps with a shadow record of the place it left, which
+  `Resolve` looks colours up through; loose colours in tiles; `Dropped`,
+  what a tile's colours become when a palette is removed from it; and
+  `Gradient`, steps mixed in OKLab. Zones list palettes (`engine/zone`,
+  version 2). Verified with unit tests: Default's order, size, IDs and
+  dark-to-light ramps, the same every time; labels refused when sixteen
+  characters long, untrimmed or taken, counted in characters, and round
+  tripped; a moved colour found through its record, the record dropped on
+  moving back, and a move undone exactly with its records; loose colours
+  saved, drawn as their value and refused when invalid; a dropped palette
+  mapped to Default's exact match, opacity included, or loose; a gradient's
+  ends and OKLab steps, by colour or opacity alone; version 1 palettes and
+  tiles read as version 2; a zone's palettes inserted, removed and saved in
+  order.
+- **Plug-ins and orchestrator:** Default is the palette every project holds,
+  read only (`model.RequiredDocument.ReadOnly`): the orchestrator refuses
+  every edit to it and makes it again when a project opens. The art plug-in
+  gains moving a ramp and a colour, labels in setting a shade, and IDs given
+  to a new palette's ramps and colours; tiles' loose colours refer to no
+  palette. The zone plug-in lists and unlists palettes, and a listed palette
+  is a reference. A palette is kept while referred to (`model.KeptWhileUsed`).
+  The sample's lantern uses Default and the sample's own palette, which the
+  sample zone lists. Verified with every new edit kind passing the shared
+  apply-then-undo test, and headless orchestrator tests: a project gains
+  Default at the current version; a Default changed on disk is restored on
+  opening; renaming a ramp, setting a shade and moving a ramp of Default are
+  refused as read only, and deleting or renaming it as held by every project;
+  a palette a tile is painted with is not deleted, naming the tile.
+- **Palette Editor:** a new `editor/views/paletteview` and window kind,
+  Palette Editor, after Sprites on the window bar. Verified with view tests:
+  a click chooses, Shift-click picks a run, Cmd-click adds or takes away and
+  a ramp's name picks it whole; + Ramp, renaming with Enter, + Colour after,
+  Remove colour and Remove ramp; a label, colour and opacity wait for Save,
+  sixteen characters are refused and kept, and choosing another colour asks
+  first; dragging a colour to another ramp sends the move, Moved colours
+  lists it while a tile names its old place, a move within a ramp counts the
+  place without the colour, and dragging a ramp's name reorders it; Default
+  shows no fields and nothing in it drags.
+- **Gradient and copying:** verified with view tests: a new ramp of five
+  OKLab steps; an existing ramp of four filled with six, as one step; a
+  gradient that would remove a colour a tile uses refused; Default's slate 2
+  to 6 copied into a new ramp, without labels; Default's colours copied into
+  a palette of the game's own, and a new palette made from a whole ramp and a
+  single colour, which go in "default" first; Delete palette… waiting while a
+  zone and a tile refer to the palette, the zone's listing removed and the
+  tile's pixels kept as Default's exact match and a loose colour, then the
+  palette deleted.
+- **Pick-only Pixel editor:** its panel picks colours only. Verified with
+  view tests, each frame also drawn: palettes in the agreed order for a
+  sprite placed in a zone that lists one and for a sprite placed nowhere,
+  folded and opened by their headings; Edit palette… opening the chosen
+  colour's palette at that colour, and doing nothing with clear; warnings
+  for pixels that name a moved colour and for loose colours, Show them, the
+  eyedropper picking a moved colour at its new place and refusing a loose
+  one; a long palette scrolling.
+- **Browser and zones:** the Palettes section has a [+] and New ▾ a Palette,
+  which make an empty palette and open it; Default is marked "default · read
+  only"; a palette opens in the Palette Editor; a used palette's Delete opens
+  its Palette Editor at Delete palette…; a zone's inspector, in the browser
+  and in the Map with nothing selected, lists its palettes
+  (`editor/views/zonepalettes`); a sprite's inspector lists the palettes its
+  tile uses, each with Remove…. Verified with view tests of each.
+- **Real windows:** a new real-window test makes a palette from the Palettes
+  section's [+], which opens in a Palette Editor, copies Default's slate
+  ramp, labels a colour, adds a ramp, drags a colour into it and adds a
+  gradient; the saved palette holds all of it and the shadow record. The
+  map test now makes its ramps in a Palette Editor opened by Edit palette…,
+  and the Pixel editor's tests paint with Default and the sample's palette.
+  In a full run 34 of the 35 real-window tests passed; the new one failed
+  because Copy colours from… did not scroll a ramp's name into view, and
+  passes since that was fixed, with the other two palette tests run again.
+  `make check` shows no lint findings, with every package passing.
+- **Trying it:** the sample project has Default, its own palette "Sample"
+  with the lantern's glass, listed by the sample zone:
+  `make demo-shell DEMO_PROJECT=.cache/demo-palettes`.
 ## Not in this increment
 
 - **A choice of built-in palettes:** there is one, Default.

@@ -32,6 +32,10 @@ import (
 // ViewName is the Palette Editor's view name; its target is a palette.
 const ViewName = "palette"
 
+// ItemDelete is the item that opens Delete palette… when the window is
+// opened at it.
+const ItemDelete = "delete"
+
 // UndoGroup is the undo list the Palette Editors of one palette share.
 func UndoGroup(palette ids.ULID) string { return "palette:" + palette.String() }
 
@@ -130,7 +134,7 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 		},
 		inspect: inspectorButtons{
 			addColor: ui.NewButton("add-colour", "+ Colour after"), removeColor: ui.NewButton("remove-colour", "Remove colour"),
-			gradientInto: ui.NewButton("gradient-into", "Gradient into ramp…"),
+			gradientInto: ui.NewButton("gradient-into", "Gradient…"),
 			removeRamp:   ui.NewButton("remove-ramp", "Remove ramp"),
 		},
 		menu: ui.Menu{Items: nil, Width: 0}, menuFor: "", gradient: newGradientPanel(theme), copying: newCopyPanel(theme),
@@ -143,6 +147,9 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 	view.bar.copyTo.Caret = true
 	view.focus.Register(view.name, view.label, view.hex, view.opacity, view.rampName)
 	view.focus.Register(view.gradient.fields()...)
+	for _, field := range append(view.gradient.fields(), view.copying.name) {
+		field.Unmarked = true
+	}
 	view.focus.Register(view.copying.name)
 
 	return view
@@ -204,7 +211,10 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.Event != nil || update.Snapshot != nil {
 		s.uses, s.asked = map[string][]protocol.Use{}, map[string]bool{}
 	}
-	if update.Attention && update.Item != "" {
+	switch {
+	case update.Attention && update.Item == ItemDelete:
+		s.openDeleting(ctx)
+	case update.Attention && update.Item != "":
 		s.Show(ctx.Docs, update.Item)
 	}
 }

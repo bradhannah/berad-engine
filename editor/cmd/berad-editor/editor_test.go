@@ -1234,3 +1234,51 @@ func TestCrashedWindowLeavesAReport(t *testing.T) {
 		t.Fatalf("report lacks the panic:\n%.500s", raw)
 	}
 }
+
+// TestPaletteEditorEditsAPalette makes a palette from the Palettes section's
+// [+], which opens in a Palette Editor. There it copies Default's slate
+// ramp, labels a colour, adds a ramp, drags slate's first colour into it and
+// adds a gradient. The saved palette holds all of it, with a shadow record of
+// the moved colour's old place.
+func TestPaletteEditorEditsAPalette(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "palette-editor-made.png")
+	browserScript := script(
+		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300), wait(1500), quit(),
+	)
+	paletteScript := script(
+		must("state:loaded", 600), wait(5),
+		click("ui:copy-from"), must("sourceramp:slate", 120), click("sourceramp:slate"), click("ui:copy"),
+		must("state:ramps:slate", 120),
+		click("swatch:slate 2"), click("ui:label"), typed("dusk"), click("ui:save"),
+		must("state:label:slate 2:dusk", 120),
+		click("ui:add-ramp"), must("state:ramps:slate,new ramp", 120),
+		drag("swatch:slate 1", "slot:new ramp 2"), must("state:colour:new ramp 2:#090D17", 120),
+		click("ui:gradient"),
+		click("ui:left"), keys("Cmd+A"), typed("#2E2C33"), click("ui:right"), keys("Cmd+A"), typed("#E1E3E6"),
+		click("ui:steps"), keys("Cmd+A"), typed("5"), click("ui:apply-gradient"),
+		must("state:ramps:slate,new ramp,gradient", 120), step{Repeat: 2, Screenshot: shot}, wait(30), quit(),
+	)
+	mapScript := script(expect("state:loaded", 600), quit())
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "palette": {paletteScript}})
+	noCrashes(t, project)
+
+	palette, err := art.DecodePalette(readEnvelope(t, project, "palettes/palette-1--*.json").Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ramps := palette.Ramps()
+	if len(ramps) != 3 || ramps[0].Name != "slate" || len(ramps[0].Shades) != 14 || ramps[0].Shades[0].Label != "dusk" ||
+		ramps[1].Name != "new ramp" || len(ramps[1].Shades) != 2 || ramps[1].Shades[1].Color != 0x090D17 ||
+		ramps[2].Name != "gradient" || len(ramps[2].Shades) != 5 || ramps[2].Shades[2].Color != 0x828187 {
+		t.Fatalf("the saved palette: %+v", ramps)
+	}
+	moved := palette.MovedShades()
+	if len(moved) != 1 || moved[0].Ramp != ramps[0].ID || moved[0].Name != "slate 1" {
+		t.Fatalf("the shadow record of slate 1: %+v", moved)
+	}
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}

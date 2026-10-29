@@ -554,6 +554,12 @@ func TestCopiesColoursFromDefault(t *testing.T) {
 	if !f.has("ramps:smoke,murk,ember,fog,slate") || !f.has("label:slate 1:") {
 		t.Fatal("the copies are independent, without labels")
 	}
+	f.click("sourceramp:earth")
+	f.click("ui:copy")
+	adds = sent[artplugin.AddRampArgs](f, artplugin.AddRampEdit)
+	if len(adds) != 2 || adds[1].Ramp.Name != "earth" || len(adds[1].Ramp.Shades) != 15 {
+		t.Fatalf("a ramp's name, scrolled to, copies it whole: %+v", adds)
+	}
 }
 
 // TestDeleteRemovesReferencesFirst lists the zone and the tile that refer to

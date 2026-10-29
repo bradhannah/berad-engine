@@ -364,7 +364,9 @@ func (s *State) drawReadout(screen *ebiten.Image, docs frame.Docs) {
 		}
 		s.theme.DrawText(screen, s.theme.FitText(problem, room), ui.Inset, top+ui.LineHeight, ui.ColorWarn())
 	}
-	s.marks.Draw(screen, s.theme)
+	if !s.marks.Rect.Empty() {
+		s.marks.Draw(screen, s.theme)
+	}
 }
 
 // layoutReadout places Show them at the right of the readout's second line,

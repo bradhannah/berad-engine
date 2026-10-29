@@ -324,7 +324,7 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, left, width in
 	s.theme.Heading(screen, "CHOSEN", left, top)
 	top += ui.LineHeight
 	box := image.Rect(left, top, left+chosenSwatch, top+chosenSwatch)
-	s.drawSwatch(screen, docs, swatch{rect: box, color: s.color, name: ""}, false)
+	s.drawSwatch(screen, s.colors(docs), swatch{rect: box, color: s.color, name: ""}, false)
 	textLeft := box.Max.X + ui.Inset
 	room := left + width - textLeft
 	name, _ := s.colorName(docs, s.color)
@@ -355,12 +355,9 @@ func (s *State) drawSwatches(screen *ebiten.Image, docs frame.Docs) {
 	empty := s.panel.swatches[0].rect
 	s.theme.DrawText(area, "clear", empty.Max.X+ui.Gap*ui.Half, empty.Min.Y+ui.Gap/ui.Half, ui.ColorMuted())
 	for _, header := range s.panel.headers {
-		mark := "▾ "
-		if header.folded {
-			mark = "▸ "
-		}
 		text := header.rect.Min.Y + ui.Gap/ui.Half
-		s.theme.DrawText(area, mark, header.rect.Min.X, text, ui.ColorMuted())
+		mark := image.Rect(header.rect.Min.X, header.rect.Min.Y, header.rect.Min.X+foldColumn-ui.Gap, header.rect.Max.Y)
+		ui.DrawTriangle(area, mark, !header.folded, ui.ColorMuted())
 		s.theme.DrawText(area, header.name, header.rect.Min.X+foldColumn, text, ui.ColorInk())
 		if header.note != "" {
 			s.theme.DrawText(area, header.note, header.rect.Min.X+foldColumn+s.theme.TextWidth(header.name)+ui.Gap, text,
@@ -371,9 +368,10 @@ func (s *State) drawSwatches(screen *ebiten.Image, docs frame.Docs) {
 		s.theme.DrawText(area, s.theme.FitText(label.ramp.Name, label.rect.Dx()), label.rect.Min.X,
 			label.rect.Min.Y+ui.Gap/ui.Half, ui.ColorInk())
 	}
+	colors := s.colors(docs)
 	for _, offered := range s.panel.swatches {
 		if offered.rect.Overlaps(s.panel.area) {
-			s.drawSwatch(area, docs, offered, true)
+			s.drawSwatch(area, colors, offered, true)
 		}
 	}
 	if view := s.panel.area.Dy(); s.panel.content > view {
@@ -385,13 +383,13 @@ func (s *State) drawSwatches(screen *ebiten.Image, docs frame.Docs) {
 
 // drawSwatch draws one colour: see-through shades over a checkerboard, and,
 // when asked, the chosen colour outlined in blue.
-func (s *State) drawSwatch(screen *ebiten.Image, docs frame.Docs, offered swatch, outline bool) {
+func (s *State) drawSwatch(screen *ebiten.Image, colors art.Palettes, offered swatch, outline bool) {
 	rect := offered.rect
 	half := rect.Dx() / ui.Half
 	ui.FillRect(screen, rect, ui.ColorBackground())
 	ui.FillRect(screen, image.Rect(rect.Min.X+half, rect.Min.Y, rect.Max.X, rect.Min.Y+half), ui.Hex(hexChecker))
 	ui.FillRect(screen, image.Rect(rect.Min.X, rect.Min.Y+half, rect.Min.X+half, rect.Max.Y), ui.Hex(hexChecker))
-	if value, known := s.colors(docs).Color(offered.color); known && !offered.color.IsClear() {
+	if value, known := colors.Color(offered.color); known && !offered.color.IsClear() {
 		var ink color.Color = value
 		ui.FillRect(screen, rect, ink)
 	}

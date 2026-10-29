@@ -446,14 +446,16 @@ func (s *State) dropShade(ctx *frame.Context, palette *art.Palette, point image.
 // clipped to their area, the moved colours, a scroll bar when they do not
 // fit, and what is being dragged.
 func (s *State) drawRows(screen *ebiten.Image, palette *art.Palette) {
-	ui.FillRect(screen, frame.Content(s.size), ui.ColorCanvas())
+	content := frame.Content(s.size)
+	ui.FillRect(screen, image.Rect(content.Min.X, s.rows.area.Min.Y-ui.Inset, content.Max.X, content.Max.Y),
+		ui.ColorCanvas())
 	area, clipped := screen.SubImage(s.rows.area).(*ebiten.Image)
 	if !clipped {
 		return
 	}
 	text := (swatchSize - ui.TextSize) / ui.Half
 	empty := s.rows.clear
-	s.theme.DrawText(area, "empty", s.rows.area.Min.X, empty.Min.Y+text, ui.ColorMuted())
+	s.theme.DrawText(area, "clear", s.rows.area.Min.X, empty.Min.Y+text, ui.ColorMuted())
 	drawSwatch(area, empty, art.Shade{ID: ids.ULID{}, Color: 0, Opacity: 0, Label: ""}, true)
 	s.theme.DrawText(area, "the empty colour, which every palette offers", empty.Max.X+ui.Inset, empty.Min.Y+text,
 		ui.ColorMuted())

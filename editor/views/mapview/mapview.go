@@ -24,6 +24,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
@@ -129,13 +130,16 @@ const (
 type State struct {
 	window ids.ULID
 	zone   ids.ULID
-	theme  *ui.Theme
-	floors []ids.ULID
-	floor  ids.ULID
-	subs   map[ids.ULID]bool
-	tool   Tool
-	tile   map[Tool]string
-	camera camera
+	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
+	zonePalettes *zonepalettes.List
+	zoneListFoot int
+	theme        *ui.Theme
+	floors       []ids.ULID
+	floor        ids.ULID
+	subs         map[ids.ULID]bool
+	tool         Tool
+	tile         map[Tool]string
+	camera       camera
 	// sprites is the art drawn for stand-ins that sprites show.
 	sprites *spriteArt
 	size    image.Point
@@ -232,6 +236,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
 		previewBn: ui.NewButton("preview", "Preview"),
 		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
+		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0,
 		openBn:   ui.NewButton("open-behaviour", "Open behaviour"),
 		removeBn: ui.NewButton("remove-npc", "Remove"),
 		clockBn:  ui.NewButton("clock", "Clock"), watchBn: ui.NewButton("watch", "Watch"),
@@ -459,6 +464,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	}
 
 	s.layoutInspector()
+	s.layoutZonePalettes(docs)
 }
 
 // layoutInspector places the inspector's widgets for what is selected.
@@ -559,6 +565,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		ctx.Frame.Status("Opened a new view of this zone")
 	}
 	frame.CommonKeys(input, ctx)
+	if s.zonePalettes.Update(input, ctx) {
+		return
+	}
 	s.updatePanels(input, ctx)
 	s.subscribeNPC(ctx)
 	s.openWhenLoaded(ctx)
@@ -601,6 +610,8 @@ func (s *State) updateOver(input *ui.Input, ctx *frame.Context) bool {
 		s.updateMenu(input, ctx)
 	case s.keySheet.IsOpen():
 		s.keySheet.Update(input)
+	case s.zonePalettes.Active():
+		s.zonePalettes.Update(input, ctx)
 	default:
 		return false
 	}
@@ -1384,6 +1395,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "floor":
 		return s.locateFloor(value)
 	case "ui":
+		if at, found := s.zonePalettes.Locate(name); found {
+			return at, true
+		}
+
 		return s.locateWidget(value)
 	case "live-npc":
 		return s.locateLiveNPC(value)
@@ -1460,6 +1475,10 @@ func (s *State) locateOver(kind, value string) (image.Point, bool, bool) {
 		return point, found, true
 	case s.menu != nil && kind == "menu":
 		point, found := s.menu.Locate(value)
+
+		return point, found, true
+	case s.zonePalettes.Active():
+		point, found := s.zonePalettes.Locate(kind + ":" + value)
 
 		return point, found, true
 	}

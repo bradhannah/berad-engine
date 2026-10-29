@@ -56,7 +56,7 @@ func kindOf(format string) kind {
 	case art.SpriteFormatName:
 		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: "Open sprite"}
 	case art.PaletteFormatName:
-		return kind{label: "Palette", noun: "palette", icon: ui.IconPalette, open: ""}
+		return kind{label: "Palette", noun: "palette", icon: ui.IconPalette, open: "Open in Palette Editor"}
 	}
 
 	return kind{label: "Document", noun: "document", icon: ui.IconNone, open: ""}
@@ -72,6 +72,8 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	for _, button := range s.inspectorButtons() {
 		button.Rect = ui.Zero()
 	}
+	s.zonePalettes.Layout(docs, ids.ULID{}, 0, 0, 0, s.size)
+	s.spritePalettes = nil
 	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
 	s.name.Rect, s.tags.Rect, s.save.Rect, s.tileSize.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	if s.list.Selected == settingsRow {
@@ -110,6 +112,7 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	}
 	top := s.layoutTags(entry, left, width)
 	top = s.layoutActions(docs, entry, left, width, top)
+	top = s.layoutArt(docs, entry, left, width, top)
 	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
 }
 
@@ -164,7 +167,7 @@ func (s *State) layoutActions(docs frame.Docs, entry project.Entry, left, width,
 		s.down.Rect = image.Rect(left+half+buttonGap, top, left+width, top+ui.ButtonH)
 		_, inZone := s.zoneOf(docs, entry.ID)
 		s.open.Disabled, s.up.Disabled, s.down.Disabled = !inZone, !inZone, !inZone
-	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName:
+	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName, art.PaletteFormatName:
 		s.open.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	}
 
@@ -368,8 +371,10 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		}
 	}
 	s.drawNPC(screen, docs, left)
+	s.drawArt(screen, left)
 	s.save.Draw(screen, s.theme)
 	s.moveMenu.Draw(screen, s.theme)
+	s.zonePalettes.DrawMenu(screen)
 }
 
 // drawHeader draws the inspector's header: an icon, a type and a name.
