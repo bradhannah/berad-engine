@@ -172,6 +172,9 @@ func (o *Orchestrator) applyEdit(
 	if !ok {
 		return appliedEdit{}, fmt.Errorf("%w: %s", ErrUnknownEdit, editName)
 	}
+	if err := o.refuseReadOnly(documentID); err != nil {
+		return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)
+	}
 	args, created, err := o.prepare(entry, kind, args)
 	if err != nil {
 		return appliedEdit{}, fmt.Errorf("%s refused: %w", editName, err)

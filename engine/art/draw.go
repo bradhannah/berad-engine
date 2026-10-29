@@ -15,20 +15,36 @@ type Resolver interface {
 // Palettes resolves colours from palettes by their document IDs.
 type Palettes map[ids.ULID]*Palette
 
-// Color returns the colour a reference names, if its palette, ramp and
-// shade exist.
+// Color returns the colour a reference names, if its palette and shade
+// exist, found through a shadow record if the shade has moved. A loose colour
+// is its own value.
 func (p Palettes) Color(ref ColorRef) (color.NRGBA, bool) {
 	none := color.NRGBA{R: 0, G: 0, B: 0, A: 0}
+	if ref.IsLoose() {
+		return ref.Value.NRGBA(ref.Opacity), true
+	}
 	palette, ok := p[ref.Palette]
 	if !ok || palette == nil {
 		return none, false
 	}
-	shade, _, ok := palette.Lookup(ref.Ramp, ref.Shade)
+	shade, _, ok := palette.Resolve(ref.Ramp, ref.Shade)
 	if !ok {
 		return none, false
 	}
 
 	return shade.Color.NRGBA(shade.Opacity), true
+}
+
+// Moved reports whether a reference finds its shade only through a shadow
+// record, because the shade has moved to another ramp since it was painted.
+func (p Palettes) Moved(ref ColorRef) bool {
+	palette, ok := p[ref.Palette]
+	if !ok || palette == nil || ref.IsLoose() || ref.IsClear() {
+		return false
+	}
+	_, moved, found := palette.Resolve(ref.Ramp, ref.Shade)
+
+	return found && moved
 }
 
 // Image draws the tile at one image pixel per tile pixel. A see-through

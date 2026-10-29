@@ -1,6 +1,7 @@
 package pixelview
 
 import (
+	"cmp"
 	"fmt"
 	"image"
 	"image/color"
@@ -10,9 +11,9 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
-	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
+	"github.com/bradhannah/berad-engine/editor/client"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/ui"
-	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -23,158 +24,158 @@ const (
 	swatchSize   = 18
 	swatchStep   = 21
 	rampColumn   = 76
-	labelColumn  = 64
-	colorWidth   = 96
-	opacityWidth = 56
-	buttonWidth  = 112
+	foldColumn   = 14
 	chosenWidth  = 2
 	scrollBar    = 4
-	// A new ramp is named newRampName, numbered after the first, and starts
-	// with one shade of newShade.
-	newRampName = "new ramp"
-	newShade    = art.RGB(0x808080)
-	firstNumber = 2
+	chosenSwatch = 36
+	editWidth    = 112
+	tipPad       = 6
+	tipOffset    = 14
+	// chosenLines is how many lines of text the chosen colour shows beside
+	// its swatch: its name, its label and its value.
+	chosenLines = 3
 )
 
+// The panel picks colours only (increment 12): every palette's colours are
+// edited in the Palette Editor, and the panel offers palettes in the agreed
+// order. First come the palettes the zones the sprite is placed in list,
+// A to Z; then Default; then every other palette, A to Z, folded until
+// opened.
+
 // swatch is one colour the panel offers, clear or a shade, where it is
-// drawn, and what scripts call it: "clear" or a shade's name.
+// drawn, and what scripts call it: "clear" or its full name, such as
+// "Default / grey 3".
 type swatch struct {
 	rect  image.Rectangle
 	color art.ColorRef
 	name  string
 }
 
-// rampLabel is a ramp's name in the panel, which chooses the ramp.
+// rampLabel is a ramp's name in the panel, which chooses its first shade.
 type rampLabel struct {
-	rect image.Rectangle
-	ramp art.Ramp
+	rect    image.Rectangle
+	palette ids.ULID
+	ramp    art.Ramp
+}
+
+// paletteHeader is a palette's name in the panel, which folds it.
+type paletteHeader struct {
+	rect    image.Rectangle
+	palette ids.ULID
+	name    string
+	note    string
+	folded  bool
 }
 
 // panelLayout is where the palette panel's parts are this frame: the
-// swatches and ramp names, the area they scroll in and how tall they are,
-// and the tops of its headings.
+// swatches, ramp names and palette headings, the area they scroll in and how
+// tall they are, and the tops of the chosen colour and Shows.
 type panelLayout struct {
 	swatches  []swatch
 	ramps     []rampLabel
+	headers   []paletteHeader
 	area      image.Rectangle
 	content   int
-	rampTop   int
-	shadeTop  int
-	shadeName string
+	chosenTop int
 	showsTop  int
 }
 
 func newPanelLayout() panelLayout {
 	return panelLayout{
-		swatches: nil, ramps: nil, area: ui.Zero(), content: 0, rampTop: 0, shadeTop: 0, shadeName: "", showsTop: 0,
+		swatches: nil, ramps: nil, headers: nil, area: ui.Zero(), content: 0, chosenTop: 0, showsTop: 0,
 	}
 }
 
-// chosenRamp returns the shared palette's ramp the panel shows, and its
-// shade when one is chosen.
-func (s *State) chosenRamp(shared *art.Palette) (art.Ramp, art.Shade, int, bool) {
-	var none art.Shade
-	if shared == nil || s.color.Palette != art.SharedPaletteID() {
-		return art.Ramp{ID: ids.ULID{}, Name: "", Shades: nil}, none, 0, false
-	}
-	ramp, ok := shared.Ramp(s.color.Ramp)
-	if !ok {
-		return ramp, none, 0, false
-	}
-	shade, number, found := shared.Lookup(ramp.ID, s.color.Shade)
-	if !found {
-		return ramp, none, 0, true
-	}
-
-	return ramp, shade, number, true
+// offer is one palette the panel offers, with its name, its colours, and
+// whether a zone the sprite is placed in lists it.
+type offer struct {
+	id      ids.ULID
+	name    string
+	palette *art.Palette
+	first   bool
 }
 
-// layoutPanel places the palette panel. At its foot are the save bar, Shows,
-// and above them + Ramp, the chosen ramp's name and the chosen shade's colour
-// and opacity with their buttons; the clear colour and each ramp's shades
-// fill the space above, scrolling when they do not fit.
-func (s *State) layoutPanel(docs frame.Docs, shared *art.Palette) {
+// offers returns the palettes the panel shows, in the agreed order.
+func (s *State) offers(docs frame.Docs) []offer {
+	var entries []project.Entry
+	docs.View(project.IndexID(), func(document client.Document) {
+		if index, ok := document.Model.(*project.Index); ok {
+			entries = index.OfFormat(art.PaletteFormatName)
+		}
+	})
+	if !slices.ContainsFunc(entries, func(entry project.Entry) bool { return entry.ID == art.DefaultPaletteID() }) {
+		entries = append(entries, project.Entry{
+			ID: art.DefaultPaletteID(), Name: art.DefaultPaletteName, Format: art.PaletteFormatName, Folder: "", Tags: nil,
+		})
+	}
+	offers := make([]offer, 0, len(entries))
+	for _, entry := range entries {
+		found, ok := palette(docs, entry.ID)
+		if !ok {
+			continue
+		}
+		offers = append(offers, offer{
+			id: entry.ID, name: entry.Name, palette: found,
+			first: entry.ID != art.DefaultPaletteID() && slices.Contains(s.first, entry.ID),
+		})
+	}
+	rank := func(each offer) int {
+		switch {
+		case each.first:
+			return 0
+		case each.id == art.DefaultPaletteID():
+			return 1
+		}
+
+		return ui.Half
+	}
+	slices.SortStableFunc(offers, func(left, right offer) int {
+		return cmp.Or(rank(left)-rank(right), strings.Compare(strings.ToLower(left.name), strings.ToLower(right.name)))
+	})
+
+	return offers
+}
+
+// folded reports whether a palette is folded: as its author left it, or
+// else folded unless it is Default or a zone of the sprite lists it.
+func (s *State) folded(each offer) bool {
+	if folded, chosen := s.folds[each.id]; chosen {
+		return folded
+	}
+
+	return !each.first && each.id != art.DefaultPaletteID()
+}
+
+// layoutPanel places the palette panel: the palettes' colours from the top,
+// scrolling when they do not fit; at the foot, Shows; and above it the chosen
+// colour and Edit palette….
+func (s *State) layoutPanel(docs frame.Docs) {
 	inspector := frame.Inspector(s.size)
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
-	for _, widget := range []*ui.TextField{s.rampName, s.shadeColor, s.shadeOpacity} {
-		widget.Rect = ui.Zero()
-	}
-	for _, button := range []*ui.Button{s.addRamp, s.addShade, s.removeShade, s.removeRamp} {
-		button.Rect = ui.Zero()
-	}
 	s.panel = newPanelLayout()
-	bottom := inspector.Max.Y - ui.Inset
-	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
-	s.save.Unsaved = s.Unsaved(docs)
-	s.layoutShows(docs, left, width)
-	if shared == nil {
-		return
-	}
-	top := s.layoutEditing(shared, left, width, s.panel.showsTop-ui.Inset)
-	area := image.Rect(left-ui.Half*chosenWidth, ui.Inset+ui.LineHeight, left+width, top-ui.Gap)
-	s.layoutSwatches(shared, left, width, area)
+	s.layoutShows(docs, left, width, inspector.Max.Y-ui.Inset)
+	editTop := s.panel.showsTop - ui.Inset - ui.ButtonH
+	s.edit.Rect = image.Rect(left, editTop, left+editWidth, editTop+ui.ButtonH)
+	s.edit.Disabled = s.color.IsClear() || s.color.IsLoose()
+	s.panel.chosenTop = editTop - ui.Gap - max(chosenSwatch, chosenLines*ui.LineHeight) - ui.LineHeight
+	area := image.Rect(left-ui.Half*chosenWidth, ui.Inset+ui.LineHeight, left+width, s.panel.chosenTop-ui.Inset)
+	s.layoutSwatches(s.offers(docs), left, width, area)
 }
 
-// layoutEditing places + Ramp and the chosen ramp's and shade's fields and
-// buttons, pinned with their foot at bottom however long the palette, and
-// returns their top.
-func (s *State) layoutEditing(shared *art.Palette, left, width, bottom int) int {
-	s.addRamp.Rect = image.Rect(left, 0, left+buttonWidth, ui.ButtonH)
-	end := s.addRamp.Rect.Max.Y
-	if ramp, shade, number, chosen := s.chosenRamp(shared); chosen {
-		end = s.layoutChosen(ramp, shade, number, left, width, end+ui.Inset)
-	}
-	shift := image.Pt(0, bottom-end)
-	for _, button := range []*ui.Button{s.addRamp, s.addShade, s.removeShade, s.removeRamp} {
-		if !button.Rect.Empty() {
-			button.Rect = button.Rect.Add(shift)
-		}
-	}
-	for _, field := range []*ui.TextField{s.rampName, s.shadeColor, s.shadeOpacity} {
-		if !field.Rect.Empty() {
-			field.Rect = field.Rect.Add(shift)
-		}
-	}
-	s.panel.rampTop += shift.Y
-	s.panel.shadeTop += shift.Y
-
-	return s.addRamp.Rect.Min.Y
-}
-
-// layoutChosen places the chosen ramp's name and its buttons, with the
-// chosen shade's colour and opacity between, from top down, and returns
-// their foot.
-func (s *State) layoutChosen(ramp art.Ramp, shade art.Shade, number, left, width, top int) int {
-	s.panel.rampTop = top
-	s.rampName.Rect = image.Rect(left, top+ui.LineHeight, left+width, top+ui.LineHeight+ui.ButtonH)
-	top = s.rampName.Rect.Max.Y + ui.Inset
-	if !shade.ID.IsZero() {
-		s.panel.shadeTop, s.panel.shadeName = top, ramp.Name+" "+strconv.Itoa(number)
-		top += ui.LineHeight
-		s.shadeColor.Rect = image.Rect(left+labelColumn, top, left+labelColumn+colorWidth, top+ui.ButtonH)
-		top = s.shadeColor.Rect.Max.Y + ui.Gap
-		s.shadeOpacity.Rect = image.Rect(left+labelColumn, top, left+labelColumn+opacityWidth, top+ui.ButtonH)
-		top = s.shadeOpacity.Rect.Max.Y + ui.Inset
-	}
-	s.addShade.Rect = image.Rect(left, top, left+buttonWidth, top+ui.ButtonH)
-	if !shade.ID.IsZero() {
-		s.removeShade.Rect = image.Rect(left+buttonWidth+ui.Gap, top, left+ui.Half*buttonWidth+ui.Gap, top+ui.ButtonH)
-	}
-	top = s.addShade.Rect.Max.Y + ui.Gap
-	s.removeRamp.Rect = image.Rect(left, top, left+buttonWidth, top+ui.ButtonH)
-
-	return s.removeRamp.Rect.Max.Y
-}
-
-// layoutSwatches places the clear colour and every ramp's name and shades in
-// an area, a ramp's shades wrapping onto further rows, scrolled by the
-// panel's scroll, which it keeps within what there is to show.
-func (s *State) layoutSwatches(shared *art.Palette, left, width int, area image.Rectangle) {
+// layoutSwatches places the clear colour and each palette's heading, and the
+// ramps of each palette not folded, a ramp's shades wrapping onto further
+// rows, scrolled by the panel's scroll, which it keeps within what there is to
+// show.
+func (s *State) layoutSwatches(offers []offer, left, width int, area image.Rectangle) {
 	perRow := max(1, (width-rampColumn)/swatchStep)
 	s.panel.area = area
-	s.panel.content = swatchStep
-	for _, ramp := range shared.Ramps() {
-		s.panel.content += max(1, (len(ramp.Shades)+perRow-1)/perRow) * swatchStep
+	s.panel.content = swatchStep * (1 + len(offers))
+	for _, each := range offers {
+		if !s.folded(each) {
+			for _, ramp := range each.palette.Ramps() {
+				s.panel.content += max(1, (len(ramp.Shades)+perRow-1)/perRow) * swatchStep
+			}
+		}
 	}
 	s.scrollPanel(0)
 	top := area.Min.Y - s.scroll
@@ -182,22 +183,35 @@ func (s *State) layoutSwatches(shared *art.Palette, left, width int, area image.
 		rect: image.Rect(left, top, left+swatchSize, top+swatchSize), color: clearColor(), name: "clear",
 	})
 	top += swatchStep
-	for _, ramp := range shared.Ramps() {
-		s.panel.ramps = append(s.panel.ramps, rampLabel{
-			rect: image.Rect(left, top, left+rampColumn-ui.Gap, top+swatchSize), ramp: ramp,
-		})
-		for index, shade := range ramp.Shades {
-			if index > 0 && index%perRow == 0 {
-				top += swatchStep
-			}
-			x := left + rampColumn + index%perRow*swatchStep
-			ref := art.ColorRef{Palette: art.SharedPaletteID(), Ramp: ramp.ID, Shade: shade.ID}
-			s.panel.swatches = append(s.panel.swatches, swatch{
-				rect: image.Rect(x, top, x+swatchSize, top+swatchSize), color: ref,
-				name: ramp.Name + " " + strconv.Itoa(index+1),
-			})
+	for _, each := range offers {
+		header := paletteHeader{
+			rect: image.Rect(left, top, left+width, top+swatchSize), palette: each.id, name: each.name, note: "",
+			folded: s.folded(each),
 		}
+		if each.first {
+			header.note = "listed by its zone"
+		}
+		s.panel.headers = append(s.panel.headers, header)
 		top += swatchStep
+		if header.folded {
+			continue
+		}
+		for _, ramp := range each.palette.Ramps() {
+			s.panel.ramps = append(s.panel.ramps, rampLabel{
+				rect: image.Rect(left, top, left+rampColumn-ui.Gap, top+swatchSize), palette: each.id, ramp: ramp,
+			})
+			for index, shade := range ramp.Shades {
+				if index > 0 && index%perRow == 0 {
+					top += swatchStep
+				}
+				x := left + rampColumn + index%perRow*swatchStep
+				s.panel.swatches = append(s.panel.swatches, swatch{
+					rect:  image.Rect(x, top, x+swatchSize, top+swatchSize),
+					color: art.Named(each.id, ramp.ID, shade.ID), name: each.name + " / " + ramp.Name + " " + strconv.Itoa(index+1),
+				})
+			}
+			top += swatchStep
+		}
 	}
 }
 
@@ -221,18 +235,12 @@ func (s *State) reveal(rect image.Rectangle) image.Rectangle {
 	return rect.Sub(image.Pt(0, s.scroll-before))
 }
 
-// updatePanel handles the panel's buttons and a click on a swatch or a ramp's
-// name.
-func (s *State) updatePanel(input *ui.Input, ctx *frame.Context, shared *art.Palette) {
+// updatePanel handles Edit palette…, Shows, the wheel over the swatches,
+// and a click on a swatch, a ramp's name or a palette's heading.
+func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 	switch {
-	case s.addRamp.Update(input):
-		s.addRampTo(ctx, shared)
-	case s.addShade.Update(input):
-		s.addShadeTo(ctx, shared)
-	case s.removeShade.Update(input):
-		s.removeChosenShade(ctx, shared)
-	case s.removeRamp.Update(input):
-		s.removeChosenRamp(ctx, shared)
+	case s.edit.Update(input):
+		s.editPalette(ctx)
 	case s.shows.Update(input):
 		s.openShows(ctx.Docs)
 	case input.Cursor.In(s.panel.area) && input.WheelY != 0:
@@ -243,8 +251,8 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context, shared *art.Pal
 	}
 }
 
-// choosePanel chooses the colour of a clicked swatch, or a clicked ramp:
-// its first shade, or the ramp alone when it has none.
+// choosePanel chooses the colour of a clicked swatch, or a clicked ramp's
+// first shade, or folds or opens a clicked palette.
 func (s *State) choosePanel(input *ui.Input) {
 	for _, offered := range s.panel.swatches {
 		if input.Cursor.In(offered.rect) {
@@ -255,8 +263,16 @@ func (s *State) choosePanel(input *ui.Input) {
 		}
 	}
 	for _, label := range s.panel.ramps {
-		if input.Cursor.In(label.rect) {
-			s.chooseShade(label.ramp, 0)
+		if input.Cursor.In(label.rect) && len(label.ramp.Shades) > 0 {
+			s.color = art.Named(label.palette, label.ramp.ID, label.ramp.Shades[0].ID)
+			input.ClearPointer()
+
+			return
+		}
+	}
+	for _, header := range s.panel.headers {
+		if input.Cursor.In(header.rect) {
+			s.folds[header.palette] = !header.folded
 			input.ClearPointer()
 
 			return
@@ -264,350 +280,100 @@ func (s *State) choosePanel(input *ui.Input) {
 	}
 }
 
-// chooseShade chooses a ramp's shade by its index, the nearest one when the
-// index is past its end, or the ramp alone when it has no shades.
-func (s *State) chooseShade(ramp art.Ramp, index int) {
-	s.color = art.ColorRef{Palette: art.SharedPaletteID(), Ramp: ramp.ID, Shade: ids.ULID{}}
-	if len(ramp.Shades) > 0 {
-		s.color.Shade = ramp.Shades[min(max(index, 0), len(ramp.Shades)-1)].ID
-	}
-}
-
-// addRampTo adds a ramp at the end of the shared palette with one shade, and
-// chooses it.
-func (s *State) addRampTo(ctx *frame.Context, shared *art.Palette) {
-	name := uniqueRampName(shared)
-	index := len(shared.Ramps())
-	ramp := art.Ramp{
-		ID: ids.ULID{}, Name: name,
-		Shades: []art.Shade{{ID: ids.ULID{}, Color: newShade, Opacity: art.MaxOpacity}},
-	}
-	s.command(ctx, art.SharedPaletteID(), artplugin.AddRampEdit, "", artplugin.AddRampArgs{Index: index, Ramp: ramp},
-		func() {
-			if updated, ok := palette(ctx.Docs, art.SharedPaletteID()); ok && index < len(updated.Ramps()) {
-				s.chooseShade(updated.Ramps()[index], 0)
-			}
-			ctx.Frame.Status("Added the ramp “" + name + "”. Name it for its use, such as grass.")
-		}, nil)
-}
-
-// uniqueRampName is the first of "new ramp", "new ramp 2"… no ramp has.
-func uniqueRampName(shared *art.Palette) string {
-	taken := map[string]bool{}
-	for _, ramp := range shared.Ramps() {
-		taken[ramp.Name] = true
-	}
-	name := newRampName
-	for number := firstNumber; taken[name]; number++ {
-		name = newRampName + " " + strconv.Itoa(number)
-	}
-
-	return name
-}
-
-// addShadeTo adds a shade to the chosen ramp: after the chosen shade, as a
-// copy of it, or at the end when no shade is chosen. The new shade is chosen.
-func (s *State) addShadeTo(ctx *frame.Context, shared *art.Palette) {
-	ramp, shade, number, chosen := s.chosenRamp(shared)
-	if !chosen {
+// editPalette opens the chosen colour's palette in the Palette Editor, with
+// the colour chosen there.
+func (s *State) editPalette(ctx *frame.Context) {
+	if s.color.IsClear() || s.color.IsLoose() {
 		return
 	}
-	index := len(ramp.Shades)
-	added := art.Shade{ID: ids.ULID{}, Color: newShade, Opacity: art.MaxOpacity}
-	if !shade.ID.IsZero() {
-		index, added.Color, added.Opacity = number, shade.Color, shade.Opacity
-	}
-	args := artplugin.AddShadeArgs{Ramp: ramp.ID, Index: index, Shade: added}
-	s.command(ctx, art.SharedPaletteID(), artplugin.AddShadeEdit, "", args, func() {
-		if updated, ok := palette(ctx.Docs, art.SharedPaletteID()); ok {
-			if grown, found := updated.Ramp(ramp.ID); found {
-				s.chooseShade(grown, index)
-			}
-		}
-		ctx.Frame.Status(fmt.Sprintf("Added %s %d", ramp.Name, index+1))
-	}, nil)
+	ctx.Requests.OpenItem(PaletteEditorView, s.color.Palette, s.color.Shade.String())
 }
 
-// removeChosenShade removes the chosen shade and chooses its neighbour. A
-// shade a tile is painted with is refused, naming the tiles.
-func (s *State) removeChosenShade(ctx *frame.Context, shared *art.Palette) {
-	ramp, shade, number, chosen := s.chosenRamp(shared)
-	if !chosen || shade.ID.IsZero() {
-		return
+// chosenShade returns the chosen colour's shade, found through a shadow
+// record if it has moved.
+func (s *State) chosenShade(docs frame.Docs) (art.Shade, bool) {
+	var none art.Shade
+	if s.color.IsClear() || s.color.IsLoose() {
+		return none, false
 	}
-	name := ramp.Name + " " + strconv.Itoa(number)
-	args := artplugin.RemoveShadeArgs{Ramp: ramp.ID, Shade: shade.ID}
-	s.command(ctx, art.SharedPaletteID(), artplugin.RemoveShadeEdit, "", args, func() {
-		if updated, ok := palette(ctx.Docs, art.SharedPaletteID()); ok {
-			if shrunk, found := updated.Ramp(ramp.ID); found {
-				s.chooseShade(shrunk, number-1)
-			}
-		}
-		ctx.Frame.Status("Removed " + name)
-	}, nil)
-}
-
-// removeChosenRamp removes the chosen ramp and chooses clear. A ramp a tile
-// is painted with is refused, naming the tiles.
-func (s *State) removeChosenRamp(ctx *frame.Context, shared *art.Palette) {
-	ramp, _, _, chosen := s.chosenRamp(shared)
-	if !chosen {
-		return
+	found, ok := palette(docs, s.color.Palette)
+	if !ok {
+		return none, false
 	}
-	args := artplugin.RemoveRampArgs{Ramp: ramp.ID}
-	s.command(ctx, art.SharedPaletteID(), artplugin.RemoveRampEdit, "", args, func() {
-		s.color = clearColor()
-		ctx.Frame.Status("Removed the ramp “" + ramp.Name + "”")
-	}, nil)
-}
+	shade, _, resolved := found.Resolve(s.color.Ramp, s.color.Shade)
 
-// syncFields keeps the typed fields showing the chosen ramp and shade. A
-// choice that is gone, removed in this window or another, falls back to its
-// ramp, or to clear. The guard has already asked about unsaved changes
-// before the choice moved.
-func (s *State) syncFields(shared *art.Palette) {
-	if s.color != s.named {
-		s.revertFields()
-		s.named = s.color
-	}
-	if shared == nil || s.color.Palette != art.SharedPaletteID() {
-		return
-	}
-	ramp, shade, _, chosen := s.chosenRamp(shared)
-	switch {
-	case !chosen:
-		s.color, s.named = clearColor(), clearColor()
-		s.revertFields()
-
-		return
-	case shade.ID.IsZero() && !s.color.Shade.IsZero():
-		s.color.Shade = ids.ULID{}
-		s.named = s.color
-		s.revertFields()
-	}
-	s.rampName.Field.SetSaved(ramp.Name)
-	if !shade.ID.IsZero() {
-		s.shadeColor.Field.SetSaved(shade.Color.String())
-		s.shadeOpacity.Field.SetSaved(strconv.Itoa(shade.Opacity))
-	}
-}
-
-func (s *State) fields() []*ui.TextField {
-	return []*ui.TextField{s.rampName, s.shadeColor, s.shadeOpacity}
-}
-
-func (s *State) revertFields() {
-	if slices.Contains(s.fields(), s.focus.Current()) {
-		s.focus.Set(nil)
-	}
-	for _, field := range s.fields() {
-		field.Field.Revert()
-	}
-}
-
-// guardShade asks about unsaved changes before the panel moves to another
-// colour: the choice goes back until the author decides.
-func (s *State) guardShade() {
-	if s.color == s.named || frame.UnsavedFields(s.fields()...) == 0 {
-		return
-	}
-	wanted := s.color
-	s.color = s.named
-	s.stroke.active = false
-	s.focus.Set(nil)
-	s.guard.Ask(frame.UnsavedFields(s.fields()...), s.namedLabel(), func() { s.color = wanted })
-}
-
-// namedLabel names what the typed fields belong to: the shade, or the ramp.
-func (s *State) namedLabel() string {
-	if s.panel.shadeName != "" {
-		return s.panel.shadeName
-	}
-
-	return s.rampName.Field.Saved()
-}
-
-// updateFields handles the typed fields and the save bar: Enter in a field
-// saves.
-func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
-		s.Save(ctx)
-	}
-	s.save.Unsaved = s.Unsaved(ctx.Docs)
-	switch s.save.Update(input) {
-	case ui.SaveID:
-		s.Save(ctx)
-	case ui.RevertID:
-		s.discard()
-	}
-}
-
-// Unsaved counts the panel's typed changes.
-func (s *State) Unsaved(frame.Docs) int { return frame.UnsavedFields(s.fields()...) }
-
-// UnsavedName names the shade or ramp with unsaved changes.
-func (s *State) UnsavedName(frame.Docs) string { return s.namedLabel() }
-
-// Leave asks about unsaved changes before then, such as closing the window.
-func (s *State) Leave(ctx *frame.Context, then func()) {
-	s.guard.Ask(s.Unsaved(ctx.Docs), s.namedLabel(), then)
-}
-
-// discard drops the panel's typed changes.
-func (s *State) discard() { s.revertFields() }
-
-// Save saves the ramp's name and the shade's colour and opacity, from the
-// save bar, Enter or Cmd+S. It reports false when a typed value cannot be
-// saved, saying why in the status bar.
-func (s *State) Save(ctx *frame.Context) bool {
-	if s.named.Palette != art.SharedPaletteID() || s.named.Ramp.IsZero() {
-		return true
-	}
-	named := s.saveRampName(ctx)
-	shaded := s.saveShade(ctx)
-
-	return named && shaded
-}
-
-// saveRampName renames the chosen ramp.
-func (s *State) saveRampName(ctx *frame.Context) bool {
-	typed, changed := s.rampName.Field.Commit()
-	if !changed {
-		return true
-	}
-	name := strings.TrimSpace(typed)
-	if name == "" {
-		s.rampName.Field.Failed()
-		ctx.Frame.Status("A ramp needs a name, such as grass")
-
-		return false
-	}
-	args := artplugin.RenameRampArgs{Ramp: s.named.Ramp, Name: name}
-	s.command(ctx, art.SharedPaletteID(), artplugin.RenameRampEdit, "", args, func() {
-		s.focus.Set(nil)
-		s.rampName.Field.Revert()
-		ctx.Frame.Status("Renamed the ramp “" + name + "”")
-	}, s.rampName.Field.Failed)
-
-	return true
-}
-
-// saveShade sets the chosen shade's colour and opacity, both at once.
-func (s *State) saveShade(ctx *frame.Context) bool {
-	if s.named.Shade.IsZero() {
-		return true
-	}
-	colorText, colorChanged := s.shadeColor.Field.Commit()
-	opacityText, opacityChanged := s.shadeOpacity.Field.Commit()
-	if !colorChanged && !opacityChanged {
-		return true
-	}
-	if !colorChanged {
-		colorText = s.shadeColor.Field.Saved()
-	}
-	if !opacityChanged {
-		opacityText = s.shadeOpacity.Field.Saved()
-	}
-	failed := func() {
-		s.shadeColor.Field.Failed()
-		s.shadeOpacity.Field.Failed()
-	}
-	shade, problem := parseShade(s.named.Shade, colorText, opacityText)
-	if problem != "" {
-		failed()
-		ctx.Frame.Status(problem)
-
-		return false
-	}
-	args := artplugin.SetShadeArgs{Ramp: s.named.Ramp, Shade: shade}
-	saved := s.named
-	s.command(ctx, art.SharedPaletteID(), artplugin.SetShadeEdit, "", args, func() {
-		s.focus.Set(nil)
-		s.shadeColor.Field.Revert()
-		s.shadeOpacity.Field.Revert()
-		if name, ok := s.colorName(ctx.Docs, saved); ok {
-			ctx.Frame.Status("Saved " + name)
-		}
-	}, failed)
-
-	return true
-}
-
-// parseShade reads a typed colour, as #RRGGBB, and opacity, as a percentage,
-// or says what is wrong with them.
-func parseShade(shadeID ids.ULID, colorText, opacityText string) (art.Shade, string) {
-	shade := art.Shade{ID: shadeID, Color: 0, Opacity: 0}
-	value, err := art.ParseRGB(strings.TrimSpace(colorText))
-	if err != nil {
-		return shade, "Enter a colour as six hexadecimal digits, such as #8A919C"
-	}
-	opacity, err := strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(opacityText), "%")))
-	if err != nil || opacity < art.MinOpacity || opacity > art.MaxOpacity {
-		return shade, fmt.Sprintf("Enter an opacity from %d%% to %d%%", art.MinOpacity, art.MaxOpacity)
-	}
-	shade.Color, shade.Opacity = value, opacity
-
-	return shade, ""
+	return shade, resolved
 }
 
 // drawPanel draws the palette panel.
-func (s *State) drawPanel(screen *ebiten.Image, shared *art.Palette) {
+func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	inspector := frame.Inspector(s.size)
 	left := inspector.Min.X + ui.Inset
-	s.theme.Heading(screen, "PALETTE · "+strings.ToUpper(art.SharedPaletteName), left, ui.Inset)
+	s.theme.Heading(screen, "PALETTE", left, ui.Inset)
+	s.drawSwatches(screen, docs)
+	s.drawChosen(screen, docs, left, inspector.Dx()-ui.Half*ui.Inset)
+	s.edit.Draw(screen, s.theme)
 	s.drawShows(screen, left)
-	if shared == nil {
-		s.theme.DrawText(screen, "Loading…", left, ui.Inset+ui.LineHeight, ui.ColorMuted())
-
-		return
-	}
-	s.drawSwatches(screen, shared)
-	s.addRamp.Draw(screen, s.theme)
-	if !s.rampName.Rect.Empty() {
-		s.theme.Heading(screen, "RAMP", left, s.panel.rampTop)
-		s.rampName.Draw(screen)
-	}
-	if !s.shadeColor.Rect.Empty() {
-		s.theme.Heading(screen, "SHADE · "+strings.ToUpper(s.panel.shadeName), left, s.panel.shadeTop)
-		for _, field := range []struct {
-			widget *ui.TextField
-			label  string
-		}{{s.shadeColor, "Colour"}, {s.shadeOpacity, "Opacity"}} {
-			s.theme.DrawText(screen, field.label, left, field.widget.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1,
-				ui.ColorMuted())
-			field.widget.Draw(screen)
-		}
-		s.theme.DrawText(screen, "%", s.shadeOpacity.Rect.Max.X+ui.Gap,
-			s.shadeOpacity.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
-	}
-	for _, button := range []*ui.Button{s.addShade, s.removeShade, s.removeRamp} {
-		button.Draw(screen, s.theme)
-	}
-	s.save.Draw(screen, s.theme)
 }
 
-// drawSwatch draws one colour: see-through shades over a checkerboard, and
-// the chosen colour outlined in blue.
-// drawSwatches draws the clear colour and every ramp's name and shades,
-// clipped to their area, with a scroll bar when they do not fit.
-func (s *State) drawSwatches(screen *ebiten.Image, shared *art.Palette) {
+// drawChosen draws the chosen colour: its swatch, its name, its label and its
+// value, which only the Palette Editor changes.
+func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, left, width int) {
+	top := s.panel.chosenTop
+	s.theme.Heading(screen, "CHOSEN", left, top)
+	top += ui.LineHeight
+	box := image.Rect(left, top, left+chosenSwatch, top+chosenSwatch)
+	s.drawSwatch(screen, docs, swatch{rect: box, color: s.color, name: ""}, false)
+	textLeft := box.Max.X + ui.Inset
+	room := left + width - textLeft
+	name, _ := s.colorName(docs, s.color)
+	lines := []string{name}
+	if shade, ok := s.chosenShade(docs); ok {
+		if shade.Label != "" {
+			lines = append(lines, "“"+shade.Label+"”")
+		}
+		lines = append(lines, fmt.Sprintf("%s · %d%%", shade.Color, shade.Opacity))
+	}
+	for at, line := range lines {
+		ink := ui.ColorInk()
+		if at > 0 {
+			ink = ui.ColorMuted()
+		}
+		s.theme.DrawText(screen, s.theme.FitText(line, room), textLeft, top+at*ui.LineHeight, ink)
+	}
+}
+
+// drawSwatches draws the clear colour, each palette's heading, and the ramps
+// of every palette not folded, clipped to their area, with a scroll bar when
+// they do not fit, and the name of the swatch under the cursor.
+func (s *State) drawSwatches(screen *ebiten.Image, docs frame.Docs) {
 	area, clipped := screen.SubImage(s.panel.area).(*ebiten.Image)
 	if !clipped || len(s.panel.swatches) == 0 {
 		return
 	}
 	empty := s.panel.swatches[0].rect
 	s.theme.DrawText(area, "clear", empty.Max.X+ui.Gap*ui.Half, empty.Min.Y+ui.Gap/ui.Half, ui.ColorMuted())
+	for _, header := range s.panel.headers {
+		mark := "▾ "
+		if header.folded {
+			mark = "▸ "
+		}
+		text := header.rect.Min.Y + ui.Gap/ui.Half
+		s.theme.DrawText(area, mark, header.rect.Min.X, text, ui.ColorMuted())
+		s.theme.DrawText(area, header.name, header.rect.Min.X+foldColumn, text, ui.ColorInk())
+		if header.note != "" {
+			s.theme.DrawText(area, header.note, header.rect.Min.X+foldColumn+s.theme.TextWidth(header.name)+ui.Gap, text,
+				ui.ColorMuted())
+		}
+	}
 	for _, label := range s.panel.ramps {
 		s.theme.DrawText(area, s.theme.FitText(label.ramp.Name, label.rect.Dx()), label.rect.Min.X,
 			label.rect.Min.Y+ui.Gap/ui.Half, ui.ColorInk())
-		if s.color.Ramp == label.ramp.ID && s.color.Shade.IsZero() {
-			ui.StrokeRound(area, label.rect.Inset(-chosenWidth), ui.Radius, chosenWidth, ui.ColorSelect())
-		}
 	}
 	for _, offered := range s.panel.swatches {
 		if offered.rect.Overlaps(s.panel.area) {
-			s.drawSwatch(area, shared, offered)
+			s.drawSwatch(area, docs, offered, true)
 		}
 	}
 	if view := s.panel.area.Dy(); s.panel.content > view {
@@ -617,18 +383,76 @@ func (s *State) drawSwatches(screen *ebiten.Image, shared *art.Palette) {
 	}
 }
 
-func (s *State) drawSwatch(screen *ebiten.Image, shared *art.Palette, offered swatch) {
+// drawSwatch draws one colour: see-through shades over a checkerboard, and,
+// when asked, the chosen colour outlined in blue.
+func (s *State) drawSwatch(screen *ebiten.Image, docs frame.Docs, offered swatch, outline bool) {
 	rect := offered.rect
 	half := rect.Dx() / ui.Half
 	ui.FillRect(screen, rect, ui.ColorBackground())
 	ui.FillRect(screen, image.Rect(rect.Min.X+half, rect.Min.Y, rect.Max.X, rect.Min.Y+half), ui.Hex(hexChecker))
 	ui.FillRect(screen, image.Rect(rect.Min.X, rect.Min.Y+half, rect.Min.X+half, rect.Max.Y), ui.Hex(hexChecker))
-	if shade, _, known := shared.Lookup(offered.color.Ramp, offered.color.Shade); known && !offered.color.IsClear() {
-		var ink color.Color = shade.Color.NRGBA(shade.Opacity)
+	if value, known := s.colors(docs).Color(offered.color); known && !offered.color.IsClear() {
+		var ink color.Color = value
 		ui.FillRect(screen, rect, ink)
 	}
 	ui.StrokeRect(screen, rect, ui.Hairline, ui.ColorRule())
-	if offered.color == s.color {
+	if outline && offered.color == s.color {
 		ui.StrokeRect(screen, rect.Inset(-chosenWidth), chosenWidth, ui.ColorSelect())
 	}
+}
+
+// drawTip names the swatch under the cursor, with its label and value, in a
+// tip beside it.
+func (s *State) drawTip(screen *ebiten.Image, docs frame.Docs, cursor image.Point) {
+	if !cursor.In(s.panel.area) {
+		return
+	}
+	for _, offered := range s.panel.swatches {
+		if !cursor.In(offered.rect) || offered.color.IsClear() {
+			continue
+		}
+		text := offered.name
+		if found, ok := palette(docs, offered.color.Palette); ok {
+			if shade, _, resolved := found.Resolve(offered.color.Ramp, offered.color.Shade); resolved {
+				if shade.Label != "" {
+					text += " · " + shade.Label
+				}
+				text += " · " + shade.Color.String()
+			}
+		}
+		width := s.theme.TextWidth(text) + ui.Half*tipPad
+		corner := image.Pt(min(cursor.X+tipOffset, s.size.X-width-ui.Gap), cursor.Y+tipOffset)
+		tip := image.Rectangle{Min: corner, Max: corner.Add(image.Pt(width, ui.LineHeight+tipPad))}
+		ui.FillRound(screen, tip, ui.Radius, ui.ColorInk())
+		s.theme.DrawText(screen, text, tip.Min.X+tipPad, tip.Min.Y+tipPad/ui.Half, ui.ColorBackground())
+
+		return
+	}
+}
+
+// colors resolves colours from every palette the window holds.
+func (s *State) colors(docs frame.Docs) art.Palettes {
+	colors := art.Palettes{}
+	for _, paletteID := range s.palettes {
+		if found, ok := palette(docs, paletteID); ok {
+			colors[paletteID] = found
+		}
+	}
+
+	return colors
+}
+
+// syncPalettes keeps the window holding every palette of the project, and
+// the palettes the zones the sprite is placed in list, which come first.
+func (s *State) syncPalettes(docs frame.Docs) {
+	docs.View(project.IndexID(), func(document client.Document) {
+		if index, ok := document.Model.(*project.Index); ok {
+			for _, entry := range index.OfFormat(art.PaletteFormatName) {
+				if !slices.Contains(s.palettes, entry.ID) {
+					s.palettes = append(s.palettes, entry.ID)
+				}
+			}
+		}
+	})
+	s.first = placedPalettes(docs, s.shownStandIn(docs))
 }

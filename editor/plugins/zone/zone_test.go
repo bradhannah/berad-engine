@@ -64,3 +64,39 @@ func TestFloorEditsMeetUndoContract(t *testing.T) {
 		t.Fatalf("parts %v", parts)
 	}
 }
+
+// TestPaletteEditsMeetUndoContract lists and unlists palettes, checking each
+// edit restores the zone exactly, and that a listed palette is referred to.
+func TestPaletteEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	registry, err := plugin.NewRegistry(zone.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := zone.NewDocument()
+	listed := func(palette byte, index int) json.RawMessage {
+		data, err := json.Marshal(zone.PaletteArgs{Palette: floorID(palette), Index: index})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	for index, palette := range []byte{7, 8} {
+		if err := model.VerifyUndo(document, zone.InsertPalette{}, listed(palette, index), registry.Edit); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (zone.InsertPalette{}).Apply(document, listed(palette, index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := model.VerifyUndo(document, zone.RemovePalette{}, listed(7, 0), registry.Edit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (zone.InsertPalette{}).Apply(document, listed(8, 0)); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("a palette listed twice: %v", err)
+	}
+	references := document.References()
+	if len(references) != 2 || references[0].Document != floorID(7) || references[0].Label != "listed by the zone" {
+		t.Fatalf("listed palettes are references: %+v", references)
+	}
+}

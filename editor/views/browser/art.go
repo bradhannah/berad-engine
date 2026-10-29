@@ -78,7 +78,7 @@ func (s *State) tileOf(docs frame.Docs, spriteID ids.ULID) (ids.ULID, bool) {
 // everyProjectHolds reports a document every project holds: it keeps its
 // name and cannot be deleted.
 func everyProjectHolds(documentID ids.ULID) bool {
-	return documentID == art.SharedPaletteID() || documentID == art.SettingsID() || documentID == art.StandInsID()
+	return documentID == art.DefaultPaletteID() || documentID == art.SettingsID() || documentID == art.StandInsID()
 }
 
 // createSprite makes a sprite with one tile at the project's tile size, as

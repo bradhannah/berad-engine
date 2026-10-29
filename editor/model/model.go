@@ -148,6 +148,13 @@ type Referencer interface {
 	References() []Reference
 }
 
+// KeptWhileUsed is implemented by documents that are not deleted while
+// another document refers to them, such as a palette that tiles are painted
+// with: each reference is removed first.
+type KeptWhileUsed interface {
+	KeptWhileUsed() bool
+}
+
 // Container is implemented by documents that list other documents as their
 // parts, such as a zone listing its floors. A part's name must be unique among
 // the parts of its container; other documents' names are unique within their
@@ -166,15 +173,18 @@ type Remover interface {
 }
 
 // RequiredDocument is a document every project holds, with a fixed ID, such
-// as the shared palette. The orchestrator adds it, from Data, to a project
+// as the art settings. The orchestrator adds it, from Data, to a project
 // that lacks it when the project opens, before replaying the journal, and
 // refuses to delete or rename it. Data must be the same every time, so a
-// project reopened after a crash adds the same document again.
+// project reopened after a crash adds the same document again. A ReadOnly
+// document, such as Default, is always the engine's: the orchestrator makes
+// it from Data whenever the project opens and refuses every edit to it.
 type RequiredDocument struct {
-	ID     ids.ULID
-	Format string
-	Name   string
-	Data   func() (json.RawMessage, error)
+	ID       ids.ULID
+	Format   string
+	Name     string
+	Data     func() (json.RawMessage, error)
+	ReadOnly bool
 }
 
 // Pickable is implemented by documents that hold things a pick on map can

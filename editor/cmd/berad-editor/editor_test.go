@@ -118,6 +118,10 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || len(zoneDoc.(*zoneplugin.Document).Zone.Floors()) != 2 || zoneDoc.(*zoneplugin.Document).Zone.Floors()[0] != envelope.ID {
 		t.Fatalf("sample zone: %v", err)
 	}
+	samplePalette := readEnvelope(t, project, "palettes/sample--*.json")
+	if listed := zoneDoc.(*zoneplugin.Document).Zone.Palettes(); len(listed) != 1 || listed[0] != samplePalette.ID {
+		t.Fatalf("the sample zone lists the sample's palette: %v", listed)
+	}
 	readEnvelope(t, project, "texts/notes--*.json")
 	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
 	sprite, err := art.DecodeSprite(lantern.Data)
@@ -128,22 +132,29 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
 		t.Fatalf("the lantern's tile: %v", err)
 	}
-	shared, err := art.DecodePalette(readEnvelope(t, project, "palettes/*.json").Data)
+	sample, err := art.DecodePalette(samplePalette.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ramps := shared.Ramps()
-	if len(ramps) != 2 || ramps[1].Name != "glass" || len(ramps[1].Shades) != 2 || ramps[1].Shades[0].Opacity != 40 {
-		t.Fatalf("the shared palette gains the glass ramp: %+v", ramps)
+	ramps := sample.Ramps()
+	if len(ramps) != 1 || ramps[0].Name != "glass" || len(ramps[0].Shades) != 2 || ramps[0].Shades[0].Opacity != 40 {
+		t.Fatalf("the sample's palette holds the glass ramp: %+v", ramps)
 	}
-	glassUsed := 0
+	glassUsed, greysUsed := 0, 0
 	for _, ref := range tile.Colors() {
-		if ref.Ramp == ramps[1].ID {
+		switch {
+		case ref.Palette == samplePalette.ID && ref.Ramp == ramps[0].ID:
 			glassUsed++
+		case ref.Palette == art.DefaultPaletteID() && ref.Ramp == art.DefaultRampID(1):
+			greysUsed++
 		}
 	}
-	if glassUsed != 2 {
-		t.Fatalf("the lantern is painted with both shades of glass: %+v", tile.Colors())
+	if glassUsed != 2 || greysUsed != 5 {
+		t.Fatalf("the lantern is painted with both shades of glass and five of Default's greys: %+v", tile.Colors())
+	}
+	defaults, err := art.DecodePalette(readEnvelope(t, project, "palettes/default--*.json").Data)
+	if want, _ := art.DefaultPalette(); err != nil || !defaults.Equal(want) {
+		t.Fatalf("Default is saved as the engine made it: %v", err)
 	}
 	standIns, err := art.DecodeStandInSprites(readEnvelope(t, project, "standin-sprites/*.json").Data)
 	if shown, ok := standIns.Sprite("pickup.small"); err != nil || !ok || shown != lantern.ID {
@@ -153,7 +164,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 
 // TestOpenMakesAProjectInAnEmptyFolder opens a folder that does not exist yet
 // without --sample: it becomes a project holding only what every project
-// holds, the shared palette, the art settings and the stand-in sprites, and
+// holds, Default, the art settings and the stand-in sprites, and
 // opens again as it is.
 func TestOpenMakesAProjectInAnEmptyFolder(t *testing.T) {
 	binary := buildEditor(t)
@@ -603,7 +614,7 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 		expect("row:Notes", 600), wait(5),
 		click("row:Settings"), click("ui:tile-size"), keys("Cmd+A"), typed("24"), step{Repeat: 2, Screenshot: settingsShot},
 		click("ui:save"), must("row:Settings", 60), wait(30),
-		click("row:Shared"), wait(5), step{Repeat: 2, Screenshot: paletteShot},
+		click("row:Default"), wait(5), step{Repeat: 2, Screenshot: paletteShot},
 		rightClick("section:sprites"), must("menu:new-folder-sprite", 60),
 		click("menu:new-folder-sprite"), wait(30), typed("Lights"), keys("Enter"),
 		must("row:Lights", 300), wait(5),
@@ -631,11 +642,10 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 }
 
 // TestPixelEditorPaintsAndUndoes makes a sprite in the project browser and
-// opens it in a Pixel editor, which paints a stroke in grey 3 and another in
-// grey 5, then undoes the second in one step. Then it adds a ramp, names it
-// pane, types its shade's colour and a 40% opacity, saves them, and paints
-// with it. The saved tile keeps the first stroke and the pane, and the
-// shared palette the pane ramp, after the sample's grey and glass.
+// opens it in a Pixel editor, which paints a stroke in Default's grey 3 and
+// another in grey 5, then undoes the second in one step. Then it paints with
+// the sample palette's glass. The saved tile keeps the first stroke and the
+// glass.
 func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -649,18 +659,14 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	)
 	spriteScript := script(
 		must("state:loaded", 600), wait(5),
-		click("swatch:grey 3"), must("state:color:grey 3", 60),
-		drag("pixel:1,1", "pixel:2,1", "pixel:3,1"), must("state:pixel:3,1:grey 3", 120),
-		click("swatch:grey 5"), drag("pixel:1,3", "pixel:2,3", "pixel:3,3"), must("state:pixel:3,3:grey 5", 120),
-		step{Repeat: 2, Screenshot: painted},
+		click("swatch:Default / grey 3"), must("state:color:Default / grey 3", 60),
+		drag("pixel:1,1", "pixel:2,1", "pixel:3,1"), must("state:pixel:3,1:Default / grey 3", 120),
+		click("swatch:Default / grey 5"), drag("pixel:1,3", "pixel:2,3", "pixel:3,3"),
+		must("state:pixel:3,3:Default / grey 5", 120), step{Repeat: 2, Screenshot: painted},
 		keys("Cmd+Z"), must("state:pixel:1,3:clear", 120), must("state:pixel:3,3:clear", 60),
-		must("state:pixel:2,1:grey 3", 60), step{Repeat: 2, Screenshot: undone},
-		click("ui:add-ramp"), must("state:color:new ramp 1", 120),
-		click("ui:ramp-name"), keys("Cmd+A"), typed("pane"),
-		click("ui:shade-color"), keys("Cmd+A"), typed("#3060C0"),
-		click("ui:shade-opacity"), keys("Cmd+A"), typed("40"),
-		click("ui:save"), must("state:color:pane 1", 120), must("state:saved", 120),
-		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:pane 1", 120),
+		must("state:pixel:2,1:Default / grey 3", 60), step{Repeat: 2, Screenshot: undone},
+		click("palette:Sample"), click("swatch:Sample / glass 1"), must("state:color:Sample / glass 1", 120),
+		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:Sample / glass 1", 120),
 		step{Repeat: 2, Screenshot: glassShot}, quit(),
 	)
 	mapScript := script(expect("state:loaded", 600), quit())
@@ -678,22 +684,13 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 			t.Fatalf("pixel %d: the first stroke is saved and the second undone: %+v %+v", col, first, second)
 		}
 	}
-	if first, _ := tile.At(2, 1); first.Shade != art.StarterShadeID(3) {
+	if first, _ := tile.At(2, 1); first.Shade != art.DefaultShadeID(1, 3) {
 		t.Fatalf("the first stroke is grey 3: %+v", first)
 	}
-	palette, err := art.DecodePalette(readEnvelope(t, project, "palettes/*.json").Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ramps := palette.Ramps()
-	pane := len(ramps) - 1
-	if len(ramps) != 3 || ramps[pane].Name != "pane" || len(ramps[pane].Shades) != 1 ||
-		ramps[pane].Shades[0].Color != 0x3060c0 || ramps[pane].Shades[0].Opacity != 40 {
-		t.Fatalf("the pane ramp is saved: %+v", ramps)
-	}
+	sample := readEnvelope(t, project, "palettes/sample--*.json")
 	for row := range 3 {
-		if ref, _ := tile.At(5, row); ref.Ramp != ramps[pane].ID || ref.Shade != ramps[pane].Shades[0].ID {
-			t.Fatalf("pixel 5,%d is the pane: %+v", row, ref)
+		if ref, _ := tile.At(5, row); ref.Palette != sample.ID {
+			t.Fatalf("pixel 5,%d is the sample's glass: %+v", row, ref)
 		}
 	}
 	noCrashes(t, project)

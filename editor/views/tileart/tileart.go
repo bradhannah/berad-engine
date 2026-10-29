@@ -44,14 +44,14 @@ func NewPicture() *Picture {
 	}
 }
 
-// Palettes returns the palettes a tile is painted from: the shared palette,
-// and every other palette its colours name.
+// Palettes returns the palettes a tile is painted from: Default, and every
+// other palette its colours name. A loose colour names none.
 func Palettes(docs frame.Docs, tileID ids.ULID) []ids.ULID {
-	palettes := []ids.ULID{art.SharedPaletteID()}
+	palettes := []ids.ULID{art.DefaultPaletteID()}
 	docs.View(tileID, func(document client.Document) {
 		if tileDoc, isTile := document.Model.(*artplugin.TileDocument); isTile {
 			for _, ref := range tileDoc.Tile.Colors() {
-				if !slices.Contains(palettes, ref.Palette) {
+				if !ref.IsLoose() && !slices.Contains(palettes, ref.Palette) {
 					palettes = append(palettes, ref.Palette)
 				}
 			}

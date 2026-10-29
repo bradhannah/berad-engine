@@ -8,20 +8,18 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // Locate finds a named part of the window for input scripts: "ui:<id>" for
-// a button, a field or the grid toggle, "pixel:<col>,<row>" for a tile pixel,
+// a button or a toggle, "pixel:<col>,<row>" for a tile pixel,
 // "swatch:<colour>" for a colour in the palette panel ("swatch:clear",
-// "swatch:grey 3") and "ramp:<name>" for a ramp's name, each scrolled into
-// view. "state:…" answers scripts waiting for the window.
+// "swatch:Default / grey 3"), "ramp:<palette> / <name>" for a ramp's name and
+// "palette:<name>" for a palette's heading, each scrolled into view.
+// "state:…" answers scripts waiting for the window.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
-	shared, _ := palette(docs, art.SharedPaletteID())
-	s.layout(docs, shared)
+	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
-	if s.guard.Active() {
-		return s.guard.Locate(value, s.size)
-	}
 	if kind == "menu" {
 		return s.showsMenu.Locate(value)
 	}
@@ -43,7 +41,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	return s.locatePanel(kind, value)
 }
 
-// locatePanel finds a swatch or a ramp's name in the palette panel.
+// locatePanel finds a swatch, a ramp's name or a palette's heading in the
+// palette panel.
 func (s *State) locatePanel(kind, value string) (image.Point, bool) {
 	switch kind {
 	case "swatch":
@@ -53,9 +52,16 @@ func (s *State) locatePanel(kind, value string) (image.Point, bool) {
 			}
 		}
 	case "ramp":
+		paletteName, rampName, _ := strings.Cut(value, " / ")
 		for _, label := range s.panel.ramps {
-			if label.ramp.Name == value {
+			if label.ramp.Name == rampName && s.headerName(label.palette) == paletteName {
 				return ui.Center(s.reveal(label.rect)), true
+			}
+		}
+	case "palette":
+		for _, header := range s.panel.headers {
+			if header.name == value {
+				return image.Pt(header.rect.Min.X+foldColumn, s.reveal(header.rect).Min.Y+swatchSize/ui.Half), true
 			}
 		}
 	}
@@ -63,41 +69,45 @@ func (s *State) locatePanel(kind, value string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
+// headerName is a palette's name as its heading shows it.
+func (s *State) headerName(paletteID ids.ULID) string {
+	for _, header := range s.panel.headers {
+		if header.palette == paletteID {
+			return header.name
+		}
+	}
+
+	return ""
+}
+
 // locateWidget finds a button, a field or the grid toggle by its ID.
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	if point, found := s.save.Locate(widget); found {
-		return point, true
-	}
-	buttons := append([]*ui.Button{s.zoomOut, s.zoomIn, s.zoomFit, s.addRamp, s.addShade, s.removeShade,
-		s.removeRamp, s.shows}, s.tools...)
+	buttons := append([]*ui.Button{s.zoomOut, s.zoomIn, s.zoomFit, s.edit, s.shows}, s.tools...)
 	for _, button := range buttons {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
 	}
-	for _, field := range s.fields() {
-		if field.ID == widget && !field.Rect.Empty() {
-			return field.Center(), true
+	for _, toggle := range []*ui.Toggle{s.grid, s.marks} {
+		if widget == toggle.ID && !toggle.Rect.Empty() {
+			return ui.Center(toggle.Rect), true
 		}
-	}
-	if widget == s.grid.ID {
-		return ui.Center(s.grid.Rect), true
 	}
 
 	return image.Pt(0, 0), false
 }
 
 // hasState answers input scripts waiting for the window: "loaded" once the
-// tile and the shared palette are, "tool:<tool>", "color:<colour>",
+// tile and Default are, "tool:<tool>", "color:<colour>",
 // "zoom:<whole number>", "pixel:<col>,<row>:<colour>" once a pixel is that
-// colour, "saved" once no typed change waits, and "shows:<stand-in>" once
-// the sprite shows that stand-in ("shows:" for none).
+// colour, and "shows:<stand-in>" once the sprite shows that stand-in
+// ("shows:" for none).
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	kind, value, _ := strings.Cut(state, ":")
 	switch kind {
 	case "loaded":
 		_, tiled := s.tileSize(docs)
-		_, paletted := palette(docs, art.SharedPaletteID())
+		_, paletted := palette(docs, art.DefaultPaletteID())
 
 		return tiled && paletted
 	case "tool":
@@ -112,14 +122,6 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasPixel(value, docs)
 	case "shows":
 		return s.shownStandIn(docs) == value
-	case "saved":
-		for _, field := range s.fields() {
-			if field.Field.Unsaved() || field.Field.Pending() {
-				return false
-			}
-		}
-
-		return true
 	}
 
 	return false

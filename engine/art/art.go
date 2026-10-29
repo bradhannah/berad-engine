@@ -5,11 +5,14 @@
 // A tile is one cell-sized piece of art and a sprite is one or more tiles.
 // A pixel names its colour, a shade of a palette's ramp, by permanent IDs, so
 // renaming a ramp or changing a shade never breaks a tile, and changing a
-// shade changes every tile that uses it. Games draw tiles with this package
-// too, so the editor and the game always agree.
+// shade changes every tile that uses it. Every project holds Default, the
+// engine's own palette, which never changes; a game adds palettes of its own.
+// Games draw tiles with this package too, so the editor and the game always
+// agree.
 package art
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -27,10 +30,12 @@ const (
 	StandInsFormatName = "standin-sprite"
 )
 
-// Format versions this package writes.
+// Format versions this package writes. Version 2 of palettes added labels
+// and moved colours' shadow records, and of tiles loose colours; both read
+// version 1 unchanged.
 const (
-	PaletteVersion  = 1
-	TileVersion     = 1
+	PaletteVersion  = 2
+	TileVersion     = 2
 	SpriteVersion   = 1
 	SettingsVersion = 1
 	StandInsVersion = 1
@@ -38,24 +43,24 @@ const (
 
 // Names of the documents every project holds.
 const (
-	SharedPaletteName = "Shared"
-	SettingsName      = "Art settings"
-	StandInsName      = "Stand-in sprites"
+	DefaultPaletteName = "Default"
+	SettingsName       = "Art settings"
+	StandInsName       = "Stand-in sprites"
 )
 
 // Fixed IDs. Their time part is zero, so no generated ID ever equals them.
+// Default's ramps and shades are numbered within its own range.
 const (
-	sharedPaletteID = "00000000000000000000000010"
-	settingsID      = "00000000000000000000000011"
-	standInsID      = "00000000000000000000000012"
-	starterRampID   = "00000000000000000000000020"
-	starterShades   = "000000000000000000000000%02d"
-	starterFirst    = 20
+	settingsID       = "00000000000000000000000011"
+	standInsID       = "00000000000000000000000012"
+	defaultPaletteID = "00000000000000000000000013"
+	defaultRampIDs   = "0000000000000000000002%02d00"
+	defaultShadeIDs  = "0000000000000000000002%02d%02d"
 )
 
-// SharedPaletteID is the ID of the palette every project holds, which its art
-// starts from.
-func SharedPaletteID() ids.ULID { return ids.MustParse(sharedPaletteID) }
+// DefaultPaletteID is the ID of Default, the engine's own palette, which every
+// project holds and nothing changes.
+func DefaultPaletteID() ids.ULID { return ids.MustParse(defaultPaletteID) }
 
 // SettingsID is the ID of a project's art settings.
 func SettingsID() ids.ULID { return ids.MustParse(settingsID) }
@@ -63,17 +68,20 @@ func SettingsID() ids.ULID { return ids.MustParse(settingsID) }
 // StandInsID is the ID of the record of which sprite shows each stand-in.
 func StandInsID() ids.ULID { return ids.MustParse(standInsID) }
 
-// StarterRampID is the ID of the shared palette's starter ramp, "grey".
-func StarterRampID() ids.ULID { return ids.MustParse(starterRampID) }
+// DefaultRampID is the ID of one of Default's ramps, by its place from 1.
+func DefaultRampID(place int) ids.ULID { return ids.MustParse(fmt.Sprintf(defaultRampIDs, place)) }
 
-// StarterShadeID is the ID of one shade of the starter ramp, by its number
-// from 1 to 5.
-func StarterShadeID(number int) ids.ULID {
-	return ids.MustParse(fmt.Sprintf(starterShades, starterFirst+number))
+// DefaultShadeID is the ID of one of Default's shades, by its ramp's place
+// and its number, both from 1.
+func DefaultShadeID(place, number int) ids.ULID {
+	return ids.MustParse(fmt.Sprintf(defaultShadeIDs, place, number))
 }
 
 // MaxNameLength bounds a ramp's name, in bytes.
 const MaxNameLength = 200
+
+// MaxLabelLength bounds a colour's label, in characters.
+const MaxLabelLength = 15
 
 // ErrData reports saved art data that is not valid.
 var ErrData = errors.New("invalid art data")
@@ -91,6 +99,10 @@ var ErrNoShade = errors.New("no such shade")
 // out of range.
 var ErrShade = errors.New("invalid shade")
 
+// ErrLabel reports a label that is untrimmed, too long or another colour's in
+// the same palette.
+var ErrLabel = errors.New("invalid label")
+
 // ErrSize reports a tile size outside the supported range.
 var ErrSize = errors.New("invalid tile size")
 
@@ -106,12 +118,18 @@ var ErrStandIn = errors.New("stand-in cannot show a sprite")
 
 // PaletteFormat returns the palette format registration.
 func PaletteFormat() content.Format {
-	return content.Format{Name: PaletteFormatName, Current: PaletteVersion, Migrations: nil}
+	return content.Format{Name: PaletteFormatName, Current: PaletteVersion, Migrations: unchanged()}
 }
 
 // TileFormat returns the tile format registration.
 func TileFormat() content.Format {
-	return content.Format{Name: TileFormatName, Current: TileVersion, Migrations: nil}
+	return content.Format{Name: TileFormatName, Current: TileVersion, Migrations: unchanged()}
+}
+
+// unchanged upgrades version 1 to 2 as it is: version 2 only added fields
+// that version 1 leaves out.
+func unchanged() map[int]content.Migration {
+	return map[int]content.Migration{1: func(data json.RawMessage) (json.RawMessage, error) { return data, nil }}
 }
 
 // SpriteFormat returns the sprite format registration.

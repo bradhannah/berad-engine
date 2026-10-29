@@ -1,12 +1,10 @@
 // Package pixelview is the Pixel editor: a sprite's tile, magnified by a
 // whole number over a checkerboard, painted with a pencil, an eraser, a fill
-// and an eyedropper in the shared palette's colours, whose ramps and shades
-// its palette panel edits (increment 11).
+// and an eyedropper (increment 11). Its palette panel only picks colours, from
+// every palette of the project; the Palette Editor edits them (increment 12).
 //
 // A stroke is one undo step, shared by every view of the sprite, and other
-// views of the tile show it as it is drawn. The panel's typed fields wait for
-// its save bar, as every inspector's do; adding and removing ramps and shades
-// apply at once.
+// views of the tile show it as it is drawn.
 package pixelview
 
 import (
@@ -22,8 +20,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
-	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -34,11 +32,8 @@ const ViewName = "sprite"
 // shortID is how much of the window's ID its title shows.
 const shortID = 6
 
-// The panel's typed fields hold at most this many bytes.
-const (
-	colorBytes   = 16
-	opacityBytes = 8
-)
+// PaletteEditorView is the view Edit palette… opens.
+const PaletteEditorView = paletteview.ViewName
 
 // stroke is the pencil or eraser drag in progress; count numbers the
 // window's strokes and fills, for their gestures.
@@ -55,12 +50,16 @@ type State struct {
 	theme  *ui.Theme
 	size   image.Point
 	subs   map[ids.ULID]bool
-	// palettes are the palettes the window shows: the shared palette and
-	// any other a tile's colours name.
+	// palettes are the palettes the window holds: every palette of the
+	// project and any other a tile's colours name. first are those the
+	// zones the sprite is placed in list, and folds the palettes the author
+	// folded or opened in the panel.
 	palettes []ids.ULID
+	first    []ids.ULID
+	folds    map[ids.ULID]bool
 	tool     Tool
 	// color is what the pencil and the fill paint with and what the palette
-	// panel shows: clear, a shade, or a ramp alone, chosen by its name.
+	// panel shows: clear or a shade.
 	color art.ColorRef
 	// zoom is the whole number each tile pixel is magnified by, zero until
 	// the tile is first fitted; pan moves the tile from the canvas's centre.
@@ -77,63 +76,47 @@ type State struct {
 	zoomIn  *ui.Button
 	zoomFit *ui.Button
 	grid    *ui.Toggle
-	panel   panelLayout
+	// marks outlines the pixels the readout warns about.
+	marks *ui.Toggle
+	panel panelLayout
 	// scroll is how far the palette panel's swatches are scrolled.
 	scroll int
-	// named is the ramp and shade the typed fields hold.
-	named        art.ColorRef
-	rampName     *ui.TextField
-	shadeColor   *ui.TextField
-	shadeOpacity *ui.TextField
-	addRamp      *ui.Button
-	addShade     *ui.Button
-	removeShade  *ui.Button
-	removeRamp   *ui.Button
+	// edit opens the chosen colour's palette in the Palette Editor.
+	edit *ui.Button
 	// shows opens showsMenu, which chooses the stand-in the sprite shows.
 	shows     *ui.Button
 	showsMenu ui.Menu
-	save      *ui.SaveBar
-	guard     frame.Guard
-	focus     ui.Focus
+	cursor    image.Point
 	picture   picture
 }
 
 // New returns the Pixel editor for a sprite.
 func New(window, sprite ids.ULID, theme *ui.Theme) *State {
-	field := func(id string, maxBytes int) *ui.TextField {
-		return ui.NewTextField(id, textedit.NewField("", false, maxBytes), false, theme)
-	}
 	view := &State{
 		window: window, sprite: sprite, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		palettes: []ids.ULID{art.SharedPaletteID()}, tool: ToolPencil, color: clearColor(),
+		palettes: []ids.ULID{art.DefaultPaletteID()}, first: nil, folds: map[ids.ULID]bool{},
+		tool: ToolPencil, color: clearColor(),
 		zoom: 0, pan: image.Pt(0, 0), wheel: 0, stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		hover: image.Pt(0, 0), hovering: false,
 		tools: nil, zoomOut: ui.NewButton("zoom-out", "−"), zoomIn: ui.NewButton("zoom-in", "+"),
 		zoomFit: ui.NewButton("zoom-fit", "Fit"),
 		grid:    &ui.Toggle{ID: "grid", Label: "Grid", Rect: ui.Zero(), On: true},
-		panel:   newPanelLayout(), scroll: 0, named: clearColor(),
-		rampName:     field("ramp-name", art.MaxNameLength),
-		shadeColor:   field("shade-color", colorBytes),
-		shadeOpacity: field("shade-opacity", opacityBytes),
-		addRamp:      ui.NewButton("add-ramp", "+ Ramp"), addShade: ui.NewButton("add-shade", "+ Shade"),
-		removeShade: ui.NewButton("remove-shade", "Remove shade"),
-		removeRamp:  ui.NewButton("remove-ramp", "Remove ramp"),
-		shows:       ui.NewButton("shows", "Nothing"), showsMenu: ui.Menu{Items: nil, Width: 0},
-		save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picture: newPicture(),
+		marks:   &ui.Toggle{ID: "show-them", Label: "Show them", Rect: ui.Zero(), On: false},
+		panel:   newPanelLayout(), scroll: 0, edit: ui.NewButton("edit-palette", "Edit palette…"),
+		shows: ui.NewButton("shows", "Nothing"), showsMenu: ui.Menu{Items: nil, Width: 0},
+		cursor: image.Pt(0, 0), picture: newPicture(),
 	}
-	view.removeRamp.Danger = true
 	view.shows.Caret = true
 	for _, info := range tools() {
 		view.tools = append(view.tools, ui.NewButton("tool-"+string(info.tool), info.label))
 	}
-	view.focus.Register(view.rampName, view.shadeColor, view.shadeOpacity)
 
 	return view
 }
 
 // clearColor is the clear colour, which erases.
 func clearColor() art.ColorRef {
-	return art.ColorRef{Palette: ids.ULID{}, Ramp: ids.ULID{}, Shade: ids.ULID{}}
+	return art.ColorRef{Palette: ids.ULID{}, Ramp: ids.ULID{}, Shade: ids.ULID{}, Value: 0, Opacity: 0}
 }
 
 // Tool returns the current tool.
@@ -157,13 +140,14 @@ func (s *State) Title(docs frame.Docs) string {
 	return "Sprite: " + name + "  (window " + s.window.Short(shortID) + ")"
 }
 
-// Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+// Focused returns nil: the Pixel editor has no text fields.
+func (s *State) Focused() *ui.TextField { return nil }
 
 // Start subscribes to what the window shows. The window has already
 // subscribed to the sprite; this adds the project index for names, the art
-// settings for the tile size, the stand-in sprites for Shows, the shared
-// palette, and the sprite's tile.
+// settings for the tile size, the stand-in sprites for Shows, every palette,
+// the zones and their floors, for where the sprite is placed, and the
+// sprite's tile.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
 	s.subscribe(art.SettingsID(), ctx)
@@ -184,16 +168,17 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 	})
 }
 
-// Changed keeps the window subscribed to the sprite's tile and to every
-// palette the tile's colours name.
+// Changed keeps the window subscribed to the sprite's tile, every palette,
+// and the zones and floors, and works out which palettes come first.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.Event != nil || update.Snapshot != nil {
 		s.syncSubscriptions(ctx)
 	}
 }
 
-// syncSubscriptions subscribes to the sprite's tile, the shared palette and
-// every palette the tile is painted from.
+// syncSubscriptions subscribes to the sprite's tile, every palette of the
+// project and every palette the tile is painted from, and the zones and their
+// floors.
 func (s *State) syncSubscriptions(ctx *frame.Context) {
 	tileID, ok := s.tileID(ctx.Docs)
 	if ok {
@@ -201,15 +186,19 @@ func (s *State) syncSubscriptions(ctx *frame.Context) {
 		ctx.Docs.View(tileID, func(document client.Document) {
 			if tileDoc, isTile := document.Model.(*artplugin.TileDocument); isTile {
 				for _, ref := range tileDoc.Tile.Colors() {
-					if !slices.Contains(s.palettes, ref.Palette) {
+					if !ref.IsLoose() && !slices.Contains(s.palettes, ref.Palette) {
 						s.palettes = append(s.palettes, ref.Palette)
 					}
 				}
 			}
 		})
 	}
+	s.syncPalettes(ctx.Docs)
 	for _, palette := range s.palettes {
 		s.subscribe(palette, ctx)
+	}
+	for _, document := range zonesAndFloors(ctx.Docs) {
+		s.subscribe(document, ctx)
 	}
 }
 
@@ -279,24 +268,29 @@ func palette(docs frame.Docs, paletteID ids.ULID) (*art.Palette, bool) {
 }
 
 // colorName names a colour as the panel and the readout show it: "clear",
-// "grey 3" in the shared palette, or with its palette's name before it in
-// any other.
+// a loose colour by its value, or a shade by its palette, ramp and number,
+// such as "gloomy / smoke 1". A shade that has moved is named by its new
+// place.
 func (s *State) colorName(docs frame.Docs, ref art.ColorRef) (string, bool) {
-	if ref.IsClear() {
+	switch {
+	case ref.IsClear():
 		return "clear", true
+	case ref.IsLoose():
+		return "loose " + ref.Value.String(), true
 	}
-	found, ok := palette(docs, ref.Palette)
+	found, held := palette(docs, ref.Palette)
+	if !held {
+		return "", false
+	}
+	ramp := ref.Ramp
+	if _, moved, resolved := found.Resolve(ref.Ramp, ref.Shade); resolved && moved {
+		ramp, _ = found.Place(ref.Shade)
+	}
+	name, ok := found.ShadeName(ramp, ref.Shade)
 	if !ok {
 		return "", false
 	}
-	name, ok := found.ShadeName(ref.Ramp, ref.Shade)
-	if !ok {
-		return "", false
-	}
-	if ref.Palette == art.SharedPaletteID() {
-		return name, true
-	}
-	scope := art.SharedPaletteName
+	scope := art.DefaultPaletteName
 	docs.View(project.IndexID(), func(document client.Document) {
 		if index, isIndex := document.Model.(*project.Index); isIndex {
 			scope = index.Name(ref.Palette, scope)
@@ -312,10 +306,8 @@ func (s *State) gesture() string {
 }
 
 // command sends an edit, reporting a refusal in the status bar; done runs
-// once it is applied, and failed once it is refused.
-func (s *State) command(
-	ctx *frame.Context, document ids.ULID, edit, gesture string, args any, done func(), failed func(),
-) {
+// once it is applied.
+func (s *State) command(ctx *frame.Context, document ids.ULID, edit, gesture string, args any, done func()) {
 	data, err := json.Marshal(args)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
@@ -326,9 +318,6 @@ func (s *State) command(
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)
-			if failed != nil {
-				failed()
-			}
 
 			return
 		}
@@ -341,30 +330,19 @@ func (s *State) command(
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
-	shared, _ := palette(ctx.Docs, art.SharedPaletteID())
-	s.syncFields(shared)
-	s.layout(ctx.Docs, shared)
-	if s.guard.Active() {
-		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
-
-		return
-	}
+	s.cursor = input.Cursor
+	s.layout(ctx.Docs)
 	if s.showsMenu.IsOpen() {
 		s.updateShows(input, ctx)
 
 		return
 	}
-	s.updateFields(input, ctx)
-	if s.focus.Current() == nil {
-		s.keys(input, ctx)
-	}
+	s.keys(input, ctx)
 	frame.CommonKeys(input, ctx)
 	s.updateToolbar(input, ctx)
-	if shared != nil {
-		s.updatePanel(input, ctx, shared)
-	}
+	s.marks.Update(input)
+	s.updatePanel(input, ctx)
 	s.updateCanvas(input, ctx)
-	s.guardShade()
 }
 
 // keys handles the window's own keys while no text field has focus: a
@@ -411,20 +389,20 @@ func (s *State) setTool(tool Tool) {
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
-	shared, _ := palette(docs, art.SharedPaletteID())
-	s.layout(docs, shared)
+	s.layout(docs)
 	screen.Fill(ui.ColorBackground())
 	s.drawCanvas(screen, docs)
 	s.drawToolbar(screen)
 	s.drawReadout(screen, docs)
-	s.drawPanel(screen, shared)
+	s.drawPanel(screen, docs)
+	s.drawTip(screen, docs, s.cursor)
 	s.showsMenu.Draw(screen, s.theme)
-	s.guard.Draw(screen, s.theme)
 }
 
-// layout places everything for the window's size: the toolbar, the canvas
-// and the palette panel.
-func (s *State) layout(docs frame.Docs, shared *art.Palette) {
+// layout places everything for the window's size: the toolbar, the canvas,
+// the readout's toggle and the palette panel.
+func (s *State) layout(docs frame.Docs) {
 	s.layoutToolbar()
-	s.layoutPanel(docs, shared)
+	s.layoutReadout(docs)
+	s.layoutPanel(docs)
 }

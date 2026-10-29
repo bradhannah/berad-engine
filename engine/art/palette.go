@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -16,25 +17,14 @@ const (
 	MaxShades = 64
 )
 
-// StarterRampName names the one ramp a new shared palette starts with.
-const StarterRampName = "grey"
-
-// The starter ramp's shades, dark to light.
-const (
-	starterGrey1 RGB = 0x202020
-	starterGrey2 RGB = 0x4A4A4A
-	starterGrey3 RGB = 0x7A7A7A
-	starterGrey4 RGB = 0xABABAB
-	starterGrey5 RGB = 0xDCDCDC
-)
-
-// Shade is one colour of a ramp, with its opacity in percent. Its number,
-// counted from 1 at the dark end, is its place in the ramp; its ID never
-// changes.
+// Shade is one colour of a ramp, with its opacity in percent and an optional
+// short label. Its number, counted from 1 at the dark end, is its place in
+// the ramp; its ID never changes, even when it moves to another ramp.
 type Shade struct {
 	ID      ids.ULID `json:"id"`
 	Color   RGB      `json:"color"`
 	Opacity int      `json:"opacity"`
+	Label   string   `json:"label,omitempty"`
 }
 
 // Ramp is a palette's shades for one use, named for that use and ordered dark
@@ -53,33 +43,29 @@ func (r Ramp) equal(other Ramp) bool {
 	return r.ID == other.ID && r.Name == other.Name && slices.Equal(r.Shades, other.Shades)
 }
 
-// Palette is a document of named colours that art is painted with, in ramps.
+// Moved is a shadow record of a shade's old place: the ramp it was moved out
+// of and its name there, such as "ember 1". A tile painted with it there still
+// finds it, and says so until the pixels are repainted.
+type Moved struct {
+	Ramp  ids.ULID `json:"ramp"`
+	Shade ids.ULID `json:"shade"`
+	Name  string   `json:"name"`
+}
+
+// Palette is a document of named colours that art is painted with, in ramps,
+// with shadow records of the shades moved between them.
 type Palette struct {
 	ramps []Ramp
+	moved []Moved
 }
 
 type wirePalette struct {
-	Ramps []Ramp `json:"ramps"`
+	Ramps []Ramp  `json:"ramps"`
+	Moved []Moved `json:"moved,omitempty"`
 }
 
 // NewPalette returns a palette with no ramps.
-func NewPalette() *Palette { return &Palette{ramps: nil} }
-
-// StarterPalette returns the palette a project's shared palette starts with:
-// one ramp, "grey", of five shades. Its IDs are fixed, so it is the same in
-// every project and every time it is made.
-func StarterPalette() (*Palette, error) {
-	ramp := Ramp{ID: StarterRampID(), Name: StarterRampName, Shades: nil}
-	for number, value := range []RGB{starterGrey1, starterGrey2, starterGrey3, starterGrey4, starterGrey5} {
-		ramp.Shades = append(ramp.Shades, Shade{ID: StarterShadeID(number + 1), Color: value, Opacity: MaxOpacity})
-	}
-	palette := NewPalette()
-	if err := palette.InsertRamp(0, ramp); err != nil {
-		return nil, err
-	}
-
-	return palette, nil
-}
+func NewPalette() *Palette { return &Palette{ramps: nil, moved: nil} }
 
 // Ramps returns a copy of the palette's ramps, in order.
 func (p *Palette) Ramps() []Ramp {
@@ -118,6 +104,49 @@ func (p *Palette) Lookup(rampID, shadeID ids.ULID) (Shade, int, bool) {
 	return none, 0, false
 }
 
+// Resolve returns the shade a pixel's ramp and shade name: the shade in that
+// ramp, or, through a shadow record, the shade moved out of it, reported as
+// moved.
+func (p *Palette) Resolve(rampID, shadeID ids.ULID) (Shade, bool, bool) {
+	if shade, _, ok := p.Lookup(rampID, shadeID); ok {
+		return shade, false, true
+	}
+	if _, ok := p.MovedFrom(rampID, shadeID); ok {
+		if ramp, ok := p.Place(shadeID); ok {
+			shade, _, found := p.Lookup(ramp, shadeID)
+
+			return shade, true, found
+		}
+	}
+	var none Shade
+
+	return none, false, false
+}
+
+// Place returns the ramp a shade is in now.
+func (p *Palette) Place(shadeID ids.ULID) (ids.ULID, bool) {
+	for _, ramp := range p.ramps {
+		if shadeIndex(ramp.Shades, shadeID) >= 0 {
+			return ramp.ID, true
+		}
+	}
+
+	return ids.ULID{}, false
+}
+
+// MovedFrom returns the shadow record of a shade moved out of a ramp.
+func (p *Palette) MovedFrom(rampID, shadeID ids.ULID) (Moved, bool) {
+	at := slices.IndexFunc(p.moved, func(record Moved) bool { return record.Ramp == rampID && record.Shade == shadeID })
+	if at < 0 {
+		return Moved{Ramp: ids.ULID{}, Shade: ids.ULID{}, Name: ""}, false
+	}
+
+	return p.moved[at], true
+}
+
+// MovedShades returns a copy of the palette's shadow records, oldest first.
+func (p *Palette) MovedShades() []Moved { return slices.Clone(p.moved) }
+
 // ShadeName returns a shade's name: its ramp's name and its number, such as
 // "grass 2".
 func (p *Palette) ShadeName(rampID, shadeID ids.ULID) (string, bool) {
@@ -127,6 +156,20 @@ func (p *Palette) ShadeName(rampID, shadeID ids.ULID) (string, bool) {
 	}
 
 	return p.ramps[p.rampIndex(rampID)].Name + " " + strconv.Itoa(number), true
+}
+
+// Labelled returns the shade with a label and its ramp.
+func (p *Palette) Labelled(label string) (ids.ULID, Shade, bool) {
+	for _, ramp := range p.ramps {
+		for _, shade := range ramp.Shades {
+			if label != "" && shade.Label == label {
+				return ramp.ID, shade, true
+			}
+		}
+	}
+	var none Shade
+
+	return ids.ULID{}, none, false
 }
 
 // InsertRamp adds a ramp at an index, with its shades.
@@ -143,12 +186,20 @@ func (p *Palette) InsertRamp(index int, ramp Ramp) error {
 	if len(ramp.Shades) > MaxShades {
 		return fmt.Errorf("%w: %d shades", ErrShade, len(ramp.Shades))
 	}
-	for at, shade := range ramp.Shades {
+	for position, shade := range ramp.Shades {
 		if err := p.checkShade(shade); err != nil {
 			return err
 		}
-		if shadeIndex(ramp.Shades[:at], shade.ID) >= 0 {
+		if err := p.checkLabel(shade); err != nil {
+			return err
+		}
+		if shadeIndex(ramp.Shades[:position], shade.ID) >= 0 {
 			return fmt.Errorf("%w: shade ID %s repeated", ErrShade, shade.ID)
+		}
+		if shade.Label != "" && slices.ContainsFunc(ramp.Shades[:position], func(other Shade) bool {
+			return other.Label == shade.Label
+		}) {
+			return fmt.Errorf("%w: %q repeated", ErrLabel, shade.Label)
 		}
 	}
 	p.ramps = slices.Insert(p.ramps, index, ramp.clone())
@@ -168,6 +219,63 @@ func (p *Palette) RemoveRamp(id ids.ULID) (Ramp, int, error) {
 	p.ramps = slices.Delete(p.ramps, index, index+1)
 
 	return removed, index, nil
+}
+
+// MoveRamp moves a ramp to an index, returning where it was.
+func (p *Palette) MoveRamp(id ids.ULID, index int) (int, error) {
+	from := p.rampIndex(id)
+	if from < 0 {
+		return 0, fmt.Errorf("%w: %s", ErrNoRamp, id)
+	}
+	if index < 0 || index >= len(p.ramps) {
+		return 0, fmt.Errorf("%w: move to %d of %d", ErrData, index, len(p.ramps))
+	}
+	ramp := p.ramps[from]
+	ramps := slices.Delete(slices.Clone(p.ramps), from, from+1)
+	p.ramps = slices.Insert(ramps, index, ramp)
+
+	return from, nil
+}
+
+// MoveShade moves a shade to an index in a ramp, its own or another,
+// returning the ramp and index it left. Leaving a ramp keeps a shadow record
+// of its old place, and coming back to a ramp it left drops that ramp's
+// record. When records is not nil, the palette's shadow records become
+// exactly those instead, as undoing a move needs.
+func (p *Palette) MoveShade(shadeID, toRamp ids.ULID, index int, records []Moved) (ids.ULID, int, error) {
+	fromRamp, found := p.Place(shadeID)
+	toAt := p.rampIndex(toRamp)
+	if !found || toAt < 0 {
+		return ids.ULID{}, 0, fmt.Errorf("%w: %s to %s", ErrNoShade, shadeID, toRamp)
+	}
+	fromAt := p.rampIndex(fromRamp)
+	name, _ := p.ShadeName(fromRamp, shadeID)
+	from := shadeIndex(p.ramps[fromAt].Shades, shadeID)
+	limit := len(p.ramps[toAt].Shades)
+	if fromRamp == toRamp {
+		limit--
+	} else if limit >= MaxShades {
+		return ids.ULID{}, 0, fmt.Errorf("%w: %s holds %d shades", ErrShade, toRamp, limit)
+	}
+	if index < 0 || index > limit {
+		return ids.ULID{}, 0, fmt.Errorf("%w: move to %d of %d", ErrShade, index, limit)
+	}
+	shade := p.ramps[fromAt].Shades[from]
+	p.ramps[fromAt].Shades = slices.Delete(slices.Clone(p.ramps[fromAt].Shades), from, from+1)
+	p.ramps[toAt].Shades = slices.Insert(slices.Clone(p.ramps[toAt].Shades), index, shade)
+	switch {
+	case records != nil:
+		p.moved = slices.Clone(records)
+	case fromRamp != toRamp:
+		p.moved = slices.DeleteFunc(slices.Clone(p.moved), func(record Moved) bool {
+			return record.Shade == shadeID && record.Ramp == toRamp
+		})
+		if _, ok := p.MovedFrom(fromRamp, shadeID); !ok {
+			p.moved = append(p.moved, Moved{Ramp: fromRamp, Shade: shadeID, Name: name})
+		}
+	}
+
+	return fromRamp, from, nil
 }
 
 // RenameRamp renames a ramp, returning its previous name.
@@ -198,6 +306,9 @@ func (p *Palette) InsertShade(rampID ids.ULID, index int, shade Shade) error {
 	if err := p.checkShade(shade); err != nil {
 		return err
 	}
+	if err := p.checkLabel(shade); err != nil {
+		return err
+	}
 	p.ramps[rampAt].Shades = slices.Insert(slices.Clone(shades), index, shade)
 
 	return nil
@@ -221,7 +332,7 @@ func (p *Palette) RemoveShade(rampID, shadeID ids.ULID) (Shade, int, error) {
 	return removed, index, nil
 }
 
-// SetShade changes the colour and opacity of the shade with the given
+// SetShade changes the colour, opacity and label of the shade with the given
 // shade's ID, returning the shade as it was.
 func (p *Palette) SetShade(rampID ids.ULID, shade Shade) (Shade, error) {
 	var none Shade
@@ -236,6 +347,9 @@ func (p *Palette) SetShade(rampID ids.ULID, shade Shade) (Shade, error) {
 	if err := checkShadeValue(shade); err != nil {
 		return none, err
 	}
+	if err := p.checkLabel(shade); err != nil {
+		return none, err
+	}
 	previous := p.ramps[rampAt].Shades[index]
 	p.ramps[rampAt].Shades = slices.Clone(p.ramps[rampAt].Shades)
 	p.ramps[rampAt].Shades[index] = shade
@@ -245,13 +359,13 @@ func (p *Palette) SetShade(rampID ids.ULID, shade Shade) (Shade, error) {
 
 // Clone returns an independent copy.
 func (p *Palette) Clone() *Palette {
-	return &Palette{ramps: p.Ramps()}
+	return &Palette{ramps: p.Ramps(), moved: slices.Clone(p.moved)}
 }
 
 // Equal reports whether two palettes hold the same ramps and shades, in the
-// same order.
+// same order, and the same shadow records.
 func (p *Palette) Equal(other *Palette) bool {
-	return slices.EqualFunc(p.ramps, other.ramps, Ramp.equal)
+	return slices.EqualFunc(p.ramps, other.ramps, Ramp.equal) && slices.Equal(p.moved, other.moved)
 }
 
 // Encode returns the palette's saved data.
@@ -260,7 +374,7 @@ func (p *Palette) Encode() (json.RawMessage, error) {
 	if ramps == nil {
 		ramps = []Ramp{}
 	}
-	data, err := json.Marshal(wirePalette{Ramps: ramps})
+	data, err := json.Marshal(wirePalette{Ramps: ramps, Moved: p.moved})
 	if err != nil {
 		return nil, fmt.Errorf("encode palette: %w", err)
 	}
@@ -280,6 +394,14 @@ func DecodePalette(data json.RawMessage) (*Palette, error) {
 			return nil, fmt.Errorf("%w: %w", ErrData, err)
 		}
 	}
+	for at, record := range wire.Moved {
+		if record.Ramp.IsZero() || record.Shade.IsZero() || slices.ContainsFunc(wire.Moved[:at], func(other Moved) bool {
+			return other.Ramp == record.Ramp && other.Shade == record.Shade
+		}) {
+			return nil, fmt.Errorf("%w: moved colour %d", ErrData, at+1)
+		}
+	}
+	palette.moved = wire.Moved
 
 	return palette, nil
 }
@@ -321,6 +443,18 @@ func (p *Palette) checkShade(shade Shade) error {
 func checkShadeValue(shade Shade) error {
 	if shade.Color > MaxRGB || shade.Opacity < MinOpacity || shade.Opacity > MaxOpacity {
 		return fmt.Errorf("%w: colour %#x at %d%%", ErrShade, uint32(shade.Color), shade.Opacity)
+	}
+	if shade.Label != strings.TrimSpace(shade.Label) || utf8.RuneCountInString(shade.Label) > MaxLabelLength {
+		return fmt.Errorf("%w: %q", ErrLabel, shade.Label)
+	}
+
+	return nil
+}
+
+// checkLabel refuses a label another shade of the palette has.
+func (p *Palette) checkLabel(shade Shade) error {
+	if _, other, ok := p.Labelled(shade.Label); ok && other.ID != shade.ID {
+		return fmt.Errorf("%w: %q is taken", ErrLabel, shade.Label)
 	}
 
 	return nil

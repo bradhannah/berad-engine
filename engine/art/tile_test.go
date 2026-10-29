@@ -221,3 +221,64 @@ func TestRenamedRampDrawsTheSame(t *testing.T) {
 func near(got, want uint8) bool {
 	return got+1 >= want && got <= want+1
 }
+
+func TestLooseColors(t *testing.T) {
+	t.Parallel()
+	palette, solid, _ := glassPalette(t)
+	tile := newTile(t)
+	loose := art.Loose(0x5D5A63, 60)
+	black := art.Loose(0x000000, 100)
+	set(t, tile, 0, 0, loose)
+	set(t, tile, 1, 0, black)
+	set(t, tile, 2, 0, solid)
+	if !loose.IsLoose() || loose.IsClear() || solid.IsLoose() || black.IsClear() {
+		t.Fatal("a loose colour is neither clear nor named")
+	}
+	if got := tile.Count(art.ColorRef.IsLoose); got != 2 {
+		t.Fatalf("loose pixels: %d", got)
+	}
+	picture, missing := tile.Image(art.Palettes{id(1): palette})
+	if missing != 0 || picture.NRGBAAt(0, 0) != (color.NRGBA{R: 0x5D, G: 0x5A, B: 0x63, A: 153}) {
+		t.Fatalf("a loose colour draws as its own value: %v, %d missing", picture.NRGBAAt(0, 0), missing)
+	}
+	if picture.NRGBAAt(1, 0) != (color.NRGBA{R: 0, G: 0, B: 0, A: 255}) {
+		t.Fatal("loose black is black, not clear")
+	}
+	data, err := tile.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := art.DecodeTile(data)
+	if err != nil || !decoded.Equal(tile) {
+		t.Fatalf("loose colours round trip: %v %s", err, data)
+	}
+	for name, bad := range map[string]art.ColorRef{
+		"an opacity over 100": art.Loose(0x101010, 101),
+		"a value and a shade": {Palette: id(1), Ramp: id(10), Shade: id(11), Value: 1, Opacity: 100},
+	} {
+		if _, err := tile.Set(3, 0, bad); err == nil {
+			t.Fatalf("painted a colour with %s", name)
+		}
+	}
+}
+
+func TestMovedColorStillDraws(t *testing.T) {
+	t.Parallel()
+	palette, solid, _ := glassPalette(t)
+	if err := palette.InsertRamp(1, art.Ramp{ID: id(20), Name: "sea", Shades: nil}); err != nil {
+		t.Fatal(err)
+	}
+	palettes := art.Palettes{id(1): palette}
+	tile := newTile(t)
+	set(t, tile, 0, 0, solid)
+	if _, _, err := palette.MoveShade(solid.Shade, id(20), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	picture, missing := tile.Image(palettes)
+	if missing != 0 || picture.NRGBAAt(0, 0) != (color.NRGBA{R: 0, G: 0, B: 255, A: 255}) {
+		t.Fatalf("a moved colour still draws: %v, %d missing", picture.NRGBAAt(0, 0), missing)
+	}
+	if !palettes.Moved(solid) || palettes.Moved(art.Named(id(1), id(20), solid.Shade)) {
+		t.Fatal("only the old place is reported as moved")
+	}
+}

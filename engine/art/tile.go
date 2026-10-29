@@ -72,7 +72,7 @@ func (t *Tile) Set(col, row int, ref ColorRef) (ColorRef, error) {
 	previous := t.pixels[index]
 	if ref != previous && !ref.IsClear() && !slices.Contains(t.pixels, ref) {
 		count := len(t.Colors())
-		if !previous.IsClear() && t.uses(previous) == 1 {
+		if !previous.IsClear() && t.Count(func(other ColorRef) bool { return other == previous }) == 1 {
 			count--
 		}
 		if count >= MaxTileColors {
@@ -95,6 +95,18 @@ func (t *Tile) Colors() []ColorRef {
 	}
 
 	return colors
+}
+
+// Count returns how many pixels' colours match.
+func (t *Tile) Count(match func(ref ColorRef) bool) int {
+	count := 0
+	for _, ref := range t.pixels {
+		if match(ref) {
+			count++
+		}
+	}
+
+	return count
 }
 
 // Uses reports whether any pixel's colour matches.
@@ -191,15 +203,4 @@ func (t *Tile) index(col, row int) (int, error) {
 	}
 
 	return row*t.size + col, nil
-}
-
-func (t *Tile) uses(ref ColorRef) int {
-	count := 0
-	for _, pixel := range t.pixels {
-		if pixel == ref {
-			count++
-		}
-	}
-
-	return count
 }

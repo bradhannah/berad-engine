@@ -16,6 +16,8 @@ const (
 	AddRampEdit     = "art.ramp.add"
 	RemoveRampEdit  = "art.ramp.remove"
 	RenameRampEdit  = "art.ramp.rename"
+	MoveRampEdit    = "art.ramp.move"
+	MoveShadeEdit   = "art.shade.move"
 	AddShadeEdit    = "art.shade.add"
 	RemoveShadeEdit = "art.shade.remove"
 	SetShadeEdit    = "art.shade.set"
@@ -45,6 +47,23 @@ type RenameRampArgs struct {
 	Name string   `json:"name"`
 }
 
+// MoveRampArgs moves a ramp to an index.
+type MoveRampArgs struct {
+	Ramp  ids.ULID `json:"ramp"`
+	Index int      `json:"index"`
+}
+
+// MoveShadeArgs moves a shade to an index in a ramp, its own or another.
+// Moved, when set, is exactly the shadow records the palette keeps after the
+// move, as undoing one restores them; otherwise leaving a ramp records the
+// shade's old place there.
+type MoveShadeArgs struct {
+	Shade ids.ULID    `json:"shade"`
+	Ramp  ids.ULID    `json:"ramp"`
+	Index int         `json:"index"`
+	Moved []art.Moved `json:"moved"`
+}
+
 // AddShadeArgs adds a shade to a ramp at an index. A zero ID is filled in
 // before it is applied.
 type AddShadeArgs struct {
@@ -59,7 +78,7 @@ type RemoveShadeArgs struct {
 	Shade ids.ULID `json:"shade"`
 }
 
-// SetShadeArgs changes a shade's colour and opacity.
+// SetShadeArgs changes a shade's colour, opacity and label.
 type SetShadeArgs struct {
 	Ramp  ids.ULID  `json:"ramp"`
 	Shade art.Shade `json:"shade"`
@@ -244,6 +263,58 @@ func (RenameRamp) Apply(document model.Document, args json.RawMessage) (model.Ap
 		}
 
 		return RenameRampArgs{Ramp: rename.Ramp, Name: previous}, []string{rampNamePrefix + rename.Ramp.String()}, nil
+	})
+}
+
+// MoveRamp is the edit kind that moves a ramp to another place in its palette.
+type MoveRamp struct{}
+
+// Name identifies the edit kind.
+func (MoveRamp) Name() string { return MoveRampEdit }
+
+// Format names the document format the edit applies to.
+func (MoveRamp) Format() string { return art.PaletteFormatName }
+
+// Apply moves the ramp; its inverse moves it back.
+func (MoveRamp) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return change(document, args, "", func(target *PaletteDocument, move MoveRampArgs) (any, []string, error) {
+		from, err := target.Palette.MoveRamp(move.Ramp, move.Index)
+		if err != nil {
+			return nil, nil, fmt.Errorf("move ramp: %w", err)
+		}
+
+		return MoveRampArgs{Ramp: move.Ramp, Index: from}, []string{rampOrderItem}, nil
+	})
+}
+
+// MoveShade is the edit kind that moves a shade within its ramp or to
+// another. Tiles painted with it keep finding it through the shadow record of
+// its old place.
+type MoveShade struct{}
+
+// Name identifies the edit kind.
+func (MoveShade) Name() string { return MoveShadeEdit }
+
+// Format names the document format the edit applies to.
+func (MoveShade) Format() string { return art.PaletteFormatName }
+
+// Apply moves the shade; its inverse moves it back, with the shadow records
+// as they were.
+func (MoveShade) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return change(document, args, "", func(target *PaletteDocument, move MoveShadeArgs) (any, []string, error) {
+		before := target.Palette.MovedShades()
+		if before == nil {
+			before = []art.Moved{}
+		}
+		from, index, err := target.Palette.MoveShade(move.Shade, move.Ramp, move.Index, move.Moved)
+		if err != nil {
+			return nil, nil, fmt.Errorf("move shade: %w", err)
+		}
+		touched := []string{
+			ShadeItem(move.Shade), rampOrderItem + ":" + from.String(), rampOrderItem + ":" + move.Ramp.String(),
+		}
+
+		return MoveShadeArgs{Shade: move.Shade, Ramp: from, Index: index, Moved: before}, touched, nil
 	})
 }
 
