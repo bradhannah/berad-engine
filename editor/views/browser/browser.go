@@ -78,6 +78,7 @@ const (
 	dialogNone dialogKind = iota
 	dialogDelete
 	dialogBehaviour
+	dialogSprite
 	dialogDeleteCue
 )
 
@@ -936,6 +937,8 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		s.deleteDocument(ctx, s.deleting)
 	case kind == dialogBehaviour && choice == "use" && list != nil:
 		s.setBehaviour(ctx, list.Selected)
+	case kind == dialogSprite && choice == "use" && list != nil:
+		s.setSprite(ctx, list.Selected)
 	case kind == dialogDeleteCue && choice == "delete":
 		s.removeCue(ctx, s.audio.deleting)
 	}
@@ -1053,6 +1056,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
+		s.npc.chooseSprite, s.npc.openSprite,
 		s.audio.open,
 	}, s.tagBns...)
 }

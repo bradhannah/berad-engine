@@ -1,6 +1,7 @@
 // Package npc is the NPC document: one NPC's definition, kept once however
 // many floors place it. It names the workflow that is the NPC's behaviour and
-// holds the author's private notes about the NPC, which players never see.
+// the sprite it shows, and holds the author's private notes about the NPC,
+// which players never see.
 package npc
 
 import (
@@ -16,8 +17,9 @@ import (
 // FormatName identifies NPCs inside saved envelopes.
 const FormatName = "npc"
 
-// FormatVersion is the NPC format version this package writes.
-const FormatVersion = 1
+// FormatVersion is the NPC format version this package writes. Version 2
+// added the sprite an NPC shows, and reads version 1 unchanged.
+const FormatVersion = 2
 
 // MaxNotes bounds an NPC's notes, in characters.
 const MaxNotes = 20000
@@ -32,6 +34,8 @@ var ErrNotes = errors.New("invalid NPC notes")
 type NPC struct {
 	// Behaviour is the workflow the NPC follows; zero when none is chosen.
 	Behaviour ids.ULID `json:"behaviour,omitzero"`
+	// Sprite is the sprite the NPC shows; zero for its token.
+	Sprite ids.ULID `json:"sprite,omitzero"`
 	// Notes are the author's own notes about the NPC, never shown to
 	// players.
 	Notes string `json:"notes,omitempty"`
@@ -60,10 +64,10 @@ func (n NPC) Encode() (json.RawMessage, error) {
 func Decode(data json.RawMessage) (NPC, error) {
 	var decoded NPC
 	if err := json.Unmarshal(data, &decoded); err != nil {
-		return NPC{Behaviour: ids.ULID{}, Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
+		return NPC{Behaviour: ids.ULID{}, Sprite: ids.ULID{}, Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
 	}
 	if err := CheckNotes(decoded.Notes); err != nil {
-		return NPC{Behaviour: ids.ULID{}, Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
+		return NPC{Behaviour: ids.ULID{}, Sprite: ids.ULID{}, Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
 	}
 
 	return decoded, nil
@@ -71,5 +75,7 @@ func Decode(data json.RawMessage) (NPC, error) {
 
 // Format returns the NPC format registration.
 func Format() content.Format {
-	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: nil}
+	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
+		1: func(data json.RawMessage) (json.RawMessage, error) { return data, nil },
+	}}
 }

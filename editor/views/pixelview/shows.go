@@ -19,11 +19,16 @@ import (
 // "Shows" chooses the stand-in a sprite is drawn for on every map, until the
 // definition editor gives definitions sprites of their own. A sprite shows at
 // most one stand-in, and each stand-in has at most one sprite. A wall's
-// sprite is the same in every cell until wall families exist.
+// sprite is the same in every cell until wall families exist. The player is
+// offered first, and shown the same way.
 
 // showsItem prefixes a stand-in's ID in the Shows menu; the item for nothing
 // is the prefix alone.
 const showsItem = "standin:"
+
+// ruledItems is how many of the Shows menu's first items have a rule above
+// them: the player, after Nothing, and the first stand-in, after the player.
+const ruledItems = 2
 
 // standInSprites returns which sprite shows each stand-in.
 func standInSprites(docs frame.Docs) map[string]ids.ULID {
@@ -39,9 +44,13 @@ func standInSprites(docs frame.Docs) map[string]ids.ULID {
 	return record
 }
 
-// shownStandIn returns the stand-in the sprite shows, or "" for none.
+// shownStandIn returns the stand-in the sprite shows, the player, or "" for
+// none.
 func (s *State) shownStandIn(docs frame.Docs) string {
 	record := standInSprites(docs)
+	if record[art.Player] == s.sprite {
+		return art.Player
+	}
 	for _, definition := range tiles.StandIns() {
 		if record[definition.ID] == s.sprite {
 			return definition.ID
@@ -51,8 +60,11 @@ func (s *State) shownStandIn(docs frame.Docs) string {
 	return ""
 }
 
-// standInName names a stand-in as authors know it.
+// standInName names a stand-in, or the player, as authors know it.
 func standInName(standIn string) string {
+	if standIn == art.Player {
+		return "Player"
+	}
 	if definition, ok := tiles.Lookup(standIn); ok {
 		return definition.Name
 	}
@@ -84,23 +96,27 @@ func (s *State) layoutShows(docs frame.Docs, left, width, bottom int) {
 	}
 }
 
-// openShows offers nothing and every stand-in, naming the sprite that already
-// shows one.
+// openShows offers nothing, the player and every stand-in, naming the
+// sprite that already shows one.
 func (s *State) openShows(docs frame.Docs) {
 	record := standInSprites(docs)
-	items := []ui.MenuItem{{ID: showsItem, Label: "Nothing", Icon: ui.IconNone, Disabled: false, Danger: false,
-		Rule: false}}
-	for _, definition := range tiles.StandIns() {
-		if !art.CanShowSprite(definition.ID) {
-			continue
-		}
-		label := definition.Name
-		if sprite, shown := record[definition.ID]; shown && sprite != s.sprite {
+	standIns := tiles.StandIns()
+	shows := make([]string, 0, 1+len(standIns))
+	shows = append(shows, art.Player)
+	for _, definition := range standIns {
+		shows = append(shows, definition.ID)
+	}
+	items := make([]ui.MenuItem, 0, 1+len(shows))
+	items = append(items, ui.MenuItem{ID: showsItem, Label: "Nothing", Icon: ui.IconNone, Disabled: false,
+		Danger: false, Rule: false})
+	for _, standIn := range shows {
+		label := standInName(standIn)
+		if sprite, shown := record[standIn]; shown && sprite != s.sprite {
 			label += " — " + spriteName(docs, sprite)
 		}
 		items = append(items, ui.MenuItem{
-			ID: showsItem + definition.ID, Label: label, Icon: ui.IconNone, Disabled: false, Danger: false,
-			Rule: len(items) == 1,
+			ID: showsItem + standIn, Label: label, Icon: ui.IconNone, Disabled: false, Danger: false,
+			Rule: len(items) <= ruledItems,
 		})
 	}
 	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
@@ -138,6 +154,9 @@ func (s *State) chooseShows(ctx *frame.Context, standIn string) {
 		return
 	}
 	status := "Shows " + standInName(standIn) + " on every map"
+	if standIn == art.Player {
+		status = "Shows the player"
+	}
 	if previous, shown := standInSprites(ctx.Docs)[standIn]; shown {
 		status += ", in place of " + spriteName(ctx.Docs, previous)
 	}

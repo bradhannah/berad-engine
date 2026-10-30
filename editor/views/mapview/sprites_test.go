@@ -11,10 +11,12 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -201,5 +203,43 @@ func TestAWallShowsItsSprite(t *testing.T) {
 	f.apply(art.StandInsID(), artplugin.SetStandIn{}, artplugin.StandInArgs{StandIn: "wall.a", Sprite: ids.ULID{}})
 	if f.has("sprite:wall.a") {
 		t.Fatal("without its sprite a wall is its flat colour again")
+	}
+}
+
+// TestCharactersShowTheirSprites draws Ada Clerk, placed on the ground floor,
+// with the sprite her inspector chose, and the player in a preview with the
+// sprite Shows chose for them.
+func TestCharactersShowTheirSprites(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withArt(t, f)
+	clerk := npcplugin.NewDocument()
+	clerk.NPC.Sprite = lanternID
+	f.docs.Put(clerkID, "Ada Clerk", clerk)
+	var entries []project.Entry
+	f.docs.View(project.IndexID(), func(document client.Document) {
+		entries = document.Model.(*project.Index).Entries()
+	})
+	f.docs.Put(project.IndexID(), "Project", project.NewIndex(append(entries,
+		project.Entry{ID: clerkID, Name: "Ada Clerk", Format: npc.FormatName})))
+	ground := groundFloor(t)
+	if err := ground.Floor.InsertPlacement(0, floor.Placement{ID: placedID, NPC: clerkID, Col: 9, Row: 8}); err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(groundID, "Ground", ground)
+	f.apply(art.StandInsID(), artplugin.SetStandIn{}, artplugin.StandInArgs{StandIn: art.Player, Sprite: lanternID})
+	snapshot := groundID
+	f.state.Changed(client.Update{Snapshot: &snapshot}, f.ctx)
+	f.draw()
+	if !slices.Contains(f.requests.Subscribed, clerkID) {
+		t.Fatal("the Map follows the NPCs placed on its floors")
+	}
+	if !f.has("sprite:npc:" + clerkID.String()) {
+		t.Fatal("Ada Clerk shows her sprite")
+	}
+	f.startPreview("cell:3,3")
+	f.draw()
+	if !f.has("sprite:player") {
+		t.Fatal("the player shows the sprite Shows chose")
 	}
 }

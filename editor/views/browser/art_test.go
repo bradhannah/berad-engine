@@ -8,12 +8,14 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/art"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -334,5 +336,30 @@ func TestSpriteOpensInThePixelEditor(t *testing.T) {
 	if len(f.requests.Opened) != 3 || f.requests.Opened[2].View != "palette" ||
 		f.requests.Opened[2].Target != art.DefaultPaletteID() {
 		t.Fatalf("a palette opens in the Palette Editor: %+v", f.requests.Opened)
+	}
+}
+
+// TestNPCShowsASprite gives the selected NPC a sprite from the project's
+// sprites in a dialog, and Open opens it in the Pixel editor.
+func TestNPCShowsASprite(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withArt(f)
+	f.click("row:Ada Clerk", false)
+	f.click("ui:choose-sprite", false)
+	f.click("row:Lantern", false)
+	f.click("ui:use", false)
+	set := f.requests.Of(npcplugin.SetSpriteEdit)
+	var args npcplugin.SetSpriteArgs
+	if len(set) != 1 || set[0].Command.Document != clerkID || set[0].Decode(&args) != nil || args.Sprite != lanternID {
+		t.Fatalf("set sprite %d %+v", len(set), args)
+	}
+	f.ctx.Docs.(*frametest.Docs).Put(clerkID, "Ada Clerk", &npcplugin.Document{
+		NPC: npc.NPC{Behaviour: ids.ULID{}, Sprite: lanternID, Notes: ""},
+	})
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.click("ui:open-sprite", false)
+	if opened := f.requests.Opened; len(opened) == 0 || opened[len(opened)-1].Target != lanternID {
+		t.Fatalf("Open opens the NPC's sprite: %+v", opened)
 	}
 }

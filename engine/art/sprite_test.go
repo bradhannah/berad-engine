@@ -54,8 +54,8 @@ func TestStandInSprites(t *testing.T) {
 		}
 	}
 	if !art.CanShowSprite("door") || !art.CanShowSprite("grass") || !art.CanShowSprite("wall.b") ||
-		!art.CanShowSprite(tiles.UnassignedWall) {
-		t.Fatal("every stand-in, walls included, can show a sprite")
+		!art.CanShowSprite(tiles.UnassignedWall) || !art.CanShowSprite(art.Player) {
+		t.Fatal("every stand-in, walls included, and the player can show a sprite")
 	}
 	if previous, err := record.Set("pickup.small", id(1)); err != nil || !previous.IsZero() {
 		t.Fatalf("first sprite: %v %v", previous, err)

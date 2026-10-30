@@ -82,18 +82,22 @@ func DecodeSettings(data json.RawMessage) (Settings, error) {
 	return settings, nil
 }
 
+// Player is what the stand-in sprites record the player's sprite under, beside
+// the stand-ins; no stand-in has this ID.
+const Player = "player"
+
 // CanShowSprite reports whether a stand-in can be shown by a sprite: any
-// built-in stand-in. A wall shows one sprite in every cell, with no corner or
-// edge pieces, until wall families supply a sprite for each neighbour
-// arrangement (increment 14).
+// built-in stand-in, or the player. A wall shows one sprite in every cell,
+// with no corner or edge pieces, until wall families supply a sprite for each
+// neighbour arrangement (increment 14).
 func CanShowSprite(standIn string) bool {
 	_, ok := tiles.Lookup(standIn)
 
-	return ok
+	return ok || standIn == Player
 }
 
-// StandInSprites records which sprite shows each stand-in, until definitions
-// can be edited and carry their own sprites.
+// StandInSprites records which sprite shows each stand-in, and the player,
+// until definitions can be edited and carry their own sprites.
 type StandInSprites struct {
 	sprites map[string]ids.ULID
 }

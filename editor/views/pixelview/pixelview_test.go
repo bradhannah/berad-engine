@@ -485,6 +485,12 @@ func TestShowsChoosesTheStandInItReplaces(t *testing.T) {
 	if !f.has("shows:") || f.status() != "Shows nothing: Medium pickup is its flat colour again" {
 		t.Fatalf("shows nothing: %q", f.status())
 	}
+	f.click("ui:shows")
+	f.click("menu:standin:player")
+	f.applyAll()
+	if !f.has("shows:player") || f.status() != "Shows the player" {
+		t.Fatalf("shows the player: %q", f.status())
+	}
 }
 
 // TestALongPaletteScrolls gives gloomy sixteen more ramps of sixteen shades,
