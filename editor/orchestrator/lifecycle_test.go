@@ -29,7 +29,7 @@ func (h *harness) dialView(t testing.TB, view string, target ids.ULID, group str
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
-		Build: testBuild, View: view, Target: target, UndoGroup: group,
+		View: view, Target: target, UndoGroup: group,
 	}, newRegistry(t))
 	if err != nil {
 		t.Fatal(err)

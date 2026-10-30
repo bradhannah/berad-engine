@@ -85,30 +85,49 @@ Chosen while planning, for its author to check:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Plan | This record; the decision in the editor features and the vocabulary | Its author has answered every question | Built |
-| 2. Pipes | The orchestrator hands out in-memory connections instead of listening on a socket; the client connects over one; each connection keeps its messages in order and does not hold a pane up while the orchestrator is busy; the lock names the process | Orchestrator, client and protocol tests pass over pipes; no socket file is made | Planned |
-| 3. One process | `open` runs the orchestrator and the editor window in one process; the orchestrator shows every pane in the editor window; quitting, Ctrl+C and a failure stop both; the launcher, child processes, the `window` command and the build check go | Headless orchestrator tests with a fake editor window; the real-window tests that open tabs pass | Planned |
-| 4. No multi-window option | Pop out (protocol version 16), `open --shell`, a host running alone, the standalone Clock window, the first Map window, `make demo-shell` | Nothing in the code, Makefile or tests names them; `make check` is clean | Planned |
-| 5. Crash reports for tabs | A pane that panics tells the orchestrator before it closes; the orchestrator saves its crash report and tells the other tabs | A headless test of a pane's report; a real-window test that crashes a tab with Cmd+Shift+K | Planned |
-| 6. Real-window tests | Every real-window test runs in the one window: a Map opened from the project browser, the editor quit from the browser once it is the only tab; the tests only for separate windows go | `make gui-test` passes, its screenshots checked by eye | Planned |
-| 7. Documents | The architecture, editor features, vocabulary, research notes, READMEs and contributor rules describe one window in one process | No document describes a window process, `--shell` or popping out, except as history | Planned |
-| 8. Trying it | The sample project in the one window, for its author to try | Judged by its author | Planned |
+| 2. One process | `open` runs the orchestrator and the editor window in one process, and the orchestrator shows every pane in the editor window. Gone with the processes: the launcher, child processes, the `window` command, the build check, `open --shell` and `make demo-shell`, the first Map window, popping out (protocol version 16), a host running alone and the standalone Clock window. A pane that panics tells the orchestrator before it closes, which saves its crash report and tells the other tabs; On top is the whole window's | Headless orchestrator tests with a fake editor window, among them a pane's crash report; the real-window tests of tabs pass | Built |
+| 3. Pipes | The orchestrator hands out in-memory connections instead of listening on a socket; the client connects over one; each connection keeps its messages in order and does not hold a pane up while the orchestrator is busy; the lock names the process | Orchestrator, client and protocol tests pass over pipes; no socket file is made | Planned |
+| 4. Real-window tests | Every real-window test runs in the one window: a Map opened from the project browser, the editor quit from the browser once it is the only tab; the tests only for separate windows go; a tab crashed with Cmd+Shift+K leaves a report | `make gui-test` passes, its screenshots checked by eye | Planned |
+| 5. Documents | The architecture, editor features, vocabulary, research notes, READMEs and contributor rules describe one window in one process | No document describes a window process, `--shell` or popping out, except as history | Planned |
+| 6. Trying it | The sample project in the one window, for its author to try | Judged by its author | Planned |
 
 Where each step changes code:
 
+- **One process:** `editor/cmd/berad-editor` (`main.go`), `editor/protocol`,
+  `editor/client`, `editor/orchestrator` (`launcher.go` goes, `hosting.go`,
+  `crash.go`, `handlers.go`, `previews.go`, `quit.go`), `editor/window`
+  (`window.go`, `shell.go`, `surface.go` goes, `bar.go`, `quit.go`), the
+  `Makefile`.
 - **Pipes:** `editor/orchestrator` (`server.go`, `orchestrator.go`,
   `lock.go`, `config.go`), `editor/client`.
-- **One process:** `editor/cmd/berad-editor` (`main.go`),
-  `editor/orchestrator` (`launcher.go`, `hosting.go`, `previews.go`,
-  `quit.go`), `editor/window` (`window.go`, `shell.go`).
-- **No multi-window option:** `editor/protocol`, `editor/client`,
-  `editor/orchestrator` (`hosting.go`, `handlers.go`), `editor/window`
-  (`surface.go`, `bar.go`, `quit.go`), the `Makefile`.
-- **Crash reports for tabs:** `editor/protocol`, `editor/client`,
-  `editor/window` (`shell.go`), `editor/orchestrator`.
 - **Real-window tests:** `editor/cmd/berad-editor/*_test.go`, and in
   `editor/window` a script locator for how many tabs are open.
 
 ## Step results
+
+- **One process:** `berad-editor open` runs the orchestrator on a goroutine
+  and the editor window on the main goroutine, as Ebitengine requires; the
+  window closing stops the orchestrator, and the orchestrator stopping, for
+  Ctrl+C or once a quit has closed every pane, closes the window. The
+  orchestrator asks the editor window for every pane it opens and refuses to
+  open one while the window is not connected (`ErrNoWindow`); the launcher,
+  child processes, their logs and crash reports, the `window` command, the
+  build check (`Hello.Build`), `open --shell`, `LaunchWindow`/`LaunchShell`,
+  the first Map window, popping out (`Open.PopOut`, `client.PopOut`,
+  Cmd+Shift+O, the bar's pop-out box), a host running alone (`ownWindow` and
+  the `surface` interface) and `make demo-shell` are gone; protocol version
+  16. A pane that panics sends `Crashed` with its stack before it closes; the
+  orchestrator saves `.berad/logs/<window>-crash.json` with the failure and
+  recent traffic and tells the other panes. On top is the whole window's: any
+  pane's toggle sets it and every pane's toggle shows it. The quit dialog
+  says "Every tab will close." Verified with `make check` (no lint findings,
+  every package passing with the race detector); headless tests with a fake
+  editor window: windows shown as panes, opening again drawing attention, the
+  Clock asked for once, a pick opening a Map, Open refused without the
+  window, a quit stopping the orchestrator once every pane has left, and a
+  pane's crash report; unit tests of On top and the close button; and the
+  six real-window tests of tabs, run in one process, their screenshots
+  checked: tabs with close boxes only, and Watch beside its Map.
 
 ## Not in this increment
 

@@ -1,7 +1,8 @@
-// Package window runs one editor window process: it connects to the
-// orchestrator, subscribes to its target document and runs the Ebitengine
-// window for its view (the project browser, a Map, Text, Workflow, Watch,
-// Clock, Audio or Pixel editor window).
+// Package window runs the editor window: one Ebitengine window whose window
+// bar has a tab for each view open, each view running in a pane with its own
+// connection to the orchestrator (the project browser, a Map, Text,
+// Workflow, Watch, Audio, Pixel editor or Palette Editor, and the pinned
+// clock).
 package window
 
 import (
@@ -41,27 +42,22 @@ const (
 // ErrUnknownView reports a view this program does not provide.
 var ErrUnknownView = errors.New("unknown window view")
 
-// Args identifies the window to run. Shell runs it as a shell, which shows
-// every window the orchestrator opens after it as one of its panes
-// (increment 10).
+// Args identifies a window to connect: the editor window's first pane, or a
+// pane the orchestrator asked it to show, which connects as Window.
 type Args struct {
 	Socket string
 	View   string
 	Target ids.ULID
 	Window ids.ULID
-	Build  string
-	Shell  bool
 }
 
-// Run connects, opens the window and blocks until it closes. It must be called
-// from the main goroutine, as Ebitengine requires.
+// Run opens the editor window with its first pane, normally the project
+// browser, and blocks until it closes. It must be called from the main
+// goroutine, as Ebitengine requires.
 func Run(args Args, registry *plugin.Registry) error {
-	if args.Shell {
-		return runShell(args, registry)
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-	conn, err := connect(ctx, args, registry)
+	conn, err := connect(ctx, args, registry, true)
 	if err != nil {
 		return err
 	}
@@ -70,40 +66,37 @@ func Run(args Args, registry *plugin.Registry) error {
 		return errors.Join(err, conn.Close())
 	}
 	defer theme.Close()
-	game := newHost(conn, newView(args, conn.Window(), theme), args.View, theme, newOwnWindow())
-	game.script, err = loadScript(args.View)
+	shown := newShell(args, registry, theme)
+	project, err := shown.addPane(conn, args)
 	if err != nil {
 		return errors.Join(err, conn.Close())
 	}
-	ebiten.SetWindowTitle(game.view.Title(conn))
-	ebiten.SetWindowSize(windowSize(args.View))
+	project.host.closeQuits = true
+	project.host.hosts = shown.host
+	// The pinned clock is a Clock window, always running.
+	project.host.Open(clockview.ViewName, args.Target, false)
+	ebiten.SetWindowTitle(project.host.view.Title(conn))
+	ebiten.SetWindowSize(windowWidth, windowHeight+rowHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	// The Clock window stays on top of the others until its author turns
-	// that off.
-	game.frame.OnTop.On = args.View == clockview.ViewName
-	game.floating = game.frame.OnTop.On
-	ebiten.SetWindowFloating(game.floating)
-	// The close button asks the view first, so unsaved changes are not lost.
+	// Closing the editor window quits the editor, asking first.
 	ebiten.SetWindowClosingHandled(true)
-	// A window driven by an input script needs no keyboard, so it opens
-	// without taking focus from whatever the person at the computer is using.
-	// So does every other window opened while scripts drive the editor, as
-	// in the real-window tests, even one left without a script, and the
-	// Clock window, which opens by itself when a preview starts.
+	// While input scripts drive the editor, as in the real-window tests, the
+	// window opens without taking focus from whatever the person at the
+	// computer is using.
 	var options ebiten.RunGameOptions
-	options.InitUnfocused = game.script != nil || scripted() || args.View == clockview.ViewName
-	stats := newFrameStats(args.View)
-	runErr := ebiten.RunGameWithOptions(timed(game, stats), &options)
+	options.InitUnfocused = scripted()
+	runErr := ebiten.RunGameWithOptions(timed(shown, shown.stats), &options)
 	if errors.Is(runErr, ebiten.Termination) {
 		runErr = nil
 	}
-	stats.addLatencies(game.frame.Latencies())
 
-	return errors.Join(runErr, game.sounds.Close(), conn.Close(), stats.write())
+	return errors.Join(runErr, shown.closeAll(), shown.stats.write())
 }
 
 // connect connects a window to the orchestrator and loads its target.
-func connect(ctx context.Context, args Args, registry *plugin.Registry) (*client.Client, error) {
+// hosts is set for the editor window's own connection, which the
+// orchestrator asks to show the windows it opens.
+func connect(ctx context.Context, args Args, registry *plugin.Registry, hosts bool) (*client.Client, error) {
 	switch args.View {
 	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
 		clockview.ViewName, audioview.ViewName, pixelview.ViewName, paletteview.ViewName:
@@ -111,8 +104,8 @@ func connect(ctx context.Context, args Args, registry *plugin.Registry) (*client
 		return nil, fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
 	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
-		Protocol: protocol.Version, Build: args.Build, Window: args.Window, View: args.View,
-		Target: args.Target, UndoGroup: undoGroup(args), Hosts: args.Shell,
+		Protocol: protocol.Version, Window: args.Window, View: args.View,
+		Target: args.Target, UndoGroup: undoGroup(args), Hosts: hosts,
 	}, registry)
 	if err != nil {
 		return nil, fmt.Errorf("connect window: %w", err)
@@ -142,15 +135,6 @@ func undoGroup(args Args) string {
 	}
 
 	return ""
-}
-
-// windowSize is the size a window opens at: small for the Clock window.
-func windowSize(view string) (int, int) {
-	if view == clockview.ViewName {
-		return clockview.Width, clockview.Height
-	}
-
-	return windowWidth, windowHeight
 }
 
 //nolint:ireturn // Each window runs one of several views.

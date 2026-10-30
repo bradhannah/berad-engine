@@ -271,7 +271,7 @@ func (c *Client) Redo(ctx context.Context) (protocol.Result, error) {
 // window already showing that view and target unless newView is set.
 func (c *Client) Open(ctx context.Context, view string, target ids.ULID, newView bool) (protocol.Result, error) {
 	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{
-		View: view, Target: target, NewView: newView, Item: "", PopOut: ids.ULID{},
+		View: view, Target: target, NewView: newView, Item: "",
 	})
 	if err != nil {
 		return protocol.Result{}, err
@@ -320,21 +320,7 @@ func (c *Client) AudioLibrary(ctx context.Context) (protocol.AudioLibrary, error
 // as a cue in the Audio window, or to show it in the window already open.
 func (c *Client) OpenItem(ctx context.Context, view string, target ids.ULID, item string) (protocol.Result, error) {
 	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{
-		View: view, Target: target, NewView: false, Item: item, PopOut: ids.ULID{},
-	})
-	if err != nil {
-		return protocol.Result{}, err
-	}
-
-	return resultOf(reply)
-}
-
-// PopOut asks for a shell's pane to move into a window process of its own,
-// and waits for the result; the pane is told to close once the window has
-// joined.
-func (c *Client) PopOut(ctx context.Context, view string, target, pane ids.ULID) (protocol.Result, error) {
-	reply, err := c.request(ctx, protocol.KindOpen, protocol.Open{
-		View: view, Target: target, NewView: true, Item: "", PopOut: pane,
+		View: view, Target: target, NewView: false, Item: item,
 	})
 	if err != nil {
 		return protocol.Result{}, err
@@ -411,6 +397,12 @@ func (c *Client) Recording(ctx context.Context, recording string, offset int64) 
 // Unsaved tells the orchestrator this window's unsaved changes.
 func (c *Client) Unsaved(unsaved protocol.Unsaved) error {
 	return c.notify(protocol.KindUnsaved, unsaved)
+}
+
+// Crashed tells the orchestrator this pane failed and is closing, so it saves
+// a crash report with the failure.
+func (c *Client) Crashed(failure string) error {
+	return c.notify(protocol.KindCrashed, protocol.Crashed{Failure: failure})
 }
 
 // QuitAsk asks what quitting would close: how many windows are open and which

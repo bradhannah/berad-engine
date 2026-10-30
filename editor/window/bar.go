@@ -24,8 +24,8 @@ const (
 
 // barTab is one tab drawn on the bar: a kind on the top row, or a document of
 // the kind in front on the second. tab is the index of the shell's tab it
-// brings forward; boxes is set when it carries close and pop-out boxes for
-// that tab, and count when it stands for several.
+// brings forward; boxes is set when it carries a close box for that tab, and
+// count when it stands for several.
 type barTab struct {
 	rect  image.Rectangle
 	tab   int
@@ -120,15 +120,9 @@ func closeBox(rect image.Rectangle) image.Rectangle {
 	return image.Rect(rect.Max.X-tabPad-closeSize, top, rect.Max.X-tabPad, top+closeSize)
 }
 
-// popBox is a bar tab's pop-out box, left of its close box.
-func popBox(rect image.Rectangle) image.Rectangle {
-	return closeBox(rect).Sub(image.Pt(closeSize+ui.Gap, 0))
-}
-
 // updateBar handles a press on the bar: a kind or a document comes to the
 // front, or a tab's panes are asked to close from its close box, which asks
-// about unsaved changes first, or pop out from its pop-out box. The bar keeps
-// the mouse from the panes.
+// about unsaved changes first. The bar keeps the mouse from the panes.
 func (s *shell) updateBar(input *ui.Input) {
 	if !input.Cursor.In(image.Rect(0, 0, s.size.X, s.barHeight())) {
 		return
@@ -146,15 +140,10 @@ func (s *shell) pressBar(point image.Point) {
 			continue
 		}
 		s.active = shown.tab
-		each := s.tabs[shown.tab]
-		switch {
-		case !shown.boxes:
-		case point.In(closeBox(shown.rect)):
-			for _, closing := range each.panes {
+		if shown.boxes && point.In(closeBox(shown.rect)) {
+			for _, closing := range s.tabs[shown.tab].panes {
 				closing.host.frame.Closing = true
 			}
-		case point.In(popBox(shown.rect)):
-			popOut(each.panes[each.focus])
 		}
 
 		return
@@ -199,9 +188,8 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	left += ui.Gap
 	right := rect.Max.X - tabPad
 	if shown.boxes {
-		right -= (closeSize + ui.Gap) * ui.Half
+		right -= closeSize + ui.Gap
 		drawClose(screen, closeBox(rect))
-		drawPopOut(screen, popBox(rect))
 	}
 	textY := rect.Min.Y + (rowHeight-ui.TextSize)/ui.Half - 1
 	if shown.count > 1 {
@@ -213,15 +201,6 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	s.theme.DrawText(screen, s.theme.FitText(shown.label, right-left), left, textY, ui.ColorInk())
 	ui.Divider(screen, image.Pt(rect.Max.X-ui.Hairline, rect.Min.Y+ui.Gap),
 		image.Pt(rect.Max.X-ui.Hairline, rect.Max.Y-ui.Gap))
-}
-
-// drawPopOut draws a pop-out box: a window with an arrow leaving it.
-func drawPopOut(screen *ebiten.Image, rect image.Rectangle) {
-	inner := rect.Inset(ui.Gap / ui.Half)
-	window := image.Rect(inner.Min.X, inner.Min.Y+ui.Gap, inner.Max.X-ui.Gap, inner.Max.Y)
-	ui.StrokeRect(screen, window, ui.Hairline, ui.ColorMuted())
-	middle := image.Pt(window.Min.X+window.Dx()/ui.Half, window.Max.Y-window.Dy()/ui.Half)
-	ui.Line(screen, middle, image.Pt(inner.Max.X, inner.Min.Y), ui.Outline, ui.ColorMuted())
 }
 
 // drawClose draws a close box's cross.

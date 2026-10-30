@@ -1,6 +1,7 @@
-// Package orchestrator is the editor's headless core: the only writer of
-// project data. Window processes connect over a Unix socket, send commands and
-// receive events; they never touch project files.
+// Package orchestrator is the editor's core: the only writer of project data.
+// It runs in the editor's process beside the editor window, whose panes
+// connect to it, send commands and receive events; they never touch project
+// files.
 //
 // All project state is owned by one goroutine (Run), so it needs no locks.
 // Connection goroutines only frame messages and pass them to that loop.
@@ -93,7 +94,6 @@ type Orchestrator struct {
 	windows    map[ids.ULID]*window
 	subscribed map[ids.ULID]map[ids.ULID]*window
 	recent     map[ids.ULID]*ring
-	children   map[ids.ULID]*child
 	hosting    *hosting
 	picks      *picks
 	preview    *preview
@@ -116,13 +116,12 @@ type Orchestrator struct {
 	stopping    bool
 	quit        bool
 	// quitting is set once a window asks to quit: the orchestrator stops
-	// when its last window closes.
+	// when its last window has left.
 	quitting bool
 
 	inbound chan inbound
 	joins   chan *window
 	leaves  chan *window
-	exits   chan childExit
 	stopped chan struct{}
 	running atomic.Bool
 }
@@ -163,7 +162,6 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		windows:    map[ids.ULID]*window{},
 		subscribed: map[ids.ULID]map[ids.ULID]*window{},
 		recent:     map[ids.ULID]*ring{},
-		children:   map[ids.ULID]*child{},
 		hosting:    newHosting(),
 		picks:      newPicks(),
 		preview:    nil,
@@ -179,7 +177,6 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		inbound:  make(chan inbound),
 		joins:    make(chan *window),
 		leaves:   make(chan *window),
-		exits:    make(chan childExit),
 		stopped:  make(chan struct{}),
 		running:  atomic.Bool{},
 	}
@@ -429,11 +426,6 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			o.audioFinished(outcome)
 		case answer := <-o.analyses.done:
 			o.analysisFinished(answer)
-		case exit := <-o.exits:
-			o.childExited(exit)
-			if o.quit {
-				return o.shutdown()
-			}
 		case <-flush.C:
 			o.flushLogged()
 			o.watchAudio()
@@ -441,6 +433,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			if err := o.journal.sync(); err != nil {
 				o.cfg.Logger.Error("journal sync failed", "error", err)
 			}
+		}
+		if o.quit {
+			return o.shutdown()
 		}
 	}
 }
@@ -455,7 +450,6 @@ func (o *Orchestrator) shutdown() error {
 	for _, connected := range slices.Collect(maps.Values(o.windows)) {
 		o.leave(connected)
 	}
-	o.waitForChildren(o.cfg.Clock().Add(o.cfg.ShutdownTimeout))
 	o.waitForAudio(o.cfg.Clock().Add(o.cfg.ShutdownTimeout))
 	close(o.stopped)
 	flushErr := o.flush()

@@ -2,9 +2,8 @@ package orchestrator_test
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
@@ -60,36 +59,38 @@ func TestClockWindowShowsAnyZonesPreview(t *testing.T) {
 	})
 }
 
-// Starting a preview opens the Clock window when none is open, and only
-// then.
+// Starting a preview asks the editor window for the Clock when none is open
+// or being opened, and only then.
 func TestPreviewOpensTheClockWindow(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	markers := t.TempDir()
-	h := start(t, dir, func(cfg *orchestrator.Config) { cfg.Launcher = testLauncher(roleIdleWindow, markers) })
+	h := start(t, dir, nil)
+	shell := h.editorWindow(t)
 	owner := h.dialView(t, orchestrator.MapView, previewZone, "map:"+previewZone.String())
-	windows := func() int {
-		ask, err := owner.QuitAsk(pickContext(t))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		return ask.Windows
-	}
 	run, err := startPreview(t, owner, previewZone)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the Clock window to connect", func() bool { return windows() == 2 })
+	if _, asked := h.hostNext(t, shell); asked.View != orchestrator.ClockView {
+		t.Fatalf("asked for %+v", asked)
+	}
 	if err := owner.PreviewStop(protocol.PreviewStop{Run: run, Reason: "stopped"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := startPreview(t, owner, previewZone); err != nil {
 		t.Fatal(err)
 	}
-	logs, err := os.ReadDir(filepath.Join(dir, ".berad", "logs"))
-	if err != nil || len(logs) != 1 || windows() != 2 {
-		t.Fatalf("one Clock window: %d logs, %d windows, %v", len(logs), windows(), err)
+	// Asked on the same connection, this is answered after the second
+	// preview has started.
+	if _, err := owner.QuitAsk(pickContext(t)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case update := <-shell.Updates():
+		if update.Host != nil {
+			t.Fatalf("a second Clock was asked for: %+v", update.Host)
+		}
+	case <-time.After(300 * time.Millisecond):
 	}
 }

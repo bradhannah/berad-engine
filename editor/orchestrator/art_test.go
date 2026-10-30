@@ -79,7 +79,7 @@ func dialArt(t testing.TB, h *harness, group string, made lantern) *client.Clien
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
-		Build: testBuild, View: "map", Target: made.tile, UndoGroup: group,
+		View: "map", Target: made.tile, UndoGroup: group,
 	}, artRegistry(t))
 	if err != nil {
 		t.Fatal(err)

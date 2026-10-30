@@ -13,7 +13,7 @@ GOIMPORTS := $(TOOLS_DIR)/goimports
 EDITOR_BIN := .cache/bin/berad-editor
 DEMO_PROJECT ?= .cache/demo-project
 
-.PHONY: help tools tools-check format format-check lint vet test check editor demo demo-shell gui-test latency
+.PHONY: help tools tools-check format format-check lint vet test check editor demo gui-test latency
 
 help:
 	@echo "make tools         install the pinned golangci-lint and goimports (network)"
@@ -25,8 +25,7 @@ help:
 	@echo "make check         all of the above except formatting changes"
 	@echo "make editor        build berad-editor into .cache/bin"
 	@echo "make demo          open a sample project in the editor (DEMO_PROJECT=path to choose)"
-	@echo "make demo-shell    the same as one window, with a tab for each window (increment 10)"
-	@echo "make gui-test      run the tests that open real editor windows"
+	@echo "make gui-test      run the tests that open the real editor window"
 	@echo "make latency       measure strict-mode command-to-event time"
 
 tools:
@@ -60,9 +59,6 @@ editor:
 
 demo: editor
 	./$(EDITOR_BIN) open --project $(DEMO_PROJECT) --sample
-
-demo-shell: editor
-	./$(EDITOR_BIN) open --project $(DEMO_PROJECT) --sample --shell
 
 gui-test:
 	BERAD_GUI_TESTS=1 $(GO) -C editor test -count=1 -v ./cmd/berad-editor/

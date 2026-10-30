@@ -19,7 +19,7 @@ var testID = ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
 func everyMessage(t *testing.T) []protocol.Message {
 	t.Helper()
 	payloads := map[protocol.Kind]any{
-		protocol.KindHello:     protocol.Hello{Protocol: protocol.Version, Build: "b", Window: testID, View: "map", Target: testID, UndoGroup: "g", Hosts: true},
+		protocol.KindHello:     protocol.Hello{Protocol: protocol.Version, Window: testID, View: "map", Target: testID, UndoGroup: "g", Hosts: true},
 		protocol.KindWelcome:   protocol.Welcome{Window: testID},
 		protocol.KindSubscribe: protocol.Subscribe{Document: testID},
 		protocol.KindSnapshot:  protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
@@ -27,13 +27,14 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID, Item: "door/open"},
 		protocol.KindEvent:     protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
 		protocol.KindSession:   protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},
-		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true, Item: "door/open", PopOut: testID},
+		protocol.KindOpen:      protocol.Open{View: "map", Target: testID, NewView: true, Item: "door/open"},
 		protocol.KindShutdown:  protocol.Shutdown{Reason: "bye", Save: true},
 		protocol.KindUnsaved:   protocol.Unsaved{Count: 2, Name: "NPC 1"},
 		protocol.KindQuitAsk: protocol.QuitAsk{Windows: 3, Unsaved: []protocol.UnsavedWindow{
 			{Window: testID, View: "browser", Name: "NPC 1", Count: 2},
 		}},
 		protocol.KindQuit:         protocol.Quit{Save: true},
+		protocol.KindCrashed:      protocol.Crashed{Failure: "panic: boom"},
 		protocol.KindUndo:         nil,
 		protocol.KindRedo:         nil,
 		protocol.KindQuery:        protocol.Query{Question: protocol.QuestionWhereUsed, Document: testID, Item: "i"},
@@ -172,6 +173,8 @@ func TestPayloadsRoundTrip(t *testing.T) {
 			check = roundTrip[protocol.QuitAsk](message)
 		case protocol.KindQuit:
 			check = roundTrip[protocol.Quit](message)
+		case protocol.KindCrashed:
+			check = roundTrip[protocol.Crashed](message)
 		case protocol.KindHello:
 			check = roundTrip[protocol.Hello](message)
 		case protocol.KindEvent:

@@ -3,14 +3,25 @@ package window
 import (
 	"image"
 
-	"github.com/hajimehoshi/ebiten/v2"
-
 	"github.com/bradhannah/berad-engine/editor/ui"
 )
 
-// paneSurface is a pane's part of a shell's window. The shell gives it the
-// frame's input before the pane runs, and turns what the pane asks of its
-// window into tabs, focus and the window's title.
+// closeRequest is what the window's close button asked for this frame.
+type closeRequest int
+
+const (
+	closeNone closeRequest = iota
+	// closeWindow is the close button.
+	closeWindow
+	// closeQuit is Cmd+Q: on macOS it reaches a window as a close request
+	// while Cmd is held, which is how it is told apart from the close button.
+	closeQuit
+)
+
+// paneSurface is a pane's part of the editor window: what a host needs from
+// the window it is shown in. The shell gives it the frame's input before the
+// pane runs, and turns what the pane asks of its window into tabs, focus and
+// the window's title.
 type paneSurface struct {
 	input     ui.Input
 	closing   closeRequest
@@ -48,9 +59,4 @@ func (p *paneSurface) SetTitle(title string) {
 // RequestAttention asks the shell to bring the pane forward.
 func (p *paneSurface) RequestAttention() {
 	p.attention = true
-}
-
-// SetFloating keeps the whole window above the others, or stops.
-func (*paneSurface) SetFloating(on bool) {
-	ebiten.SetWindowFloating(on)
 }

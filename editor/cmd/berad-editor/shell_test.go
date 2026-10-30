@@ -14,13 +14,13 @@ import (
 	"github.com/bradhannah/berad-engine/engine/art"
 )
 
-// runShellEditor opens the sample project as one window (increment 10) with
-// scripted panes, and waits for the editor to quit by itself.
+// runShellEditor opens the sample project in the editor window with scripted
+// panes, and waits for the editor to quit by itself.
 func runShellEditor(t *testing.T, binary, project string, panes scripts) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, "open", "--project", project, "--sample", "--shell")
+	cmd := exec.CommandContext(ctx, binary, "open", "--project", project, "--sample")
 	cmd.Env = append(os.Environ(), panes.env(t))
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
@@ -29,25 +29,6 @@ func runShellEditor(t *testing.T, binary, project string, panes scripts) {
 	if err != nil {
 		t.Fatalf("editor: %v\n%s", err, output)
 	}
-}
-
-// shellLog returns the log of the editor's only window process, failing the
-// test if there was another, or if a pane crashed: a pane's failure closes
-// it alone, so it leaves no crash report, only a line in this log.
-func shellLog(t *testing.T, project string) string {
-	t.Helper()
-	logs, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*.log"))
-	if err != nil || len(logs) != 1 {
-		t.Fatalf("window processes' logs: %v %v", logs, err)
-	}
-	raw, err := os.ReadFile(logs[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "crashed") {
-		t.Fatalf("a pane crashed:\n%.2000s", raw)
-	}
-	return string(raw)
 }
 
 // TestShellShowsWindowsAsTabs opens the editor as one window (increment 10).
@@ -71,7 +52,6 @@ func TestShellShowsWindowsAsTabs(t *testing.T) {
 		"browser": {browserScript}, "map": {mapScript}, "audio": {audioScript},
 	})
 	noCrashes(t, project)
-	shellLog(t, project)
 
 	ground, _ := readFloor(t, project, "ground-floor")
 	for col := 4; col <= 5; col++ {
@@ -106,7 +86,6 @@ func TestShellPinsTheClock(t *testing.T) {
 		"browser": {browserScript}, "map": {mapScript}, "clock": {clockScript},
 	})
 	noCrashes(t, project)
-	shellLog(t, project)
 	t.Logf("screenshot: %s", shot)
 }
 
@@ -129,43 +108,7 @@ func TestShellShowsWatchBesideItsMap(t *testing.T) {
 	watchScript := script(must("state:previewing", 900), wait(10))
 	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}, "watch": {watchScript}})
 	noCrashes(t, project)
-	shellLog(t, project)
 	t.Logf("screenshot: %s", shot)
-}
-
-// TestShellPopsATabOut paints two strokes in a Map tab, then pops the tab out
-// with Cmd+Shift+O (increment 10): the Map opens in a window process of its
-// own, the tab closes once that window has joined, and undo in the new window
-// takes back the second stroke made in the tab, because their undo list
-// carried over, leaving the first.
-func TestShellPopsATabOut(t *testing.T) {
-	requireGUI(t)
-	binary := buildEditor(t)
-	project := filepath.Join(t.TempDir(), "project")
-	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(600),
-		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
-	)
-	inTab := script(
-		must("state:loaded", 600), wait(5), click("ui:zoom-fit"), wait(5), keys("3"),
-		drag("cell:4,8", "cell:5,8"), wait(30),
-		drag("cell:6,8", "cell:7,8"), wait(30), keys("Cmd+Shift+O"), wait(60),
-	)
-	poppedOut := script(must("state:loaded", 600), wait(30), keys("Cmd+Z"), wait(60))
-	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {inTab, poppedOut}})
-	noCrashes(t, project)
-
-	logs, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*.log"))
-	if err != nil || len(logs) != 2 {
-		t.Fatalf("the shell and the popped-out window: %v %v", logs, err)
-	}
-	ground, _ := readFloor(t, project, "ground-floor")
-	for col := 4; col <= 7; col++ {
-		if got, first := cellOf(t, ground, tilefloor.LayerGround, col, 8), col <= 5; (got == "road") != first {
-			t.Fatalf("ground cell %d = %q: the first stroke stays, undo in the popped-out window takes the second",
-				col, got)
-		}
-	}
 }
 
 // frameScenario is the scenario increment 10 measures: a preview runs in the
@@ -191,14 +134,11 @@ func frameScenario() scripts {
 
 // measureFrames runs the frame scenario and returns each window process's
 // frame statistics, one line each.
-func measureFrames(t *testing.T, binary string, shell bool) []string {
+func measureFrames(t *testing.T, binary string) []string {
 	t.Helper()
 	project := filepath.Join(t.TempDir(), "project")
 	stats := filepath.Join(t.TempDir(), "frames.jsonl")
 	args := []string{"open", "--project", project, "--sample"}
-	if shell {
-		args = append(args, "--shell")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, args...)
@@ -214,22 +154,17 @@ func measureFrames(t *testing.T, binary string, shell bool) []string {
 	return strings.Split(strings.TrimSpace(string(raw)), "\n")
 }
 
-// TestShellFrameTimes measures increment 10's scenario as one window and as
-// separate windows, and logs each window's tick and draw times, frame rates
-// and command-to-event times for the increment's record.
+// TestShellFrameTimes measures increment 10's scenario in the editor window,
+// and logs its tick and draw times, frame rate and command-to-event times,
+// to check against the latency budget (D12).
 func TestShellFrameTimes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
-	one := measureFrames(t, binary, true)
-	separate := measureFrames(t, binary, false)
-	if len(one) != 1 || !strings.Contains(one[0], `"view":"shell"`) {
-		t.Fatalf("one window's statistics: %q", one)
+	stats := measureFrames(t, binary)
+	if len(stats) != 1 || !strings.Contains(stats[0], `"view":"shell"`) {
+		t.Fatalf("the editor window's statistics: %q", stats)
 	}
-	if len(separate) < 3 {
-		t.Fatalf("separate windows' statistics: %q", separate)
-	}
-	t.Logf("one window:\n%s", strings.Join(one, "\n"))
-	t.Logf("separate windows:\n%s", strings.Join(separate, "\n"))
+	t.Logf("the editor window:\n%s", stats[0])
 }
 
 // TestShellGroupsTabsByKind opens two workflows, then a Map and two more
@@ -251,7 +186,6 @@ func TestShellGroupsTabsByKind(t *testing.T) {
 	idle := script(must("state:loaded", 600))
 	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript, idle, idle}})
 	noCrashes(t, project)
-	shellLog(t, project)
 	t.Logf("screenshot: %s", shot)
 }
 
@@ -275,7 +209,6 @@ func TestShellOpensASpriteAsATab(t *testing.T) {
 	)
 	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "sprite": {spriteScript}})
 	noCrashes(t, project)
-	shellLog(t, project)
 
 	tile, err := art.DecodeTile(readEnvelope(t, project, "tiles/tile-1--*.json").Data)
 	if err != nil {

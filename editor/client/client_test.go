@@ -109,7 +109,7 @@ func TestMissedRevisionTriggersResubscribe(t *testing.T) {
 
 	dialed := make(chan *client.Client, 1)
 	go func() {
-		connection, err := client.Dial(ctx, fake.socket, protocol.Hello{Build: "b"}, registry)
+		connection, err := client.Dial(ctx, fake.socket, protocol.Hello{}, registry)
 		if err != nil {
 			t.Error(err)
 		}

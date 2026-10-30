@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 15
+const Version = 16
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -44,8 +44,7 @@ const (
 	// KindAttention asks a window to draw attention to itself, for example
 	// when something already open in it is opened again.
 	KindAttention Kind = "attention"
-	// KindHost asks a shell, a window whose process shows other windows as
-	// its panes, to show a window (increment 10).
+	// KindHost asks the editor window to show a pane (increment 13).
 	KindHost Kind = "host"
 	// The four pick-on-map messages (D13).
 	KindPickAsk    Kind = "pick-ask"
@@ -65,6 +64,9 @@ const (
 	KindUnsaved Kind = "unsaved"
 	KindQuitAsk Kind = "quit-ask"
 	KindQuit    Kind = "quit"
+	// KindCrashed tells the orchestrator a pane failed and is closing, so it
+	// saves a crash report (increment 13).
+	KindCrashed Kind = "crashed"
 	// The audio messages (D8): a window asks for the project's audio
 	// library, the cues it can play, and for a recording's bytes, a part at
 	// a time. The orchestrator replies to each with the same kind, filled in.
@@ -95,15 +97,14 @@ type Message struct {
 // protocol version or build.
 type Hello struct {
 	Protocol int      `json:"protocol"`
-	Build    string   `json:"build"`
 	Window   ids.ULID `json:"window"`
 	View     string   `json:"view"`
 	Target   ids.ULID `json:"target"`
 	// UndoGroup names the undo list this window shares. Views of the same map
 	// share one; other windows use their own.
 	UndoGroup string `json:"undoGroup"`
-	// Hosts says this window's process is a shell: the orchestrator asks it
-	// to show the windows it opens as panes, instead of starting processes.
+	// Hosts says this is the editor window's own connection: the
+	// orchestrator asks it to show every window it opens as a pane.
 	Hosts bool `json:"hosts,omitempty"`
 }
 
@@ -202,16 +203,11 @@ type Notice struct {
 // is already open draws attention to that window instead, unless NewView asks
 // for another view of it. Item, when set, is something in the window to show,
 // such as a cue in the Audio window; the window is sent an Attention naming it.
-// PopOut names a shell's pane to move into a window process of its own: the
-// window opens as a process even while a shell is connected, and the pane is
-// told to close once the window has joined, so the undo list they share
-// carries over.
 type Open struct {
 	View    string   `json:"view"`
 	Target  ids.ULID `json:"target"`
 	NewView bool     `json:"newView,omitempty"`
 	Item    string   `json:"item,omitempty"`
-	PopOut  ids.ULID `json:"popOut,omitzero"`
 }
 
 // Attention asks a window to draw attention to itself and, when Item is set,
@@ -220,7 +216,7 @@ type Attention struct {
 	Item string `json:"item,omitempty"`
 }
 
-// Host asks a shell to show a window as one of its panes. The pane connects
+// Host asks the editor window to show a window as a pane. The pane connects
 // with Window as its ID, so it is the window the orchestrator opened.
 type Host struct {
 	View   string   `json:"view"`
@@ -405,6 +401,11 @@ type PreviewStop struct {
 type Shutdown struct {
 	Reason string `json:"reason"`
 	Save   bool   `json:"save,omitempty"`
+}
+
+// Crashed is a pane's failure, with its stack, sent as it closes.
+type Crashed struct {
+	Failure string `json:"failure"`
 }
 
 // Unsaved is a window's typed changes not saved yet: how many, and what they

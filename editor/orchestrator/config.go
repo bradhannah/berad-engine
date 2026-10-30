@@ -35,8 +35,6 @@ type Config struct {
 	ProjectDir string
 	// Registry is the explicit plug-in list. Required.
 	Registry *plugin.Registry
-	// Build identifies the program build; windows of another build are refused.
-	Build string
 	// SocketPath is where windows connect. Defaults to a path in the temporary
 	// folder derived from the project folder.
 	SocketPath string
@@ -64,11 +62,6 @@ type Config struct {
 	Logger *slog.Logger
 	// Tap, when set, receives every message as a JSON line (the wire tap).
 	Tap io.Writer
-	// Launcher starts window processes. Without one, Open requests fail.
-	Launcher Launcher
-	// QuitWhenLastWindowCloses stops the orchestrator once every window it
-	// launched has closed, so no headless orchestrator is left running.
-	QuitWhenLastWindowCloses bool
 }
 
 func (c Config) withDefaults() (Config, error) {

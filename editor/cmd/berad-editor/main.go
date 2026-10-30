@@ -1,11 +1,9 @@
-// Command berad-editor is the shared berad-engine editor. The same program runs
-// as the orchestrator ("open") and as each editor window ("window").
+// Command berad-editor is the shared berad-engine editor. "open" runs a
+// project's orchestrator and the editor window together, in one process.
 package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,7 +25,6 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
-	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/editor/window"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -36,7 +33,6 @@ import (
 
 const (
 	exitUsage   = 2
-	buildIDHex  = 16
 	sampleWidth = 32
 	sampleTall  = 24
 	dirPerm     = 0o750
@@ -73,8 +69,6 @@ func run(args []string, stderr io.Writer) int {
 	switch args[0] {
 	case "open":
 		err = runOpen(args[1:], stderr)
-	case "window":
-		err = runWindow(args[1:])
 	case "help", "-h", "--help":
 		usage(stderr)
 
@@ -95,14 +89,11 @@ func run(args []string, stderr io.Writer) int {
 
 func usage(stderr io.Writer) {
 	report(stderr, `usage:
-  berad-editor open [--project DIR] [--sample] [--shell] [--tap FILE] [--no-window] [--exit-after DURATION]
-      Open a project: start its orchestrator, the project browser and a Map
-      window on the first zone. A folder with no project becomes one, holding
-      only what every project holds; with --sample, an empty project gets a
-      sample to try. With --shell, open one window instead: the project
-      browser, with every window opened after it as one of its tabs.
-  berad-editor window --socket PATH --view VIEW --target ID --window ID [--shell]
-      Run one editor window (started by the orchestrator).
+  berad-editor open [--project DIR] [--sample] [--tap FILE] [--no-window] [--exit-after DURATION]
+      Open a project in the editor window, with the project browser as its
+      first tab and every view opened after it as a tab of its own. A folder
+      with no project becomes one, holding only what every project holds;
+      with --sample, an empty project gets a sample to try.
 `)
 }
 
@@ -119,26 +110,9 @@ func plugins() (*plugin.Registry, error) {
 	return registry, nil
 }
 
-// buildID identifies this exact executable, so windows from a different build
-// are refused by the orchestrator.
-func buildID() string {
-	path, err := os.Executable()
-	if err != nil {
-		return "unknown"
-	}
-	raw, err := os.ReadFile(path) //nolint:gosec // Reads this program's own executable.
-	if err != nil {
-		return "unknown"
-	}
-	sum := sha256.Sum256(raw)
-
-	return hex.EncodeToString(sum[:])[:buildIDHex]
-}
-
 type openOptions struct {
 	project   string
 	sample    bool
-	shell     bool
 	tap       string
 	noWindow  bool
 	exitAfter time.Duration
@@ -149,7 +123,6 @@ func parseOpen(args []string) (openOptions, error) {
 	var options openOptions
 	flags.StringVar(&options.project, "project", ".", "project folder")
 	flags.BoolVar(&options.sample, "sample", false, "create a sample zone if the project is empty")
-	flags.BoolVar(&options.shell, "shell", false, "open one window with a tab for each window (increment 10)")
 	flags.StringVar(&options.tap, "tap", "", "write every protocol message to this file")
 	flags.BoolVar(&options.noWindow, "no-window", false, "run without opening a window")
 	flags.DurationVar(&options.exitAfter, "exit-after", 0, "stop after this long (for smoke tests)")
@@ -182,23 +155,49 @@ func runOpen(args []string, stderr io.Writer) error {
 	defer closeTap()
 	orch, err := orchestrator.New(ctx, cfg)
 	if errors.Is(err, orchestrator.ErrProjectOpen) {
-		return fmt.Errorf("%w: use its project browser to open more windows", err)
+		return fmt.Errorf("%w: switch to the editor that has it open", err)
 	}
 	if err != nil {
 		return fmt.Errorf("open project: %w", err)
 	}
-	firstZone, err := ensureDocuments(orch, cfg.Registry, options.sample, options.project)
-	if err != nil {
+	if _, err := ensureDocuments(orch, cfg.Registry, options.sample, options.project); err != nil {
 		return errors.Join(err, orch.Close())
 	}
-	if !options.noWindow {
-		if err := launchFirstWindows(orch, firstZone, options.shell); err != nil {
-			return errors.Join(err, orch.Close())
-		}
-	}
-	report(stderr, "Editing "+options.project+". Close every window or press Ctrl+C to quit.\n")
+	if options.noWindow {
+		report(stderr, "Editing "+options.project+" without a window. Press Ctrl+C to quit.\n")
 
+		return runOrchestrator(ctx, orch)
+	}
+	report(stderr, "Editing "+options.project+". Close the editor window or press Ctrl+C to quit.\n")
+
+	return runEditor(ctx, orch, cfg.Registry)
+}
+
+// runOrchestrator runs the orchestrator alone until ctx ends.
+func runOrchestrator(ctx context.Context, orch *orchestrator.Orchestrator) error {
 	if err := orch.Run(ctx); err != nil {
+		return fmt.Errorf("editor: %w", err)
+	}
+
+	return nil
+}
+
+// runEditor runs the orchestrator beside the editor window, which Ebitengine
+// runs on the main goroutine. Closing the window stops the orchestrator, and
+// the orchestrator stopping, for Ctrl+C or a quit, closes the window's panes,
+// so the window closes too.
+func runEditor(ctx context.Context, orch *orchestrator.Orchestrator, registry *plugin.Registry) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopped := make(chan error, 1)
+	go func() { stopped <- orch.Run(ctx) }()
+	// The window ends when its panes' connections close, which the
+	// orchestrator does when ctx ends.
+	windowErr := window.Run(window.Args{ //nolint:contextcheck // See above.
+		Socket: orch.SocketPath(), View: browser.ViewName, Target: project.IndexID(), Window: ids.ULID{},
+	}, registry)
+	cancel()
+	if err := errors.Join(windowErr, <-stopped); err != nil {
 		return fmt.Errorf("editor: %w", err)
 	}
 
@@ -210,17 +209,10 @@ func openConfig(options openOptions, stderr io.Writer) (orchestrator.Config, fun
 	if err != nil {
 		return orchestrator.Config{}, func() {}, err
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		return orchestrator.Config{}, func() {}, fmt.Errorf("find editor executable: %w", err)
-	}
 	var cfg orchestrator.Config
 	cfg.ProjectDir = options.project
 	cfg.Registry = registry
-	cfg.Build = buildID()
 	cfg.Logger = slog.New(slog.NewTextHandler(stderr, nil))
-	cfg.Launcher = orchestrator.ExecutableLauncher{Path: executable, Env: nil}
-	cfg.QuitWhenLastWindowCloses = !options.noWindow
 	closeTap := func() {}
 	if options.tap != "" {
 		tap, err := os.OpenFile(options.tap, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, tapPerm)
@@ -236,29 +228,6 @@ func openConfig(options openOptions, stderr io.Writer) (orchestrator.Config, fun
 	}
 
 	return cfg, closeTap, nil
-}
-
-// launchFirstWindows opens the project browser and, when the project has a
-// zone, a Map window on it. A shell opens the project browser alone.
-func launchFirstWindows(orch *orchestrator.Orchestrator, firstZone ids.ULID, shell bool) error {
-	if shell {
-		if _, err := orch.LaunchShell(browser.ViewName, project.IndexID()); err != nil {
-			return fmt.Errorf("open the project browser: %w", err)
-		}
-
-		return nil
-	}
-	if _, err := orch.LaunchWindow(browser.ViewName, project.IndexID()); err != nil {
-		return fmt.Errorf("open the project browser: %w", err)
-	}
-	if firstZone.IsZero() {
-		return nil
-	}
-	if _, err := orch.LaunchWindow(mapview.ViewName, firstZone); err != nil {
-		return fmt.Errorf("open a map: %w", err)
-	}
-
-	return nil
 }
 
 // ensureDocuments returns the first zone by name, creating the sample project,
@@ -411,38 +380,6 @@ func sampleFurnishing(floorData *floor.Floor, desk ids.ULID) error {
 	}
 	if err := floorData.InsertAnchor(0, floor.Anchor{ID: desk, Name: "Desk", Col: deskCol, Row: deskRow}); err != nil {
 		return fmt.Errorf("sample floor: %w", err)
-	}
-
-	return nil
-}
-
-func runWindow(args []string) error {
-	flags := flag.NewFlagSet("window", flag.ContinueOnError)
-	socket := flags.String("socket", "", "orchestrator socket")
-	view := flags.String("view", mapview.ViewName, "window view")
-	target := flags.String("target", "", "document ID")
-	windowID := flags.String("window", "", "window ID")
-	flags.String("build", "", "orchestrator build (informational)")
-	shell := flags.Bool("shell", false, "run as a shell, showing other windows as panes")
-	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("window: %w", err)
-	}
-	targetID, err := ids.Parse(*target)
-	if err != nil {
-		return fmt.Errorf("window target: %w", err)
-	}
-	parsedWindow, err := ids.Parse(*windowID)
-	if err != nil {
-		return fmt.Errorf("window id: %w", err)
-	}
-	registry, err := plugins()
-	if err != nil {
-		return err
-	}
-	if err := window.Run(window.Args{
-		Socket: *socket, View: *view, Target: targetID, Window: parsedWindow, Build: buildID(), Shell: *shell,
-	}, registry); err != nil {
-		return fmt.Errorf("window: %w", err)
 	}
 
 	return nil

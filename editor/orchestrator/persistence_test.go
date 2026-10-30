@@ -106,7 +106,7 @@ func TestKilledOrchestratorLosesNothing(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		var err error
-		view, err = client.Dial(ctx, socket, protocol.Hello{Build: testBuild, View: "map"}, newRegistry(t))
+		view, err = client.Dial(ctx, socket, protocol.Hello{View: "map"}, newRegistry(t))
 		return err == nil
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

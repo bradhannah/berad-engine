@@ -24,11 +24,10 @@ const openedQueue = 16
 // errPaneCrashed reports a pane that panicked.
 var errPaneCrashed = errors.New("pane crashed")
 
-// shell runs the editor's windows as panes of one window (increment 10). The
-// project browser's process shows every window the orchestrator opens after
-// it as a tab of its own. Each pane keeps its own connection, so to the
-// orchestrator it is a window as before; the shell gives each its part of the
-// window, its input and its tab.
+// shell is the editor window (increment 13): it shows the project browser,
+// and every window the orchestrator opens after it, as a tab of its own. Each
+// pane keeps its own connection, so to the orchestrator it is a window; the
+// shell gives each its part of the window, its input and its tab.
 type shell struct {
 	args     Args
 	registry *plugin.Registry
@@ -52,6 +51,8 @@ type shell struct {
 	stats *frameStats
 	// lastTab is each kind's tab last in front.
 	lastTab map[string]*tab
+	// onTop is whether the window is kept above other applications' windows.
+	onTop bool
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -82,51 +83,12 @@ type openedPane struct {
 	err  error
 }
 
-// runShell runs the project browser's window as a shell until its last pane
-// closes. It must be called from the main goroutine, as Ebitengine requires.
-func runShell(args Args, registry *plugin.Registry) error {
-	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
-	defer cancel()
-	conn, err := connect(ctx, args, registry)
-	if err != nil {
-		return err
-	}
-	theme, err := ui.NewTheme()
-	if err != nil {
-		return errors.Join(err, conn.Close())
-	}
-	defer theme.Close()
-	shown := newShell(args, registry, theme)
-	project, err := shown.addPane(conn, args)
-	if err != nil {
-		return errors.Join(err, conn.Close())
-	}
-	project.host.closeQuits = true
-	project.host.hosts = shown.host
-	project.host.popOut = nil
-	// The pinned clock is a Clock window, always running.
-	project.host.Open(clockview.ViewName, args.Target, false)
-	ebiten.SetWindowTitle(project.host.view.Title(conn))
-	ebiten.SetWindowSize(windowWidth, windowHeight+rowHeight)
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	// Closing the shell's window quits the editor, asking first.
-	ebiten.SetWindowClosingHandled(true)
-	var options ebiten.RunGameOptions
-	options.InitUnfocused = scripted()
-	runErr := ebiten.RunGameWithOptions(timed(shown, shown.stats), &options)
-	if errors.Is(runErr, ebiten.Termination) {
-		runErr = nil
-	}
-
-	return errors.Join(runErr, shown.closeAll(), shown.stats.write())
-}
-
 func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
-		lastTab: map[string]*tab{},
+		lastTab: map[string]*tab{}, onTop: false,
 	}
 }
 
@@ -136,25 +98,9 @@ func (s *shell) addPane(conn *client.Client, args Args) (*pane, error) {
 	if err != nil {
 		return nil, err
 	}
-	shown.host.popOut = func() { popOut(shown) }
 	s.place(shown)
 
 	return shown, nil
-}
-
-// popOut moves a pane into a window process of its own. The orchestrator
-// starts the window, then tells the pane to close, saving first, once the
-// window has joined, so the undo list they share carries over.
-func popOut(shown *pane) {
-	shown.host.frame.Status("Opening this in a window of its own")
-	shown.host.background(func(ctx context.Context) func() {
-		result, err := shown.host.conn.PopOut(ctx, shown.view, shown.target, shown.host.conn.Window())
-		if err == nil {
-			return nil
-		}
-
-		return func() { shown.host.frame.Report("")(result, err) }
-	})
 }
 
 // newPane runs a connected window's view in a pane.
@@ -170,6 +116,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	}
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
+	shown.host.frame.OnTop.On = s.onTop
 
 	return shown, nil
 }
@@ -177,14 +124,11 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 // host connects a window the orchestrator asked the shell to show, off the
 // frame loop; its pane appears once it has connected.
 func (s *shell) host(asked protocol.Host) {
-	args := Args{
-		Socket: s.args.Socket, View: asked.View, Target: asked.Target, Window: asked.Window, Build: s.args.Build,
-		Shell: false,
-	}
+	args := Args{Socket: s.args.Socket, View: asked.View, Target: asked.Target, Window: asked.Window}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 		defer cancel()
-		conn, err := connect(ctx, args, s.registry)
+		conn, err := connect(ctx, args, s.registry, false)
 		s.opened <- openedPane{args: args, conn: conn, err: err}
 	}()
 }
@@ -234,6 +178,7 @@ func (s *shell) Update() error {
 		s.run(shown)
 	}
 	s.attend()
+	s.followOnTop()
 	s.remember()
 	s.followClock()
 	s.retitle()
@@ -331,14 +276,13 @@ func safely(run func() error) error {
 }
 
 // close takes away a pane that ended: closed by its author or by the
-// orchestrator, or crashed, which the other panes are told of.
+// orchestrator, or crashed, which it tells the orchestrator first, so the
+// orchestrator saves a crash report and tells the other panes.
 func (s *shell) close(shown *pane, cause error) {
 	if !errors.Is(cause, ebiten.Termination) {
 		logLine("a " + shown.view + " pane crashed: " + cause.Error())
-		for _, other := range s.panes() {
-			if other != shown {
-				other.host.frame.Notice("A " + shown.view + " tab closed unexpectedly. Its failure is in the editor's log.")
-			}
+		if err := shown.host.conn.Crashed(cause.Error()); err != nil {
+			logLine("report a " + shown.view + " pane's crash: " + err.Error())
 		}
 	}
 	s.stats.addLatencies(shown.host.frame.Latencies())
@@ -395,6 +339,24 @@ func (s *shell) attend() {
 				ebiten.RequestAttention()
 			}
 		}
+	}
+}
+
+// followOnTop keeps the window above other applications' windows while On top
+// is on: any pane's toggle turns it on or off for the whole window, and every
+// pane's toggle shows it.
+func (s *shell) followOnTop() {
+	panes := s.panes()
+	for _, shown := range panes {
+		if shown.host.frame.OnTop.On != s.onTop {
+			s.onTop = shown.host.frame.OnTop.On
+			ebiten.SetWindowFloating(s.onTop)
+
+			break
+		}
+	}
+	for _, shown := range panes {
+		shown.host.frame.OnTop.On = s.onTop
 	}
 }
 

@@ -115,9 +115,6 @@ func (o *Orchestrator) refusal(hello protocol.Hello) string {
 	if hello.Protocol != protocol.Version {
 		return fmt.Sprintf("protocol version %d is not supported (expected %d)", hello.Protocol, protocol.Version)
 	}
-	if hello.Build != o.cfg.Build {
-		return fmt.Sprintf("window build %q does not match editor build %q", hello.Build, o.cfg.Build)
-	}
 
 	return ""
 }

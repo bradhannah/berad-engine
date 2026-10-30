@@ -221,15 +221,15 @@ func TestClosingWindowEndsItsUndo(t *testing.T) {
 	}
 }
 
-func TestHandshakeRefusesOtherBuild(t *testing.T) {
+func TestHandshakeRefusesOtherProtocol(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := client.Dial(ctx, h.socket, protocol.Hello{Build: "stale", View: "map"}, newRegistry(t))
-	if !errors.Is(err, client.ErrRefused) || !strings.Contains(err.Error(), "does not match") {
+	_, err := client.Dial(ctx, h.socket, protocol.Hello{Protocol: protocol.Version - 1, View: "map"}, newRegistry(t))
+	if !errors.Is(err, client.ErrRefused) || !strings.Contains(err.Error(), "not supported") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -257,18 +257,5 @@ func TestSessionStateReachesOtherWindows(t *testing.T) {
 		case <-deadline:
 			t.Fatal("session update not received")
 		}
-	}
-}
-
-func TestOpenWithoutLauncherIsRefused(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	createProject(t, dir)
-	h := start(t, dir, nil)
-	view := h.dial(t, "")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, err := view.Open(ctx, "map", h.floor, true); !errors.Is(err, client.ErrRejected) {
-		t.Fatalf("err = %v", err)
 	}
 }

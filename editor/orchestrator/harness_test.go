@@ -24,8 +24,6 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-const testBuild = "test-build"
-
 func TestMain(m *testing.M) {
 	if role := os.Getenv(envRole); role != "" {
 		os.Exit(runChildRole(role))
@@ -75,7 +73,6 @@ func baseConfig(t testing.TB, dir, socket string) orchestrator.Config {
 	return orchestrator.Config{
 		ProjectDir:    dir,
 		Registry:      newRegistry(t),
-		Build:         testBuild,
 		SocketPath:    socket,
 		FlushInterval: time.Hour,
 		Logger:        quietLogger(),
@@ -138,12 +135,24 @@ func (h *harness) stop() error {
 	return h.err
 }
 
+// stopped waits for the orchestrator to stop by itself.
+func (h *harness) stopped() error {
+	h.once.Do(func() {
+		select {
+		case h.err = <-h.done:
+		case <-time.After(10 * time.Second):
+			h.t.Error("the orchestrator did not stop")
+		}
+	})
+	return h.err
+}
+
 func (h *harness) dial(t testing.TB, group string) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
-		Build: testBuild, View: "map", Target: h.floor, UndoGroup: group,
+		View: "map", Target: h.floor, UndoGroup: group,
 	}, newRegistry(t))
 	if err != nil {
 		t.Fatal(err)
