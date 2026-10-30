@@ -25,6 +25,9 @@ const (
 
 	InsertPaletteEdit = "zone.palette.insert"
 	RemovePaletteEdit = "zone.palette.remove"
+
+	InsertSoundEdit = "zone.sound.insert"
+	RemoveSoundEdit = "zone.sound.remove"
 )
 
 // floorsItem is the undo-clash item for the order of a zone's floors, and
@@ -32,6 +35,7 @@ const (
 const (
 	floorsItem   = "floors"
 	palettesItem = "palettes"
+	soundsItem   = "sounds"
 )
 
 // ErrNotZone reports a document that is not a zone.
@@ -70,11 +74,11 @@ func (d *Document) Clone() model.Document {
 // Parts lists the floors: floor names are unique within their zone.
 func (d *Document) Parts() []ids.ULID { return d.Zone.Floors() }
 
-// References lists the zone's floors and the palettes it lists, so a palette
-// a zone lists is not deleted from under it.
+// References lists the zone's floors, the palettes it lists, so a palette a
+// zone lists is not deleted from under it, and the cues it plays throughout.
 func (d *Document) References() []model.Reference {
-	floors, palettes := d.Zone.Floors(), d.Zone.Palettes()
-	references := make([]model.Reference, 0, len(floors)+len(palettes))
+	floors, palettes, sounds := d.Zone.Floors(), d.Zone.Palettes(), d.Zone.Sounds()
+	references := make([]model.Reference, 0, len(floors)+len(palettes)+len(sounds))
 	for index, floor := range floors {
 		references = append(references, model.Reference{
 			Document: floor, Item: "", Label: "floor " + strconv.Itoa(index+1) + " from the bottom",
@@ -82,6 +86,11 @@ func (d *Document) References() []model.Reference {
 	}
 	for _, palette := range palettes {
 		references = append(references, model.Reference{Document: palette, Item: "", Label: "listed by the zone"})
+	}
+	for _, cue := range sounds {
+		references = append(references, model.Reference{
+			Document: model.AudioLibraryID(), Item: cue, Label: "played throughout the zone",
+		})
 	}
 
 	return references
@@ -212,6 +221,54 @@ func (RemovePalette) Apply(document model.Document, args json.RawMessage) (model
 	})
 }
 
+// SoundArgs names a cue a zone plays throughout and, for insert, its place
+// in the list.
+type SoundArgs struct {
+	Cue   string `json:"cue"`
+	Index int    `json:"index"`
+}
+
+// InsertSound is the edit kind that has a zone play a cue throughout.
+type InsertSound struct{}
+
+// Name identifies the edit kind.
+func (InsertSound) Name() string { return InsertSoundEdit }
+
+// Format names the document format the edit applies to.
+func (InsertSound) Format() string { return zone.FormatName }
+
+// Apply lists the cue; its inverse takes it off again.
+func (InsertSound) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return changeZone(document, args, soundsItem, func(z *zone.Zone, listed SoundArgs) (string, SoundArgs, error) {
+		if err := z.InsertSound(listed.Index, listed.Cue); err != nil {
+			return "", listed, fmt.Errorf("list sound: %w", err)
+		}
+
+		return RemoveSoundEdit, SoundArgs{Cue: listed.Cue, Index: 0}, nil
+	})
+}
+
+// RemoveSound is the edit kind that takes a cue off a zone's sounds.
+type RemoveSound struct{}
+
+// Name identifies the edit kind.
+func (RemoveSound) Name() string { return RemoveSoundEdit }
+
+// Format names the document format the edit applies to.
+func (RemoveSound) Format() string { return zone.FormatName }
+
+// Apply takes the cue off; its inverse lists it again where it was.
+func (RemoveSound) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return changeZone(document, args, soundsItem, func(z *zone.Zone, listed SoundArgs) (string, SoundArgs, error) {
+		index, err := z.RemoveSound(listed.Cue)
+		if err != nil {
+			return "", listed, fmt.Errorf("remove sound: %w", err)
+		}
+
+		return InsertSoundEdit, SoundArgs{Cue: listed.Cue, Index: index}, nil
+	})
+}
+
 func change(
 	document model.Document, args json.RawMessage,
 	apply func(*zone.Zone, FloorArgs) (string, FloorArgs, error),
@@ -257,7 +314,9 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{InsertFloor{}, RemoveFloor{}, MoveFloor{}, InsertPalette{}, RemovePalette{}},
-		Required:  nil,
+		Edits: []model.EditKind{
+			InsertFloor{}, RemoveFloor{}, MoveFloor{}, InsertPalette{}, RemovePalette{}, InsertSound{}, RemoveSound{},
+		},
+		Required: nil,
 	}
 }

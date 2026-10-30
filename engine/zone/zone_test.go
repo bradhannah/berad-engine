@@ -109,3 +109,40 @@ func TestPalettes(t *testing.T) {
 		t.Fatalf("removing a palette not listed: %v", err)
 	}
 }
+
+func TestSounds(t *testing.T) {
+	t.Parallel()
+	z := zone.New()
+	for at, cue := range []string{"music/town", "bed/wind"} {
+		if err := z.InsertSound(at, cue); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, bad := range []string{"music/town", ""} {
+		if err := z.InsertSound(0, bad); !errors.Is(err, zone.ErrSound) {
+			t.Fatalf("%q: %v", bad, err)
+		}
+	}
+	index, err := z.RemoveSound("music/town")
+	if err != nil || index != 0 || len(z.Sounds()) != 1 {
+		t.Fatalf("remove sound: %d %v", index, err)
+	}
+	if err := z.InsertSound(index, "music/town"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := z.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := zone.Decode(data)
+	if err != nil || !decoded.Equal(z) || decoded.Sounds()[0] != "music/town" {
+		t.Fatalf("sounds round trip in order: %v %v", decoded, err)
+	}
+	upgraded, err := zone.Format().Migrations[2](json.RawMessage(`{"floors":[]}`))
+	if err != nil || zone.Format().Current != 3 {
+		t.Fatalf("version 2 reads unchanged: %s %v", upgraded, err)
+	}
+	if read, err := zone.Decode(upgraded); err != nil || len(read.Sounds()) != 0 {
+		t.Fatalf("a version 2 zone has no sounds: %v", err)
+	}
+}

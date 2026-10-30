@@ -50,3 +50,36 @@ func TestInspectorListsTheZonesPalettes(t *testing.T) {
 		t.Fatalf("× takes gloomy off: %+v", args)
 	}
 }
+
+// TestInspectorListsTheZonesSounds has Town play the brook throughout from
+// the Map's inspector, choosing among music and ambient cues only, then
+// takes it off again.
+func TestInspectorListsTheZonesSounds(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.click("ui:add-zone-sound")
+	f.answerAudio()
+	if _, offered := f.state.Locate("menu:sound:door/open", f.ctx.Docs); offered {
+		t.Fatal("a sound effect is not offered")
+	}
+	f.click("menu:sound:town/brook")
+	inserts := f.requests.Of(zoneplugin.InsertSoundEdit)
+	var args zoneplugin.SoundArgs
+	if len(inserts) != 1 || inserts[0].Decode(&args) != nil || args.Cue != "town/brook" ||
+		inserts[0].Command.Document != zoneID {
+		t.Fatalf("Town plays the brook: %+v", args)
+	}
+	f.docs.View(zoneID, func(document client.Document) {
+		if err := document.Model.(*zoneplugin.Document).Zone.InsertSound(0, "town/brook"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.docs.Touch(zoneID)
+	f.draw()
+	f.click("ui:remove-zone-sound:Brook")
+	if removes := f.requests.Of(zoneplugin.RemoveSoundEdit); len(removes) != 1 || removes[0].Decode(&args) != nil ||
+		args.Cue != "town/brook" {
+		t.Fatalf("× takes the brook off: %+v", args)
+	}
+}

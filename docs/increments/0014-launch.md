@@ -98,7 +98,7 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 | 2. Character sprites | An NPC's sprite, chosen in its inspector; the player's, from Shows; the Map and Preview draw them in place of discs | Headless tests for the NPC's format version, the choice and its undo; a real-window screenshot of Preview with both sprites | Built |
 | 3. Game settings and the player start | The game settings document with the screen size; "Set player start here" on the Map's right-click menu, drawn as a marker | Headless tests: the document's format, setting, moving and undoing the start; the marker shows on its floor only | Built |
 | 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Built |
-| 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Planned |
+| 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Built |
 | 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient gains | Planned |
 | 7. Launch and the Play tab | Launch, the Play tab drawing the screen at a whole-number scale with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Planned |
 | 8. The sample plays | The sample project gets a player start, a wall sprite, character sprites, an ambient sound and a zone sound, so `make demo` can launch | The sample's headless test checks each; `make check` and the real-window suite pass | Planned |
@@ -148,6 +148,14 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
   faint ring at its distance. Tests: the floor's sounds and upgrade, the
   edits' undo, resize and references, and the Map placing, recueing, moving
   and removing a sound, with only ambient cues offered.
+- **A zone's sounds:** the zone format goes to version 3, adding the cues it
+  plays throughout, at most 16, and reading version 2 unchanged, with the
+  edits `zone.sound.insert` and `zone.sound.remove`; the zone refers to each
+  cue. The list under a zone's palettes, in the browser's inspector and the
+  Map's, gains a second section, Sounds · played throughout, whose + Sound
+  offers the library's music and ambient cues by name. Tests: the zone's
+  sounds and upgrade, the edits' undo and references, and the Map's list
+  adding the brook, a sound effect not offered, and taking it off.
 
 ## Not in this increment
 
