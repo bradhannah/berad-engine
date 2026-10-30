@@ -346,10 +346,10 @@ func TestAddsRenamesAndRemovesRamps(t *testing.T) {
 	if !f.has("ramps:smoke,murk,ember,fog,ash") || !f.has("saved") {
 		t.Fatal("Enter renames the ramp")
 	}
-	f.click("ui:add-colour")
+	f.click("ui:duplicate-colour")
 	f.applyAll()
 	if !f.has("chosen:ash 2") || !f.has("colour:ash 2:#808080") {
-		t.Fatal("+ Colour after copies the chosen colour")
+		t.Fatal("Duplicate colour copies the chosen colour")
 	}
 	f.click("ui:remove-colour")
 	f.applyAll()
@@ -666,5 +666,78 @@ func TestPickerWaitsForSave(t *testing.T) {
 	sets = sent[artplugin.SetShadeArgs](f, artplugin.SetShadeEdit)
 	if len(sets) != 2 || sets[1].Shade.Color != 0x00FF00 || sets[1].Shade.Opacity != 100 {
 		t.Fatalf("the picker starts from the typed colour: %+v", sets)
+	}
+}
+
+// TestMovesAColourToARamp drops ember 1 on murk's name, which puts it at
+// murk's end, and moves smoke 2 to fog with Move to ramp.
+func TestMovesAColourToARamp(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.drag("swatch:ember 1", "ramp:murk")
+	moves := sent[artplugin.MoveShadeArgs](f, artplugin.MoveShadeEdit)
+	if len(moves) != 1 || moves[0].Shade != shadeID(31) || moves[0].Ramp != rampID(2) || moves[0].Index != 3 {
+		t.Fatalf("dropped on murk's name, ember 1 goes to murk's end: %+v", moves)
+	}
+	f.applyAll()
+	f.click("swatch:smoke 2")
+	f.click("ui:move-to")
+	if f.found("menu:" + rampID(1).String()) {
+		t.Fatal("Move to ramp does not offer the colour's own ramp")
+	}
+	f.click("menu:" + rampID(4).String())
+	moves = sent[artplugin.MoveShadeArgs](f, artplugin.MoveShadeEdit)
+	if len(moves) != 2 || moves[1].Shade != shadeID(12) || moves[1].Ramp != rampID(4) || moves[1].Index != 2 {
+		t.Fatalf("Move to ramp puts smoke 2 at fog's end: %+v", moves)
+	}
+	f.applyAll()
+	if !f.has("chosen:fog 3") {
+		t.Fatal("the moved colour stays chosen")
+	}
+}
+
+// TestOpacitySliderWaitsForSave sets an opacity with the slider: it waits
+// in the opacity field for Save.
+func TestOpacitySliderWaitsForSave(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.click("swatch:smoke 2")
+	f.drag("slider:100", "slider:40")
+	if len(f.requests.Commands) != 0 || f.state.Unsaved(f.docs) != 1 {
+		t.Fatalf("the slider's opacity waits for Save: %d unsaved", f.state.Unsaved(f.docs))
+	}
+	f.click("ui:save")
+	sets := sent[artplugin.SetShadeArgs](f, artplugin.SetShadeEdit)
+	if len(sets) != 1 || sets[0].Shade.Opacity != 40 || sets[0].Shade.Color != 0x5D5A63 {
+		t.Fatalf("Save sends the slider's opacity: %+v", sets)
+	}
+}
+
+// TestGradientPicksItsEnds picks the right end's colour, and with Opacity
+// mixed its opacity, in the gradient's own picker; the left end is kept.
+func TestGradientPicksItsEnds(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.click("ui:gradient")
+	f.retype("ui:left", "#2E2C33")
+	f.click("end:right")
+	if f.found("gradient-picker:opacity 50") {
+		t.Fatal("the picker has no opacity until Opacity is mixed")
+	}
+	f.click("gradient-picker:hue 0")
+	f.click("gradient-picker:square 100 100")
+	f.click("ui:mix-opacity")
+	f.click("gradient-picker:opacity 50")
+	f.retype("ui:steps", "3")
+	f.click("ui:apply-gradient")
+	adds := sent[artplugin.AddRampArgs](f, artplugin.AddRampEdit)
+	if len(adds) != 1 || len(adds[0].Ramp.Shades) != 3 || adds[0].Ramp.Shades[0].Color != 0x2E2C33 ||
+		adds[0].Ramp.Shades[2].Color != 0xFF0000 || adds[0].Ramp.Shades[2].Opacity != 50 {
+		t.Fatalf("the gradient ends at the picked red, half see-through: %+v", adds)
+	}
+	f.click("end:left")
+	f.click("gradient-picker:square 0 100")
+	if f.state.Unsaved(f.docs) != 0 {
+		t.Fatal("the gradient's settings never wait for Save")
 	}
 }

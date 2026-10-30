@@ -87,8 +87,10 @@ type State struct {
 	hex      *ui.TextField
 	opacity  *ui.TextField
 	rampName *ui.TextField
-	// picker chooses the colour by eye, into the hex and opacity fields.
+	// picker chooses the colour by eye, into the hex and opacity fields,
+	// and slider the opacity.
 	picker   *ui.ColorPicker
+	slider   *ui.Slider
 	focus    ui.Focus
 	save     *ui.SaveBar
 	guard    frame.Guard
@@ -113,7 +115,7 @@ type toolbar struct {
 
 // inspectorButtons are the inspector's buttons.
 type inspectorButtons struct {
-	addColor, removeColor, gradientInto, removeRamp *ui.Button
+	duplicate, moveTo, removeColor, gradientInto, removeRamp *ui.Button
 }
 
 // New returns the Palette Editor for a palette.
@@ -127,7 +129,8 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 		cursor: image.Pt(0, 0), rampTop: 0, named: none(), name: field("palette-name", nameBytes),
 		label: field("label", labelBytes),
 		hex:   field("colour", colorBytes), opacity: field("opacity", opacityBytes),
-		rampName: field("ramp-name", art.MaxNameLength), picker: ui.NewColorPicker("picker"), focus: ui.Focus{},
+		rampName: field("ramp-name", art.MaxNameLength), picker: ui.NewColorPicker("picker"),
+		slider: ui.NewSlider("opacity-slider", art.MinOpacity, art.MaxOpacity), focus: ui.Focus{},
 		save: ui.NewSaveBar(), guard: frame.Guard{},
 		bar: toolbar{
 			addRamp: ui.NewButton("add-ramp", "+ Ramp"), gradient: ui.NewButton("gradient", "Gradient…"),
@@ -136,7 +139,8 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 			newPalette: ui.NewButton("new-palette", "New palette from these"),
 		},
 		inspect: inspectorButtons{
-			addColor: ui.NewButton("add-colour", "+ Colour after"), removeColor: ui.NewButton("remove-colour", "Remove colour"),
+			duplicate: ui.NewButton("duplicate-colour", "Duplicate colour"), moveTo: ui.NewButton("move-to", "Move to ramp"),
+			removeColor:  ui.NewButton("remove-colour", "Remove colour"),
 			gradientInto: ui.NewButton("gradient-into", "Gradient…"),
 			removeRamp:   ui.NewButton("remove-ramp", "Remove ramp"),
 		},
@@ -148,6 +152,7 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 	view.inspect.removeRamp.Danger = true
 	view.inspect.removeColor.Danger = true
 	view.bar.copyTo.Caret = true
+	view.inspect.moveTo.Caret = true
 	view.focus.Register(view.name, view.label, view.hex, view.opacity, view.rampName)
 	view.focus.Register(view.gradient.fields()...)
 	for _, field := range append(view.gradient.fields(), view.copying.name) {

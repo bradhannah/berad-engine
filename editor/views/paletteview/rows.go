@@ -351,12 +351,16 @@ func run(palette *art.Palette, from, until ids.ULID) []ids.ULID {
 
 // dropTarget is where a dragged colour would go: a ramp and the index it
 // would have there, counted before the dragged colour leaves its place.
+// Dropped on a ramp's name, it goes to the ramp's end.
 func (s *State) dropTarget(point image.Point) (ids.ULID, int, bool) {
 	for _, row := range s.rows.rows {
 		if point.Y < row.top-rowGap/ui.Half || point.Y >= row.bottom+rowGap/ui.Half {
 			continue
 		}
 		index := len(row.swatches)
+		if onName(point, row) {
+			return row.ramp.ID, index, true
+		}
 		for at, rect := range row.swatches {
 			if point.Y < rect.Max.Y+rowGap && point.X < rect.Min.X+rect.Dx()/ui.Half {
 				index = at
@@ -370,6 +374,10 @@ func (s *State) dropTarget(point image.Point) (ids.ULID, int, bool) {
 
 	return ids.ULID{}, 0, false
 }
+
+// onName reports whether a point is on a ramp's name or count, left of its
+// colours.
+func onName(point image.Point, row rampRow) bool { return point.X < row.name.Max.X+countColumn }
 
 // rampDropIndex is the place a dragged ramp would take: before the row under
 // the cursor, or after the last.
@@ -429,8 +437,13 @@ func (s *State) dropShade(ctx *frame.Context, palette *art.Palette, point image.
 			return
 		}
 	}
-	oldName, _ := palette.ShadeName(s.drag.ramp, s.drag.shade)
-	shade := s.drag.shade
+	s.moveShade(ctx, palette, s.drag.ramp, s.drag.shade, ramp, index)
+}
+
+// moveShade moves a colour to a place in a ramp, at once, and chooses it
+// there.
+func (s *State) moveShade(ctx *frame.Context, palette *art.Palette, fromRamp, shade, ramp ids.ULID, index int) {
+	oldName, _ := palette.ShadeName(fromRamp, shade)
 	args := artplugin.MoveShadeArgs{Shade: shade, Ramp: ramp, Index: index, Moved: nil}
 	s.command(ctx, s.target, artplugin.MoveShadeEdit, "", args, func(_ protocol.Result) {
 		s.choose(choice{ramp: ramp, shade: shade})
@@ -525,17 +538,7 @@ func (s *State) drawDrag(screen *ebiten.Image, palette *art.Palette) {
 	}
 	switch s.drag.kind {
 	case dragShade:
-		if ramp, index, ok := s.dropTarget(s.cursor); ok {
-			if row, found := s.rowOf(ramp); found {
-				across, down := row.name.Max.X+countColumn+ui.Gap, row.top
-				if index < len(row.swatches) {
-					across, down = row.swatches[index].Min.X-ui.Half, row.swatches[index].Min.Y
-				} else if count := len(row.swatches); count > 0 {
-					across, down = row.swatches[count-1].Max.X+ui.Half, row.swatches[count-1].Min.Y
-				}
-				ui.FillRect(screen, image.Rect(across-1, down-ui.Gap, across-1+dropWidth, down+swatchSize+ui.Gap), ui.ColorSelect())
-			}
-		}
+		s.drawShadeDrop(screen)
 		if shade, _, found := palette.Lookup(s.drag.ramp, s.drag.shade); found {
 			ghost := image.Rectangle{Min: s.cursor.Add(image.Pt(ui.Gap, ui.Gap)), Max: s.cursor.Add(image.Pt(
 				ui.Gap+swatchSize, ui.Gap+swatchSize))}
@@ -551,6 +554,26 @@ func (s *State) drawDrag(screen *ebiten.Image, palette *art.Palette) {
 		ui.FillRect(screen, image.Rect(s.rows.area.Min.X, down-1, s.rows.area.Max.X, down-1+dropWidth), ui.ColorSelect())
 	case dragNothing:
 	}
+}
+
+// drawShadeDrop marks where a dragged colour would go: a bar at its place,
+// and the ramp's name outlined when it is dropped there.
+func (s *State) drawShadeDrop(screen *ebiten.Image) {
+	ramp, index, ok := s.dropTarget(s.cursor)
+	row, found := s.rowOf(ramp)
+	if !ok || !found {
+		return
+	}
+	if onName(s.cursor, row) {
+		ui.StrokeRect(screen, row.name, chosenWidth, ui.ColorSelect())
+	}
+	across, down := row.name.Max.X+countColumn+ui.Gap, row.top
+	if index < len(row.swatches) {
+		across, down = row.swatches[index].Min.X-ui.Half, row.swatches[index].Min.Y
+	} else if count := len(row.swatches); count > 0 {
+		across, down = row.swatches[count-1].Max.X+ui.Half, row.swatches[count-1].Min.Y
+	}
+	ui.FillRect(screen, image.Rect(across-1, down-ui.Gap, across-1+dropWidth, down+swatchSize+ui.Gap), ui.ColorSelect())
 }
 
 // drawSwatch draws one colour: see-through colours over a checkerboard, and

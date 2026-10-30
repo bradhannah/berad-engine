@@ -45,6 +45,8 @@ const (
 type ColorPicker struct {
 	ID   string
 	Rect image.Rectangle
+	// NoOpacity leaves out the opacity strip, for a colour without one.
+	NoOpacity bool
 	// hue, saturation, bright and opacity run from 0 to 1. The hue is kept
 	// while a colour is grey or black, so it is not lost on the way through.
 	hue, saturation, bright, opacity float64
@@ -61,7 +63,7 @@ type ColorPicker struct {
 // Rect.
 func NewColorPicker(id string) *ColorPicker {
 	return &ColorPicker{
-		ID: id, Rect: Zero(), hue: 0, saturation: 0, bright: 0, opacity: 1, drag: partNone,
+		ID: id, Rect: Zero(), NoOpacity: false, hue: 0, saturation: 0, bright: 0, opacity: 1, drag: partNone,
 		square: nil, hues: nil, opacities: nil, paintedHue: -1, paintedColor: color.RGBA{R: 0, G: 0, B: 0, A: 0},
 		paintedSize: image.Pt(0, 0),
 	}
@@ -99,7 +101,12 @@ func (p *ColorPicker) Dragging() bool { return p.drag != partNone }
 
 // squareRect, hueRect and opacityRect are where the picker's parts are.
 func (p *ColorPicker) squareRect() image.Rectangle {
-	return image.Rect(p.Rect.Min.X, p.Rect.Min.Y, p.Rect.Max.X, p.Rect.Max.Y-Half*(pickerStrip+Gap))
+	strips := Half
+	if p.NoOpacity {
+		strips = 1
+	}
+
+	return image.Rect(p.Rect.Min.X, p.Rect.Min.Y, p.Rect.Max.X, p.Rect.Max.Y-strips*(pickerStrip+Gap))
 }
 
 func (p *ColorPicker) hueRect() image.Rectangle {
@@ -109,6 +116,9 @@ func (p *ColorPicker) hueRect() image.Rectangle {
 }
 
 func (p *ColorPicker) opacityRect() image.Rectangle {
+	if p.NoOpacity {
+		return Zero()
+	}
 	top := p.hueRect().Max.Y + Gap
 
 	return image.Rect(p.Rect.Min.X, top, p.Rect.Max.X, top+pickerStrip)
@@ -209,7 +219,7 @@ func (p *ColorPicker) Locate(value string) (image.Point, bool) {
 		strip := p.hueRect()
 
 		return image.Pt(atFraction(shares[0], strip.Min.X, strip.Dx()), strip.Min.Y+strip.Dy()/Half), true
-	case words[0] == "opacity" && len(shares) == 1:
+	case words[0] == "opacity" && len(shares) == 1 && !p.NoOpacity:
 		strip := p.opacityRect()
 
 		return image.Pt(atFraction(shares[0], strip.Min.X, strip.Dx()), strip.Min.Y+strip.Dy()/Half), true
@@ -229,6 +239,9 @@ func (p *ColorPicker) Draw(screen *ebiten.Image) {
 		image *ebiten.Image
 		rect  image.Rectangle
 	}{{p.square, square}, {p.hues, hues}, {p.opacities, opacities}} {
+		if part.rect.Empty() {
+			continue
+		}
 		options := &ebiten.DrawImageOptions{}
 		options.GeoM.Translate(float64(part.rect.Min.X), float64(part.rect.Min.Y))
 		screen.DrawImage(part.image, options)
@@ -239,7 +252,9 @@ func (p *ColorPicker) Draw(screen *ebiten.Image) {
 	vector.StrokeCircle(screen, ringX, ringY, pickerRing+1, Hairline, ColorInk(), true)
 	vector.StrokeCircle(screen, ringX, ringY, pickerRing, Hairline+1, ColorBackground(), true)
 	p.drawMark(screen, hues, p.hue)
-	p.drawMark(screen, opacities, p.opacity)
+	if !opacities.Empty() {
+		p.drawMark(screen, opacities, p.opacity)
+	}
 }
 
 // drawMark marks a share of a strip with a bar reaching past its edges.

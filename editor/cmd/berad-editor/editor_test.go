@@ -1257,7 +1257,7 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 		click("picker:hue 0"), click("picker:square 100 100"), drag("picker:opacity 100", "picker:opacity 50"),
 		click("ui:save"), must("state:colour:slate 2:#FF0000", 120),
 		click("ui:add-ramp"), must("state:ramps:slate,new ramp", 120),
-		drag("swatch:slate 1", "slot:new ramp 2"), must("state:colour:new ramp 2:#090D17", 120),
+		drag("swatch:slate 1", "ramp:new ramp"), must("state:colour:new ramp 2:#090D17", 120),
 		click("ui:gradient"),
 		click("ui:left"), keys("Cmd+A"), typed("#2E2C33"), click("ui:right"), keys("Cmd+A"), typed("#E1E3E6"),
 		click("ui:steps"), keys("Cmd+A"), typed("5"), click("ui:apply-gradient"),

@@ -110,6 +110,11 @@ Asked of its author on 2026-10-28, before building, and answered:
   others:** amber, yellow, lime, moss, teal, cyan, sky, violet and magenta.
 - **A colour is also chosen with a colour picker (2026-10-30),** beside its
   hex field, drawn by the editor so it is the same on every system.
+- **Added after trying it (2026-10-30):** a slider beside the Opacity field,
+  keeping the picker's opacity strip; a colour moves to another ramp by
+  dropping it on the ramp's name or with Move to ramp ▾; "+ Colour after" is
+  now Duplicate colour; and the gradient has the same picker, in its panel,
+  for whichever end is chosen.
 
 Chosen while building, for its author to check:
 
@@ -162,6 +167,13 @@ Chosen while building, for its author to check:
   strip and an opacity strip, under the colour and opacity fields. What it
   picks goes into those fields and waits for Save, as typing does; what is
   typed moves it. It keeps its hue while a colour is grey or black.
+- **A colour dropped on a ramp's name goes to that ramp's end,** the name
+  outlined while it is over it; Move to ramp ▾ does the same and offers every
+  ramp but the colour's own. Both leave a shadow record, as any move does.
+- **The gradient's picker sits right of its fields,** or below them in a
+  narrow window. Each end has a swatch beside its field; clicking the swatch
+  or its fields chooses the end the picker sets, outlined. The picker shows
+  opacity only while Opacity is mixed.
 - **The sample paints its lantern in Default's grey 3, 5, 8, 11 and 14** and
   the glass of a palette of its own, "Sample", which the sample zone lists.
 
@@ -272,7 +284,7 @@ Where each step changes code:
 - **Palette Editor:** a new `editor/views/paletteview` and window kind,
   Palette Editor, after Sprites on the window bar. Verified with view tests:
   a click chooses, Shift-click picks a run, Cmd-click adds or takes away and
-  a ramp's name picks it whole; + Ramp, renaming with Enter, + Colour after,
+  a ramp's name picks it whole; + Ramp, renaming with Enter, Duplicate colour,
   Remove colour and Remove ramp; a label, colour and opacity wait for Save,
   sixteen characters are refused and kept, and choosing another colour asks
   first; dragging a colour to another ramp sends the move, Moved colours
@@ -318,6 +330,13 @@ Where each step changes code:
   unchanged and that each part picks, with a view test that picks wait for
   Save and start from a typed colour, and with the real-window palette test,
   which now picks red at 50% opacity and saves it.
+- **Slider, moving, Duplicate colour and the gradient's picker
+  (2026-10-30):** `ui.Slider`, and `ui.ColorPicker` without its opacity
+  strip. Verified with unit tests of the slider, view tests that the slider
+  waits for Save, that a colour dropped on a ramp's name or moved with Move
+  to ramp goes to that ramp's end, and that the gradient's picker sets the
+  chosen end; the real-window palette test now drops a colour on a ramp's
+  name.
 - **Trying it:** the sample project has Default, its own palette "Sample"
   with the lantern's glass, listed by the sample zone:
   `make demo-shell DEMO_PROJECT=.cache/demo-palettes`.

@@ -3,6 +3,7 @@ package paletteview
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"slices"
 	"strconv"
 	"strings"
@@ -34,6 +35,10 @@ const (
 	newRampLabel   = "New ramp"
 	defaultSteps   = 5
 	maxPreview     = 24
+	// The gradient's picker sits right of its fields, or below them when the
+	// window is too narrow.
+	gradientPicker = 200
+	pickerBelow    = 140
 )
 
 // gradientPanel fills a ramp from a left colour, a right colour and a number
@@ -49,6 +54,11 @@ type gradientPanel struct {
 	useLeft, useRight         *ui.Button
 	intoButton, apply, close  *ui.Button
 	previewTop                int
+	// picker sets the left colour, or the right when pickRight is set; each
+	// end's swatch, beside its field, chooses which.
+	picker                  *ui.ColorPicker
+	pickRight               bool
+	leftSwatch, rightSwatch image.Rectangle
 }
 
 func newGradientPanel(theme *ui.Theme) *gradientPanel {
@@ -64,7 +74,8 @@ func newGradientPanel(theme *ui.Theme) *gradientPanel {
 		steps: field("steps", strconv.Itoa(defaultSteps), stepsBytes), name: field("gradient-name", gradientName, nameBytes),
 		useLeft: ui.NewButton("use-left", "Use chosen"), useRight: ui.NewButton("use-right", "Use chosen"),
 		intoButton: ui.NewButton("gradient-target", newRampLabel), apply: ui.NewButton("apply-gradient", "Apply"),
-		close: ui.NewButton("close-gradient", "×"), previewTop: 0,
+		close: ui.NewButton("close-gradient", "×"), previewTop: 0, picker: ui.NewColorPicker("gradient-picker"),
+		pickRight: false, leftSwatch: ui.Zero(), rightSwatch: ui.Zero(),
 	}
 	panel.intoButton.Caret = true
 	panel.apply.Primary = true
@@ -136,6 +147,8 @@ func (s *State) panelRect() image.Rectangle {
 	content := frame.Content(s.size)
 	height := 0
 	switch {
+	case s.gradient.open && s.gradientPickerBelow():
+		height = gradientHeight + pickerBelow + ui.Inset + ui.LineHeight
 	case s.gradient.open:
 		height = gradientHeight
 	case s.copying.open:
@@ -204,6 +217,7 @@ func (s *State) layoutPanels(docs frame.Docs) {
 		field.Rect = ui.Zero()
 	}
 	s.gradient.mixColor.Rect, s.gradient.mixOpacity.Rect = ui.Zero(), ui.Zero()
+	s.gradient.picker.Rect, s.gradient.leftSwatch, s.gradient.rightSwatch = ui.Zero(), ui.Zero(), ui.Zero()
 	s.copying.area, s.copying.swatches, s.copying.ramps = ui.Zero(), nil, nil
 	panel := s.panelRect()
 	if panel.Empty() {
@@ -233,8 +247,12 @@ func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	left, top := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset+ui.LineHeight
 	grad.mixColor.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
 	across := grad.mixColor.Rect.Max.X + ui.Inset
+	grad.leftSwatch = image.Rect(across, top, across+ui.ButtonH, top+ui.ButtonH)
+	across = grad.leftSwatch.Max.X + ui.Gap
 	grad.left.Rect = image.Rect(across, top, across+colorWidth, top+ui.ButtonH)
 	across = s.place(grad.useLeft, grad.left.Rect.Max.X+ui.Gap, top) + ui.Inset
+	grad.rightSwatch = image.Rect(across, top, across+ui.ButtonH, top+ui.ButtonH)
+	across = grad.rightSwatch.Max.X + ui.Gap
 	grad.right.Rect = image.Rect(across, top, across+colorWidth, top+ui.ButtonH)
 	across = s.place(grad.useRight, grad.right.Rect.Max.X+ui.Gap, top) + ui.Inset
 	stepsLeft := across + s.theme.TextWidth("Steps") + ui.Gap
@@ -260,6 +278,72 @@ func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	s.place(grad.apply, across, top)
 	grad.leftOpacity.Rect = gate(grad.leftOpacity.Rect, grad.mixOpacity.On)
 	grad.rightOpacity.Rect = gate(grad.rightOpacity.Rect, grad.mixOpacity.On)
+	pickerTop := panel.Min.Y + ui.Inset + ui.LineHeight
+	pickerLeft := s.gradient.close.Rect.Min.X - ui.Inset - gradientPicker
+	if s.gradientPickerBelow() {
+		pickerTop, pickerLeft = grad.apply.Rect.Max.Y+ui.Inset+ui.LineHeight, left
+	}
+	grad.picker.Rect = image.Rect(pickerLeft, pickerTop, pickerLeft+gradientPicker, panel.Max.Y-ui.Inset)
+	grad.picker.NoOpacity = !grad.mixOpacity.On
+	s.syncGradientPicker()
+}
+
+// gradientPickerBelow reports whether the window is too narrow for the
+// gradient's picker beside its fields.
+func (s *State) gradientPickerBelow() bool {
+	fields := toggleWidth + ui.Inset + ui.Half*(ui.ButtonH+ui.Gap+colorWidth+ui.Gap+s.buttonWidth(s.gradient.useLeft)+
+		ui.Inset) + s.theme.TextWidth("Steps") + ui.Gap + stepsWidth
+
+	return ui.Inset+ui.Inset+fields+ui.Half*ui.Inset+gradientPicker+ui.Inset+ui.ButtonH+ui.Inset+ui.Inset >
+		frame.Content(s.size).Max.X
+}
+
+// pickedEnd is the gradient's end the picker sets: its colour and opacity
+// fields.
+func (s *State) pickedEnd() (*ui.TextField, *ui.TextField) {
+	if s.gradient.pickRight {
+		return s.gradient.right, s.gradient.rightOpacity
+	}
+
+	return s.gradient.left, s.gradient.leftOpacity
+}
+
+// syncGradientPicker shows in the picker what the picked end's fields hold.
+func (s *State) syncGradientPicker() {
+	colorField, opacityField := s.pickedEnd()
+	value, err := art.ParseRGB(strings.TrimSpace(colorField.Field.Value()))
+	if err != nil {
+		return
+	}
+	opacity, ok := parseOpacity(opacityField.Field.Value())
+	if !ok || !s.gradient.mixOpacity.On {
+		opacity = art.MaxOpacity
+	}
+	s.gradient.picker.SetColor(color.RGBA(value.NRGBA(art.MaxOpacity)), float64(opacity)/art.MaxOpacity)
+}
+
+// updateGradientPicker chooses the end the picker sets, from its swatch or
+// its focused field, and puts what is picked into that end's fields.
+func (s *State) updateGradientPicker(input *ui.Input) {
+	grad := s.gradient
+	switch current := s.focus.Current(); {
+	case input.Pressed && input.Cursor.In(grad.leftSwatch), current == grad.left, current == grad.leftOpacity:
+		grad.pickRight = false
+	case input.Pressed && input.Cursor.In(grad.rightSwatch), current == grad.right, current == grad.rightOpacity:
+		grad.pickRight = true
+	}
+	if input.Pressed && input.Cursor.In(grad.picker.Rect) {
+		s.focus.Set(nil)
+	}
+	s.syncGradientPicker()
+	if !grad.picker.Update(input) {
+		return
+	}
+	colorField, opacityField := s.pickedEnd()
+	colorField.Field.SetDraft(pickedRGB(grad.picker).String())
+	if grad.mixOpacity.On {
+		opacityField.Field.SetDraft(strconv.Itoa(pickedOpacity(grad.picker)))
+	}
 }
 
 // gate hides a widget while what it sets is off.
@@ -455,6 +539,7 @@ func (s *State) updateGradient(input *ui.Input, ctx *frame.Context, palette *art
 	grad := s.gradient
 	grad.mixColor.Update(input)
 	grad.mixOpacity.Update(input)
+	s.updateGradientPicker(input)
 	shade, _, chosen := palette.Lookup(s.chosen.ramp, s.chosen.shade)
 	switch {
 	case grad.close.Update(input):
@@ -672,6 +757,7 @@ func (s *State) drawGradient(screen *ebiten.Image, panel image.Rectangle) {
 		left+s.theme.StrongWidth("Gradient")+ui.Inset, panel.Min.Y+ui.Inset, ui.ColorMuted())
 	grad.mixColor.Draw(screen, s.theme)
 	grad.mixOpacity.Draw(screen, s.theme)
+	s.drawGradientEnds(screen)
 	for _, field := range grad.fields() {
 		if !field.Rect.Empty() {
 			field.Draw(screen)
@@ -727,4 +813,35 @@ func (s *State) drawCopying(screen *ebiten.Image, panel image.Rectangle) {
 			button.Draw(screen, s.theme)
 		}
 	}
+}
+
+// drawGradientEnds draws each end's swatch, the picked one outlined, and the
+// picker, named for its end.
+func (s *State) drawGradientEnds(screen *ebiten.Image) {
+	grad := s.gradient
+	for _, end := range []struct {
+		swatch         image.Rectangle
+		color, opacity *ui.TextField
+		picked         bool
+	}{
+		{grad.leftSwatch, grad.left, grad.leftOpacity, !grad.pickRight},
+		{grad.rightSwatch, grad.right, grad.rightOpacity, grad.pickRight},
+	} {
+		shade := art.Shade{ID: ids.ULID{}, Color: 0, Opacity: art.MaxOpacity, Label: ""}
+		value, err := art.ParseRGB(strings.TrimSpace(end.color.Field.Value()))
+		if opacity, ok := parseOpacity(end.opacity.Field.Value()); ok && grad.mixOpacity.On {
+			shade.Opacity = opacity
+		}
+		shade.Color = value
+		drawSwatch(screen, end.swatch, shade, err != nil)
+		if end.picked {
+			ui.StrokeRect(screen, end.swatch.Inset(-chosenWidth), chosenWidth, ui.ColorSelect())
+		}
+	}
+	name := "Left colour"
+	if grad.pickRight {
+		name = "Right colour"
+	}
+	s.theme.DrawText(screen, name, grad.picker.Rect.Min.X, grad.picker.Rect.Min.Y-ui.LineHeight, ui.ColorMuted())
+	grad.picker.Draw(screen)
 }

@@ -19,7 +19,9 @@ import (
 // is one more; "rampslot:<n>" for the place before ramp n; and
 // "source:<ramp> <n>" and "sourceramp:<name>" in Copy colours from…; and
 // "picker:square <s> <b>", "picker:hue <h>" and "picker:opacity <o>", in
-// percent, on the colour picker.
+// percent, on the colour picker, and the same after "gradient-picker:" on
+// the gradient's; "end:left" and "end:right" for the gradient's ends; and
+// "slider:<n>" for an opacity on its slider.
 // "state:…" answers scripts waiting for the window.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
@@ -35,6 +37,17 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.locateWidget(value)
 	case kind == "picker":
 		return s.picker.Locate(value)
+	case kind == "gradient-picker":
+		return s.gradient.picker.Locate(value)
+	case kind == "end" && (value == "left" || value == "right"):
+		end := s.gradient.leftSwatch
+		if value == "right" {
+			end = s.gradient.rightSwatch
+		}
+
+		return ui.Center(end), !end.Empty()
+	case kind == "slider":
+		return s.slider.Locate(value)
 	}
 
 	return s.locateRows(kind, value)
@@ -158,7 +171,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	}
 	buttons := []*ui.Button{
 		s.bar.addRamp, s.bar.gradient, s.bar.copyFrom, s.bar.remove, s.bar.copyTo, s.bar.newPalette,
-		s.inspect.addColor, s.inspect.removeColor, s.inspect.gradientInto, s.inspect.removeRamp,
+		s.inspect.duplicate, s.inspect.moveTo, s.inspect.removeColor, s.inspect.gradientInto, s.inspect.removeRamp,
 	}
 	buttons = append(buttons, s.gradient.buttons()...)
 	buttons = append(buttons, s.copying.buttons()...)

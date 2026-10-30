@@ -49,6 +49,7 @@ const (
 	menuInto       = "gradient-into"
 	menuCopyInto   = "copy-into"
 	menuCopySource = "copy-source"
+	menuMoveTo     = "move-to"
 	newRampItem    = "new-ramp"
 )
 
@@ -141,8 +142,10 @@ func (s *State) updateButtons(input *ui.Input, ctx *frame.Context) {
 		s.openCopyTo(ctx)
 	case s.bar.newPalette.Update(input):
 		s.newPalette(ctx, palette)
-	case s.inspect.addColor.Update(input):
-		s.addColor(ctx, palette)
+	case s.inspect.duplicate.Update(input):
+		s.duplicateColor(ctx, palette)
+	case s.inspect.moveTo.Update(input):
+		s.openMenu(menuMoveTo, s.otherRamps(palette), s.inspect.moveTo.Rect)
 	case s.inspect.removeColor.Update(input):
 		s.removeColor(ctx, palette)
 	case s.inspect.gradientInto.Update(input):
@@ -185,9 +188,9 @@ func uniqueRampName(palette *art.Palette, base string) string {
 	return name
 }
 
-// addColor adds a copy of the chosen colour after it, without its label,
-// and chooses the copy.
-func (s *State) addColor(ctx *frame.Context, palette *art.Palette) {
+// duplicateColor adds a copy of the chosen colour after it, without its
+// label, and chooses the copy.
+func (s *State) duplicateColor(ctx *frame.Context, palette *art.Palette) {
 	shade, number, found := palette.Lookup(s.chosen.ramp, s.chosen.shade)
 	ramp, rampFound := palette.Ramp(s.chosen.ramp)
 	if !rampFound {
@@ -205,7 +208,7 @@ func (s *State) addColor(ctx *frame.Context, palette *art.Palette) {
 				s.choose(choice{ramp: ramp.ID, shade: grown.Shades[index].ID})
 			}
 		}
-		ctx.Frame.Status(fmt.Sprintf("Added %s %d", ramp.Name, index+1))
+		ctx.Frame.Status(fmt.Sprintf("Duplicated the colour as %s %d", ramp.Name, index+1))
 	}, nil)
 }
 
@@ -506,10 +509,11 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	}
 	s.picker.Rect = ui.Zero()
 	for _, button := range []*ui.Button{
-		s.inspect.addColor, s.inspect.removeColor, s.inspect.gradientInto, s.inspect.removeRamp,
+		s.inspect.duplicate, s.inspect.moveTo, s.inspect.removeColor, s.inspect.gradientInto, s.inspect.removeRamp,
 	} {
 		button.Rect = ui.Zero()
 	}
+	s.slider.Rect = ui.Zero()
 	bottom := panel.Max.Y - ui.Inset
 	s.save.Rect = ui.Zero()
 	if !s.ReadOnly() {
@@ -521,19 +525,7 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	}
 	top := ui.Inset + ui.LineHeight + preview + ui.Inset
 	if shade, _, has := palette.Lookup(ramp.ID, s.chosen.shade); has {
-		s.label.Rect = image.Rect(left+labelColumn, top, left+width-counterWidth, top+ui.ButtonH)
-		top = s.label.Rect.Max.Y + ui.Gap
-		s.hex.Rect = image.Rect(left+labelColumn, top, left+labelColumn+colorWidth, top+ui.ButtonH)
-		top = s.hex.Rect.Max.Y + ui.Gap
-		s.opacity.Rect = image.Rect(left+labelColumn, top, left+labelColumn+opacityWidth, top+ui.ButtonH)
-		top = s.opacity.Rect.Max.Y + ui.Inset
-		s.picker.Rect = image.Rect(left, top, left+width, top+pickerHeight)
-		s.syncPicker(shade)
-		top = s.picker.Rect.Max.Y + ui.Inset + ui.LineHeight
-		half := (width - ui.Gap) / ui.Half
-		s.inspect.addColor.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
-		s.inspect.removeColor.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
-		top = s.inspect.addColor.Rect.Max.Y + ui.Half*ui.Inset
+		top = s.layoutColor(palette, shade, left, width, top)
 	}
 	s.rampTop = top
 	top += ui.LineHeight
@@ -543,6 +535,29 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	s.inspect.gradientInto.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
 	s.inspect.removeRamp.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
 	s.save.Unsaved = frame.UnsavedFields(s.fields()...)
+}
+
+// layoutColor places the chosen colour's fields, slider, picker and buttons
+// from top down, and returns where the ramp's part starts.
+func (s *State) layoutColor(palette *art.Palette, shade art.Shade, left, width, top int) int {
+	s.label.Rect = image.Rect(left+labelColumn, top, left+width-counterWidth, top+ui.ButtonH)
+	top = s.label.Rect.Max.Y + ui.Gap
+	s.hex.Rect = image.Rect(left+labelColumn, top, left+labelColumn+colorWidth, top+ui.ButtonH)
+	top = s.hex.Rect.Max.Y + ui.Gap
+	s.opacity.Rect = image.Rect(left+labelColumn, top, left+labelColumn+opacityWidth, top+ui.ButtonH)
+	s.slider.Rect = image.Rect(s.opacity.Rect.Max.X+ui.Inset, top, left+width, top+ui.ButtonH)
+	top = s.opacity.Rect.Max.Y + ui.Inset
+	s.picker.Rect = image.Rect(left, top, left+width, top+pickerHeight)
+	s.syncPicker(shade)
+	top = s.picker.Rect.Max.Y + ui.Inset + ui.LineHeight
+	half := (width - ui.Gap) / ui.Half
+	s.inspect.duplicate.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
+	s.inspect.moveTo.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
+	s.inspect.moveTo.Disabled = len(palette.Ramps()) < ui.Half
+	top = s.inspect.duplicate.Rect.Max.Y + ui.Gap
+	s.inspect.removeColor.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
+
+	return s.inspect.removeColor.Rect.Max.Y + ui.Half*ui.Inset
 }
 
 // drawInspector draws the chosen colour and its ramp: typed fields for a
@@ -612,7 +627,9 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shad
 			s.label.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
 		s.picker.Draw(screen)
 		usedTop = s.picker.Rect.Max.Y + ui.Inset
-		s.inspect.addColor.Draw(screen, s.theme)
+		s.slider.Draw(screen)
+		s.inspect.duplicate.Draw(screen, s.theme)
+		s.inspect.moveTo.Draw(screen, s.theme)
 		s.inspect.removeColor.Draw(screen, s.theme)
 	}
 	s.theme.DrawText(screen, s.theme.FitText(s.usedLine(docs, shade.ID), width), left, usedTop, ui.ColorMuted())
@@ -735,6 +752,15 @@ func (s *State) updateMenu(input *ui.Input, ctx *frame.Context) {
 		}
 	case menuInto, menuCopyInto, menuCopySource:
 		s.chosePanelItem(ctx, s.menuFor, chosen)
+	case menuMoveTo:
+		palette, ok := s.palette(ctx.Docs)
+		ramp, err := ids.Parse(chosen)
+		if !ok || err != nil {
+			return
+		}
+		if to, found := palette.Ramp(ramp); found {
+			s.moveShade(ctx, palette, s.chosen.ramp, s.chosen.shade, ramp, len(to.Shades))
+		}
 	}
 }
 
@@ -874,10 +900,28 @@ func uniqueDocumentName(docs frame.Docs, base string) string {
 	return name
 }
 
+// otherRamps offers the ramps the chosen colour can move to: every ramp but
+// its own.
+func (s *State) otherRamps(palette *art.Palette) []ui.MenuItem {
+	items := make([]ui.MenuItem, 0, len(palette.Ramps()))
+	for _, ramp := range palette.Ramps() {
+		if ramp.ID != s.chosen.ramp {
+			items = append(items, ui.MenuItem{
+				ID: ramp.ID.String(), Label: ramp.Name, Icon: ui.IconNone, Disabled: false, Danger: false, Rule: false,
+			})
+		}
+	}
+
+	return items
+}
+
 // syncPicker shows in the picker what the colour and opacity fields hold.
 func (s *State) syncPicker(shade art.Shade) {
 	typed := s.typedShade(shade)
 	s.picker.SetColor(color.RGBA(typed.Color.NRGBA(art.MaxOpacity)), float64(typed.Opacity)/art.MaxOpacity)
+	if !s.slider.Dragging() {
+		s.slider.Value = typed.Opacity
+	}
 }
 
 // updatePicker puts what is picked into the colour and opacity fields, where
@@ -886,14 +930,31 @@ func (s *State) updatePicker(input *ui.Input) {
 	if input.Pressed && input.Cursor.In(s.picker.Rect) {
 		s.focus.Set(nil)
 	}
+	if input.Pressed && input.Cursor.In(s.slider.Rect) {
+		s.focus.Set(nil)
+	}
+	if s.slider.Update(input) {
+		s.opacity.Field.SetDraft(strconv.Itoa(s.slider.Value))
+	}
 	if !s.picker.Update(input) {
 		return
 	}
-	rgb := s.picker.RGB()
-	value := art.RGB(uint32(rgb.R)<<redShift | uint32(rgb.G)<<greenShift | uint32(rgb.B))
-	opacity := int(math.Round(s.picker.Opacity() * art.MaxOpacity))
-	s.hex.Field.SetDraft(value.String())
-	s.opacity.Field.SetDraft(strconv.Itoa(min(max(opacity, art.MinOpacity), art.MaxOpacity)))
+	s.hex.Field.SetDraft(pickedRGB(s.picker).String())
+	s.opacity.Field.SetDraft(strconv.Itoa(pickedOpacity(s.picker)))
+}
+
+// pickedRGB is the colour a picker shows.
+func pickedRGB(picker *ui.ColorPicker) art.RGB {
+	rgb := picker.RGB()
+
+	return art.RGB(uint32(rgb.R)<<redShift | uint32(rgb.G)<<greenShift | uint32(rgb.B))
+}
+
+// pickedOpacity is the opacity a picker shows, in percent.
+func pickedOpacity(picker *ui.ColorPicker) int {
+	opacity := int(math.Round(picker.Opacity() * art.MaxOpacity))
+
+	return min(max(opacity, art.MinOpacity), art.MaxOpacity)
 }
 
 // Where red and green sit in a colour's value.
