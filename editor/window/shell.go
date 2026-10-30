@@ -124,7 +124,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 // host connects a window the orchestrator asked the shell to show, off the
 // frame loop; its pane appears once it has connected.
 func (s *shell) host(asked protocol.Host) {
-	args := Args{Socket: s.args.Socket, View: asked.View, Target: asked.Target, Window: asked.Window}
+	args := Args{Connect: s.args.Connect, View: asked.View, Target: asked.Target, Window: asked.Window}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 		defer cancel()

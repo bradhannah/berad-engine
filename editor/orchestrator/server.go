@@ -13,23 +13,24 @@ import (
 // ErrHandshake reports a connection refused during its handshake.
 var ErrHandshake = errors.New("handshake refused")
 
+// inboundQueue is how many of a pane's messages wait for the core loop, so a
+// pane sending while the orchestrator is busy, saving say, is not held up.
+const inboundQueue = 256
+
+// acceptLoop serves each connection a pane opens until ctx ends.
 func (o *Orchestrator) acceptLoop(ctx context.Context) {
 	for {
-		connection, err := o.listener.Accept()
-		if err != nil {
-			if errors.Is(err, net.ErrClosed) || ctx.Err() != nil {
-				return
-			}
-			o.cfg.Logger.Warn("accept failed", "error", err)
-
-			continue
+		select {
+		case connection := <-o.accepted:
+			go o.serveConnection(ctx, connection)
+		case <-ctx.Done():
+			return
 		}
-		go o.serveConnection(ctx, connection)
 	}
 }
 
 // serveConnection completes the handshake, then forwards every message to the
-// core loop until the connection ends.
+// core loop, in order, until the connection ends.
 func (o *Orchestrator) serveConnection(ctx context.Context, connection net.Conn) {
 	conn := protocol.NewConn(connection, protocol.JSONCodec{})
 	joined, err := o.handshake(connection, conn)
@@ -49,18 +50,31 @@ func (o *Orchestrator) serveConnection(ctx context.Context, connection net.Conn)
 
 		return
 	}
+	received := make(chan protocol.Message, inboundQueue)
+	go readLoop(ctx, conn, received)
+	for message := range received {
+		select {
+		case o.inbound <- inbound{from: joined, message: message}:
+		case <-ctx.Done():
+			return
+		}
+	}
+	select {
+	case o.leaves <- joined:
+	case <-ctx.Done():
+	}
+}
+
+// readLoop reads a pane's messages into received until the connection ends.
+func readLoop(ctx context.Context, conn *protocol.Conn, received chan<- protocol.Message) {
+	defer close(received)
 	for {
 		message, err := conn.Receive()
 		if err != nil {
-			select {
-			case o.leaves <- joined:
-			case <-ctx.Done():
-			}
-
 			return
 		}
 		select {
-		case o.inbound <- inbound{from: joined, message: message}:
+		case received <- message:
 		case <-ctx.Done():
 			return
 		}

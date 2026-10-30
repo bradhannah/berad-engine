@@ -2,8 +2,6 @@ package orchestrator
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +21,6 @@ const (
 	defaultShutdownTimeout  = 5 * time.Second
 	defaultOutboundQueue    = 4096
 	defaultRecentMessages   = 64
-	socketHashChars         = 12
 )
 
 // ErrConfig reports an incomplete configuration.
@@ -35,9 +32,6 @@ type Config struct {
 	ProjectDir string
 	// Registry is the explicit plug-in list. Required.
 	Registry *plugin.Registry
-	// SocketPath is where windows connect. Defaults to a path in the temporary
-	// folder derived from the project folder.
-	SocketPath string
 	// UndoLimit is the number of undo steps kept per undo group. Default 100.
 	UndoLimit int
 	// FlushInterval is how often changed documents are saved to their files.
@@ -73,10 +67,6 @@ func (c Config) withDefaults() (Config, error) {
 		return c, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
 	c.ProjectDir = absolute
-	if c.SocketPath == "" {
-		sum := sha256.Sum256([]byte(absolute))
-		c.SocketPath = filepath.Join(os.TempDir(), "berad-"+hex.EncodeToString(sum[:])[:socketHashChars]+".sock")
-	}
 	c.UndoLimit = orDefault(c.UndoLimit, defaultUndoLimit)
 	c.FlushInterval = orDefault(c.FlushInterval, defaultFlushInterval)
 	c.SyncInterval = orDefault(c.SyncInterval, defaultSyncInterval)

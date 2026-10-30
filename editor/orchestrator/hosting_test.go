@@ -17,7 +17,7 @@ func (h *harness) dialHello(t testing.TB, hello protocol.Hello) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connection, err := client.Dial(ctx, h.socket, hello, newRegistry(t))
+	connection, err := client.Dial(ctx, h.connect, hello, newRegistry(t))
 	if err != nil {
 		t.Fatal(err)
 	}

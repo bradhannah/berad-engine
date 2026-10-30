@@ -45,10 +45,11 @@ var ErrUnknownView = errors.New("unknown window view")
 // Args identifies a window to connect: the editor window's first pane, or a
 // pane the orchestrator asked it to show, which connects as Window.
 type Args struct {
-	Socket string
-	View   string
-	Target ids.ULID
-	Window ids.ULID
+	// Connect opens the pane's connection to the orchestrator.
+	Connect client.Dialer
+	View    string
+	Target  ids.ULID
+	Window  ids.ULID
 }
 
 // Run opens the editor window with its first pane, normally the project
@@ -103,7 +104,7 @@ func connect(ctx context.Context, args Args, registry *plugin.Registry, hosts bo
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
-	conn, err := client.Dial(ctx, args.Socket, protocol.Hello{
+	conn, err := client.Dial(ctx, args.Connect, protocol.Hello{
 		Protocol: protocol.Version, Window: args.Window, View: args.View,
 		Target: args.Target, UndoGroup: undoGroup(args), Hosts: hosts,
 	}, registry)

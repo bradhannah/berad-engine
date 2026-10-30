@@ -28,7 +28,7 @@ func (h *harness) dialView(t testing.TB, view string, target ids.ULID, group str
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
+	connection, err := client.Dial(ctx, h.connect, protocol.Hello{
 		View: view, Target: target, UndoGroup: group,
 	}, newRegistry(t))
 	if err != nil {
@@ -352,7 +352,7 @@ func TestDuplicateFilesResolveToTheNewer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tilefloors", "renamed--"+id.Short(8)+".json"), newer, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	orch, err := orchestrator.New(context.Background(), baseConfig(t, dir, shortSocket(t)))
+	orch, err := orchestrator.New(baseConfig(t, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

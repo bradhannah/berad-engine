@@ -2,18 +2,20 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // The test binary re-runs itself in this role to act as an editor process
@@ -21,16 +23,19 @@ import (
 const (
 	envRole   = "BERAD_TEST_ROLE"
 	envDir    = "BERAD_TEST_DIR"
-	envSocket = "BERAD_TEST_SOCKET"
+	envFloor  = "BERAD_TEST_FLOOR"
+	envMarker = "BERAD_TEST_MARKER"
 
-	roleOrchestrator = "orchestrator"
+	roleEditor = "editor"
+	// killedPaints is how many cells the killed editor paints.
+	killedPaints = 50
 )
 
 func runChildRole(role string) int {
 	var err error
 	switch role {
-	case roleOrchestrator:
-		err = childOrchestrator()
+	case roleEditor:
+		err = childEditor()
 	default:
 		err = fmt.Errorf("unknown role %q", role)
 	}
@@ -41,24 +46,52 @@ func runChildRole(role string) int {
 	return 0
 }
 
-// childOrchestrator runs until killed, never flushing, so only the journal
-// holds its edits.
-func childOrchestrator() error {
+// childEditor runs an orchestrator and a pane in one process, as the editor
+// does, never flushing, so only the journal holds its edits. The pane paints
+// killedPaints cells, each acknowledged, leaves the marker, and waits to be
+// killed.
+func childEditor() error {
 	registry, err := plugin.NewRegistry(project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin())
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-	defer stop()
-	orch, err := orchestrator.New(ctx, orchestrator.Config{
+	floor, err := ids.Parse(os.Getenv(envFloor))
+	if err != nil {
+		return err
+	}
+	orch, err := orchestrator.New(orchestrator.Config{
 		ProjectDir:    os.Getenv(envDir),
 		Registry:      registry,
-		SocketPath:    os.Getenv(envSocket),
 		FlushInterval: time.Hour,
 		Logger:        quietLogger(),
 	})
 	if err != nil {
 		return err
 	}
-	return orch.Run(ctx)
+	go func() { _ = orch.Run(context.Background()) }()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pane, err := client.Dial(ctx, orch.Connect, protocol.Hello{View: "map"}, registry)
+	if err != nil {
+		return err
+	}
+	if err := pane.Subscribe(ctx, floor); err != nil {
+		return err
+	}
+	for index := range killedPaints {
+		cell := tilefloor.Cell{Col: index % 16, Row: index / 16, Layer: tilefloor.LayerGround, Tile: "wall"}
+		args, err := json.Marshal(tilefloor.PaintArgs{Cells: []tilefloor.Cell{cell}})
+		if err != nil {
+			return err
+		}
+		result, err := pane.Command(ctx, protocol.Command{Document: floor, Edit: tilefloor.PaintEdit, Args: args})
+		if err != nil || !result.OK {
+			return fmt.Errorf("paint %d: %+v %w", index, result, err)
+		}
+	}
+	if err := os.WriteFile(os.Getenv(envMarker), nil, 0o600); err != nil {
+		return err
+	}
+	<-ctx.Done()
+	return ctx.Err()
 }

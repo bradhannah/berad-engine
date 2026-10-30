@@ -228,7 +228,7 @@ func TestHandshakeRefusesOtherProtocol(t *testing.T) {
 	h := start(t, dir, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := client.Dial(ctx, h.socket, protocol.Hello{Protocol: protocol.Version - 1, View: "map"}, newRegistry(t))
+	_, err := client.Dial(ctx, h.connect, protocol.Hello{Protocol: protocol.Version - 1, View: "map"}, newRegistry(t))
 	if !errors.Is(err, client.ErrRefused) || !strings.Contains(err.Error(), "not supported") {
 		t.Fatalf("err = %v", err)
 	}

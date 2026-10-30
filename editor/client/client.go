@@ -103,12 +103,15 @@ type Client struct {
 	once     sync.Once
 }
 
+// Dialer opens a connection to the orchestrator, such as the orchestrator's
+// own Connect.
+type Dialer func(ctx context.Context) (net.Conn, error)
+
 // Dial connects and completes the handshake.
-func Dial(ctx context.Context, socket string, hello protocol.Hello, registry *plugin.Registry) (*Client, error) {
-	var dialer net.Dialer
-	connection, err := dialer.DialContext(ctx, "unix", socket)
+func Dial(ctx context.Context, dial Dialer, hello protocol.Hello, registry *plugin.Registry) (*Client, error) {
+	connection, err := dial(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("connect to %s: %w", socket, err)
+		return nil, fmt.Errorf("connect to the orchestrator: %w", err)
 	}
 	conn := protocol.NewConn(connection, protocol.JSONCodec{})
 	if hello.Protocol == 0 {

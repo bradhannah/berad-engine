@@ -86,7 +86,7 @@ Chosen while planning, for its author to check:
 | --- | --- | --- | --- |
 | 1. Plan | This record; the decision in the editor features and the vocabulary | Its author has answered every question | Built |
 | 2. One process | `open` runs the orchestrator and the editor window in one process, and the orchestrator shows every pane in the editor window. Gone with the processes: the launcher, child processes, the `window` command, the build check, `open --shell` and `make demo-shell`, the first Map window, popping out (protocol version 16), a host running alone and the standalone Clock window. A pane that panics tells the orchestrator before it closes, which saves its crash report and tells the other tabs; On top is the whole window's | Headless orchestrator tests with a fake editor window, among them a pane's crash report; the real-window tests of tabs pass | Built |
-| 3. Pipes | The orchestrator hands out in-memory connections instead of listening on a socket; the client connects over one; each connection keeps its messages in order and does not hold a pane up while the orchestrator is busy; the lock names the process | Orchestrator, client and protocol tests pass over pipes; no socket file is made | Planned |
+| 3. Pipes | The orchestrator hands out in-memory connections instead of listening on a socket; the client connects over one; each connection keeps its messages in order and does not hold a pane up while the orchestrator is busy; the lock names the process | Orchestrator, client and protocol tests pass over pipes; no socket file is made | Built |
 | 4. Real-window tests | Every real-window test runs in the one window: a Map opened from the project browser, the editor quit from the browser once it is the only tab; the tests only for separate windows go; a tab crashed with Cmd+Shift+K leaves a report | `make gui-test` passes, its screenshots checked by eye | Planned |
 | 5. Documents | The architecture, editor features, vocabulary, research notes, READMEs and contributor rules describe one window in one process | No document describes a window process, `--shell` or popping out, except as history | Planned |
 | 6. Trying it | The sample project in the one window, for its author to try | Judged by its author | Planned |
@@ -128,6 +128,21 @@ Where each step changes code:
   pane's crash report; unit tests of On top and the close button; and the
   six real-window tests of tabs, run in one process, their screenshots
   checked: tabs with close boxes only, and Watch beside its Map.
+- **Pipes:** the orchestrator no longer listens on a socket. `Connect` hands
+  a pane one end of a `net.Pipe` and serves the other, with the same
+  handshake, framing and JSON codec; the client dials through a `Dialer`, and
+  the editor window's panes through the orchestrator's `Connect`. Each
+  connection reads into a queue of its own, 256 messages long, so a pane
+  sending while the orchestrator is busy is not held up, and its messages,
+  and then its leaving, still reach the orchestrator in order. The lock file
+  names the process that holds the project, and a second launch is refused
+  with it (`ErrProjectOpen by process N`); `SocketPath`, `RunningSocket` and
+  the socket file are gone. The test of a killed editor now kills a child
+  process that runs an orchestrator and a pane together. Verified with
+  `make check`, the six real-window tests of tabs over pipes (no socket file
+  made), and `make latency`: command to event over 2000 paints, median
+  18.8 µs, p95 39.0 µs, worst 0.25 ms, against 27.0 µs, 49.7 µs and 0.23 ms
+  over main's socket on the same machine.
 
 ## Not in this increment
 

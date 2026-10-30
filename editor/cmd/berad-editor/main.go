@@ -153,7 +153,7 @@ func runOpen(args []string, stderr io.Writer) error {
 		return err
 	}
 	defer closeTap()
-	orch, err := orchestrator.New(ctx, cfg)
+	orch, err := orchestrator.New(cfg)
 	if errors.Is(err, orchestrator.ErrProjectOpen) {
 		return fmt.Errorf("%w: switch to the editor that has it open", err)
 	}
@@ -194,7 +194,7 @@ func runEditor(ctx context.Context, orch *orchestrator.Orchestrator, registry *p
 	// The window ends when its panes' connections close, which the
 	// orchestrator does when ctx ends.
 	windowErr := window.Run(window.Args{ //nolint:contextcheck // See above.
-		Socket: orch.SocketPath(), View: browser.ViewName, Target: project.IndexID(), Window: ids.ULID{},
+		Connect: orch.Connect, View: browser.ViewName, Target: project.IndexID(), Window: ids.ULID{},
 	}, registry)
 	cancel()
 	if err := errors.Join(windowErr, <-stopped); err != nil {

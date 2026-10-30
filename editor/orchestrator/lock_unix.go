@@ -26,7 +26,7 @@ func acquireLock(root *os.Root, info lockInfo) (*projectLock, error) {
 		existing := readLockInfo(file)
 		closeErr := file.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, errors.Join(fmt.Errorf("%w: socket %s", ErrProjectOpen, existing.Socket), closeErr)
+			return nil, errors.Join(fmt.Errorf("%w by process %d", ErrProjectOpen, existing.PID), closeErr)
 		}
 
 		return nil, errors.Join(fmt.Errorf("lock project: %w", err), closeErr)

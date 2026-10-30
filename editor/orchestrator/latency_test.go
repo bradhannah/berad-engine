@@ -16,9 +16,10 @@ type clientUpdate = client.Update
 
 const frame = time.Second / 60
 
-// TestStrictModeLatency measures D1/D12: the time from a window sending a paint
-// command to that window receiving the orchestrator's event, over a real Unix
-// socket and including the journal write. It simulates continuous painting.
+// TestStrictModeLatency measures D1/D12: the time from a pane sending a paint
+// command to that pane receiving the orchestrator's event, over a pane's real
+// connection and including the journal write. It simulates continuous
+// painting.
 //
 // The budget is one frame edit-to-screen; the round trip itself should be well
 // under a millisecond. Run with -v to see the numbers.
