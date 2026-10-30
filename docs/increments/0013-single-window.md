@@ -1,6 +1,6 @@
 # Increment 13: Single window
 
-**Status:** Planned
+**Status:** Built
 
 The thirteenth increment makes the editor one window in one process. It adopts
 [increment 10](0010-one-window.md)'s shell as the only way the editor opens:
@@ -107,7 +107,7 @@ Chosen while building, for its author to check:
 | 3. Pipes | The orchestrator hands out in-memory connections instead of listening on a socket; the client connects over one; each connection keeps its messages in order and does not hold a pane up while the orchestrator is busy; the lock names the process | Orchestrator, client and protocol tests pass over pipes; no socket file is made | Built |
 | 4. Real-window tests | Every real-window test runs in the one window: a Map opened from the project browser, the editor quit from the browser once it is the only tab; the tests only for separate windows go; a tab crashed with Cmd+Shift+K leaves a report | `make gui-test` passes, its screenshots checked by eye | Built |
 | 5. Documents | The architecture, editor features, vocabulary, research notes, READMEs and contributor rules describe one window in one process | No document describes a window process, `--shell` or popping out, except as history | Built |
-| 6. Trying it | The sample project in the one window, for its author to try | Judged by its author | Planned |
+| 6. Trying it | The sample project in the one window, for its author to try | Judged by its author | Built |
 
 Where each step changes code:
 
@@ -190,6 +190,10 @@ Where each step changes code:
   project files, though they share the orchestrator's process) and the
   comments in the code follow, and [increment 10](0010-one-window.md) notes
   that it was adopted here.
+
+- **Trying it:** the sample project in the one window, in a fresh folder
+  since the sample is made only in an empty project:
+  `make demo DEMO_PROJECT=.cache/demo-single-window`.
 
 ## Not in this increment
 

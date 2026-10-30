@@ -33,4 +33,4 @@ accepted it.
 | [10. One window](increments/0010-one-window.md) | One window (spike): the views as tabs, a pinned clock and side-by-side panes | Built |
 | [11. Drawing tiles](increments/0011-drawing-tiles.md) | The first pixel editor: the tile size, the shared palette's named ramps, drawing a tile and seeing its sprite on the map | Judged |
 | [12. Palettes](increments/0012-palettes.md) | Palettes: Default built in, palettes of a game's own, the Palette Editor and a pick-only Pixel editor | Built |
-| [13. Single window](increments/0013-single-window.md) | Single window: the editor as one window in one process, its views as tabs, the multi-window option removed | Planned |
+| [13. Single window](increments/0013-single-window.md) | Single window: the editor as one window in one process, its views as tabs, the multi-window option removed | Built |
