@@ -156,9 +156,11 @@ func NewInput(cursor image.Point) Input {
 const wheelStep = 24
 
 // WheelPan returns how far a canvas's offset moves for this frame's
-// scrolling, so the Map, Workflow and Watch windows all scroll the same way.
+// scrolling, so the Map, Watch, Workflow and Pixel editor all scroll the same
+// way. The content moves with the fingers on a trackpad, as macOS scrolls
+// pages: a positive WheelY, fingers moving down, moves it down.
 func (input *Input) WheelPan() image.Point {
-	return image.Pt(-int(input.WheelX*wheelStep), -int(input.WheelY*wheelStep))
+	return image.Pt(int(input.WheelX*wheelStep), int(input.WheelY*wheelStep))
 }
 
 // IsDown reports whether a key is held down now.

@@ -128,11 +128,12 @@ func TestSaveBarStates(t *testing.T) {
 	}
 }
 
-// TestWheelPanIsShared turns scrolling into the same pan in every canvas.
+// TestWheelPanIsShared turns scrolling into the same pan in every canvas,
+// moving the content the way the fingers move.
 func TestWheelPanIsShared(t *testing.T) {
 	t.Parallel()
-	scroll := &ui.Input{WheelX: 0, WheelY: 1}
-	if pan := scroll.WheelPan(); pan.X != 0 || pan.Y >= 0 {
+	scroll := &ui.Input{WheelX: -1, WheelY: 1}
+	if pan := scroll.WheelPan(); pan.X >= 0 || pan.Y <= 0 {
 		t.Fatalf("pan %v", pan)
 	}
 }

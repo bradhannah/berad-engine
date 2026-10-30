@@ -512,7 +512,7 @@ func TestALongPaletteScrolls(t *testing.T) {
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	area := f.state.PanelArea()
 	up := ui.NewInput(ui.Center(area))
-	up.WheelY = -1000
+	up.WheelY = 1000
 	f.frame(up)
 	if f.state.PanelScroll() != 0 || area.Empty() {
 		t.Fatalf("the swatches scroll back to the top: %d in %v", f.state.PanelScroll(), area)
@@ -538,11 +538,11 @@ func TestALongPaletteScrolls(t *testing.T) {
 
 		return f.state.PanelScroll()
 	}
-	if top := wheel(-1000); top != 0 {
+	if top := wheel(1000); top != 0 {
 		t.Fatalf("scrolling up stops at the top: %d", top)
 	}
-	bottom := wheel(1000)
-	if bottom <= 0 || bottom != wheel(10) {
+	bottom := wheel(-1000)
+	if bottom <= 0 || bottom != wheel(-10) {
 		t.Fatalf("scrolling down stops at the last row: %d", bottom)
 	}
 }

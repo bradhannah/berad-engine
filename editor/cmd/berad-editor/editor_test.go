@@ -996,7 +996,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		click("node:move:1"), wait(5), click("palette:wait"), wait(10),
 		retype("param-duration", "2"), click("ui:duration-seconds"), wait(10),
 		drag("port:move:2:next", "entry:wait:1"), expect("state:entries:wait:1=2", 300), wait(10),
-		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{7, 0}}, wait(10),
+		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{-7, 0}}, wait(10),
 		drag("port:wait:1:next", "node:random:1"), expect("state:entries:random:1=2", 300), wait(10),
 		step{Repeat: 3, At: "entry:random:1:2", Down: true, Pressed: true},
 		step{Repeat: 10, At: "canvas:600,420", Down: true}, step{Repeat: 2, At: "canvas:600,420", Down: true, Screenshot: held},

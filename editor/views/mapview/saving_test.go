@@ -47,8 +47,8 @@ func TestZoomControl(t *testing.T) {
 	}
 }
 
-// TestScrollingMatchesTheWorkflowWindow scrolls down: the map moves up, as
-// the Workflow window's canvas does.
+// TestScrollingMatchesTheWorkflowWindow scrolls with the fingers moving down:
+// the map moves down with them, as the Workflow's canvas does.
 func TestScrollingMatchesTheWorkflowWindow(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -56,7 +56,7 @@ func TestScrollingMatchesTheWorkflowWindow(t *testing.T) {
 	scroll := ui.NewInput(f.at("cell:5,5"))
 	scroll.WheelY = 1
 	f.frame(scroll)
-	if after := f.at("cell:0,0"); after.Y != before.Y-24 || after.X != before.X {
+	if after := f.at("cell:0,0"); after.Y != before.Y+24 || after.X != before.X {
 		t.Fatalf("cell 0,0 moved from %v to %v", before, after)
 	}
 }
