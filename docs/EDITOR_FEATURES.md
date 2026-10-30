@@ -273,6 +273,9 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   editor offers the palettes of the zones a sprite is placed in first, A–Z,
   then Default, then the rest. The details are in
   [increment 12](increments/0012-palettes.md).
+- **Agreed (2026-10-30):** a colour is chosen with a colour picker as well as
+  by its hex value; the editor draws the picker, so it is the same on every
+  system.
 
 ### Drawing
 

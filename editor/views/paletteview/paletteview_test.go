@@ -634,3 +634,37 @@ func TestDeleteRemovesReferencesFirst(t *testing.T) {
 		t.Fatal("the tile is held, to work out its colours")
 	}
 }
+
+// TestPickerWaitsForSave picks a colour and an opacity by eye: they wait in
+// the colour and opacity fields, as typing does, and Save sends them.
+func TestPickerWaitsForSave(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.click("swatch:smoke 2")
+	f.click("picker:hue 0")
+	f.click("picker:square 100 100")
+	if len(f.requests.Commands) != 0 || f.state.Unsaved(f.docs) != 1 {
+		t.Fatalf("a picked colour waits for Save: %d unsaved", f.state.Unsaved(f.docs))
+	}
+	f.drag("picker:opacity 100", "picker:opacity 50")
+	if f.state.Unsaved(f.docs) != 2 {
+		t.Fatalf("a picked opacity waits too: %d unsaved", f.state.Unsaved(f.docs))
+	}
+	f.click("ui:save")
+	sets := sent[artplugin.SetShadeArgs](f, artplugin.SetShadeEdit)
+	if len(sets) != 1 || sets[0].Shade.Color != 0xFF0000 || sets[0].Shade.Opacity != 50 ||
+		sets[0].Shade.ID != shadeID(12) {
+		t.Fatalf("Save sends the picked colour and opacity: %+v", sets)
+	}
+	f.applyAll()
+	f.retype("ui:colour", "#00FF00")
+	f.click("picker:opacity 100")
+	if sets := sent[artplugin.SetShadeArgs](f, artplugin.SetShadeEdit); len(sets) != 1 {
+		t.Fatalf("picking sends nothing: %+v", sets)
+	}
+	f.click("ui:save")
+	sets = sent[artplugin.SetShadeArgs](f, artplugin.SetShadeEdit)
+	if len(sets) != 2 || sets[1].Shade.Color != 0x00FF00 || sets[1].Shade.Opacity != 100 {
+		t.Fatalf("the picker starts from the typed colour: %+v", sets)
+	}
+}

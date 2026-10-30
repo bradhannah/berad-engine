@@ -87,6 +87,8 @@ type State struct {
 	hex      *ui.TextField
 	opacity  *ui.TextField
 	rampName *ui.TextField
+	// picker chooses the colour by eye, into the hex and opacity fields.
+	picker   *ui.ColorPicker
 	focus    ui.Focus
 	save     *ui.SaveBar
 	guard    frame.Guard
@@ -125,7 +127,8 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 		cursor: image.Pt(0, 0), rampTop: 0, named: none(), name: field("palette-name", nameBytes),
 		label: field("label", labelBytes),
 		hex:   field("colour", colorBytes), opacity: field("opacity", opacityBytes),
-		rampName: field("ramp-name", art.MaxNameLength), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
+		rampName: field("ramp-name", art.MaxNameLength), picker: ui.NewColorPicker("picker"), focus: ui.Focus{},
+		save: ui.NewSaveBar(), guard: frame.Guard{},
 		bar: toolbar{
 			addRamp: ui.NewButton("add-ramp", "+ Ramp"), gradient: ui.NewButton("gradient", "Gradient…"),
 			copyFrom: ui.NewButton("copy-from", "Copy colours from…"), remove: ui.NewButton("delete", "Delete palette…"),
@@ -329,6 +332,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.updateDeleting(input, ctx)
 	default:
 		s.updateFields(input, ctx)
+		s.updatePicker(input)
 		frame.CommonKeys(input, ctx)
 		s.updateButtons(input, ctx)
 		s.updatePanels(input, ctx)

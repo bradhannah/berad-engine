@@ -1254,6 +1254,8 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 		must("state:ramps:slate", 120),
 		click("swatch:slate 2"), click("ui:label"), typed("dusk"), click("ui:save"),
 		must("state:label:slate 2:dusk", 120),
+		click("picker:hue 0"), click("picker:square 100 100"), drag("picker:opacity 100", "picker:opacity 50"),
+		click("ui:save"), must("state:colour:slate 2:#FF0000", 120),
 		click("ui:add-ramp"), must("state:ramps:slate,new ramp", 120),
 		drag("swatch:slate 1", "slot:new ramp 2"), must("state:colour:new ramp 2:#090D17", 120),
 		click("ui:gradient"),
@@ -1271,6 +1273,7 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 	}
 	ramps := palette.Ramps()
 	if len(ramps) != 3 || ramps[0].Name != "slate" || len(ramps[0].Shades) != 14 || ramps[0].Shades[0].Label != "dusk" ||
+		ramps[0].Shades[0].Color != 0xFF0000 || ramps[0].Shades[0].Opacity != 50 ||
 		ramps[1].Name != "new ramp" || len(ramps[1].Shades) != 2 || ramps[1].Shades[1].Color != 0x090D17 ||
 		ramps[2].Name != "gradient" || len(ramps[2].Shades) != 5 || ramps[2].Shades[2].Color != 0x828187 {
 		t.Fatalf("the saved palette: %+v", ramps)

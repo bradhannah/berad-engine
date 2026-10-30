@@ -132,6 +132,13 @@ func (f *Field) Restore(draft string) {
 	}
 }
 
+// SetDraft replaces the draft with a value chosen another way than typing,
+// such as with a colour picker. It waits for Save as typing does.
+func (f *Field) SetDraft(value string) {
+	f.draft = NewBuffer(value)
+	f.column = nil
+}
+
 // Conflict reports whether the saved value changed elsewhere while this field
 // held a draft. Saving the draft replaces that change.
 func (f *Field) Conflict() bool { return f.conflict && f.Dirty() }

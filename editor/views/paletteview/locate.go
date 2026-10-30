@@ -17,7 +17,9 @@ import (
 // "ramp:<name>" for a ramp's name, each scrolled into view;
 // "slot:<ramp> <n>" for the place before colour n, or after the last when n
 // is one more; "rampslot:<n>" for the place before ramp n; and
-// "source:<ramp> <n>" and "sourceramp:<name>" in Copy colours from….
+// "source:<ramp> <n>" and "sourceramp:<name>" in Copy colours from…; and
+// "picker:square <s> <b>", "picker:hue <h>" and "picker:opacity <o>", in
+// percent, on the colour picker.
 // "state:…" answers scripts waiting for the window.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
@@ -31,6 +33,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.menu.Locate(value)
 	case kind == "ui":
 		return s.locateWidget(value)
+	case kind == "picker":
+		return s.picker.Locate(value)
 	}
 
 	return s.locateRows(kind, value)

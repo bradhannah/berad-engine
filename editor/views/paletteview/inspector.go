@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +31,7 @@ const (
 	labelColumn  = 64
 	colorWidth   = 96
 	opacityWidth = 56
+	pickerHeight = 150
 	counterWidth = 44
 	preview      = 40
 	// A new ramp is named newRampName, numbered after the first, and starts
@@ -501,6 +504,7 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	for _, field := range s.choiceFields() {
 		field.Rect = ui.Zero()
 	}
+	s.picker.Rect = ui.Zero()
 	for _, button := range []*ui.Button{
 		s.inspect.addColor, s.inspect.removeColor, s.inspect.gradientInto, s.inspect.removeRamp,
 	} {
@@ -516,13 +520,16 @@ func (s *State) layoutInspector(palette *art.Palette) {
 		return
 	}
 	top := ui.Inset + ui.LineHeight + preview + ui.Inset
-	if _, _, has := palette.Lookup(ramp.ID, s.chosen.shade); has {
+	if shade, _, has := palette.Lookup(ramp.ID, s.chosen.shade); has {
 		s.label.Rect = image.Rect(left+labelColumn, top, left+width-counterWidth, top+ui.ButtonH)
 		top = s.label.Rect.Max.Y + ui.Gap
 		s.hex.Rect = image.Rect(left+labelColumn, top, left+labelColumn+colorWidth, top+ui.ButtonH)
 		top = s.hex.Rect.Max.Y + ui.Gap
 		s.opacity.Rect = image.Rect(left+labelColumn, top, left+labelColumn+opacityWidth, top+ui.ButtonH)
-		top = s.opacity.Rect.Max.Y + ui.Inset + ui.LineHeight
+		top = s.opacity.Rect.Max.Y + ui.Inset
+		s.picker.Rect = image.Rect(left, top, left+width, top+pickerHeight)
+		s.syncPicker(shade)
+		top = s.picker.Rect.Max.Y + ui.Inset + ui.LineHeight
 		half := (width - ui.Gap) / ui.Half
 		s.inspect.addColor.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
 		s.inspect.removeColor.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
@@ -580,9 +587,7 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shad
 	top := ui.Inset + ui.LineHeight
 	box := image.Rect(left, top, left+preview, top+preview)
 	drawSwatch(screen, box, shade, false)
-	if typed, err := art.ParseRGB(strings.TrimSpace(s.hex.Field.Value())); err == nil && typed != shade.Color {
-		after := shade
-		after.Color = typed
+	if after := s.typedShade(shade); after != shade {
 		drawSwatch(screen, image.Rect(box.Min.X+preview/ui.Half, box.Min.Y, box.Max.X, box.Max.Y), after, false)
 	}
 	label := "no label"
@@ -605,11 +610,25 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shad
 		counter := fmt.Sprintf("%d / %d", utf8.RuneCountInString(s.label.Field.Value()), art.MaxLabelLength)
 		s.theme.DrawText(screen, counter, s.label.Rect.Max.X+ui.Gap,
 			s.label.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
-		usedTop = s.opacity.Rect.Max.Y + ui.Inset
+		s.picker.Draw(screen)
+		usedTop = s.picker.Rect.Max.Y + ui.Inset
 		s.inspect.addColor.Draw(screen, s.theme)
 		s.inspect.removeColor.Draw(screen, s.theme)
 	}
 	s.theme.DrawText(screen, s.theme.FitText(s.usedLine(docs, shade.ID), width), left, usedTop, ui.ColorMuted())
+}
+
+// typedShade is the chosen colour with the value and opacity its fields
+// hold, typed or picked; a field that does not read keeps the saved one.
+func (s *State) typedShade(shade art.Shade) art.Shade {
+	if typed, err := art.ParseRGB(strings.TrimSpace(s.hex.Field.Value())); err == nil {
+		shade.Color = typed
+	}
+	if opacity, ok := parseOpacity(s.opacity.Field.Value()); ok {
+		shade.Opacity = opacity
+	}
+
+	return shade
 }
 
 // usedLine says which documents are painted with a colour.
@@ -854,3 +873,31 @@ func uniqueDocumentName(docs frame.Docs, base string) string {
 
 	return name
 }
+
+// syncPicker shows in the picker what the colour and opacity fields hold.
+func (s *State) syncPicker(shade art.Shade) {
+	typed := s.typedShade(shade)
+	s.picker.SetColor(color.RGBA(typed.Color.NRGBA(art.MaxOpacity)), float64(typed.Opacity)/art.MaxOpacity)
+}
+
+// updatePicker puts what is picked into the colour and opacity fields, where
+// it waits for Save as typing does.
+func (s *State) updatePicker(input *ui.Input) {
+	if input.Pressed && input.Cursor.In(s.picker.Rect) {
+		s.focus.Set(nil)
+	}
+	if !s.picker.Update(input) {
+		return
+	}
+	rgb := s.picker.RGB()
+	value := art.RGB(uint32(rgb.R)<<redShift | uint32(rgb.G)<<greenShift | uint32(rgb.B))
+	opacity := int(math.Round(s.picker.Opacity() * art.MaxOpacity))
+	s.hex.Field.SetDraft(value.String())
+	s.opacity.Field.SetDraft(strconv.Itoa(min(max(opacity, art.MinOpacity), art.MaxOpacity)))
+}
+
+// Where red and green sit in a colour's value.
+const (
+	redShift   = 16
+	greenShift = 8
+)

@@ -108,6 +108,8 @@ Asked of its author on 2026-10-28, before building, and answered:
   converted; a project that still has one keeps it as an ordinary palette.
 - **Default's nine unfinished ramps are generated in the style of the
   others:** amber, yellow, lime, moss, teal, cyan, sky, violet and magenta.
+- **A colour is also chosen with a colour picker (2026-10-30),** beside its
+  hex field, drawn by the editor so it is the same on every system.
 
 Chosen while building, for its author to check:
 
@@ -156,6 +158,10 @@ Chosen while building, for its author to check:
   buttons; + Palette never offers Default.
 - **The window bar names the kind Palette Editor,** after Sprites, and the
   windows of one palette share an undo list.
+- **The colour picker** is a square of saturation and brightness over a hue
+  strip and an opacity strip, under the colour and opacity fields. What it
+  picks goes into those fields and waits for Save, as typing does; what is
+  typed moves it. It keeps its hue while a colour is grey or black.
 - **The sample paints its lantern in Default's grey 3, 5, 8, 11 and 14** and
   the glass of a palette of its own, "Sample", which the sample zone lists.
 
@@ -307,6 +313,11 @@ Where each step changes code:
   because Copy colours from… did not scroll a ramp's name into view, and
   passes since that was fixed, with the other two palette tests run again.
   `make check` shows no lint findings, with every package passing.
+- **Colour picker (2026-10-30):** `ui.ColorPicker`, used by the Palette
+  Editor's inspector. Verified with unit tests that colours come back
+  unchanged and that each part picks, with a view test that picks wait for
+  Save and start from a typed colour, and with the real-window palette test,
+  which now picks red at 50% opacity and saves it.
 - **Trying it:** the sample project has Default, its own palette "Sample"
   with the lantern's glass, listed by the sample zone:
   `make demo-shell DEMO_PROJECT=.cache/demo-palettes`.
