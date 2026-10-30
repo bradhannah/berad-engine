@@ -47,8 +47,10 @@ func dangerItem(id, label string) ui.MenuItem {
 	return item
 }
 
-// openMenu opens the right-click menu for a cell at the cursor.
-func (s *State) openMenu(floorData *floor.Floor, cell Cell, onFloor bool, at image.Point) {
+// openMenu opens the right-click menu for a cell at the cursor, and lists
+// the audio library again for its ambient cues.
+func (s *State) openMenu(ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool, at image.Point) {
+	s.askAudio(ctx)
 	items := s.menuItems(floorData, cell, onFloor)
 	s.menu = &cellMenu{Menu: ui.Menu{Items: items, Width: ui.MenuWidth(items, s.theme)}, cell: cell}
 	s.menu.OpenAt(at, s.Grid())
@@ -89,6 +91,7 @@ func (s *State) menuItems(floorData *floor.Floor, cell Cell, onFloor bool) []ui.
 	if top, _ := floorData.Top(cell.X, cell.Y); top != "" { //nolint:errcheck // The cell is on the floor.
 		here = append(here, menuItem(menuClearTop, "Remove “"+tileName(top)+"”", false))
 	}
+	here = append(here, s.soundItems(floorData, cell)...)
 	busy := live || s.choosing || s.starting
 	standable := s.canStart(floorData, cell)
 	here = append(here, menuItem(menuPreviewHere, "Preview from here", busy || !standable),
@@ -171,6 +174,8 @@ func (s *State) choose(ctx *frame.Context, floorData *floor.Floor, chosen string
 		if next, fits := extendTo(floorData.Bounds(), cell); fits {
 			s.requestResize(ctx, floorData, next)
 		}
+	default:
+		s.chooseSound(ctx, floorData, chosen, cell)
 	}
 }
 

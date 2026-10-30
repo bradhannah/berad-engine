@@ -22,15 +22,21 @@ func PlacementKey(id ids.ULID) string {
 	return "placement:" + id.String()
 }
 
-// References lists the NPCs the floor places, so deleting an NPC shows where
-// it stands.
+// References lists the NPCs the floor places and the cues of its ambient
+// sounds, so deleting an NPC or a cue shows where it is.
 func (d *Document) References() []model.Reference {
-	placements := d.Floor.Placements()
-	references := make([]model.Reference, 0, len(placements))
+	placements, sounds := d.Floor.Placements(), d.Floor.Sounds()
+	references := make([]model.Reference, 0, len(placements)+len(sounds))
 	for _, placement := range placements {
 		references = append(references, model.Reference{
 			Document: placement.NPC, Item: "",
 			Label: "placed at " + strconv.Itoa(placement.Col) + ", " + strconv.Itoa(placement.Row),
+		})
+	}
+	for _, sound := range sounds {
+		references = append(references, model.Reference{
+			Document: model.AudioLibraryID(), Item: sound.Cue,
+			Label: "ambient sound at " + strconv.Itoa(sound.Col) + ", " + strconv.Itoa(sound.Row),
 		})
 	}
 

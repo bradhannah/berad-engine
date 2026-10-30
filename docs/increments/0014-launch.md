@@ -97,7 +97,7 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 | 1. Wall sprites | A wall stand-in can show a sprite, drawn in every wall cell on the Map | Headless tests: Shows offers walls, the Map draws the sprite in each wall cell and undo takes it away | Built |
 | 2. Character sprites | An NPC's sprite, chosen in its inspector; the player's, from Shows; the Map and Preview draw them in place of discs | Headless tests for the NPC's format version, the choice and its undo; a real-window screenshot of Preview with both sprites | Built |
 | 3. Game settings and the player start | The game settings document with the screen size; "Set player start here" on the Map's right-click menu, drawn as a marker | Headless tests: the document's format, setting, moving and undoing the start; the marker shows on its floor only | Built |
-| 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Planned |
+| 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Built |
 | 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Planned |
 | 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient gains | Planned |
 | 7. Launch and the Play tab | Launch, the Play tab drawing the screen at a whole-number scale with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Planned |
@@ -135,6 +135,19 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
   floor only. Tests: the settings' format and limits, the edits' undo and
   references, the screen fields refusing an even size, and the Map setting
   the start, marking it, and refusing a wall.
+- **Ambient sounds on the map:** the floor format goes to version 5, adding
+  ambient sounds, each an ambient cue on a cell with its own ID, one to a
+  cell, and reading version 4 unchanged. The floor plug-in's
+  `tilefloor.sound.add`, `.remove` and `.update` place, take off, move and
+  recue them; a resize keeps them like anchors and placements, and undo puts
+  back those it took off. The floor refers to each sound's cue, so deleting
+  a cue shows where it is heard. The Map's right-click menu offers "Place
+  ambient sound here…", then the library's ambient cues by name; on a sound,
+  it offers changing its cue, moving it with a click on another cell, and
+  removing it. Each is drawn as a purple marker with its cue's name and a
+  faint ring at its distance. Tests: the floor's sounds and upgrade, the
+  edits' undo, resize and references, and the Map placing, recueing, moving
+  and removing a sound, with only ambient cues offered.
 
 ## Not in this increment
 

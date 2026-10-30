@@ -133,6 +133,7 @@ type State struct {
 	zone   ids.ULID
 	// playerStart is the project's player start, kept from its game settings.
 	playerStart game.Start
+	ambient     ambientSounds
 	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
@@ -219,8 +220,9 @@ type State struct {
 // New returns the Map window for a zone.
 func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
-		window: window, zone: zone, playerStart: game.NoStart(), theme: theme, floors: nil, floor: ids.ULID{},
-		subs: map[ids.ULID]bool{},
+		window: window, zone: zone, playerStart: game.NoStart(),
+		ambient: ambientSounds{library: nil, asking: false, moving: ids.ULID{}, changing: ids.ULID{}}, theme: theme,
+		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
@@ -349,6 +351,7 @@ func (s *State) Start(ctx *frame.Context) {
 	s.syncArt(ctx)
 	s.syncStart(ctx)
 	s.syncZone(ctx)
+	s.askAudio(ctx)
 }
 
 func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
@@ -820,8 +823,10 @@ func (s *State) updateGridMode(
 		s.updatePick(input, ctx, floorData, cell, onFloor)
 	case s.choosing:
 		s.updateChoosing(input, ctx, floorData, cell, onFloor)
+	case !s.ambient.moving.IsZero():
+		s.updateMovingSound(input, ctx, floorData, cell, onFloor)
 	case input.Secondary && inGrid && !s.zoom.contains(input.Cursor):
-		s.openMenu(floorData, cell, onFloor, input.Cursor)
+		s.openMenu(ctx, floorData, cell, onFloor, input.Cursor)
 	default:
 		return s.watchClicked(input, ctx, cell, onFloor)
 	}
@@ -1445,6 +1450,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
+	case strings.HasPrefix(state, "ambient:"):
+		return s.hasSound(strings.TrimPrefix(state, "ambient:"), docs)
 	case strings.HasPrefix(state, "clock:"):
 		return s.clockShows(strings.TrimPrefix(state, "clock:"))
 	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"),
