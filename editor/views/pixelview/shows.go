@@ -18,7 +18,8 @@ import (
 
 // "Shows" chooses the stand-in a sprite is drawn for on every map, until the
 // definition editor gives definitions sprites of their own. A sprite shows at
-// most one stand-in, and each stand-in has at most one sprite.
+// most one stand-in, and each stand-in has at most one sprite. A wall's
+// sprite is the same in every cell until wall families exist.
 
 // showsItem prefixes a stand-in's ID in the Shows menu; the item for nothing
 // is the prefix alone.
@@ -83,8 +84,8 @@ func (s *State) layoutShows(docs frame.Docs, left, width, bottom int) {
 	}
 }
 
-// openShows offers nothing and every stand-in a sprite can show, naming the
-// sprite that already shows one.
+// openShows offers nothing and every stand-in, naming the sprite that already
+// shows one.
 func (s *State) openShows(docs frame.Docs) {
 	record := standInSprites(docs)
 	items := []ui.MenuItem{{ID: showsItem, Label: "Nothing", Icon: ui.IconNone, Disabled: false, Danger: false,

@@ -83,12 +83,13 @@ func DecodeSettings(data json.RawMessage) (Settings, error) {
 }
 
 // CanShowSprite reports whether a stand-in can be shown by a sprite: any
-// built-in stand-in but a wall, whose family needs a sprite for each
-// neighbour arrangement.
+// built-in stand-in. A wall shows one sprite in every cell, with no corner or
+// edge pieces, until wall families supply a sprite for each neighbour
+// arrangement (increment 14).
 func CanShowSprite(standIn string) bool {
-	definition, ok := tiles.Lookup(standIn)
+	_, ok := tiles.Lookup(standIn)
 
-	return ok && !definition.IsWall()
+	return ok
 }
 
 // StandInSprites records which sprite shows each stand-in, until definitions

@@ -446,7 +446,7 @@ func itoa(value int) string {
 // TestShowsChoosesTheStandInItReplaces makes the sprite show the small
 // pickup, then the medium pickup, taking it over from Chest in one step that
 // also puts the small pickup back to its flat colour, then nothing. Walls
-// are not offered.
+// are offered too.
 func TestShowsChoosesTheStandInItReplaces(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -454,8 +454,8 @@ func TestShowsChoosesTheStandInItReplaces(t *testing.T) {
 		t.Fatal("a new sprite shows nothing")
 	}
 	f.click("ui:shows")
-	if _, offered := f.state.Locate("menu:standin:wall.a", f.docs); offered {
-		t.Fatal("a wall family cannot be shown by a sprite")
+	if _, offered := f.state.Locate("menu:standin:wall.a", f.docs); !offered {
+		t.Fatal("a wall family can be shown by a sprite")
 	}
 	f.click("menu:standin:pickup.small")
 	f.applyAll()

@@ -240,9 +240,9 @@ func TestRefusedEditsLeaveDocumentsAlone(t *testing.T) {
 		t.Fatal("a tile size of 3 was accepted")
 	}
 	standIns := &artplugin.StandInsDocument{Sprites: art.NewStandInSprites()}
-	wall := encode(t, artplugin.StandInArgs{StandIn: "wall.a", Sprite: id(1)})
-	if _, err := (artplugin.SetStandIn{}).Apply(standIns, wall); err == nil {
-		t.Fatal("a wall was given a sprite")
+	unknown := encode(t, artplugin.StandInArgs{StandIn: "no-such", Sprite: id(1)})
+	if _, err := (artplugin.SetStandIn{}).Apply(standIns, unknown); err == nil {
+		t.Fatal("a stand-in there is no such was given a sprite")
 	}
 }
 

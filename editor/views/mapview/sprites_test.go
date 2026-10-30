@@ -182,3 +182,24 @@ func TestZoomFollowsTheTileSize(t *testing.T) {
 		t.Fatalf("zoom steps %v, want %v", sizes, want)
 	}
 }
+
+// TestAWallShowsItsSprite draws every wall of family A with Lantern's tile
+// once Lantern shows it in place of the door, the same in every cell, and
+// the walls' flat colour again once it shows nothing.
+func TestAWallShowsItsSprite(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withArt(t, f)
+	if f.has("sprite:wall.a") {
+		t.Fatal("a wall is its flat colour until a sprite shows it")
+	}
+	f.apply(art.StandInsID(), artplugin.SetStandIn{}, artplugin.StandInArgs{StandIn: "door", Sprite: ids.ULID{}})
+	f.apply(art.StandInsID(), artplugin.SetStandIn{}, artplugin.StandInArgs{StandIn: "wall.a", Sprite: lanternID})
+	if !f.has("sprite:wall.a") || !f.has("art:wall.a:0,0:"+greyHex(t, 3)) {
+		t.Fatal("family A's walls show Lantern's tile")
+	}
+	f.apply(art.StandInsID(), artplugin.SetStandIn{}, artplugin.StandInArgs{StandIn: "wall.a", Sprite: ids.ULID{}})
+	if f.has("sprite:wall.a") {
+		t.Fatal("without its sprite a wall is its flat colour again")
+	}
+}

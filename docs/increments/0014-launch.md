@@ -94,7 +94,7 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Wall sprites | A wall stand-in can show a sprite, drawn in every wall cell on the Map | Headless tests: Shows offers walls, the Map draws the sprite in each wall cell and undo takes it away | Planned |
+| 1. Wall sprites | A wall stand-in can show a sprite, drawn in every wall cell on the Map | Headless tests: Shows offers walls, the Map draws the sprite in each wall cell and undo takes it away | Built |
 | 2. Character sprites | An NPC's sprite, chosen in its inspector; the player's, from Shows; the Map and Preview draw them in place of discs | Headless tests for the NPC's format version, the choice and its undo; a real-window screenshot of Preview with both sprites | Planned |
 | 3. Game settings and the player start | The game settings document with the screen size; "Set player start here" on the Map's right-click menu, drawn as a marker | Headless tests: the document's format, setting, moving and undoing the start; the marker shows on its floor only | Planned |
 | 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Planned |
@@ -105,7 +105,12 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 
 ## Step results
 
-None yet.
+- **Wall sprites:** every built-in stand-in can now show a sprite, walls
+  included, so Shows offers the four walls; the Map already drew a sprite in
+  place of whatever stands on a cell, so a wall's sprite fills each wall cell
+  without arms towards its neighbours. Tests: Shows offers a wall family, the
+  stand-in record and its edit accept walls and still refuse unknown
+  stand-ins, and family A's walls show Lantern's tile until it shows nothing.
 
 ## Not in this increment
 
