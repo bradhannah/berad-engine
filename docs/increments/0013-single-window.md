@@ -80,6 +80,24 @@ Chosen while planning, for its author to check:
 - **A second launch on an open project** is still refused, now naming the
   editor's process instead of a socket.
 
+Chosen while building, for its author to check:
+
+- **On top is the whole window's.** Each pane's status bar keeps its toggle;
+  turning it on or off in any pane does it for the editor window, and every
+  pane's toggle shows it.
+- **The quit dialog says "Every tab will close."** instead of counting
+  windows, and a tab with unsaved changes and no name is "a text tab".
+- **Words the author sees follow the vocabulary:** "Open in Audio", "Close
+  tab" on the Map's keys sheet, "Start a preview in a Map", "set on the
+  window bar's clock", "Changed in another tab", and every view's title ends
+  in "(view …)", which the window bar leaves off.
+- **The pinned clock closes only if a script or a crash closes it;** the bar
+  then shows no readout until the editor opens again.
+- **A hidden tab is not drawn,** as in the spike, so a Map behind another tab
+  refreshes its sprites' art only once it is shown. Real-window tests that
+  check drawing bring their pane's tab to the front with a script step
+  (`front`).
+
 ## Steps
 
 | Step | Builds | Done when | Status |
@@ -87,8 +105,8 @@ Chosen while planning, for its author to check:
 | 1. Plan | This record; the decision in the editor features and the vocabulary | Its author has answered every question | Built |
 | 2. One process | `open` runs the orchestrator and the editor window in one process, and the orchestrator shows every pane in the editor window. Gone with the processes: the launcher, child processes, the `window` command, the build check, `open --shell` and `make demo-shell`, the first Map window, popping out (protocol version 16), a host running alone and the standalone Clock window. A pane that panics tells the orchestrator before it closes, which saves its crash report and tells the other tabs; On top is the whole window's | Headless orchestrator tests with a fake editor window, among them a pane's crash report; the real-window tests of tabs pass | Built |
 | 3. Pipes | The orchestrator hands out in-memory connections instead of listening on a socket; the client connects over one; each connection keeps its messages in order and does not hold a pane up while the orchestrator is busy; the lock names the process | Orchestrator, client and protocol tests pass over pipes; no socket file is made | Built |
-| 4. Real-window tests | Every real-window test runs in the one window: a Map opened from the project browser, the editor quit from the browser once it is the only tab; the tests only for separate windows go; a tab crashed with Cmd+Shift+K leaves a report | `make gui-test` passes, its screenshots checked by eye | Planned |
-| 5. Documents | The architecture, editor features, vocabulary, research notes, READMEs and contributor rules describe one window in one process | No document describes a window process, `--shell` or popping out, except as history | Planned |
+| 4. Real-window tests | Every real-window test runs in the one window: a Map opened from the project browser, the editor quit from the browser once it is the only tab; the tests only for separate windows go; a tab crashed with Cmd+Shift+K leaves a report | `make gui-test` passes, its screenshots checked by eye | Built |
+| 5. Documents | The architecture, editor features, vocabulary, research notes, READMEs and contributor rules describe one window in one process | No document describes a window process, `--shell` or popping out, except as history | Built |
 | 6. Trying it | The sample project in the one window, for its author to try | Judged by its author | Planned |
 
 Where each step changes code:
@@ -143,6 +161,35 @@ Where each step changes code:
   made), and `make latency`: command to event over 2000 paints, median
   18.8 µs, p95 39.0 µs, worst 0.25 ms, against 27.0 µs, 49.7 µs and 0.23 ms
   over main's socket on the same machine.
+- **Real-window tests:** every real-window test runs in the one window
+  through one harness (`runEditor`). The project browser opens the sample
+  zone when a test needs a Map (`openZone`), and quits the editor once its
+  tab is the only one left (`quitWhenAlone`, on a new script locator,
+  `state:tabs:N`); tests that only kept a Map to close it lost it. A script
+  step can bring its pane's tab to the front (`front`, or `mustInFront`
+  while waiting), since a hidden tab is not drawn: the test of a sprite on
+  the Map uses it, and failed without it. A screenshot is of the whole
+  window, so every test but those of tabs takes its pane's screenshots with
+  its tab in front (`shoot`); before that, the quit test's screenshot showed
+  the Map instead of the browser's dialog. The tests of tabs moved to
+  `tabs_test.go` with names that do not say "shell"; the pop-out test, the
+  separate-windows half of the frame-time test and the test of windows
+  closing when the orchestrator is killed are gone; a tab crashed with
+  Cmd+Shift+K leaves a crash report naming its view and failure
+  (`TestCrashedTabLeavesAReport`). Verified with `make gui-test`: all 33
+  tests pass, their screenshots checked by eye, among them the Map in front
+  showing the recoloured stroke and the lantern, tabs with close boxes only,
+  and Watch beside its Map.
+- **Documents:** the architecture's established context, terms, D1 to D10,
+  D12, D13 and D15 now speak of the editor window, tabs and panes, with D6's
+  transport the in-memory pipes and D10's failure a pane's crash report; the
+  editor features record the decision and the pinned clock; the vocabulary
+  has the editor window, window bar, tab, pane, view, split and pinned clock
+  instead of the window process and the Clock window; the research notes
+  mark this as chosen; both READMEs, the contributor rules (panes never touch
+  project files, though they share the orchestrator's process) and the
+  comments in the code follow, and [increment 10](0010-one-window.md) notes
+  that it was adopted here.
 
 ## Not in this increment
 

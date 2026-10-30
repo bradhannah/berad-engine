@@ -2,8 +2,9 @@
 
 A Go/Ebitengine engine and shared editor for top-down tile RPGs.
 
-**Experimental and early.** The editor has an orchestrator, a project browser,
-Map and Text windows, and a preview that walks a player through a zone. The
+**Experimental and early.** The editor is one window with a tab for each view
+open: a project browser, Map, Text, Workflow, Audio, a Pixel editor and a
+Palette Editor, and a preview that walks a player through a zone. The
 engine has floors, zones, stand-in tiles and walking. There are no game
 features beyond that, and no stable API yet.
 
@@ -14,7 +15,7 @@ The repository holds two independently versioned Go modules:
 | Module | Path | Holds |
 | --- | --- | --- |
 | Engine | [`engine/`](engine/README.md) | What a game runs: the world model, object characteristics, the workflow runner, NPC schedules, the game loop and mode switching, and drawing the world |
-| Editor | [`editor/`](editor/README.md) | One shared editor program: a headless orchestrator plus one Ebitengine process per editor window |
+| Editor | [`editor/`](editor/README.md) | One shared editor program: an orchestrator and the editor window, one Ebitengine window, in one process |
 
 Games depend on the engine module and on [berad-sdk](https://github.com/bradhannah/berad-sdk),
 never on the editor module. The engine module never imports the editor module.
@@ -33,18 +34,21 @@ in its own repository.
 make demo     # build the editor and open a sample project in .cache/demo-project
 ```
 
-The project browser and a Map window open on a sample zone with two floors.
-To start a project of your own, open a folder that has none:
-`.cache/bin/berad-editor open --project DIR` makes one there, holding only the
-shared palette, the art settings and the stand-in sprites.
-`make demo-shell` opens the same project as one window instead, with a tab
-for each window, the clock pinned to its bar, and Watch beside its Map: a
-spike, [increment 10](docs/increments/0010-one-window.md).
+The editor window opens with the project browser's tab; double-click the
+sample zone, which has two floors, to open it in a Map tab. Every view opens
+as a tab of the same window: the window bar has a tab for each kind of view,
+with a second row for the documents of the kind in front when there are
+several, the clock pinned at its right end, and Watch opens beside its Map
+([increment 13](docs/increments/0013-single-window.md)). To start a project
+of your own, open a folder that has none: `.cache/bin/berad-editor open
+--project DIR` makes one there, holding only what every project holds.
+To try an increment in a fresh project, as the sample is made only in an
+empty one: `make demo DEMO_PROJECT=.cache/demo-<name>`.
 
 - **Project browser:** create zones, floors and text documents; rename in the
   inspector (Enter or the Rename button saves); delete with a where-used check;
   reorder floors; double-click or Enter opens.
-- **Map window:** tools on the left (`G` ground, `W` walls, `O` doors, stairs
+- **Map:** tools on the left (`G` ground, `W` walls, `O` doors, stairs
   and pickups, `E` erase, `A` anchors, `S` select walls, `R` resize floor), `1`-`9`
   pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
   along its edges; every floor of the zone shares it. Resize floor drags an edge
@@ -53,23 +57,23 @@ spike, [increment 10](docs/increments/0010-one-window.md).
   its walls, or drag an area, then pick a family to change them all.
   `PageUp` / `PageDown` change floor; the floor below shows faintly (`F`).
   Scroll pans, `Cmd`+scroll or `Cmd+=` / `Cmd+-` zoom, `Space`+drag pans.
-- **Preview:** in a Map window press `P` (or the Preview button) and click a
+- **Preview:** in a Map press `P` (or the Preview button) and click a
   cell to start the player there. The arrow keys walk, one cell per tap, and
   two together walk diagonally; walking onto stairs changes floor. You can keep
   editing while you walk, other views of the zone show the player, and `P`
   stops. A preview never changes the project.
-- **Text window:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
-  Escape reverts; "Pick on map" chooses an anchor in a Map window.
-- **Workflow window:** New workflow in the project browser, then Open. Click a
+- **Text:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
+  Escape reverts; "Pick on map" chooses an anchor in a Map.
+- **Workflow:** New workflow in the project browser, then Open. Click a
   palette entry to add a node after the selected one, or drag it onto the
   canvas; drag from an output's port to a node to connect them; drag nodes to
   move them; Backspace removes the selected node. The inspector edits the
   selected node: Enter saves a field, and "Pick on map" chooses a Go to's
   destination. Auto-arrange lays the workflow out.
-- **Audio window:** the project browser's Audio section lists the cues; open
+- **Audio:** the project browser's Audio section lists the cues; open
   one, or click the section's [+] to add a sound. Adding a sound asks for a
   file, copies it into the project and asks who made it and whether it may be
-  used in a commercial game. The window lists cues by category, or
+  used in a commercial game. Audio lists cues by category, or
   recordings, with filters for problems and for sounds not cleared; it plays
   them, and edits a cue's name, category, gain and the recordings it plays in
   turn. A recording's waveform shows where its sound is: trim it to a region,
@@ -80,22 +84,24 @@ spike, [increment 10](docs/increments/0010-one-window.md).
 
 `Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
 opens another view of the same zone, and the views update live and share undo;
-`Cmd+W` closes a window. The editor quits when its last window closes. Every
-change is saved automatically; the files are in the project folder.
+`Cmd+W` closes a tab. `Cmd+Q`, or closing the project browser's tab or the
+window, quits the editor after asking. Every change is saved automatically;
+the files are in the project folder.
 
-`Cmd+Shift+K` crashes the current window on purpose, to show the failure
-handling: the other windows show a notice and a crash report appears in the
-project's `.berad/logs`.
+`Cmd+Shift+K` crashes the current tab on purpose, to show the failure
+handling: that tab closes, the others show a notice, and a crash report
+appears in the project's `.berad/logs`.
 
 ## How it fits together
 
 - The **orchestrator** (`editor/orchestrator`) is the only writer of project
-  data. One goroutine owns all state. Windows connect over a Unix socket.
-- **Windows** (`editor/window`, behaviour in `editor/views`) are separate
-  processes of the same program. They send commands and change only when the
+  data. One goroutine owns all state. It runs in the editor's process, and
+  each pane connects to it over an in-memory pipe of its own.
+- The **editor window** (`editor/window`, behaviour in `editor/views`) shows
+  each view in a pane of a tab. Panes send commands and change only when the
   orchestrator's event arrives (strict updates).
 - The **protocol** (`editor/protocol`) defines every message once as Go types,
-  JSON-encoded behind a codec interface, with revision numbers so a window that
+  JSON-encoded behind a codec interface, with revision numbers so a pane that
   misses an event reloads instead of drifting.
 - **Edits** come from plug-ins registered in one explicit list
   (`editor/plugin`); each edit kind knows how to undo itself and must pass the
@@ -108,8 +114,8 @@ project's `.berad/logs`.
   are journaled and undoable like any other change.
 - **Views** (`editor/views`) share a frame (`editor/views/frame`) and a small
   widget kit (`editor/ui`). Text fields keep a draft (`editor/ui/textedit`) and
-  use berad-text for layout; the window runs the input method so accents and
-  composed characters work.
+  use berad-text for layout; the editor window runs the input method so
+  accents and composed characters work.
 
 ## Checks
 
@@ -121,14 +127,15 @@ golang.org/x/tools v0.37.0), with zero findings and no baseline.
 make tools     # install the pinned tools into .cache/tools (needs network)
 make check     # formatting, lint, go vet and race tests for both modules
 make format    # apply formatting
-make gui-test  # tests that open real editor windows, driven by input scripts
-make latency   # strict-mode command-to-event time over a real socket
+make gui-test  # tests that open the real editor window, driven by input scripts
+make latency   # strict-mode command-to-event time over a pane's connection
 ```
 
-Window tests need a desktop session, so they run only with `make gui-test`
-(`BERAD_GUI_TESTS=1`). Windows driven by input scripts open without taking
-focus. `BERAD_SCREENSHOT=path` makes a window save its pixels
-once, for visual checks.
+Real-window tests need a desktop session, so they run only with
+`make gui-test` (`BERAD_GUI_TESTS=1`); `BERAD_SHOT_DIR` keeps their
+screenshots. While input scripts drive it, the editor window opens without
+taking focus. `BERAD_SCREENSHOT=path` makes each pane save a screenshot of
+the window once, for visual checks.
 
 ## Dependencies
 
