@@ -8,6 +8,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
+	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
@@ -15,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/art"
+	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -230,7 +232,7 @@ func TestTileSizeSetting(t *testing.T) {
 	f.click("ui:tile-size", false)
 	f.keys("Cmd+A")
 	f.typeText("16")
-	if f.state.Unsaved(f.ctx.Docs) != 1 || f.state.UnsavedName(f.ctx.Docs) != art.SettingsName {
+	if f.state.Unsaved(f.ctx.Docs) != 1 || f.state.UnsavedName(f.ctx.Docs) != "Settings" {
 		t.Fatalf("unsaved %d in %q", f.state.Unsaved(f.ctx.Docs), f.state.UnsavedName(f.ctx.Docs))
 	}
 	f.click("ui:save", false)
@@ -361,5 +363,34 @@ func TestNPCShowsASprite(t *testing.T) {
 	f.click("ui:open-sprite", false)
 	if opened := f.requests.Opened; len(opened) == 0 || opened[len(opened)-1].Target != lanternID {
 		t.Fatalf("Open opens the NPC's sprite: %+v", opened)
+	}
+}
+
+// TestScreenSetting types a screen size into the settings' inspector and
+// saves it with Enter; an even number of cells is refused there.
+func TestScreenSetting(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withArt(f)
+	f.ctx.Docs.(*frametest.Docs).Put(game.SettingsID(), game.SettingsName,
+		&gameplugin.SettingsDocument{Settings: game.DefaultSettings()})
+	f.click("row:Settings", false)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.click("ui:screen-columns", false)
+	f.keys("Cmd+A")
+	f.typeText("16")
+	f.keys("Enter")
+	if len(f.requests.Of(gameplugin.ScreenEdit)) != 0 || !strings.HasPrefix(f.status(), "Enter odd numbers") {
+		t.Fatalf("an even screen is refused: %q", f.status())
+	}
+	f.click("ui:screen-columns", false)
+	f.keys("Cmd+A")
+	f.typeText("15")
+	f.keys("Enter")
+	sent := f.requests.Of(gameplugin.ScreenEdit)
+	var args gameplugin.ScreenArgs
+	if len(sent) != 1 || sent[0].Command.Document != game.SettingsID() || sent[0].Decode(&args) != nil ||
+		args != (gameplugin.ScreenArgs{Columns: 15, Rows: 11}) {
+		t.Fatalf("screen %d %+v %q", len(sent), args, f.status())
 	}
 }

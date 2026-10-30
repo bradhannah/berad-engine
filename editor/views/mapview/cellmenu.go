@@ -90,7 +90,9 @@ func (s *State) menuItems(floorData *floor.Floor, cell Cell, onFloor bool) []ui.
 		here = append(here, menuItem(menuClearTop, "Remove “"+tileName(top)+"”", false))
 	}
 	busy := live || s.choosing || s.starting
-	here = append(here, menuItem(menuPreviewHere, "Preview from here", busy || !s.canStart(floorData, cell)))
+	standable := s.canStart(floorData, cell)
+	here = append(here, menuItem(menuPreviewHere, "Preview from here", busy || !standable),
+		s.startItem(standable, cell))
 	if len(items) > 0 {
 		here[0].Rule = true
 	}
@@ -163,6 +165,8 @@ func (s *State) choose(ctx *frame.Context, floorData *floor.Floor, chosen string
 		s.command(ctx, s.floor, tilefloor.PaintEdit, gesture, tilefloor.PaintArgs{Cells: []tilefloor.Cell{cleared}}, nil)
 	case menuPreviewHere:
 		s.startPreviewAt(ctx, cell)
+	case menuSetStart:
+		s.setStart(ctx, cell)
 	case menuExtendFloor:
 		if next, fits := extendTo(floorData.Bounds(), cell); fits {
 			s.requestResize(ctx, floorData, next)

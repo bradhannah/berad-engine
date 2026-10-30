@@ -29,6 +29,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
 	"github.com/bradhannah/berad-engine/engine/art"
+	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -95,12 +96,14 @@ type State struct {
 	focus  ui.Focus
 	// search filters the list; name and tags edit what is selected, and
 	// named is the row whose name and tags the fields hold. tileSize edits
-	// the settings' tile size.
-	search   *ui.TextField
-	name     *ui.TextField
-	tags     *ui.TextField
-	named    string
-	tileSize *ui.TextField
+	// the settings' tile size, and columns and rows the screen's size.
+	search     *ui.TextField
+	name       *ui.TextField
+	tags       *ui.TextField
+	named      string
+	tileSize   *ui.TextField
+	screenCols *ui.TextField
+	screenRows *ui.TextField
 
 	newMenu                             *ui.Button
 	menu                                ui.Menu
@@ -138,15 +141,17 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		list:     &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
-		closed:   map[string]bool{},
-		focus:    ui.Focus{},
-		search:   ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
-		name:     ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
-		tags:     ui.NewTextField("tags", textedit.NewField("", false, searchBytes*ui.Half), false, theme),
-		named:    "",
-		tileSize: ui.NewTextField("tile-size", textedit.NewField("", false, tileSizeBytes), false, theme),
-		newMenu:  button("new", "New"), menu: ui.Menu{Items: menuItems(), Width: 0},
+		list:       &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		closed:     map[string]bool{},
+		focus:      ui.Focus{},
+		search:     ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
+		name:       ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
+		tags:       ui.NewTextField("tags", textedit.NewField("", false, searchBytes*ui.Half), false, theme),
+		named:      "",
+		tileSize:   ui.NewTextField("tile-size", textedit.NewField("", false, tileSizeBytes), false, theme),
+		screenCols: ui.NewTextField("screen-columns", textedit.NewField("", false, tileSizeBytes), false, theme),
+		screenRows: ui.NewTextField("screen-rows", textedit.NewField("", false, tileSizeBytes), false, theme),
+		newMenu:    button("new", "New"), menu: ui.Menu{Items: menuItems(), Width: 0},
 		open: button("open", "Open"), floorButton: button(newFloor, "Add floor"), up: button("move-up", "Move up"),
 		down: button("move-down", "Move down"), remove: button("delete", "Delete"),
 		moveBn: button("move-to", "Move to…"), newFolderBn: button("new-folder", "New folder"),
@@ -161,7 +166,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
-	view.focus.Register(view.search, view.name, view.tags, view.npc.notes, view.tileSize)
+	view.focus.Register(view.search, view.name, view.tags, view.npc.notes, view.tileSize, view.screenCols, view.screenRows)
 
 	return view
 }
@@ -198,11 +203,12 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
-// Start subscribes to the project index and the art settings, and lists
-// the audio library.
+// Start subscribes to the project index and the art and game settings, and
+// lists the audio library.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
 	s.subscribe(art.SettingsID(), ctx)
+	s.subscribe(game.SettingsID(), ctx)
 	s.askAudio(ctx)
 }
 
@@ -376,6 +382,8 @@ func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
 		s.commitTags(ctx)
 	case field == s.tileSize && outcome == textedit.OutcomeCommit:
 		s.commitTileSize(ctx)
+	case (field == s.screenCols || field == s.screenRows) && outcome == textedit.OutcomeCommit:
+		s.commitScreen(ctx)
 	}
 }
 
@@ -1038,7 +1046,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes, s.tileSize} {
+	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes, s.tileSize, s.screenCols, s.screenRows} {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}

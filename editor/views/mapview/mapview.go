@@ -25,6 +25,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
+	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
@@ -130,6 +131,8 @@ const (
 type State struct {
 	window ids.ULID
 	zone   ids.ULID
+	// playerStart is the project's player start, kept from its game settings.
+	playerStart game.Start
 	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
@@ -216,7 +219,8 @@ type State struct {
 // New returns the Map window for a zone.
 func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
-		window: window, zone: zone, theme: theme, floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
+		window: window, zone: zone, playerStart: game.NoStart(), theme: theme, floors: nil, floor: ids.ULID{},
+		subs: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
@@ -304,6 +308,7 @@ func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.Event != nil || update.Snapshot != nil {
 		s.syncArt(ctx)
+		s.syncStart(ctx)
 	}
 	switch {
 	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
@@ -342,6 +347,7 @@ func labelOr(value, fallback string) string {
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
 	s.syncArt(ctx)
+	s.syncStart(ctx)
 	s.syncZone(ctx)
 }
 
@@ -1441,15 +1447,25 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
 	case strings.HasPrefix(state, "clock:"):
 		return s.clockShows(strings.TrimPrefix(state, "clock:"))
-	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"):
-		which, cell, _ := strings.Cut(state, ":")
-
-		return s.hasPlayer(cell, which == "remote-player")
+	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"),
+		strings.HasPrefix(state, "player-start:"):
+		return s.hasPlayerState(state)
 	case strings.HasPrefix(state, "floor:"):
 		return s.showsFloor(strings.TrimPrefix(state, "floor:"))
 	}
 
 	return false
+}
+
+// hasPlayerState answers "player:C,R", "remote-player:C,R" and
+// "player-start:C,R".
+func (s *State) hasPlayerState(state string) bool {
+	which, cell, _ := strings.Cut(state, ":")
+	if which == "player-start" {
+		return s.hasStart(cell)
+	}
+
+	return s.hasPlayer(cell, which == "remote-player")
 }
 
 // showsFloor reports whether the Nth floor from the bottom is shown.

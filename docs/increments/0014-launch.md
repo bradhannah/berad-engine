@@ -96,7 +96,7 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 | --- | --- | --- | --- |
 | 1. Wall sprites | A wall stand-in can show a sprite, drawn in every wall cell on the Map | Headless tests: Shows offers walls, the Map draws the sprite in each wall cell and undo takes it away | Built |
 | 2. Character sprites | An NPC's sprite, chosen in its inspector; the player's, from Shows; the Map and Preview draw them in place of discs | Headless tests for the NPC's format version, the choice and its undo; a real-window screenshot of Preview with both sprites | Built |
-| 3. Game settings and the player start | The game settings document with the screen size; "Set player start here" on the Map's right-click menu, drawn as a marker | Headless tests: the document's format, setting, moving and undoing the start; the marker shows on its floor only | Planned |
+| 3. Game settings and the player start | The game settings document with the screen size; "Set player start here" on the Map's right-click menu, drawn as a marker | Headless tests: the document's format, setting, moving and undoing the start; the marker shows on its floor only | Built |
 | 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Planned |
 | 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Planned |
 | 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient gains | Planned |
@@ -122,6 +122,19 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
   the edit's undo and references, the inspector's choice and Open, Shows
   offering the player, and the Map drawing both. The real-window screenshot
   moves to step 7, where the Play tab draws both.
+- **Game settings and the player start:** a new engine package, `game`,
+  holds the game settings: the screen's columns and rows, odd numbers from 3
+  to 63, 19 by 11 for a new project, and the player start, a cell of a floor
+  of a zone. Every project holds them as a document with a fixed ID, in the
+  folder `game-settings`, edited by `game.settings.screen` and
+  `game.settings.start` from a new editor plug-in, `game`. The browser's
+  Settings inspector shows the screen's two fields below the tile size and
+  says where the player starts; the Map's right-click menu offers "Set player
+  start here" on any cell the player can stand on, and "The player starts
+  here" on the start, which it outlines in green and labels Start on its
+  floor only. Tests: the settings' format and limits, the edits' undo and
+  references, the screen fields refusing an even size, and the Map setting
+  the start, marking it, and refusing a wall.
 
 ## Not in this increment
 
