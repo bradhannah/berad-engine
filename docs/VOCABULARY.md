@@ -85,7 +85,7 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Cue** | A sound something asks for by its ID, such as `door/open`; it plays one recording, or cycles through several |
 | **Recording** | One sound file of the audio library, which cues play; an intentional silent slot has none |
 | **Category** | Whether a cue is music, SFX or ambient |
-| **Audio window** | The window where sounds are added and cues edited |
+| **Audio** | The view where sounds are added and cues edited |
 | **Attribution** | Who made a recording, where it came from and what kind of source that was, its licence and its processing steps, as its author recorded them |
 | **Processing step** | One thing done to a recording before it came into the project, such as trimming it, with the tool used and who did it |
 | **Cleared** | A recording its author has marked as allowed in a commercial game; until then it is not cleared |
@@ -97,16 +97,22 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Acoustic family** | A group of recordings that sound alike, which sets the target measuring aims at |
 | **Profile** | What kind of moment a cue plays for, such as a door starting to open, which a search finds it by |
 | **Distance** | How many cells away an ambient cue is heard, louder closer; 0 is everywhere, as a background |
-| **Soundscape** | Up to four cues the Audio window plays together, two ambient, one music and one SFX, to hear how they sit together; never saved |
+| **Soundscape** | Up to four cues Audio plays together, two ambient, one music and one SFX, to hear how they sit together; never saved |
 | **Layer** | One cue of the soundscape, with its own gain, mute and solo |
-| **Monitor level** | How loud the Audio window plays a category while its author listens, standing in for a player's volume settings; never saved |
+| **Monitor level** | How loud Audio plays a category while its author listens, standing in for a player's volume settings; never saved |
 
 ## Editor terms
 
 | Term | Meaning |
 | --- | --- |
-| **Orchestrator** | The editor's headless central process, the only writer of project data |
-| **Window process** | One editor window, each its own process |
+| **Orchestrator** | The editor's core, the only writer of project data; it runs in the editor's process, beside the editor window |
+| **Editor window** | The editor's one operating-system window: the window bar over the tab in front |
+| **Window bar** | The top of the editor window: a tab for each kind of view open, a second row for the documents of the kind in front when there are several, and the pinned clock |
+| **Tab** | One place on the window bar, showing one pane, or two side by side (a split) |
+| **Pane** | One view running in a tab, such as a Map or Watch, with its own connection to the orchestrator and its own status bar; the code and the protocol call its ID a window ID |
+| **View** | What a pane shows: the project browser, Map, Text, Workflow, Watch, Audio, Pixel editor or Palette Editor |
+| **Split** | A tab showing two panes side by side, such as a Map with Watch beside it |
+| **Pinned clock** | The preview's clock: its readout at the right end of the window bar on every tab, and its controls in a panel under it; before a preview it sets the time the next one starts at |
 | **Command** / **Event** | A request to change project data / the notice that it changed |
 | **Edit** | One kind of change, implemented by a plug-in, that knows how to undo itself |
 | **Project data** / **Session state** | Saved, undoable content / live, unsaved, never-undone state |
@@ -115,16 +121,15 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Wall family** | A kind of wall (for example "old brick"); a family supplies one sprite, its variant, per neighbour arrangement |
 | **Ground** / **on top** | The two layers of a cell: its ground, and at most one thing standing on it |
 | **Draft** | A text field's unsaved text; Save, Cmd+S, or Enter in a one-line field saves it as an ordinary edit |
-| **Save bar** | The strip at the foot of an inspector, or of the Text window, that says how many changes are unsaved and holds Revert and Save |
+| **Save bar** | The strip at the foot of an inspector, or of Text, that says how many changes are unsaved and holds Revert and Save |
 | **Section** | A group of one document type in the project browser, such as Zones or NPCs, with a count and a [+] |
-| **On top** | A window kept above every other window, set with the toggle at the right of its status bar; session state for each window |
-| **Clock window** | The preview's clock and its controls, on top by default; before a preview it sets the time the next one starts at |
-| **Keys sheet** | The list of a window's keys, opened with its Keys button or ? |
+| **On top** | The editor window kept above every other application's windows, set with the toggle at the right of a pane's status bar |
+| **Keys sheet** | The list of a view's keys, opened with its Keys button or ? |
 | **Folder** | A folder in a section of the project browser, holding documents of that type and other folders; a real folder on disk |
 | **Tag** | A word an author gives a document to find it by, such as "town"; tags group documents across types and mean nothing to a game |
 | **Search** | The project browser's box that shows only the documents whose name, folder or tag holds what is typed; "#town" looks at tags only |
-| **Pick** | Choosing something in a Map window for another window, through the orchestrator |
-| **Preview** | Playing a zone inside the editor, run by the Map window that started it (D15); it never changes the project |
+| **Pick** | Choosing something in a Map for another pane, through the orchestrator |
+| **Preview** | Playing a zone inside the editor, run by the Map that started it (D15); it never changes the project |
 | **Run** | One play of a zone from its start; a preview is a run, and each has its own ID |
 
 ## Working terms
