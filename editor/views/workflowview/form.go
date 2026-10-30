@@ -523,7 +523,7 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, made *control,
 	switch {
 	case made.pick.Update(input):
 		if s.picker.Picking() {
-			s.picker.Cancel(ctx, "cancelled in the workflow window")
+			s.picker.Cancel(ctx, "cancelled in the workflow")
 
 			return
 		}

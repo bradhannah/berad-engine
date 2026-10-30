@@ -53,26 +53,25 @@ func TestAudioWindowLoudnessAndFiles(t *testing.T) {
 	recordingShot, loudnessShot := shotPath(t, "audio-recording.png"), shotPath(t, "audio-loudness.png")
 	playedByShot := shotPath(t, "audio-played-by.png")
 	browserScript := script(must("section:audio", 600), wait(5), click("ui:new-sound"),
-		must("row:Two knocks", 1800), wait(5), quit())
+		must("row:Two knocks", 1800), wait(5), quitWhenAlone())
 	audioScript := script(
 		must("state:dialog", 900), wait(5), click("ui:dialog-ok"),
 		must("state:selected=cue:sfx/two_knocks", 900), must("state:waveform", 900), wait(10),
 		click("ui:region-end"), keys("Cmd+A"), typed("0.35"), keys("Enter"), wait(5),
 		click("ui:apply-region"), wait(40),
 		click("ui:tab-recordings"), wait(10), click("rec:two_knocks"), wait(10), click("ui:open-file"), wait(60),
-		click("ui:find-sounds"), wait(5), step{Repeat: 2, Screenshot: fileShot},
+		click("ui:find-sounds"), wait(5), shoot(fileShot),
 		click("ui:make-pieces"), wait(60), click("rec:two_knocks_02"), must("state:waveform", 900), wait(30),
-		step{Repeat: 2, Screenshot: recordingShot},
+		shoot(recordingShot),
 		step{Wheel: &[2]float64{0, -20}, Repeat: 2, At: "ui:part-whole"}, wait(5),
-		step{Repeat: 2, Screenshot: playedByShot},
+		shoot(playedByShot),
 		click("ui:tab-cues"), wait(10), click("cue:sfx/two_knocks"), wait(40),
-		step{Wheel: &[2]float64{0, -20}, Repeat: 2, At: "ui:play"}, wait(5), step{Repeat: 2, Screenshot: cueShot},
+		step{Wheel: &[2]float64{0, -20}, Repeat: 2, At: "ui:play"}, wait(5), shoot(cueShot),
 		click("ui:loudness"), wait(60), click("ui:measure-all"), wait(120),
-		click("ui:adjust-quieter-sfx"), wait(60), step{Repeat: 2, Screenshot: loudnessShot}, quit(),
+		click("ui:adjust-quieter-sfx"), wait(60), shoot(loudnessShot), quit(),
 	)
-	mapScript := script(must("state:loaded", 600), wait(5), quit())
 	runEditorWith(t, binary, project, scripts{
-		"browser": {browserScript}, "audio": {audioScript}, "map": {mapScript},
+		"browser": {browserScript}, "audio": {audioScript},
 	}, "BERAD_TEST_SOUND_FILE="+source)
 	noCrashes(t, project)
 

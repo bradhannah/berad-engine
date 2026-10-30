@@ -2,7 +2,6 @@ package window
 
 import (
 	"context"
-	"fmt"
 	"image"
 	"strconv"
 	"strings"
@@ -21,8 +20,7 @@ const (
 
 // windowKeys handles what every window does the same way, before its view
 // sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, the close
-// button asks to close the window, and in a shell Cmd+Shift+O moves a pane
-// into a window of its own.
+// button asks to close the window.
 func (h *host) windowKeys(input *ui.Input) {
 	switch h.surface.Closing() {
 	case closeQuit:
@@ -36,8 +34,6 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.askQuit()
 	case input.Consume(ui.KeyS, ui.Cmd()):
 		h.save()
-	case h.popOut != nil && input.Consume(ui.KeyO, ui.CmdShift()):
-		h.popOut()
 	}
 }
 
@@ -63,14 +59,11 @@ func (h *host) askQuit() {
 	})
 }
 
-// quitDialog asks whether the author is done: every window will close. With
+// quitDialog asks whether the author is done: every tab will close. With
 // unsaved changes anywhere it names them and offers Save and quit, Don't save
 // and Cancel; with none, Quit and Cancel.
 func quitDialog(ask protocol.QuitAsk) *ui.Dialog {
-	closes := "This window will close."
-	if ask.Windows > 1 {
-		closes = fmt.Sprintf("All %d windows will close.", ask.Windows)
-	}
+	const closes = "Every tab will close."
 	if len(ask.Unsaved) == 0 {
 		return ui.NewDialog("Quit the editor?", []string{closes, "Everything is saved."},
 			ui.DialogButton(quitNow, "Quit"), ui.DialogButton(ui.DialogCancel, "Cancel"))
@@ -79,7 +72,7 @@ func quitDialog(ask protocol.QuitAsk) *ui.Dialog {
 	for _, window := range ask.Unsaved {
 		name := window.Name
 		if name == "" {
-			name = "a " + window.View + " window"
+			name = "a " + window.View + " tab"
 		}
 		changes := "1 change"
 		if window.Count > 1 {
@@ -133,7 +126,7 @@ func (h *host) saveForQuit() bool {
 	if saver.Save(&h.ctx) {
 		h.quitSaving = true
 	} else {
-		h.frame.Status("This window could not save its changes, so it stays open. Fix them, then quit again.")
+		h.frame.Status("This tab could not save its changes, so it stays open. Fix them, then quit again.")
 	}
 
 	return true
@@ -147,7 +140,7 @@ func (h *host) savedForQuit() bool {
 	}
 	h.quitSaving = false
 	if saver, ok := h.view.(frame.Saver); ok && saver.Unsaved(h.conn) > 0 {
-		h.frame.Status("Some changes could not be saved, so this window stays open.")
+		h.frame.Status("Some changes could not be saved, so this tab stays open.")
 
 		return false
 	}
@@ -176,13 +169,16 @@ func (h *host) reportUnsaved() {
 }
 
 // Locate finds a named part of the window for input scripts: the quit
-// dialog's buttons while it shows, the status bar's On top toggle, or the
-// view's parts.
+// dialog's buttons while it shows, how many tabs the editor window has
+// ("state:tabs:1"), the status bar's On top toggle, or the view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
 
 		return h.quitDialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: h.ctx.Size})
+	}
+	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
+		return image.Pt(0, 0), strconv.Itoa(h.tabs()) == count
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" {
 		return point, found

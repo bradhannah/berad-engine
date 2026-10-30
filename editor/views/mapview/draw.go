@@ -436,7 +436,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			s.theme.DrawLabel(screen, "PICKING", textX, textY, ui.ColorSelect())
 			textY += ui.LineHeight
 			line("Click an anchor for", ui.ColorInk())
-			line(labelOr(s.pick.Label, "the other window")+".", ui.ColorInk())
+			line(labelOr(s.pick.Label, "the other tab")+".", ui.ColorInk())
 			line("Escape cancels.", ui.ColorMuted())
 		case !s.anchor.IsZero():
 			s.drawAnchorInspector(screen, floorData, textX, &textY)
@@ -564,7 +564,7 @@ func keyRows() []ui.KeyRow {
 		{Label: "Undo, redo", Keys: []string{"Cmd+Z", "Cmd+Shift+Z"}},
 		{Label: "New view of the zone", Keys: []string{"Cmd+N"}},
 		{Label: "Save", Keys: []string{"Cmd+S"}},
-		{Label: "Close window", Keys: []string{"Cmd+W"}},
+		{Label: "Close tab", Keys: []string{"Cmd+W"}},
 		{Label: "Quit the editor", Keys: []string{"Cmd+Q"}},
 		{Label: "This list", Keys: []string{"?"}},
 	}

@@ -288,7 +288,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 }
 
 func (s *State) stopPreview(ctx *frame.Context, message string) {
-	ctx.Requests.PreviewStop(protocol.PreviewStop{Run: s.preview.id, Reason: "stopped in the window running it"})
+	ctx.Requests.PreviewStop(protocol.PreviewStop{Run: s.preview.id, Reason: "stopped in the Map running it"})
 	ctx.Sounds.Stop()
 	s.preview = nil
 	ctx.Frame.Status(message)

@@ -247,7 +247,7 @@ func (s *State) control(ctx *frame.Context, control protocol.PreviewControl) {
 	ctx.Requests.PreviewControl(control)
 }
 
-// Readout sums the clock up for a shell's window bar (increment 10): the
+// Readout sums the clock up for the window bar (increment 10): the
 // time it shows, and while a preview runs, that it is live and at what rate.
 // It reports whether a preview runs.
 func (s *State) Readout() (string, bool) {

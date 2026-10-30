@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,32 +23,21 @@ var (
 // fakeOrchestrator accepts one connection and lets the test script replies.
 type fakeOrchestrator struct {
 	t        *testing.T
-	socket   string
 	accepted chan *protocol.Conn
 }
 
 func newFake(t *testing.T) *fakeOrchestrator {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "beradc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	socket := filepath.Join(dir, "s.sock")
-	listener, err := net.Listen("unix", socket)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = listener.Close() })
-	fake := &fakeOrchestrator{t: t, socket: socket, accepted: make(chan *protocol.Conn, 1)}
-	go func() {
-		connection, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		fake.accepted <- protocol.NewConn(connection, protocol.JSONCodec{})
-	}()
-	return fake
+	return &fakeOrchestrator{t: t, accepted: make(chan *protocol.Conn, 1)}
+}
+
+// connect opens an in-memory connection, as the orchestrator's Connect does,
+// and hands its other end to the test.
+func (f *fakeOrchestrator) connect(context.Context) (net.Conn, error) {
+	pane, served := net.Pipe()
+	f.t.Cleanup(func() { _ = served.Close() })
+	f.accepted <- protocol.NewConn(served, protocol.JSONCodec{})
+	return pane, nil
 }
 
 func (f *fakeOrchestrator) expect(conn *protocol.Conn, kind protocol.Kind) protocol.Message {
@@ -109,7 +96,7 @@ func TestMissedRevisionTriggersResubscribe(t *testing.T) {
 
 	dialed := make(chan *client.Client, 1)
 	go func() {
-		connection, err := client.Dial(ctx, fake.socket, protocol.Hello{Build: "b"}, registry)
+		connection, err := client.Dial(ctx, fake.connect, protocol.Hello{}, registry)
 		if err != nil {
 			t.Error(err)
 		}

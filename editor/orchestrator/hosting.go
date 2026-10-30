@@ -1,52 +1,46 @@
 package orchestrator
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// hosting is what the orchestrator knows of a shell (increment 10): a window
-// whose process shows the windows the orchestrator opens as its panes, each
-// with a connection of its own, so to the orchestrator a pane is a window.
+// ErrNoWindow reports an Open request while the editor window is not
+// connected, so there is nowhere to show what was asked for.
+var ErrNoWindow = errors.New("the editor window is not open")
+
+// hosting is what the orchestrator knows of the editor window (increment
+// 13): it shows every window the orchestrator opens as a pane, each with a
+// connection of its own, so to the orchestrator a pane is a window.
 type hosting struct {
-	// shell is the connected shell, nil when none is; window is the shell's
-	// window, kept after it leaves so that its process ending quits the
-	// editor.
-	shell  *window
-	window ids.ULID
-	// panes are the windows asked of the shell, until each leaves.
-	panes map[ids.ULID]LaunchRequest
-	// popOuts are windows opened as processes of their own for a pane, each
-	// naming the pane to close once the window has joined.
-	popOuts map[ids.ULID]ids.ULID
+	// shell is the editor window's own connection, nil when it is not
+	// connected.
+	shell *window
+	// panes are the windows asked of the editor window, until each leaves.
+	panes map[ids.ULID]hostedPane
+}
+
+// hostedPane is a window the editor window was asked to show.
+type hostedPane struct {
+	view   string
+	target ids.ULID
 }
 
 func newHosting() *hosting {
-	return &hosting{shell: nil, window: ids.ULID{}, panes: map[ids.ULID]LaunchRequest{}, popOuts: map[ids.ULID]ids.ULID{}}
+	return &hosting{shell: nil, panes: map[ids.ULID]hostedPane{}}
 }
 
-// hostJoined notes a shell joining, and closes the pane a window that has
-// just joined was popped out of: the window is there first, so the undo list
-// they share carries over.
+// hostJoined notes the editor window joining.
 func (o *Orchestrator) hostJoined(joined *window) {
 	if joined.hello.Hosts {
-		o.hosting.shell, o.hosting.window = joined, joined.id
-	}
-	pane, ok := o.hosting.popOuts[joined.id]
-	if !ok {
-		return
-	}
-	delete(o.hosting.popOuts, joined.id)
-	if left, open := o.windows[pane]; open {
-		o.send(left, mustMessage(protocol.KindShutdown, 0, protocol.Shutdown{
-			Reason: "moved to a window of its own", Save: true,
-		}))
+		o.hosting.shell = joined
 	}
 }
 
-// hostLeft forgets a pane or the shell that left.
+// hostLeft forgets a pane, or the editor window, that left.
 func (o *Orchestrator) hostLeft(left *window) {
 	if o.hosting.shell == left {
 		o.hosting.shell = nil
@@ -54,56 +48,30 @@ func (o *Orchestrator) hostLeft(left *window) {
 	delete(o.hosting.panes, left.id)
 }
 
-// hostWindow asks the shell to show a window as one of its panes, under a
+// launch asks the editor window to show a window as one of its panes, under a
 // window ID it then connects with.
-func (o *Orchestrator) hostWindow(view string, target ids.ULID) (ids.ULID, error) {
+func (o *Orchestrator) launch(view string, target ids.ULID) (ids.ULID, error) {
+	if o.hosting.shell == nil {
+		return ids.ULID{}, ErrNoWindow
+	}
 	window, err := o.ids.New()
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("window id: %w", err)
 	}
-	o.hosting.panes[window] = LaunchRequest{
-		View: view, Target: target, Window: window, Socket: o.cfg.SocketPath, Build: o.cfg.Build, Shell: false,
-	}
+	o.hosting.panes[window] = hostedPane{view: view, target: target}
 	o.send(o.hosting.shell, mustMessage(protocol.KindHost, 0, protocol.Host{View: view, Target: target, Window: window}))
 
 	return window, nil
 }
 
-// popOut opens a window as a process of its own for a shell's pane, which
-// closes once the window has joined.
-func (o *Orchestrator) popOut(view string, target, pane ids.ULID) (ids.ULID, error) {
-	window, err := o.start(view, target, false)
-	if err != nil {
-		return ids.ULID{}, err
-	}
-	o.hosting.popOuts[window] = pane
-
-	return window, nil
-}
-
-// hostedView reports whether the shell was asked for a window of a view that
-// has not left yet.
+// hostedView reports whether the editor window was asked for a window of a
+// view that has not left yet.
 func (o *Orchestrator) hostedView(view string) bool {
-	for _, request := range o.hosting.panes {
-		if request.View == view {
+	for _, pane := range o.hosting.panes {
+		if pane.view == view {
 			return true
 		}
 	}
 
 	return false
-}
-
-// shellExited quits the editor when the shell's process ends: closing the
-// project browser closes the editor (D10). Any windows of their own still
-// open are told to save and close.
-func (o *Orchestrator) shellExited(exited ids.ULID) {
-	if exited.IsZero() || exited != o.hosting.window {
-		return
-	}
-	o.quitting = true
-	for _, open := range o.windows {
-		o.send(open, mustMessage(protocol.KindShutdown, 0, protocol.Shutdown{
-			Reason: "the project browser closed", Save: true,
-		}))
-	}
 }

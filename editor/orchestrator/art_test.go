@@ -78,8 +78,8 @@ func dialArt(t testing.TB, h *harness, group string, made lantern) *client.Clien
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
-		Build: testBuild, View: "map", Target: made.tile, UndoGroup: group,
+	connection, err := client.Dial(ctx, h.connect, protocol.Hello{
+		View: "map", Target: made.tile, UndoGroup: group,
 	}, artRegistry(t))
 	if err != nil {
 		t.Fatal(err)
@@ -105,9 +105,9 @@ func TestOlderProjectGetsItsArtDocuments(t *testing.T) {
 	dir := t.TempDir()
 	createProject(t, dir)
 	for range 2 {
-		cfg := baseConfig(t, dir, shortSocket(t))
+		cfg := baseConfig(t, dir)
 		cfg.Registry = artRegistry(t)
-		orch, err := orchestrator.New(context.Background(), cfg)
+		orch, err := orchestrator.New(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,9 +158,9 @@ func TestOlderProjectGetsItsArtDocuments(t *testing.T) {
 func projectWithLantern(t *testing.T, dir string) lantern {
 	t.Helper()
 	createProject(t, dir)
-	cfg := baseConfig(t, dir, shortSocket(t))
+	cfg := baseConfig(t, dir)
 	cfg.Registry = artRegistry(t)
-	orch, err := orchestrator.New(context.Background(), cfg)
+	orch, err := orchestrator.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,9 +267,9 @@ func TestChangeDocumentBeforeRun(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	cfg := baseConfig(t, dir, shortSocket(t))
+	cfg := baseConfig(t, dir)
 	cfg.Registry = artRegistry(t)
-	orch, err := orchestrator.New(context.Background(), cfg)
+	orch, err := orchestrator.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,8 +2,6 @@ package orchestrator_test
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,17 +9,15 @@ import (
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
-	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// dialHello connects with a hello of the test's own, as a shell or its pane
-// does.
+// dialHello connects with a hello of the test's own, as the editor window or
+// one of its panes does.
 func (h *harness) dialHello(t testing.TB, hello protocol.Hello) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	hello.Build = testBuild
-	connection, err := client.Dial(ctx, h.socket, hello, newRegistry(t))
+	connection, err := client.Dial(ctx, h.connect, hello, newRegistry(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,30 +25,44 @@ func (h *harness) dialHello(t testing.TB, hello protocol.Hello) *client.Client {
 	return connection
 }
 
-// Increment 10: with a shell connected, a window asked for is shown as one of
-// its panes rather than started as a process. The pane connects as the
-// window the orchestrator opened, so opening it again draws its attention
-// and quitting counts it.
-func TestShellHostsTheWindowsItIsAskedFor(t *testing.T) {
+// editorWindow connects as the editor window's own connection, the project
+// browser's, which the orchestrator asks to show every window it opens.
+func (h *harness) editorWindow(t testing.TB) *client.Client {
+	t.Helper()
+	return h.dialHello(t, protocol.Hello{View: "browser", Target: project.IndexID(), Hosts: true})
+}
+
+// hostNext waits for the editor window to be asked for a pane, and connects
+// that pane as the window the orchestrator opened.
+func (h *harness) hostNext(t *testing.T, shell *client.Client) (*client.Client, protocol.Host) {
+	t.Helper()
+	asked := nextUpdate(t, shell, "a pane to show", func(u client.Update) bool { return u.Host != nil })
+	pane := h.dialHello(t, protocol.Hello{
+		Window: asked.Host.Window, View: asked.Host.View, Target: asked.Host.Target,
+	})
+	if pane.Window() != asked.Host.Window {
+		t.Fatalf("pane joined as %s, not %s", pane.Window(), asked.Host.Window)
+	}
+	return pane, *asked.Host
+}
+
+// Increment 13: a window asked for is shown as a pane of the editor window.
+// The pane connects as the window the orchestrator opened, so opening it
+// again draws its attention and quitting counts it.
+func TestEditorWindowShowsTheWindowsItIsAskedFor(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
-	shell := h.dialHello(t, protocol.Hello{View: "browser", Target: project.IndexID(), Hosts: true})
-	asker := h.dialView(t, "text", ids.ULID{}, "")
+	shell := h.editorWindow(t)
+	asker := h.dialView(t, "text", project.IndexID(), "")
 
 	if _, err := asker.Open(pickContext(t), orchestrator.MapView, h.floor, false); err != nil {
 		t.Fatal(err)
 	}
-	asked := nextUpdate(t, shell, "the map to host", func(u client.Update) bool { return u.Host != nil })
-	if asked.Host.View != orchestrator.MapView || asked.Host.Target != h.floor || asked.Host.Window.IsZero() {
-		t.Fatalf("host %+v", asked.Host)
-	}
-	pane := h.dialHello(t, protocol.Hello{
-		Window: asked.Host.Window, View: orchestrator.MapView, Target: h.floor, UndoGroup: "map:" + h.floor.String(),
-	})
-	if pane.Window() != asked.Host.Window {
-		t.Fatalf("pane joined as %s, not %s", pane.Window(), asked.Host.Window)
+	pane, asked := h.hostNext(t, shell)
+	if asked.View != orchestrator.MapView || asked.Target != h.floor {
+		t.Fatalf("host %+v", asked)
 	}
 	if _, err := asker.OpenItem(pickContext(t), orchestrator.MapView, h.floor, "anchor"); err != nil {
 		t.Fatal(err)
@@ -67,80 +77,37 @@ func TestShellHostsTheWindowsItIsAskedFor(t *testing.T) {
 	}
 }
 
-// Increment 10: popping a pane out opens its window as a process of its own,
-// even with a shell connected, and closes the pane once that window has
-// joined.
-func TestPopOutClosesThePaneOnceItsWindowJoins(t *testing.T) {
+// Increment 13: with the editor window not connected, there is nowhere to
+// show a window, so opening one is refused.
+func TestOpenWithoutTheEditorWindowIsRefused(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	markers := t.TempDir()
-	h := start(t, dir, func(cfg *orchestrator.Config) { cfg.Launcher = testLauncher(roleIdleWindow, markers) })
-	shell := h.dialHello(t, protocol.Hello{View: "browser", Target: project.IndexID(), Hosts: true})
-	if _, err := shell.Open(pickContext(t), orchestrator.MapView, h.floor, false); err != nil {
-		t.Fatal(err)
-	}
-	asked := nextUpdate(t, shell, "the map to host", func(u client.Update) bool { return u.Host != nil })
-	pane := h.dialHello(t, protocol.Hello{Window: asked.Host.Window, View: orchestrator.MapView, Target: h.floor})
-
-	result, err := shell.PopOut(pickContext(t), orchestrator.MapView, h.floor, pane.Window())
-	if err != nil || !result.OK {
-		t.Fatalf("pop out %+v %v", result, err)
-	}
-	closing := nextUpdate(t, pane, "the pane closing", func(u client.Update) bool { return u.Shutdown != nil })
-	if !closing.Shutdown.Save {
-		t.Fatalf("shutdown %+v", closing.Shutdown)
-	}
-	select {
-	case update := <-shell.Updates():
-		if update.Host != nil {
-			t.Fatalf("the popped-out window was hosted: %+v", update.Host)
-		}
-	default:
+	h := start(t, dir, nil)
+	view := h.dial(t, "")
+	result, err := view.Open(pickContext(t), orchestrator.MapView, h.floor, true)
+	if err == nil || result.Reason != orchestrator.ErrNoWindow.Error() {
+		t.Fatalf("open %+v %v", result, err)
 	}
 }
 
-// Increment 10: closing the shell's process quits the editor, and tells any
-// window still open on its own to close.
-func TestShellClosingQuitsTheEditor(t *testing.T) {
+// D10: once a quit has closed every window, the orchestrator stops by
+// itself, saving first.
+func TestQuitStopsOnceEveryWindowHasLeft(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	markers := t.TempDir()
-	cfg := baseConfig(t, dir, shortSocket(t))
-	cfg.Launcher = testLauncher(roleShellWindow, markers)
-	// Without this, only the shell closing can quit the editor.
-	cfg.QuitWhenLastWindowCloses = false
-	orch, err := orchestrator.New(context.Background(), cfg)
-	if err != nil {
+	h := start(t, dir, nil)
+	shell := h.editorWindow(t)
+	other := h.dial(t, "")
+	if result, err := shell.Quit(pickContext(t), true); err != nil || !result.OK {
+		t.Fatalf("quit %+v %v", result, err)
+	}
+	for _, window := range []*client.Client{shell, other} {
+		nextUpdate(t, window, "the shutdown", func(u client.Update) bool { return u.Shutdown != nil })
+		_ = window.Close()
+	}
+	if err := h.stopped(); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := orch.LaunchShell("browser", project.IndexID()); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- orch.Run(context.Background()) }()
-	h := &harness{t: t, dir: dir, socket: cfg.SocketPath, floor: ids.ULID{}}
-	other := h.dialView(t, "text", ids.ULID{}, "")
-	waitFor(t, "the shell to join", func() bool {
-		ask, err := other.QuitAsk(pickContext(t))
-		return err == nil && ask.Windows == 2
-	})
-
-	if err := os.WriteFile(filepath.Join(markers, closeShell), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	closing := nextUpdate(t, other, "the other window closing", func(u client.Update) bool { return u.Shutdown != nil })
-	if !closing.Shutdown.Save {
-		t.Fatalf("shutdown %+v", closing.Shutdown)
-	}
-	_ = other.Close()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("the editor did not quit")
 	}
 }

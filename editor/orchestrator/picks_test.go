@@ -2,8 +2,6 @@ package orchestrator_test
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -130,58 +128,54 @@ func TestPickCancellation(t *testing.T) {
 	nextUpdate(t, asker, "a stale answer refused", func(u client.Update) bool { return u.PickCancel != nil && u.PickCancel.Pick == "p3" })
 }
 
-// D13: with no Map window open, the orchestrator opens one on the chosen zone
-// and starts the pick once it connects.
+// D13: with no Map open, the orchestrator asks the editor window for one on
+// the chosen zone and starts the pick once it connects.
 func TestPickOpensAMapOnAZone(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	floorID := createProject(t, dir)
-	h := start(t, dir, func(cfg *orchestrator.Config) {
-		cfg.Launcher = orchestrator.ExecutableLauncher{Path: os.Args[0], Env: []string{
-			envRole + "=" + rolePickWindow, envPickItem + "=chosen", envPickFloor + "=" + floorID.String(),
-		}}
-	})
+	createProject(t, dir)
+	h := start(t, dir, nil)
+	shell := h.editorWindow(t)
 	asker := h.dialView(t, "text", ids.ULID{}, "", project.IndexID())
 	town, _ := zoneWithAnchor(t, h, asker)
 	if _, err := asker.PickStart(pickContext(t), protocol.PickStart{Pick: "z1", What: protocol.PickAnchor, Label: "", Zone: town}); err != nil {
 		t.Fatal(err)
 	}
-	answer := nextUpdate(t, asker, "the answer from the new map", func(u client.Update) bool { return u.PickAnswer != nil })
-	if answer.PickAnswer.Item != "chosen" || answer.PickAnswer.Floor != h.floor {
-		t.Fatalf("answer %+v", answer.PickAnswer)
+	pane, asked := h.hostNext(t, shell)
+	if asked.View != orchestrator.MapView || asked.Target != town {
+		t.Fatalf("asked for %+v", asked)
+	}
+	started := nextUpdate(t, pane, "the pick", func(u client.Update) bool { return u.PickStart != nil })
+	answer := protocol.PickAnswer{Pick: started.PickStart.Pick, Floor: h.floor, Item: "chosen"}
+	if err := pane.PickAnswer(answer); err != nil {
+		t.Fatal(err)
+	}
+	got := nextUpdate(t, asker, "the answer from the new map", func(u client.Update) bool { return u.PickAnswer != nil })
+	if got.PickAnswer.Item != "chosen" || got.PickAnswer.Floor != h.floor {
+		t.Fatalf("answer %+v", got.PickAnswer)
 	}
 }
 
-// D13: opening something already open draws attention to its window rather
+// D13: opening something already open draws attention to its pane rather
 // than opening another; New view opens another on purpose.
 func TestOpeningAgainDrawsAttention(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	markers := t.TempDir()
-	h := start(t, dir, func(cfg *orchestrator.Config) { cfg.Launcher = testLauncher(roleIdleWindow, markers) })
-	opener := h.dialView(t, "browser", project.IndexID(), "")
+	h := start(t, dir, nil)
+	shell := h.editorWindow(t)
 	open := func(newView bool) {
 		t.Helper()
-		if _, err := opener.Open(pickContext(t), orchestrator.MapView, h.floor, newView); err != nil {
+		if _, err := shell.Open(pickContext(t), orchestrator.MapView, h.floor, newView); err != nil {
 			t.Fatal(err)
 		}
 	}
-	logs := func() int {
-		entries, _ := os.ReadDir(filepath.Join(dir, ".berad", "logs"))
-		return len(entries)
-	}
 	open(false)
-	waitFor(t, "the first window", func() bool { return logs() == 1 })
-	waitFor(t, "it to connect", func() bool {
-		maps, err := opener.PickAsk(pickContext(t), protocol.PickAnchor)
-		return err == nil && len(maps) == 1
-	})
+	first, _ := h.hostNext(t, shell)
 	open(false)
-	time.Sleep(300 * time.Millisecond)
-	if logs() != 1 {
-		t.Fatal("opening again started another window")
-	}
+	nextUpdate(t, first, "attention", func(u client.Update) bool { return u.Attention })
 	open(true)
-	waitFor(t, "the new view", func() bool { return logs() == 2 })
+	if second, _ := h.hostNext(t, shell); second.Window() == first.Window() {
+		t.Fatal("New view showed the same pane")
+	}
 }

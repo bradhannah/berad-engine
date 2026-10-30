@@ -64,16 +64,16 @@ func knockWAV() []byte {
 }
 
 // runEditorWith is runEditor with more environment, such as the file a
-// window chooses instead of showing the Open dialog.
-func runEditorWith(t *testing.T, binary, project string, windows scripts, env ...string) {
+// pane chooses instead of showing the Open dialog.
+func runEditorWith(t *testing.T, binary, project string, panes scripts, env ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, "open", "--project", project, "--sample")
-	cmd.Env = append(append(os.Environ(), windows.env(t)), env...)
+	cmd.Env = append(append(os.Environ(), panes.env(t)), env...)
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
-		t.Fatalf("editor did not quit after its windows closed\n%s", output)
+		t.Fatalf("editor did not quit after its tabs closed\n%s", output)
 	}
 	if err != nil {
 		t.Fatalf("editor: %v\n%s", err, output)
@@ -81,7 +81,7 @@ func runEditorWith(t *testing.T, binary, project string, windows scripts, env ..
 }
 
 // TestAudioWindowAddsAndEditsSounds adds a sound from the project browser's
-// Audio section: the Audio window opens on the Open dialog's file, asks what
+// Audio section: Audio opens on the Open dialog's file, asks what
 // it is and who made it, and copies it in as a new cue. It plays the cue,
 // makes it a step quieter, changes its category and undoes that, then lists
 // the recordings.
@@ -98,20 +98,19 @@ func TestAudioWindowAddsAndEditsSounds(t *testing.T) {
 	browserScript := script(
 		must("row:Notes", 600), must("section:audio", 600), wait(5), click("ui:new-sound"),
 		must("row:Door knock", 1800), wait(5), click("row:Door knock"), wait(10),
-		step{Repeat: 2, Screenshot: browserShot}, quit(),
+		shoot(browserShot), quitWhenAlone(),
 	)
 	audioScript := script(
 		must("state:dialog", 900), wait(5), click("ui:creator"), typed("Test recordist"),
 		click("ui:license"), typed("CC0-1.0"), click("ui:commercial"), wait(3),
-		step{Repeat: 2, Screenshot: dialogShot}, click("ui:dialog-ok"),
+		shoot(dialogShot), click("ui:dialog-ok"),
 		must("state:selected=cue:sfx/door_knock", 900), wait(10), click("ui:play"), wait(30),
 		click("ui:quieter"), wait(30), click("ui:category-music"), wait(30), keys("Cmd+Z"), wait(30),
-		step{Repeat: 2, Screenshot: cueShot}, click("ui:tab-recordings"), wait(10),
-		click("rec:door_knock"), wait(10), step{Repeat: 2, Screenshot: recordingsShot}, quit(),
+		shoot(cueShot), click("ui:tab-recordings"), wait(10),
+		click("rec:door_knock"), wait(10), shoot(recordingsShot), quit(),
 	)
-	mapScript := script(must("state:loaded", 600), wait(5), quit())
 	runEditorWith(t, binary, project, scripts{
-		"browser": {browserScript}, "audio": {audioScript}, "map": {mapScript},
+		"browser": {browserScript}, "audio": {audioScript},
 	}, "BERAD_TEST_SOUND_FILE="+source)
 	noCrashes(t, project)
 
@@ -154,18 +153,17 @@ func TestAudioWindowTrimsAndLevels(t *testing.T) {
 	}
 	waveShot, levelShot := shotPath(t, "audio-waveform.png"), shotPath(t, "audio-level.png")
 	browserScript := script(must("section:audio", 600), wait(5), click("ui:new-sound"),
-		must("row:Padded knock", 1800), wait(5), quit())
+		must("row:Padded knock", 1800), wait(5), quitWhenAlone())
 	audioScript := script(
 		must("state:dialog", 900), wait(5), click("ui:dialog-ok"),
 		must("state:selected=cue:sfx/padded_knock", 900), must("state:waveform", 900), wait(10),
-		click("ui:suggest-region"), wait(5), step{Repeat: 2, Screenshot: waveShot},
+		click("ui:suggest-region"), wait(5), shoot(waveShot),
 		click("ui:apply-region"), wait(40),
 		click("ui:duplicate-region"), wait(40), click("ui:check-files"), wait(40),
-		step{Repeat: 2, Screenshot: levelShot}, quit(),
+		shoot(levelShot), quit(),
 	)
-	mapScript := script(must("state:loaded", 600), wait(5), quit())
 	runEditorWith(t, binary, project, scripts{
-		"browser": {browserScript}, "audio": {audioScript}, "map": {mapScript},
+		"browser": {browserScript}, "audio": {audioScript},
 	}, "BERAD_TEST_SOUND_FILE="+source)
 	noCrashes(t, project)
 

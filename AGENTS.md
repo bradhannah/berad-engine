@@ -35,8 +35,9 @@ must be generic and self-contained.
 - Store workflow layout (node positions and similar) separately from workflow
   logic, so layout changes do not obscure logic changes in diffs.
 - In the editor, the orchestrator is the only writer of project data and is built
-  from small services behind small interfaces, not one large object. Window
-  processes never read or write project files directly.
+  from small services behind small interfaces, not one large object. The
+  editor window's panes never read or write project files directly; they reach
+  project data only through the protocol, though they share its process.
 - Apply SOLID principles at these seams; do not add interfaces where no seam is
   needed.
 

@@ -43,8 +43,8 @@ type host struct {
 	theme *ui.Theme
 	frame *frame.Frame
 	ctx   frame.Context
-	// surface is the window the host is shown in.
-	surface surface
+	// surface is the host's part of the editor window.
+	surface *paneSurface
 	script  *inputScript
 	// sounds plays the project's cues in this window.
 	sounds     *sound.Player
@@ -64,20 +64,18 @@ type host struct {
 	quitAsking bool
 	quitSaving bool
 	reported   protocol.Unsaved
-	// floating is whether the window was last asked to stay on top.
-	floating bool
-	// closeQuits makes closing this window quit the editor, as closing a
-	// shell's project browser does; hosts is told of the windows a shell is
-	// asked to show (increment 10).
+	// closeQuits makes closing this window quit the editor, as closing the
+	// project browser's tab does; hosts is told of the windows the editor
+	// window is asked to show.
 	closeQuits bool
 	hosts      func(protocol.Host)
-	// saveShot saves a screenshot; a shell saves its whole window instead.
+	// saveShot saves a screenshot, of the whole editor window.
 	saveShot func(screen *ebiten.Image, path string) error
-	// popOut moves a shell's pane into a window of its own, for Cmd+Shift+O.
-	popOut func()
+	// tabs counts the editor window's tabs, for input scripts.
+	tabs func() int
 }
 
-func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn surface) *host {
+func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn *paneSurface) *host {
 	created := &host{
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
@@ -90,7 +88,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		floating: false, closeQuits: false, hosts: nil, saveShot: saveScreenshot, popOut: nil,
+		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -126,7 +124,6 @@ func (h *host) Update() error {
 		input = h.surface.Input(h.view.Focused())
 	}
 	h.frame.UpdateStatus(&input, h.ctx.Size)
-	h.applyOnTop()
 	h.windowKeys(&input)
 	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
@@ -134,6 +131,7 @@ func (h *host) Update() error {
 	h.reportUnsaved()
 	h.flush()
 	if h.script != nil {
+		h.surface.front = h.surface.front || h.script.takeFront()
 		if shot := h.script.takeScreenshot(); shot != "" {
 			h.shot = shot
 		}
@@ -150,16 +148,6 @@ func (h *host) Update() error {
 	}
 
 	return nil
-}
-
-// applyOnTop keeps the window above every other window while the status
-// bar's On top toggle is on.
-func (h *host) applyOnTop() {
-	if h.frame.OnTop.On == h.floating {
-		return
-	}
-	h.floating = h.frame.OnTop.On
-	h.surface.SetFloating(h.floating)
 }
 
 // save saves a Saver's typed changes for Cmd+S, or says there is nothing

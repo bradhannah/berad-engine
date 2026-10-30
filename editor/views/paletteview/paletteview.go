@@ -168,7 +168,7 @@ func (s *State) ReadOnly() bool { return s.target == art.DefaultPaletteID() }
 
 // Title is the window title: the palette's name.
 func (s *State) Title(docs frame.Docs) string {
-	return "Palette Editor: " + s.paletteName(docs) + "  (window " + s.window.Short(shortID) + ")"
+	return "Palette Editor: " + s.paletteName(docs) + "  (view " + s.window.Short(shortID) + ")"
 }
 
 // paletteName is the palette's name, from the project index.

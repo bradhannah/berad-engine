@@ -176,6 +176,8 @@ Chosen while building, for its author to check:
   opacity only while Opacity is mixed.
 - **The sample paints its lantern in Default's grey 3, 5, 8, 11 and 14** and
   the glass of a palette of its own, "Sample", which the sample zone lists.
+  (Changed in [increment 13](0013-single-window.md): the lantern is painted
+  only from the sample's palette, now "gloomy".)
 
 ## Wireframes
 

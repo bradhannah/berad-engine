@@ -95,15 +95,10 @@ func (o *Orchestrator) openClock() {
 			return
 		}
 	}
-	for _, started := range o.children {
-		if started.request.View == ClockView {
-			return
-		}
-	}
 	if o.hostedView(ClockView) {
 		return
 	}
-	if _, err := o.launch(ClockView, projectindex.IndexID()); err != nil && !errors.Is(err, ErrNoLauncher) {
+	if _, err := o.launch(ClockView, projectindex.IndexID()); err != nil && !errors.Is(err, ErrNoWindow) {
 		o.cfg.Logger.Warn("could not open the Clock window", "error", err)
 	}
 }

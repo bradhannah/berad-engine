@@ -53,7 +53,7 @@ type audioState struct {
 func newAudioState() *audioState {
 	return &audioState{
 		library: nil, asking: false, again: false, uses: nil, usesFor: "",
-		open: ui.NewButton("open-audio", "Open in Audio window"), deleting: "",
+		open: ui.NewButton("open-audio", "Open in Audio"), deleting: "",
 	}
 }
 
@@ -221,7 +221,7 @@ func (s *State) audioContextItems() []ui.MenuItem {
 	}
 
 	return []ui.MenuItem{
-		contextItem(contextOpenAudio, "Open in Audio window", ui.IconNone), ruled(add),
+		contextItem(contextOpenAudio, "Open in Audio", ui.IconNone), ruled(add),
 		ruled(dangerous(contextItem(contextDelete, "Delete", ui.IconNone))),
 	}
 }

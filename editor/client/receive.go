@@ -53,7 +53,7 @@ func (c *Client) dispatch(message protocol.Message) {
 		c.dispatchPreview(message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindUnsaved,
-		protocol.KindQuit, protocol.KindAudioEdit:
+		protocol.KindQuit, protocol.KindAudioEdit, protocol.KindCrashed:
 		return
 	default:
 		return
@@ -62,7 +62,7 @@ func (c *Client) dispatch(message protocol.Message) {
 
 // dispatchNotice delivers what a window is told without asking: to draw
 // attention to itself, perhaps showing an item, that the audio library
-// changed, or, to a shell, a window to show as a pane.
+// changed, or, to the editor window, a window to show as a pane.
 func (c *Client) dispatchNotice(message protocol.Message) {
 	update := newUpdate()
 	if message.Kind == protocol.KindHost {
@@ -126,7 +126,7 @@ func (c *Client) dispatchPick(message protocol.Message) {
 		protocol.KindPreviewStop, protocol.KindPreviewControl, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
 		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness,
-		protocol.KindHost:
+		protocol.KindHost, protocol.KindCrashed:
 		return
 	default:
 		return
@@ -163,7 +163,7 @@ func (c *Client) dispatchPreview(message protocol.Message) {
 		protocol.KindPickAnswer, protocol.KindPickCancel, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
 		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness,
-		protocol.KindHost:
+		protocol.KindHost, protocol.KindCrashed:
 		return
 	default:
 		return

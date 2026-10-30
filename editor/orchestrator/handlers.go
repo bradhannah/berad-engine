@@ -46,10 +46,14 @@ func (o *Orchestrator) leave(left *window) {
 		delete(subscribers, left.id)
 	}
 	o.history.leave(left.group)
+	delete(o.recent, left.id)
 	close(left.out)
 	o.endPicksWith(left.id)
 	o.previewLeft(left.id)
 	o.hostLeft(left)
+	if o.quitting && len(o.windows) == 0 {
+		o.quit = true
+	}
 }
 
 func (o *Orchestrator) handle(ctx context.Context, message inbound) {
@@ -78,7 +82,7 @@ func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop,
 		protocol.KindPreviewControl:
 		o.handlePreview(message.from, message.message)
-	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit:
+	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit, protocol.KindCrashed:
 		o.handleQuit(message.from, message.message)
 	case protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit, protocol.KindAudioAnalysis,
 		protocol.KindAudioCheck, protocol.KindAudioLoudness:
@@ -408,11 +412,6 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 
 		return
 	}
-	if !request.PopOut.IsZero() {
-		o.openPopOut(from, message.Request, request)
-
-		return
-	}
 	if !request.NewView {
 		for _, open := range o.windows {
 			if open.hello.View == request.View && open.hello.Target == request.Target {
@@ -433,20 +432,6 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 		o.attentions[launched] = request.Item
 	}
 	o.reply(from, message.Request, "", 0)
-}
-
-// openPopOut opens a window of its own for a shell's pane.
-func (o *Orchestrator) openPopOut(from *window, requested uint64, request protocol.Open) {
-	launched, err := o.popOut(request.View, request.Target, request.PopOut)
-	if err != nil {
-		o.reply(from, requested, err.Error(), 0)
-
-		return
-	}
-	if request.Item != "" {
-		o.attentions[launched] = request.Item
-	}
-	o.reply(from, requested, "", 0)
 }
 
 // reply answers a request; an empty reason means success.

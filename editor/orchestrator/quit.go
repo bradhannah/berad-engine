@@ -8,15 +8,17 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// handleQuit routes the quitting messages: a window's unsaved changes, what
-// quitting would close, and quitting itself.
+// handleQuit routes the messages about windows closing: a window's unsaved
+// changes, what quitting would close, quitting itself, and a pane's failure
+// as it closes.
 func (o *Orchestrator) handleQuit(from *window, message protocol.Message) {
 	o.route(from, message, map[protocol.Kind]handler{
 		protocol.KindUnsaved: o.unsaved,
 		protocol.KindQuitAsk: func(from *window, message protocol.Message) {
 			o.send(from, mustMessage(protocol.KindQuitAsk, message.Request, o.quitAsk()))
 		},
-		protocol.KindQuit: o.quitEditor,
+		protocol.KindQuit:    o.quitEditor,
+		protocol.KindCrashed: o.crashed,
 	})
 }
 

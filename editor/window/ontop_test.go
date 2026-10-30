@@ -2,7 +2,6 @@ package window
 
 import (
 	"image"
-	"slices"
 	"testing"
 	"time"
 
@@ -10,33 +9,30 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
-// fakeSurface stands in for the window a host is shown in, recording
-// what it is asked to float.
-type fakeSurface struct {
-	closing closeRequest
-	floated []bool
+// onTopPane is a pane with a host whose status bar has an On top toggle.
+func onTopPane(view string) *pane {
+	shown := titled(view, view)
+	shown.host = &host{frame: frame.NewFrame(time.Now), surface: shown.place}
+
+	return shown
 }
 
-func (*fakeSurface) Input(*ui.TextField) ui.Input { return ui.NewInput(image.Pt(0, 0)) }
-func (s *fakeSurface) Closing() closeRequest      { return s.closing }
-func (*fakeSurface) SetTitle(string)              {}
-func (*fakeSurface) RequestAttention()            {}
-func (s *fakeSurface) SetFloating(on bool)        { s.floated = append(s.floated, on) }
-
-// TestOnTopAsksTheWindowToFloat asks the window to float once when the
-// toggle turns on, and to stop when it turns off.
-func TestOnTopAsksTheWindowToFloat(t *testing.T) {
+// TestOnTopIsTheWholeWindows turns On top on from one pane and off from
+// another: it keeps the whole window above other applications' windows, so
+// every pane's toggle shows it.
+func TestOnTopIsTheWholeWindows(t *testing.T) {
 	t.Parallel()
-	shown := &fakeSurface{}
-	h := &host{frame: frame.NewFrame(time.Now), surface: shown}
-	h.applyOnTop()
-	h.frame.OnTop.On = true
-	h.applyOnTop()
-	h.applyOnTop()
-	h.frame.OnTop.On = false
-	h.applyOnTop()
-	if !slices.Equal(shown.floated, []bool{true, false}) {
-		t.Fatalf("asked %v", shown.floated)
+	browser, text := onTopPane("browser"), onTopPane("text")
+	s := &shell{tabs: []*tab{{panes: []*pane{browser}}, {panes: []*pane{text}}}}
+	text.host.frame.OnTop.On = true
+	s.followOnTop()
+	if !s.onTop || !browser.host.frame.OnTop.On {
+		t.Fatalf("on top %v, the browser's toggle %v", s.onTop, browser.host.frame.OnTop.On)
+	}
+	browser.host.frame.OnTop.On = false
+	s.followOnTop()
+	if s.onTop || text.host.frame.OnTop.On {
+		t.Fatalf("on top %v, the text's toggle %v", s.onTop, text.host.frame.OnTop.On)
 	}
 }
 
@@ -45,7 +41,7 @@ func TestOnTopAsksTheWindowToFloat(t *testing.T) {
 // alone.
 func TestCloseButtonAsksTheViewToClose(t *testing.T) {
 	t.Parallel()
-	shown := &fakeSurface{}
+	shown := newPaneSurface()
 	h := &host{frame: frame.NewFrame(time.Now), surface: shown}
 	input := ui.NewInput(image.Pt(0, 0))
 	h.windowKeys(&input)

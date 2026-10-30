@@ -44,6 +44,10 @@ type scriptStep struct {
 	// Screenshot saves the window to this path after the first frame of the
 	// step.
 	Screenshot string `json:"screenshot"`
+	// Front brings the pane's tab to the front of the editor window, so it is
+	// drawn: on the first frame of the step, or on every frame while it waits
+	// for an expectation.
+	Front bool `json:"front"`
 }
 
 // scriptExpection makes a step wait, up to Repeat frames, until a named part
@@ -61,6 +65,16 @@ type inputScript struct {
 	frame  int
 	cursor image.Point
 	shot   string
+	front  bool
+}
+
+// takeFront reports, once, that a step asked for the pane's tab to come to
+// the front.
+func (s *inputScript) takeFront() bool {
+	front := s.front
+	s.front = false
+
+	return front
 }
 
 // takeScreenshot returns a screenshot path a step asked for, once.
@@ -88,7 +102,7 @@ func loadScript(view string) (*inputScript, error) {
 		return nil, fmt.Errorf("parse input script: %w", err)
 	}
 
-	return &inputScript{steps: steps, index: 0, frame: 0, cursor: image.Pt(0, 0), shot: ""}, nil
+	return &inputScript{steps: steps, index: 0, frame: 0, cursor: image.Pt(0, 0), shot: "", front: false}, nil
 }
 
 // next returns this frame's input. When the script runs out it returns no
@@ -107,6 +121,7 @@ func (s *inputScript) next(view locator, docs frame.Docs) ui.Input {
 	}
 	step := s.steps[s.index]
 	if step.Expect != nil {
+		s.front = step.Front
 		s.expect(step, view, docs)
 		input.Cursor = s.cursor
 
@@ -136,6 +151,7 @@ func (s *inputScript) next(view locator, docs frame.Docs) ui.Input {
 		input.Text = step.Text
 		input.Replace = step.Replace
 		s.shot = step.Screenshot
+		s.front = step.Front
 		if step.Wheel != nil {
 			input.WheelX, input.WheelY = step.Wheel[0], step.Wheel[1]
 		}

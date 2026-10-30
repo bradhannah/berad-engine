@@ -34,7 +34,7 @@ const (
 // Problems a Play sound can have.
 const (
 	problemNoCue      = "No cue chosen yet."
-	problemMissingCue = "Its cue is not in the audio library. Choose another, or add it in the Audio window."
+	problemMissingCue = "Its cue is not in the audio library. Choose another, or add it in Audio."
 )
 
 // cueCategories are the chooser's groups, in order.

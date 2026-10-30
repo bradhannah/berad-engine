@@ -288,7 +288,7 @@ func TestOpensTheSpriteAndItsColours(t *testing.T) {
 			t.Fatalf("subscribed to %v, not %v", f.requests.Subscribed, want)
 		}
 	}
-	if title := f.state.Title(f.docs); !strings.HasPrefix(title, "Sprite: Lantern  (window ") {
+	if title := f.state.Title(f.docs); !strings.HasPrefix(title, "Sprite: Lantern  (view ") {
 		t.Fatalf("title %q", title)
 	}
 	if !f.has("loaded") || f.state.Zoom() != 64 || f.state.Tool() != pixelview.ToolPencil || !f.has("color:clear") {

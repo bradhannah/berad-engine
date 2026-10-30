@@ -1,7 +1,6 @@
 package main_test
 
 import (
-	"context"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -11,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
@@ -118,9 +116,9 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || len(zoneDoc.(*zoneplugin.Document).Zone.Floors()) != 2 || zoneDoc.(*zoneplugin.Document).Zone.Floors()[0] != envelope.ID {
 		t.Fatalf("sample zone: %v", err)
 	}
-	samplePalette := readEnvelope(t, project, "palettes/sample--*.json")
-	if listed := zoneDoc.(*zoneplugin.Document).Zone.Palettes(); len(listed) != 1 || listed[0] != samplePalette.ID {
-		t.Fatalf("the sample zone lists the sample's palette: %v", listed)
+	gloomyFile := readEnvelope(t, project, "palettes/gloomy--*.json")
+	if listed := zoneDoc.(*zoneplugin.Document).Zone.Palettes(); len(listed) != 1 || listed[0] != gloomyFile.ID {
+		t.Fatalf("the sample zone lists the sample's palette, gloomy: %v", listed)
 	}
 	readEnvelope(t, project, "texts/notes--*.json")
 	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
@@ -132,25 +130,28 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
 		t.Fatalf("the lantern's tile: %v", err)
 	}
-	sample, err := art.DecodePalette(samplePalette.Data)
+	gloomy, err := art.DecodePalette(gloomyFile.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ramps := sample.Ramps()
-	if len(ramps) != 1 || ramps[0].Name != "glass" || len(ramps[0].Shades) != 2 || ramps[0].Shades[0].Opacity != 40 {
-		t.Fatalf("the sample's palette holds the glass ramp: %+v", ramps)
+	ramps := gloomy.Ramps()
+	if len(ramps) != 2 || ramps[0].Name != "iron" || len(ramps[0].Shades) != 5 ||
+		ramps[1].Name != "glass" || len(ramps[1].Shades) != 2 || ramps[1].Shades[0].Opacity != 40 {
+		t.Fatalf("gloomy holds the iron and glass ramps: %+v", ramps)
 	}
-	glassUsed, greysUsed := 0, 0
+	ironUsed, glassUsed := 0, 0
 	for _, ref := range tile.Colors() {
 		switch {
-		case ref.Palette == samplePalette.ID && ref.Ramp == ramps[0].ID:
+		case ref.Palette != gloomyFile.ID:
+			t.Fatalf("the lantern is painted only from gloomy: %+v", ref)
+		case ref.Ramp == ramps[0].ID:
+			ironUsed++
+		case ref.Ramp == ramps[1].ID:
 			glassUsed++
-		case ref.Palette == art.DefaultPaletteID() && ref.Ramp == art.DefaultRampID(1):
-			greysUsed++
 		}
 	}
-	if glassUsed != 2 || greysUsed != 5 {
-		t.Fatalf("the lantern is painted with both shades of glass and five of Default's greys: %+v", tile.Colors())
+	if ironUsed != 5 || glassUsed != 2 {
+		t.Fatalf("the lantern is painted with five iron greys and both shades of glass: %+v", tile.Colors())
 	}
 	defaults, err := art.DecodePalette(readEnvelope(t, project, "palettes/default--*.json").Data)
 	if want, _ := art.DefaultPalette(); err != nil || !defaults.Equal(want) {
@@ -199,6 +200,7 @@ type step struct {
 	Expect     *expectation    `json:"expect,omitempty"`
 	Screenshot string          `json:"screenshot,omitempty"`
 	Wheel      *[2]float64     `json:"wheel,omitempty"`
+	Front      bool            `json:"front,omitempty"`
 }
 
 type expectation struct {
@@ -207,6 +209,22 @@ type expectation struct {
 }
 
 func wait(frames int) step { return step{Repeat: frames} }
+
+// shoot saves a screenshot of the editor window with the pane's tab in front.
+func shoot(path string) step { return step{Repeat: 2, Screenshot: path, Front: true} }
+
+// front brings the pane's tab to the front, so it is drawn: a hidden tab
+// keeps working but is not drawn.
+func front() step { return step{Repeat: 2, Front: true} }
+
+// mustInFront is must with the pane's tab kept in front while it waits, for
+// parts only drawing makes.
+func mustInFront(locate string, frames int) step {
+	shown := must(locate, frames)
+	shown.Front = true
+
+	return shown
+}
 
 func keys(names ...string) step { return step{Repeat: 2, Keys: names} }
 
@@ -233,13 +251,13 @@ func expect(locate string, frames int) step {
 	return step{Repeat: frames, Expect: &expectation{Locate: locate}}
 }
 
-// must is expect that crashes the window when the part never appears, so
+// must is expect that crashes the pane when the part never appears, so
 // noCrashes fails the test.
 func must(locate string, frames int) step {
 	return step{Repeat: frames, Expect: &expectation{Locate: locate, Must: true}}
 }
 
-// noCrashes fails the test if any window crashed, as a must does when its
+// noCrashes fails the test if any pane crashed, as a must does when its
 // part never appears.
 func noCrashes(t *testing.T, project string) {
 	t.Helper()
@@ -249,7 +267,7 @@ func noCrashes(t *testing.T, project string) {
 			raw, _ := os.ReadFile(report) //nolint:errcheck,gosec // The test's own project.
 			t.Logf("%s:\n%.800s", report, raw)
 		}
-		t.Fatalf("windows crashed: %v %v", reports, err)
+		t.Fatalf("tabs crashed: %v %v", reports, err)
 	}
 }
 
@@ -303,12 +321,12 @@ func writeScript(t *testing.T, name string, steps []step) string {
 func requireGUI(t *testing.T) {
 	t.Helper()
 	if os.Getenv("BERAD_GUI_TESTS") == "" {
-		t.Skip("set BERAD_GUI_TESTS=1 to run tests that open real windows")
+		t.Skip("set BERAD_GUI_TESTS=1 to run tests that open the real editor window")
 	}
 }
 
-// scripts maps each view to the scripts its windows run, in the order the
-// windows open.
+// scripts maps each view to the scripts its panes run, in the order the
+// panes open.
 type scripts map[string][][]step
 
 func (s scripts) env(t *testing.T) string {
@@ -322,30 +340,34 @@ func (s scripts) env(t *testing.T) string {
 	return "BERAD_INPUT_SCRIPT=" + strings.Join(entries, ",")
 }
 
-// runEditor opens the sample project with scripted windows and waits for the
-// editor to quit by itself once its last window closes.
-func runEditor(t *testing.T, binary, project string, windows scripts) {
+// runEditor opens the sample project in the editor window with scripted
+// panes, and waits for the editor to quit by itself.
+func runEditor(t *testing.T, binary, project string, panes scripts) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, "open", "--project", project, "--sample")
-	cmd.Env = append(os.Environ(), windows.env(t))
-	output, err := cmd.CombinedOutput()
-	if ctx.Err() != nil {
-		t.Fatalf("editor did not quit after its windows closed\n%s", output)
-	}
-	if err != nil {
-		t.Fatalf("editor: %v\n%s", err, output)
-	}
+	runEditorWith(t, binary, project, panes)
 }
 
-// closeBrowser is a project browser script that waits for the project and
-// closes, leaving the other windows to the test.
-func closeBrowser() []step {
-	return script(expect("row:Notes", 600), quit())
+// openZone is the project browser opening the sample zone in a Map: the
+// editor opens with the project browser alone.
+func openZone() []step {
+	return script(must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"))
 }
 
-// TestMapPaintsDrawsAndUndoes drives a real Map window: a drag paints the
+// quitWhenAlone waits until the project browser's tab is the only one left,
+// the test's other tabs having closed, then quits the editor from it.
+func quitWhenAlone() []step {
+	return script(
+		must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+}
+
+// browseZone is a project browser script that opens the sample zone, then
+// quits the editor once the test's other tabs have closed.
+func browseZone() []step {
+	return script(openZone(), quitWhenAlone())
+}
+
+// TestMapPaintsDrawsAndUndoes drives a real Map: a drag paints the
 // ground through the orchestrator, a drag with the Walls tool draws walls in
 // the chosen family, undo takes the walls back in one step, and the result is
 // in the saved file. Then the Resize tool adds a row on top with its button,
@@ -367,13 +389,13 @@ func TestMapPaintsDrawsAndUndoes(t *testing.T) {
 		drag("edge:bottom", "cell:0,13"), expect("state:bounds:-16,-13,32,27", 300), wait(5),
 		keys("Cmd+Z"), expect("state:bounds:-16,-13,32,25", 300), wait(10),
 		click("ui:zoom-in"), must("state:zoom:100", 60), click("ui:zoom-fit"), wait(5),
-		step{Repeat: 2, Screenshot: zoomed}, wait(5),
-		rightClick("cell:-10,5"), must("menu:add-anchor", 60), step{Repeat: 2, Screenshot: menuShot},
+		shoot(zoomed), wait(5),
+		rightClick("cell:-10,5"), must("menu:add-anchor", 60), shoot(menuShot),
 		click("menu:add-anchor"), wait(30), typed("Gate"), keys("Enter"), wait(30),
-		click("ui:keys"), must("state:keys", 60), step{Repeat: 2, Screenshot: keysShot}, keys("Escape"), wait(5),
+		click("ui:keys"), must("state:keys", 60), shoot(keysShot), keys("Escape"), wait(5),
 		quit(),
 	)
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browseZone()}})
 
 	ground, _ := readFloor(t, project, "ground-floor")
 	for col := 4; col <= 7; col++ {
@@ -412,9 +434,9 @@ func TestWallFamiliesForARoomAndARun(t *testing.T) {
 		keys("S"), doubleClick("cell:0,0"), wait(5), click("tile:wall.c"), wait(20),
 		keys("PageUp"), expect("state:floor:2", 300), expect("state:loaded", 300), wait(10),
 		click("cell:-6,-4"), wait(5), click("tile:wall"), wait(20),
-		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
+		shoot(shot), wait(10), quit(),
 	)
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {closeBrowser()}})
+	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browseZone()}})
 
 	ground, _ := readFloor(t, project, "ground-floor")
 	upper, _ := readFloor(t, project, "upper-floor")
@@ -437,7 +459,7 @@ func TestWallFamiliesForARoomAndARun(t *testing.T) {
 	t.Logf("upper floor with the floor below: %s", shot)
 }
 
-// TestAnchorTextAndPickOnMap adds and names an anchor in the Map window, opens
+// TestAnchorTextAndPickOnMap adds and names an anchor in the Map, opens
 // the text document from the project browser, writes in it (a new line with
 // Cmd+Enter, an accent the way press-and-hold sends it, Enter to save), then
 // picks the anchor as its location through the orchestrator.
@@ -450,9 +472,7 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 		keys("A"), click("cell:4,6"), wait(30), typed("Well"), keys("Enter"), wait(20),
 		expect("state:picking", 1800), wait(5), click("cell:4,6"), wait(40), quit(),
 	)
-	browserScript := script(
-		expect("row:Notes", 600), click("row:Notes"), keys("Enter"), wait(30), quit(),
-	)
+	browserScript := script(openZone(), wait(30), click("row:Notes"), keys("Enter"), wait(30), quitWhenAlone())
 	textScript := script(
 		expect("state:loaded", 600), wait(5),
 		click("ui:body"), keys("Cmd+Down"), keys("Cmd+Enter"),
@@ -481,11 +501,11 @@ func TestAnchorTextAndPickOnMap(t *testing.T) {
 	}
 }
 
-// TestQuitAsksThenClosesEveryWindow names a new anchor in the Map window
-// without saving, then presses Cmd+Q in the project browser: the browser
-// asks whether the editor should quit, naming the unsaved anchor, and Save
-// and quit saves the name and closes every window, so the editor exits.
-func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
+// TestQuitAsksThenClosesEveryTab names a new anchor in the Map without
+// saving, then presses Cmd+Q in the project browser: the browser asks
+// whether the editor should quit, naming the unsaved anchor, and Save and
+// quit saves the name and closes every tab, so the editor exits.
+func TestQuitAsksThenClosesEveryTab(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
@@ -495,8 +515,8 @@ func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
 		keys("A"), click("cell:4,6"), wait(30), typed("Well"), wait(1200), quit(),
 	)
 	browserScript := script(
-		expect("row:Notes", 600), wait(300), keys("Cmd+Q"), must("ui:quit-save", 300),
-		step{Repeat: 2, Screenshot: shot}, click("ui:quit-save"), wait(1200), quit(),
+		openZone(), wait(300), keys("Cmd+Q"), must("ui:quit-save", 300),
+		shoot(shot), click("ui:quit-save"), wait(1200),
 	)
 	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
 
@@ -511,8 +531,8 @@ func TestQuitAsksThenClosesEveryWindow(t *testing.T) {
 
 // TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
 // inspector by typing a name and clicking Save, deletes the text document
-// after confirming, and undoes the deletion. Its status bar keeps the window
-// on top and lets it go again.
+// after confirming, and undoes the deletion. Its status bar keeps the editor
+// window on top and lets it go again.
 func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -521,14 +541,13 @@ func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
 		click("ui:new-zone"), expect("row:Zone 1", 300), click("row:Zone 1"),
-		click("ui:name"), keys("Cmd+A"), typed("Harbour"), step{Repeat: 2, Screenshot: shot}, click("ui:save"),
+		click("ui:name"), keys("Cmd+A"), typed("Harbour"), shoot(shot), click("ui:save"),
 		must("row:Harbour", 300),
 		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
 		keys("Cmd+Z"), expect("row:Notes", 300), wait(10),
-		click("ui:on-top"), must("state:on-top", 60), wait(10), click("ui:on-top"), wait(5), quit(),
+		click("ui:on-top"), must("state:on-top", 60), wait(10), click("ui:on-top"), wait(5), quitWhenAlone(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 
 	harbour := readEnvelope(t, project, "zones/harbour--*.json")
 	zoneDoc, err := zoneplugin.Decode(harbour.Data)
@@ -558,14 +577,13 @@ func TestBrowserFoldersTagsAndSearch(t *testing.T) {
 		drag("row:Notes", "row:Letters"), wait(30),
 		click("row:Letters"), click("ui:new-folder"), wait(30), typed("Drafts"), keys("Enter"),
 		must("row:Drafts", 300), wait(5),
-		click("row:Notes"), click("ui:move-to"), must("menu:Letters/Drafts", 60), step{Repeat: 2, Screenshot: menuShot},
+		click("row:Notes"), click("ui:move-to"), must("menu:Letters/Drafts", 60), shoot(menuShot),
 		click("menu:Letters/Drafts"), wait(30),
 		click("row:Notes"), click("ui:tags"), typed("quest"), keys("Enter"), wait(30),
-		click("ui:search"), typed("#quest"), must("row:Notes", 60), step{Repeat: 2, Screenshot: shot},
-		keys("Escape"), keys("Escape"), wait(5), quit(),
+		click("ui:search"), typed("#quest"), must("row:Notes", 60), shoot(shot),
+		keys("Escape"), keys("Escape"), wait(5), quitWhenAlone(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 
 	notes := readEnvelope(t, project, "texts/Letters/Drafts/notes--*.json")
 	if len(notes.Tags) != 1 || notes.Tags[0] != "quest" {
@@ -588,11 +606,10 @@ func TestBrowserRightClickMenu(t *testing.T) {
 		rightClick("section:workflows"), must("menu:new-folder-workflow", 60),
 		click("menu:new-folder-workflow"), wait(30), typed("Routines"), keys("Enter"),
 		must("row:Routines", 300), wait(5),
-		rightClick("row:Routines"), must("menu:new-workflow", 60), step{Repeat: 2, Screenshot: shot},
-		click("menu:new-workflow"), must("row:Workflow 1", 300), wait(30), quit(),
+		rightClick("row:Routines"), must("menu:new-workflow", 60), shoot(shot),
+		click("menu:new-workflow"), must("row:Workflow 1", 300), wait(30), quitWhenAlone(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 
 	readEnvelope(t, project, "workflows/Routines/workflow-1--*[^t].json")
 	noCrashes(t, project)
@@ -612,17 +629,17 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 	paletteShot := shotPath(t, "browser-palette.png")
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
-		click("row:Settings"), click("ui:tile-size"), keys("Cmd+A"), typed("24"), step{Repeat: 2, Screenshot: settingsShot},
+		click("row:Settings"), click("ui:tile-size"), keys("Cmd+A"), typed("24"), shoot(settingsShot),
 		click("ui:save"), must("row:Settings", 60), wait(30),
-		click("row:Default"), wait(5), step{Repeat: 2, Screenshot: paletteShot},
+		click("row:Default"), wait(5), shoot(paletteShot),
 		rightClick("section:sprites"), must("menu:new-folder-sprite", 60),
 		click("menu:new-folder-sprite"), wait(30), typed("Lights"), keys("Enter"),
 		must("row:Lights", 300), wait(5),
 		rightClick("row:Lights"), must("menu:new-sprite", 60),
-		click("menu:new-sprite"), must("row:Sprite 1", 300), wait(30), step{Repeat: 2, Screenshot: shot}, quit(),
+		click("menu:new-sprite"), must("row:Sprite 1", 300), wait(30), shoot(shot),
+		quitWhenAlone(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 
 	settings, err := art.DecodeSettings(readEnvelope(t, project, "art-settings/*.json").Data)
 	if err != nil || settings.TileSize != 24 {
@@ -644,7 +661,7 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 // TestPixelEditorPaintsAndUndoes makes a sprite in the project browser and
 // opens it in a Pixel editor, which paints a stroke in Default's grey 3 and
 // another in grey 5, then undoes the second in one step. Then it paints with
-// the sample palette's glass. The saved tile keeps the first stroke and the
+// the glass of the sample's palette, gloomy. The saved tile keeps the first stroke and the
 // glass.
 func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	requireGUI(t)
@@ -655,22 +672,21 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	browserScript := script(
 		expect("row:Notes", 600), wait(5),
 		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
-		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(600), quit(),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	spriteScript := script(
 		must("state:loaded", 600), wait(5),
 		click("swatch:Default / grey 3"), must("state:color:Default / grey 3", 60),
 		drag("pixel:1,1", "pixel:2,1", "pixel:3,1"), must("state:pixel:3,1:Default / grey 3", 120),
 		click("swatch:Default / grey 5"), drag("pixel:1,3", "pixel:2,3", "pixel:3,3"),
-		must("state:pixel:3,3:Default / grey 5", 120), step{Repeat: 2, Screenshot: painted},
+		must("state:pixel:3,3:Default / grey 5", 120), shoot(painted),
 		keys("Cmd+Z"), must("state:pixel:1,3:clear", 120), must("state:pixel:3,3:clear", 60),
-		must("state:pixel:2,1:Default / grey 3", 60), step{Repeat: 2, Screenshot: undone},
-		click("palette:Sample"), click("swatch:Sample / glass 1"), must("state:color:Sample / glass 1", 120),
-		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:Sample / glass 1", 120),
-		step{Repeat: 2, Screenshot: glassShot}, quit(),
+		must("state:pixel:2,1:Default / grey 3", 60), shoot(undone),
+		click("palette:gloomy"), click("swatch:gloomy / glass 1"), must("state:color:gloomy / glass 1", 120),
+		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:gloomy / glass 1", 120),
+		shoot(glassShot), quit(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "sprite": {spriteScript}})
 
 	tileFile := readEnvelope(t, project, "tiles/tile-1--*.json")
 	tile, err := art.DecodeTile(tileFile.Data)
@@ -687,10 +703,10 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	if first, _ := tile.At(2, 1); first.Shade != art.DefaultShadeID(1, 3) {
 		t.Fatalf("the first stroke is grey 3: %+v", first)
 	}
-	sample := readEnvelope(t, project, "palettes/sample--*.json")
+	gloomy := readEnvelope(t, project, "palettes/gloomy--*.json")
 	for row := range 3 {
-		if ref, _ := tile.At(5, row); ref.Palette != sample.ID {
-			t.Fatalf("pixel 5,%d is the sample's glass: %+v", row, ref)
+		if ref, _ := tile.At(5, row); ref.Palette != gloomy.ID {
+			t.Fatalf("pixel 5,%d is gloomy's glass: %+v", row, ref)
 		}
 	}
 	noCrashes(t, project)
@@ -699,13 +715,14 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 
 // TestSpriteShowsOnTheMap makes a sprite show the small pickup, then draws
 // it in the Pixel editor while the Map shows the pickup at 200%. The Pixel
-// editor's Edit palette… opens the sample's palette in a Palette Editor,
-// which adds a ramp of magenta ink: a stroke in it shows on the map as it is
-// drawn, and giving the colour a new value, cyan, recolours it there. A fill
-// of a 40% blue pane, another ramp the Palette Editor adds, shows the
-// pickup's floor through it. Each is checked in the Map's screenshots. The
-// sprite takes the small pickup over from the sample's lantern, whose amber
-// glass shows the floor through it first.
+// editor's Edit palette… opens the sample's palette, gloomy, in a Palette
+// Editor, which adds a ramp of magenta ink: a stroke in it shows on the map as
+// it is drawn, and giving the colour a new value, cyan, recolours it there. A
+// fill of a 40% blue pane, another ramp the Palette Editor adds, shows the
+// pickup's floor through it. Each is checked in the Map's screenshots, its tab
+// brought to the front for each, since a hidden tab is not drawn. The
+// sprite takes the small pickup over from the sample's lantern, whose smoky
+// amber glass shows the floor through it first.
 func TestSpriteShowsOnTheMap(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -714,9 +731,9 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 	glassShot, lanternShot := shotPath(t, "map-sprite-glass.png"), shotPath(t, "map-lantern.png")
 	paletteShot := shotPath(t, "palette-editor.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5),
+		openZone(), wait(30),
 		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
-		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(1200), quit(),
+		must("row:Sprite 1", 300), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	ramp := func(name, colour, opacity string) []step {
 		return script(
@@ -730,7 +747,7 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 	paletteScript := script(
 		must("state:loaded", 600), wait(5),
 		ramp("ink", "#FF00FF", "100"), wait(240),
-		ramp("pane", "#3060C0", "40"), wait(480), step{Repeat: 2, Screenshot: paletteShot},
+		ramp("pane", "#3060C0", "40"), wait(480), shoot(paletteShot),
 		click("swatch:ink 1"), must("state:chosen:ink 1", 60),
 		click("ui:colour"), keys("Cmd+A"), typed("#00FFFF"), click("ui:save"), must("state:colour:ink 1:#00FFFF", 120),
 		wait(240), quit(),
@@ -739,26 +756,27 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		must("state:loaded", 600), wait(5),
 		click("ui:shows"), must("menu:standin:pickup.small", 60), click("menu:standin:pickup.small"),
 		must("state:shows:pickup.small", 120),
-		click("swatch:Sample / glass 1"), must("state:color:Sample / glass 1", 60), click("ui:edit-palette"),
-		must("swatch:Sample / ink 1", 1200), click("swatch:Sample / ink 1"),
-		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:Sample / ink 1", 120),
-		must("swatch:Sample / pane 1", 1200), click("swatch:Sample / pane 1"),
-		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:Sample / pane 1", 120), wait(900), quit(),
+		click("swatch:gloomy / glass 1"), must("state:color:gloomy / glass 1", 60), click("ui:edit-palette"),
+		must("swatch:gloomy / ink 1", 1200), click("swatch:gloomy / ink 1"),
+		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:gloomy / ink 1", 120),
+		must("swatch:gloomy / pane 1", 1200), click("swatch:gloomy / pane 1"),
+		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:gloomy / pane 1", 120), wait(900), quit(),
 	)
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
 		click("ui:zoom-fit"), click("ui:zoom-reset"), click("ui:zoom-in"), must("state:zoom:200", 60),
-		must("state:sprite:pickup.small", 1800), step{Repeat: 2, Screenshot: lanternShot},
-		must("state:art:pickup.small:16,4:#FF00FF", 1200), step{Repeat: 2, Screenshot: stroke},
-		must("state:art:pickup.small:16,4:#00FFFF", 1200), step{Repeat: 2, Screenshot: recoloured},
-		must("state:art:pickup.small:0,0:#3060C0", 1200), step{Repeat: 2, Screenshot: glassShot},
+		must("state:sprite:pickup.small", 1800), front(), shoot(lanternShot),
+		mustInFront("state:art:pickup.small:16,4:#FF00FF", 1200), shoot(stroke),
+		mustInFront("state:art:pickup.small:16,4:#00FFFF", 1200), shoot(recoloured),
+		mustInFront("state:art:pickup.small:0,0:#3060C0", 1200), shoot(glassShot),
 		quit(),
 	)
 	runEditor(t, binary, project, scripts{
 		"map": {mapScript}, "browser": {browserScript}, "sprite": {spriteScript}, "palette": {paletteScript},
 	})
+	noCrashes(t, project)
 
-	if got := countColor(t, lanternShot, over(0xb8702a, 40, tiles.ColorOf("floor")), 3); got < 64 {
+	if got := countColor(t, lanternShot, over(0x6b4a2a, 40, tiles.ColorOf("floor")), 3); got < 64 {
 		t.Fatalf("the floor shows through the lantern's glass: %d pixels", got)
 	}
 	magenta, cyan := color.RGBA{R: 0xff, G: 0, B: 0xff, A: 0xff}, color.RGBA{R: 0, G: 0xff, B: 0xff, A: 0xff}
@@ -779,7 +797,6 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 	if shown, ok := standIns.Sprite("pickup.small"); !ok || shown != sprite.ID {
 		t.Fatalf("Sprite 1 shows the small pickup: %s %v", shown, ok)
 	}
-	noCrashes(t, project)
 	t.Logf("screenshots: %s %s %s %s %s", lanternShot, stroke, recoloured, glassShot, paletteShot)
 }
 
@@ -830,7 +847,7 @@ func TestViewsShareUndo(t *testing.T) {
 		wait(10), keys("Cmd+N"), wait(300), quit(),
 	)
 	second := script(expect("state:loaded", 600), wait(20), keys("Cmd+Z"), wait(30), quit())
-	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {browseZone()}})
 
 	ground, _ := readFloor(t, project, "ground-floor")
 	for col := 2; col <= 4; col++ {
@@ -844,8 +861,7 @@ func TestViewsShareUndo(t *testing.T) {
 // start the player inside the building, arrow keys walk them onto the stairs
 // and up to the same cell of the upper floor, and a second view of the zone
 // shows the player as they walk. The preview changes nothing in the project.
-// The Clock window opens by itself, on top, and its +1h moves the preview's
-// clock on an hour.
+// The pinned clock's +1h moves the preview's clock on an hour.
 func TestPreviewWalksAndClimbs(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -855,19 +871,19 @@ func TestPreviewWalksAndClimbs(t *testing.T) {
 	first := script(
 		expect("state:loaded", 600), wait(5), keys("Cmd+N"), wait(120),
 		keys("P"), click("cell:2,-2"), expect("state:previewing", 300),
-		walk("Right"), expect("state:player:3,-2", 120), step{Repeat: 2, Screenshot: walking}, wait(90),
+		walk("Right"), expect("state:player:3,-2", 120), shoot(walking), wait(90),
 		walk("Right"), expect("state:floor:2", 120), expect("state:player:4,-2", 120),
-		step{Repeat: 2, Screenshot: upstairs}, must("state:clock:09:", 1200), wait(30), keys("P"), wait(60), quit(),
+		shoot(upstairs), must("state:clock:09:", 1200), wait(30), keys("P"), wait(60), quit(),
 	)
 	clockScript := script(
-		must("state:running", 900), must("state:on-top", 60), must("state:time:08:", 300),
-		click("ui:hour-on"), must("state:time:09:", 300), step{Repeat: 2, Screenshot: clockShot}, wait(10), quit(),
+		must("state:running", 1800), must("state:time:08:", 300),
+		click("ui:hour-on"), must("state:time:09:", 300), shoot(clockShot), wait(10), quit(),
 	)
 	second := script(
 		expect("state:loaded", 600), expect("state:remote-player:3,-2", 900),
-		step{Repeat: 2, Screenshot: seen}, expect("state:remote-player:4,-2", 600), wait(30), quit(),
+		shoot(seen), expect("state:remote-player:4,-2", 600), wait(30), quit(),
 	)
-	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}, "clock": {clockScript}})
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {browseZone()}, "clock": {clockScript}})
 
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, 4, -2) != "stairs.up" || envelope.Revision != 0 {
@@ -882,17 +898,17 @@ func TestPreviewWalksAndClimbs(t *testing.T) {
 }
 
 // TestWorkflowBuildsARoutine creates a workflow in the project browser, opens
-// it, and builds a routine from the palette in a real Workflow window: start,
+// it, and builds a routine from the palette in a real Workflow: start,
 // a time switch, a time-bound container holding a Go to and a Wait, and a
 // Wait for the rest of the day. The Go to's destination is picked on the Map
-// window (D13). The saved logic and its separate layout file are checked.
+// (D13). The saved logic and its separate layout file are checked.
 func TestWorkflowBuildsARoutine(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	shot, unsaved := shotPath(t, "workflow.png"), shotPath(t, "workflow-unsaved.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60), quit(),
+		openZone(), wait(30), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	mapScript := script(
 		expect("state:loaded", 600), expect("state:picking", 1800), wait(5), click("cell:-3,-1"), wait(300), quit(),
@@ -904,10 +920,10 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 		click("ui:pick"), expect("state:destination", 1800), wait(5),
 		click("palette:wait"), wait(10),
 		click("node:time-switch:1"), wait(5), click("palette:wait"), wait(10),
-		click("ui:param-duration"), keys("Cmd+A"), typed("45"), step{Repeat: 2, Screenshot: unsaved},
+		click("ui:param-duration"), keys("Cmd+A"), typed("45"), shoot(unsaved),
 		keys("Cmd+S"), wait(20),
 		expect("state:nodes:6", 300), click("ui:arrange"), wait(20),
-		step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
+		shoot(shot), wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "map": {mapScript}, "workflow": {workflowScript},
@@ -956,7 +972,7 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 }
 
 // TestWorkflowRandomWalk builds the test routine "move up or down at
-// random, wait two seconds, repeat" in a real Workflow window: a random
+// random, wait two seconds, repeat" in a real Workflow: a random
 // choice with two named options, a Move each way, and one Wait that both
 // Moves lead into, with an entry dot for each, then a line from the Wait
 // back to the random choice, drawn dashed as a loop, and auto-arranges it.
@@ -969,7 +985,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60), quit(),
+		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		expect("state:loaded", 600), wait(5),
@@ -987,10 +1003,9 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		step{Repeat: 3, At: "node:random:1", Down: true}, step{Repeat: 2, At: "node:random:1", Released: true}, wait(10),
 		drag("palette:note", "bend:wait:1:next"), expect("state:nodes:6", 300), wait(10),
 		drag("bend:wait:1:next", "canvas:600,8"), expect("state:bent:wait:1:next", 300), wait(10),
-		click("node:random:1"), wait(10), step{Repeat: 2, Screenshot: shot}, wait(10), quit(),
+		click("node:random:1"), wait(10), shoot(shot), wait(10), quit(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}, "workflow": {workflowScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
 
 	if layout := readEnvelope(t, project, "workflows/workflow-1--*.layout.json"); !strings.Contains(string(layout.Data), `"lines"`) {
 		t.Fatalf("the loop moved by hand is saved with the layout: %s", layout.Data)
@@ -1029,15 +1044,15 @@ func TestNPCPlacedWithBehaviour(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	browserShot, mapShot := shotPath(t, "npc-browser.png"), shotPath(t, "npc-map.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:new-npc"), wait(30),
+		openZone(), wait(30), click("ui:new-workflow"), wait(30), click("ui:new-npc"), wait(30),
 		click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5), click("ui:use"), wait(30),
 		click("ui:notes"), wait(5), typed("Opens the shop at eight."), keys("Cmd+S"), wait(30),
-		step{Repeat: 2, Screenshot: browserShot}, wait(10), quit(),
+		shoot(browserShot), wait(10), quitWhenAlone(),
 	)
 	mapScript := script(
 		expect("state:loaded", 600), wait(5), keys("N"), expect("npc:NPC 1", 1800), click("npc:NPC 1"), wait(5),
 		click("cell:1,1"), expect("state:placement:1,1=NPC 1", 300), wait(120),
-		step{Repeat: 2, Screenshot: mapShot}, wait(10), quit(),
+		shoot(mapShot), wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}})
 
@@ -1063,7 +1078,7 @@ func TestNPCPlacedWithBehaviour(t *testing.T) {
 
 // TestNPCFollowsItsWorkflow builds the random walk, makes it an NPC's
 // behaviour, places the NPC and starts a preview at 08:00: the NPC must
-// leave its cell. Clicking it watches it, and the Watch window shows it on
+// leave its cell. Clicking it watches it, and Watch shows it on
 // its workflow, pauses the NPCs and steps to its next node.
 func TestNPCFollowsItsWorkflow(t *testing.T) {
 	requireGUI(t)
@@ -1075,9 +1090,9 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		openZone(), wait(30), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
 		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
-		click("ui:use"), wait(30), quit(),
+		click("ui:use"), wait(30), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
@@ -1092,14 +1107,14 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 		click("cell:1,1"), must("state:placement:1,1=NPC 1", 300), wait(400),
 		keys("P"), click("cell:2,-2"), must("state:previewing", 300), must("state:npcs-moved", 900),
 		click("live-npc:NPC 1"), wait(5), click("live-npc:NPC 1"), must("state:watching", 300), wait(10),
-		click("ui:watch"), wait(600), step{Repeat: 2, Screenshot: mapShot}, wait(10), keys("P"), wait(30), quit(),
+		click("ui:watch"), wait(600), shoot(mapShot), wait(10), keys("P"), wait(30), quit(),
 	)
 	watchScript := script(
 		must("state:previewing", 1800), must("state:watching:NPC 1", 600), wait(60),
-		step{Repeat: 2, Screenshot: watchShot}, wait(10), click("ui:pause"), must("state:paused", 300), wait(10),
-		click("ui:step"), must("state:stepped", 300), wait(10), step{Repeat: 2, Screenshot: stepShot}, wait(10), quit(),
+		shoot(watchShot), wait(10), click("ui:pause"), must("state:paused", 300), wait(10),
+		click("ui:step"), must("state:stepped", 300), wait(10), shoot(stepShot), wait(10), quit(),
 	)
-	clockScript := script(must("state:running", 2400), wait(30), quit())
+	clockScript := script(must("state:running", 3600), wait(30), quit())
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "watch": {watchScript},
 		"clock": {clockScript},
@@ -1124,7 +1139,7 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 
 // TestSoundsInWorkflows chooses the sample's chime for a Play sound from
 // the cue chooser and plays it, follows it with a one-second Wait, gives the
-// workflow to an NPC and previews the zone: the Map window running the
+// workflow to an NPC and previews the zone: the Map running the
 // preview plays the chime when the NPC reaches it. The saved node keeps the
 // cue's ID.
 func TestSoundsInWorkflows(t *testing.T) {
@@ -1134,16 +1149,16 @@ func TestSoundsInWorkflows(t *testing.T) {
 	chooserShot, chosenShot := shotPath(t, "sound-chooser.png"), shotPath(t, "sound-chosen.png")
 	previewShot := shotPath(t, "sound-preview.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		openZone(), wait(30), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
 		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
-		click("ui:use"), wait(30), quit(),
+		click("ui:use"), wait(30), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
 		click("node:start:1"), wait(5), click("palette:play-sound"), must("state:cues", 300), wait(5),
-		click("ui:cue"), must("cue:sample/chime", 300), wait(5), step{Repeat: 2, Screenshot: chooserShot},
+		click("ui:cue"), must("cue:sample/chime", 300), wait(5), shoot(chooserShot),
 		click("cue:sample/chime"), must("state:cue=sample/chime", 300), wait(5),
-		click("ui:listen"), wait(30), step{Repeat: 2, Screenshot: chosenShot},
+		click("ui:listen"), wait(30), shoot(chosenShot),
 		click("palette:wait"), wait(10), click("ui:param-duration"), wait(3), keys("Cmd+A"), typed("1"),
 		keys("Enter"), wait(10), click("ui:duration-seconds"), wait(10), quit(),
 	)
@@ -1151,9 +1166,9 @@ func TestSoundsInWorkflows(t *testing.T) {
 		must("state:loaded", 600), wait(5), keys("N"), must("npc:NPC 1", 1800), click("npc:NPC 1"), wait(5),
 		click("cell:1,1"), must("state:placement:1,1=NPC 1", 300), wait(400),
 		keys("P"), click("cell:2,-2"), must("state:previewing", 300), must("state:heard:sample/chime", 900),
-		wait(30), step{Repeat: 2, Screenshot: previewShot}, keys("P"), wait(30), quit(),
+		wait(30), shoot(previewShot), keys("P"), wait(30), quit(),
 	)
-	clockScript := script(must("state:running", 2400), wait(30), quit())
+	clockScript := script(must("state:running", 3600), wait(30), quit())
 	runEditor(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}, "clock": {clockScript},
 	})
@@ -1173,54 +1188,16 @@ func TestSoundsInWorkflows(t *testing.T) {
 	t.Logf("screenshots: %s %s %s", chooserShot, chosenShot, previewShot)
 }
 
-// TestWindowsCloseWhenOrchestratorIsKilled kills the orchestrator process
-// outright (no chance to say goodbye) and checks its windows notice the lost
-// connection and close themselves instead of lingering (D10).
-func TestWindowsCloseWhenOrchestratorIsKilled(t *testing.T) {
-	requireGUI(t)
-	binary := buildEditor(t)
-	project := filepath.Join(t.TempDir(), "project")
-	cmd := exec.Command(binary, "open", "--project", project, "--sample")
-	cmd.Env = append(os.Environ(), scripts{"map": {{wait(3600)}}, "browser": {{wait(3600)}}}.env(t))
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	windows := func() int {
-		output, _ := exec.Command("pgrep", "-f", binary+" window").Output()
-		return len(strings.Fields(string(output)))
-	}
-	deadline := time.Now().Add(20 * time.Second)
-	for windows() < 2 {
-		if time.Now().After(deadline) {
-			_ = cmd.Process.Kill()
-			t.Fatal("two windows did not open")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Logf("%d windows running; killing the orchestrator", windows())
-	if err := cmd.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	_ = cmd.Wait()
-	deadline = time.Now().Add(10 * time.Second)
-	for windows() > 0 {
-		if time.Now().After(deadline) {
-			_ = exec.Command("pkill", "-f", binary+" window").Run()
-			t.Fatal("windows kept running after the orchestrator was killed")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-// TestCrashedWindowLeavesAReport crashes a second view with the debug key and
-// checks the orchestrator saved a crash report.
-func TestCrashedWindowLeavesAReport(t *testing.T) {
+// TestCrashedTabLeavesAReport crashes a second view of the Map with the debug
+// key: its tab closes alone, the orchestrator saves a crash report with the
+// failure, and the other tabs carry on until the editor quits.
+func TestCrashedTabLeavesAReport(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	first := script(expect("state:loaded", 600), keys("Cmd+N"), wait(240), quit())
 	second := script(wait(30), keys("Cmd+Shift+K"))
-	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {closeBrowser()}})
+	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {browseZone()}})
 
 	reports, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*-crash.json"))
 	if err != nil || len(reports) != 1 {
@@ -1230,8 +1207,13 @@ func TestCrashedWindowLeavesAReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "simulated window crash") {
-		t.Fatalf("report lacks the panic:\n%.500s", raw)
+	var report struct {
+		View    string `json:"view"`
+		Failure string `json:"failure"`
+	}
+	if err := json.Unmarshal(raw, &report); err != nil || report.View != "map" ||
+		!strings.Contains(report.Failure, "simulated window crash") {
+		t.Fatalf("report lacks the panic: %v\n%.500s", err, raw)
 	}
 }
 
@@ -1246,7 +1228,7 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "palette-editor-made.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300), wait(1500), quit(),
+		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300), quitWhenAlone(),
 	)
 	paletteScript := script(
 		must("state:loaded", 600), wait(5),
@@ -1261,10 +1243,9 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 		click("ui:gradient"),
 		click("ui:left"), keys("Cmd+A"), typed("#2E2C33"), click("ui:right"), keys("Cmd+A"), typed("#E1E3E6"),
 		click("ui:steps"), keys("Cmd+A"), typed("5"), click("ui:apply-gradient"),
-		must("state:ramps:slate,new ramp,gradient", 120), step{Repeat: 2, Screenshot: shot}, wait(30), quit(),
+		must("state:ramps:slate,new ramp,gradient", 120), shoot(shot), wait(30), quit(),
 	)
-	mapScript := script(expect("state:loaded", 600), quit())
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "palette": {paletteScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "palette": {paletteScript}})
 	noCrashes(t, project)
 
 	palette, err := art.DecodePalette(readEnvelope(t, project, "palettes/palette-1--*.json").Data)

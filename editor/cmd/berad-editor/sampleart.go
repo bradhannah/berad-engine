@@ -12,35 +12,39 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// The sample's lantern: a sprite shown as the small pickup, drawn in five of
-// Default's greys with a ramp of amber glass from a palette of the sample's
-// own, so the floor shows through it on the map. The sample zone lists that
-// palette. It is placeholder art for trying the editor, not game content.
+// The sample's lantern: a sprite shown as the small pickup, painted only from
+// a palette of the sample's own, "gloomy": a ramp of dim iron greys and a ramp
+// of smoky amber glass, so the floor shows through it on the map. The sample
+// zone lists that palette. It is placeholder art for trying the editor, not
+// game content.
 const (
 	lanternName   = "Lantern"
 	lanternTile   = "Lantern"
 	lanternShows  = "pickup.small"
-	paletteName   = "Sample"
+	paletteName   = "gloomy"
+	ironRampName  = "iron"
 	glassRampName = "glass"
 	glassOpacity  = 40
-	amberDark     = art.RGB(0xb8702a)
-	amberLight    = art.RGB(0xf2b544)
-	// glassIDs are the glass ramp's and its two shades'.
-	glassIDs = 3
-	// greyRamp is Default's grey ramp, by its place.
-	greyRamp = 1
+	amberDark     = art.RGB(0x6b4a2a)
+	amberLight    = art.RGB(0x9c7440)
+	// The iron ramp, dark to light: greys with a little violet, none lighter
+	// than Default's grey 6.
+	iron1 = art.RGB(0x16151a)
+	iron2 = art.RGB(0x221f28)
+	iron3 = art.RGB(0x302c38)
+	iron4 = art.RGB(0x403b4a)
+	iron5 = art.RGB(0x544e60)
 )
 
-// lanternGreys are the Default greys the lantern's marks 1 to 5 stand for, by
-// number in the grey ramp, dark to light.
-func lanternGreys() []int { return []int{3, 5, 8, 11, 14} }
+// ironColors are the iron ramp's colours, the lantern's marks 1 to 5.
+func ironColors() []art.RGB { return []art.RGB{iron1, iron2, iron3, iron4, iron5} }
 
 // errSample reports a sample document that is not what the sample expects.
 var errSample = errors.New("unexpected sample document")
 
 // lanternHalf is the left half of the lantern, a row of its tile on each
-// line, mirrored for the right half: "." is clear, 1 to 5 the starter greys
-// and a and b the glass's dark and light amber.
+// line, mirrored for the right half: "." is clear, 1 to 5 the iron greys and
+// a and b the glass's dark and light amber.
 const lanternHalf = `
 ................
 ................
@@ -76,22 +80,28 @@ const lanternHalf = `
 ................
 `
 
-// sampleLantern makes the sample's palette with its glass ramp, draws the
-// lantern and makes it show the small pickup. It returns the palette's ID.
+// sampleLantern makes the sample's palette, gloomy, draws the lantern with it
+// and makes it show the small pickup. It returns the palette's ID.
 func sampleLantern(orch *orchestrator.Orchestrator) (ids.ULID, error) {
-	glass, err := glassRamp(orch)
+	iron, err := sampleRamp(orch, ironRampName, art.MaxOpacity, ironColors())
+	if err != nil {
+		return ids.ULID{}, err
+	}
+	glass, err := sampleRamp(orch, glassRampName, glassOpacity, []art.RGB{amberDark, amberLight})
 	if err != nil {
 		return ids.ULID{}, err
 	}
 	palette := art.NewPalette()
-	if err := palette.InsertRamp(0, glass); err != nil {
-		return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+	for at, ramp := range []art.Ramp{iron, glass} {
+		if err := palette.InsertRamp(at, ramp); err != nil {
+			return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+		}
 	}
 	paletteID, err := orch.CreateDocument(paletteName, &artplugin.PaletteDocument{Palette: palette})
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
 	}
-	tile, err := lanternArt(paletteID, glass)
+	tile, err := lanternArt(paletteID, iron, glass)
 	if err != nil {
 		return ids.ULID{}, err
 	}
@@ -121,26 +131,28 @@ func sampleLantern(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	return paletteID, nil
 }
 
-// glassRamp is the lantern's ramp of amber glass, with new IDs.
-func glassRamp(orch *orchestrator.Orchestrator) (art.Ramp, error) {
-	made := make([]ids.ULID, 0, glassIDs)
-	for range glassIDs {
-		id, err := orch.NewID()
+// sampleRamp is a ramp of the sample's palette, its colours at one opacity,
+// with new IDs.
+func sampleRamp(orch *orchestrator.Orchestrator, name string, opacity int, colors []art.RGB) (art.Ramp, error) {
+	rampID, err := orch.NewID()
+	if err != nil {
+		return art.Ramp{ID: ids.ULID{}, Name: "", Shades: nil}, fmt.Errorf("sample lantern: %w", err)
+	}
+	shades := make([]art.Shade, 0, len(colors))
+	for _, color := range colors {
+		shadeID, err := orch.NewID()
 		if err != nil {
 			return art.Ramp{ID: ids.ULID{}, Name: "", Shades: nil}, fmt.Errorf("sample lantern: %w", err)
 		}
-		made = append(made, id)
+		shades = append(shades, art.Shade{ID: shadeID, Color: color, Opacity: opacity, Label: ""})
 	}
 
-	return art.Ramp{ID: made[0], Name: glassRampName, Shades: []art.Shade{
-		{ID: made[1], Color: amberDark, Opacity: glassOpacity, Label: ""},
-		{ID: made[2], Color: amberLight, Opacity: glassOpacity, Label: ""},
-	}}, nil
+	return art.Ramp{ID: rampID, Name: name, Shades: shades}, nil
 }
 
 // lanternArt draws the lantern on a tile of the default tile size, which a
 // new project starts with.
-func lanternArt(paletteID ids.ULID, glass art.Ramp) (*art.Tile, error) {
+func lanternArt(paletteID ids.ULID, iron, glass art.Ramp) (*art.Tile, error) {
 	tile, err := art.NewTile(art.DefaultTileSize)
 	if err != nil {
 		return nil, fmt.Errorf("sample lantern: %w", err)
@@ -149,9 +161,8 @@ func lanternArt(paletteID ids.ULID, glass art.Ramp) (*art.Tile, error) {
 		'a': art.Named(paletteID, glass.ID, glass.Shades[0].ID),
 		'b': art.Named(paletteID, glass.ID, glass.Shades[1].ID),
 	}
-	for mark, number := range lanternGreys() {
-		colors[rune('1'+mark)] = art.Named(
-			art.DefaultPaletteID(), art.DefaultRampID(greyRamp), art.DefaultShadeID(greyRamp, number))
+	for mark, shade := range iron.Shades {
+		colors[rune('1'+mark)] = art.Named(paletteID, iron.ID, shade.ID)
 	}
 	for row, half := range strings.Fields(lanternHalf) {
 		line := half + reverse(half)

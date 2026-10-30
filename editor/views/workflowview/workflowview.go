@@ -385,7 +385,7 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	}
 	switch {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
-		s.picker.Cancel(ctx, "cancelled in the workflow window")
+		s.picker.Cancel(ctx, "cancelled in the workflow")
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):

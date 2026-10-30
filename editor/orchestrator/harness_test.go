@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -23,8 +22,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
-
-const testBuild = "test-build"
 
 func TestMain(m *testing.M) {
 	if role := os.Getenv(envRole); role != "" {
@@ -44,39 +41,27 @@ func newRegistry(t testing.TB) *plugin.Registry {
 	return registry
 }
 
-// shortSocket returns a socket path short enough for macOS's 104-byte limit.
-func shortSocket(t testing.TB) string {
-	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "berad")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return filepath.Join(dir, "s.sock")
-}
-
 func quietLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 type harness struct {
-	t      testing.TB
-	dir    string
-	socket string
-	floor  ids.ULID
-	cancel context.CancelFunc
-	done   chan error
-	once   sync.Once
-	err    error
+	t   testing.TB
+	dir string
+	// connect opens a connection to the orchestrator, as a pane does.
+	connect client.Dialer
+	floor   ids.ULID
+	cancel  context.CancelFunc
+	done    chan error
+	once    sync.Once
+	err     error
 }
 
-func baseConfig(t testing.TB, dir, socket string) orchestrator.Config {
+func baseConfig(t testing.TB, dir string) orchestrator.Config {
 	t.Helper()
 	return orchestrator.Config{
 		ProjectDir:    dir,
 		Registry:      newRegistry(t),
-		Build:         testBuild,
-		SocketPath:    socket,
 		FlushInterval: time.Hour,
 		Logger:        quietLogger(),
 	}
@@ -85,7 +70,7 @@ func baseConfig(t testing.TB, dir, socket string) orchestrator.Config {
 // createProject makes a project with one 16x16 grass floor and returns its ID.
 func createProject(t testing.TB, dir string) ids.ULID {
 	t.Helper()
-	orch, err := orchestrator.New(context.Background(), baseConfig(t, dir, shortSocket(t)))
+	orch, err := orchestrator.New(baseConfig(t, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,12 +91,11 @@ func createProject(t testing.TB, dir string) ids.ULID {
 // start runs an orchestrator for a project created with createProject.
 func start(t testing.TB, dir string, configure func(*orchestrator.Config)) *harness {
 	t.Helper()
-	socket := shortSocket(t)
-	cfg := baseConfig(t, dir, socket)
+	cfg := baseConfig(t, dir)
 	if configure != nil {
 		configure(&cfg)
 	}
-	orch, err := orchestrator.New(context.Background(), cfg)
+	orch, err := orchestrator.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +104,7 @@ func start(t testing.TB, dir string, configure func(*orchestrator.Config)) *harn
 		t.Fatalf("documents: %v %v", documents, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	h := &harness{t: t, dir: dir, socket: cfg.SocketPath, floor: documents[0].ID, cancel: cancel, done: make(chan error, 1)}
+	h := &harness{t: t, dir: dir, connect: orch.Connect, floor: documents[0].ID, cancel: cancel, done: make(chan error, 1)}
 	go func() { h.done <- orch.Run(ctx) }()
 	t.Cleanup(func() { _ = h.stop() })
 	return h
@@ -138,12 +122,24 @@ func (h *harness) stop() error {
 	return h.err
 }
 
+// stopped waits for the orchestrator to stop by itself.
+func (h *harness) stopped() error {
+	h.once.Do(func() {
+		select {
+		case h.err = <-h.done:
+		case <-time.After(10 * time.Second):
+			h.t.Error("the orchestrator did not stop")
+		}
+	})
+	return h.err
+}
+
 func (h *harness) dial(t testing.TB, group string) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
-		Build: testBuild, View: "map", Target: h.floor, UndoGroup: group,
+	connection, err := client.Dial(ctx, h.connect, protocol.Hello{
+		View: "map", Target: h.floor, UndoGroup: group,
 	}, newRegistry(t))
 	if err != nil {
 		t.Fatal(err)

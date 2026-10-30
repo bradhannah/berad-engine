@@ -22,19 +22,18 @@ func TestAudioWindowDragsAndAttributes(t *testing.T) {
 	}
 	panelShot, dialogShot := shotPath(t, "audio-attribution.png"), shotPath(t, "audio-attribution-dialog.png")
 	browserScript := script(must("section:audio", 600), wait(5), click("ui:new-sound"),
-		must("row:Padded knock", 1800), wait(5), quit())
+		must("row:Padded knock", 1800), wait(5), quitWhenAlone())
 	audioScript := script(
 		must("state:dialog", 900), wait(5), click("ui:dialog-ok"),
 		must("state:selected=cue:sfx/padded_knock", 900), must("state:waveform", 900), wait(10),
 		drag("wave:start", "ui:part-whole", "ui:duplicate-region"), wait(5), click("ui:apply-region"), wait(40),
 		step{Wheel: &[2]float64{0, -10}, Repeat: 2, At: "ui:part-whole"}, wait(5), click("ui:cleared"), wait(40), click("ui:edit-attribution"), must("state:dialog", 60),
 		click("ui:source-type"), typed("recorded"), click("ui:add-step"), typed("trimmed"),
-		click("ui:step-tool-0"), typed("Audacity"), step{Repeat: 2, Screenshot: dialogShot},
-		click("ui:dialog-ok"), wait(40), step{Repeat: 2, Screenshot: panelShot}, quit(),
+		click("ui:step-tool-0"), typed("Audacity"), shoot(dialogShot),
+		click("ui:dialog-ok"), wait(40), shoot(panelShot), quit(),
 	)
-	mapScript := script(must("state:loaded", 600), wait(5), quit())
 	runEditorWith(t, binary, project, scripts{
-		"browser": {browserScript}, "audio": {audioScript}, "map": {mapScript},
+		"browser": {browserScript}, "audio": {audioScript},
 	}, "BERAD_TEST_SOUND_FILE="+source)
 	noCrashes(t, project)
 

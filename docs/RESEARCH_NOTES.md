@@ -11,12 +11,13 @@ operating-system windows:
 
 | Option | Pros | Cons |
 | --- | --- | --- |
-| One Ebitengine process per window, with an orchestrator (chosen) | Native windows; all Go, so types are shared code; a crashed view does not take down the project | Every edit and selection crosses IPC; cross-window interactions need choreography |
+| One Ebitengine process per window, with an orchestrator (built until increment 12) | Native windows; all Go, so types are shared code; a crashed view does not take down the project | Every edit and selection crosses IPC; cross-window interactions need choreography |
 | Browser or webview UI with a Go backend | Windows, tabs and mature widgets for free | Structures and widgets recreated in another language |
 | A native Go toolkit for forms plus Ebitengine processes for maps | Native windows in one process for forms | Two toolkits and looks; weaker sharing of game widgets |
 | One Ebitengine window with docked panels | Simplest shared state | Building a windowing system inside the editor |
-| One Ebitengine window hosting the views as tabs, any of which can pop out into its own process (being tried: [increment 10](increments/0010-one-window.md)) | One application; the views unchanged; a pinned clock and side-by-side panes | A view that crashes or hangs can take the others with it; the editor draws its own tabs |
-| One host window running today's window processes as Ebitengine VM guests | One application that keeps each view in its own process; the views unchanged | Experimental; several guests at once undocumented; every frame's drawing crosses processes |
+| One Ebitengine window hosting the views as tabs, any of which can pop out into its own process (tried in [increment 10](increments/0010-one-window.md)) | One application; the views unchanged; a pinned clock and side-by-side panes | A view that crashes or hangs can take the others with it; the editor draws its own tabs |
+| One Ebitengine window hosting the views as tabs, the orchestrator in the same process, nothing popping out (chosen: [increment 13](increments/0013-single-window.md)) | One application and one process; the views unchanged; panes reach the orchestrator over in-memory pipes carrying the same protocol | A view that hangs, or a failure outside every pane, takes the editor with it; the editor draws its own tabs |
+| One host window running the window processes as Ebitengine VM guests | One application that keeps each view in its own process; the views unchanged | Experimental; several guests at once undocumented; every frame's drawing crosses processes |
 
 Ebitengine 2.10's experimental VM mode (`exp/vmhost`) lets a host draw a guest
 process's frames into its own window, inject input and receive audio. It does not

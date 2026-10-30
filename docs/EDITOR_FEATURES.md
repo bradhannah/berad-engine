@@ -22,25 +22,36 @@ under consideration), **open** (undecided).
   change without large rewrites; avoid reuse infrastructure for hypothetical
   needs.
 - **Agreed:** a plain white look, keeping attention on the content, in the
-  style of the editor wireframes for every window: IBM Plex Sans and Mono,
+  style of the editor wireframes for every view: IBM Plex Sans and Mono,
   dark outlines and rounded boxes, small uppercase labels, blue for selection
   and orange for anything live.
 - **Agreed:** typed changes wait for an explicit save: every inspector with
-  fields to type into, and the Text window, has a save bar with Revert and
-  Save, and Cmd+S saves in any window. Enter saves a one-line field and
+  fields to type into, and Text, has a save bar with Revert and
+  Save, and Cmd+S saves in any pane. Enter saves a one-line field and
   starts a new line in a field of several lines. Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
-  closing a window with unsaved changes asks: Save, Don't save or Cancel.
-- **Agreed:** Cmd+W closes a window; Cmd+Q in any window asks whether the
-  author is done and, if so, closes every window. With unsaved changes in
-  any window it names them and offers Save and quit, Don't save or Cancel.
+  closing a tab with unsaved changes asks: Save, Don't save or Cancel.
+- **Agreed (2026-10-30):** the editor is **one window**, the editor window,
+  in one process ([increment 13](increments/0013-single-window.md)). Its
+  window bar has a tab for each kind of view open, the project browser's
+  first; a second row lists the open documents of the kind in front when
+  there are several; the pinned clock sits at its right end; and Watch opens
+  beside a Map of its zone, in that Map's tab. Each view runs in a pane of a
+  tab. There are no separate windows, and nothing pops out into one.
+  (Rejected: a window process for each view, as the editor ran until
+  increment 12.)
+- **Agreed:** Cmd+W closes the focused pane, and a tab's close box closes its
+  tab; Cmd+Q, or closing the project browser's tab or the editor window, asks
+  whether the author is done and, if so, closes the editor. With unsaved
+  changes in any tab it names them and offers Save and quit, Don't save or
+  Cancel.
 - **Agreed:** document types are told apart by an icon, always with a muted
   colour beside it, never by colour alone: zones and floors green, workflows
   purple, NPCs slate, text brown. Blue and orange stay for selection and
   live.
-- **Agreed:** any window can be kept on top of the others with the On top
-  toggle at the right of its status bar. The Clock window starts on top.
-- **Agreed:** a window's keys are listed on a sheet opened with its Keys
+- **Agreed:** the editor window can be kept above every other application's
+  windows with the On top toggle at the right of any pane's status bar.
+- **Agreed:** a view's keys are listed on a sheet opened with its Keys
   button or ?, rather than always on screen.
 - **Agreed:** the project browser keeps a growing project findable with
   folders, tags and a search box. Folders sit inside each type's section,
@@ -56,7 +67,7 @@ under consideration), **open** (undecided).
 
 - **Agreed:** a visual map editor, with a floating zoom control in the map's
   bottom-right corner (−, the zoom as a percentage, + and Fit). Scrolling
-  pans the Map, Workflow and Watch windows the same way.
+  pans the Map, Workflow and Watch the same way.
 - **Agreed:** **stand-ins** let an author lay out a map before its art
   exists. Stand-ins are typed (for example ground, generic wall, generic door,
   stairs up and down, small or medium pickup) so their role is recognisable. Default behaviour and
@@ -101,7 +112,7 @@ under consideration), **open** (undecided).
   later.
 - **Agreed:** stand-ins are **built in** for now; editable definitions arrive
   with the definition editor.
-- **Agreed:** a Map window opens a **zone** and shows one floor at a time, with
+- **Agreed:** a Map opens a **zone** and shows one floor at a time, with
   the **floor below shown faintly** (it can be turned off). All views of a zone
   share one undo list.
 - **Agreed:** pan and zoom the map; integer cell sizes keep pixel art uniformly
@@ -117,7 +128,7 @@ under consideration), **open** (undecided).
   every floor of a zone shares it, so stairs line up. Floors grow or shrink on
   any side without moving what is already placed; cells left of or above the
   origin have negative numbers. New floors start centred on the origin.
-- **Agreed:** floors are **resized** in the Map window, adding or removing rows
+- **Agreed:** floors are **resized** in the Map, adding or removing rows
   and columns on any side, each change one undo step.
 - **Tentative:** keep the map view simple at first (no full lighting or
   visibility editing) and enrich it over time.
@@ -260,7 +271,7 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   it, made empty or from Default's ramps and single colours, and every palette
   but Default can be edited, renamed and deleted.
 - **Agreed (2026-10-28):** all palette editing is in the **Palette Editor**, a
-  window kind of its own; the Pixel editor only picks colours. A colour can
+  view of its own; the Pixel editor only picks colours. A colour can
   carry a short **label**, at most 15 characters and unique within its
   palette. A **gradient** fills a ramp from a left colour, a right colour and
   a number of steps, mixing the colour, the opacity or both.
@@ -376,10 +387,10 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   editor stays for Ultima V Redux. Both read and write berad-audio's formats
   only through its authoring package, and those formats change only through a
   new version, so Ultima V Redux stays compatible. Choosing cues for workflows
-  comes first ([increment 4](increments/0004-sounds-in-workflows.md)); the Audio window follows
+  comes first ([increment 4](increments/0004-sounds-in-workflows.md)); Audio follows
   ([increment 5](increments/0005-audio-window.md)), then trimming and levels ([increment 6](increments/0006-trimming-and-levels.md)), then ambient distance, profiles and families, and
   the soundscape ([increment 7](increments/0007-ambient-and-soundscape.md)).
-- **Agreed:** the Audio window does everything the terminal audio editor does
+- **Agreed:** Audio does everything the terminal audio editor does
   except its Ultima V routing (sounds per tile type, footstep surfaces, named
   emitters, the music, dungeon and naval groups), in three increments: adding and
   editing sounds and cues, then trimming and levels, then ambient distance,
@@ -391,7 +402,7 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   "Allowed in a commercial game" checkbox and a reminder that some free
   licences forbid commercial use. The checkbox is berad-audio's schema 4.
 - **Agreed (2026-10-25):** the attribution of the recording in focus shows in
-  the Audio window's panel, as the terminal editor shows it in its details,
+  Audio's panel, as the terminal editor shows it in its details,
   with the commercial checkbox ticked there. Its source type and processing
   steps, which berad-audio already keeps, can be seen and edited.
 - **Agreed (2026-10-25):** a recording's dB adjustment is its **level**;
@@ -458,11 +469,12 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
   new time immediately rather than simulating the gap: each restarts its
   workflow from the start and walks to wherever its new branch sends it.
-- **Agreed:** the clock's controls live in the Clock window, as in the
-  wireframes. Before a preview it sets the time the next one starts at;
-  during one it runs the preview's clock: an hour back or on, a jump to a
-  time, stopping and starting it, and its rate. It opens by itself when a
-  preview starts, and is on top by default.
+- **Agreed:** the clock is pinned to the window bar: its readout shows the
+  preview's time on every tab, and its controls open in a panel under it.
+  Before a preview it sets the time the next one starts at; during one it
+  runs the preview's clock: an hour back or on, a jump to a time, stopping
+  and starting it, and its rate. Its panel opens by itself when a preview
+  starts.
 - **Agreed (early compromise):** editing during preview restarts affected NPCs'
   behaviour rather than preserving their place in a changed workflow.
 - **Agreed:** a workflow view can show the step each NPC is on and its inputs,
@@ -514,7 +526,7 @@ catalogue. Many overlap: definitions of objects, walls and floors are one editor
 are part of workflows; quests and rules are views of world state. Audio editing
 moves into the editor (see [Sound](#sound)).
 
-**Window set (current wireframes):** project browser, Map, Workflow (including
+**Views (current wireframes):** project browser, Map, Workflow (including
 conversations), Pixel editor, World state, Conversation test, Clock and Problems,
 each with an embedded inspector (D13).
 

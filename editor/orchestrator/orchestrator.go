@@ -1,6 +1,7 @@
-// Package orchestrator is the editor's headless core: the only writer of
-// project data. Window processes connect over a Unix socket, send commands and
-// receive events; they never touch project files.
+// Package orchestrator is the editor's core: the only writer of project data.
+// It runs in the editor's process beside the editor window, whose panes
+// connect to it, send commands and receive events; they never touch project
+// files.
 //
 // All project state is owned by one goroutine (Run), so it needs no locks.
 // Connection goroutines only frame messages and pass them to that loop.
@@ -26,10 +27,11 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-const socketPerm = 0o600
-
 // ErrRunning reports a call that is only allowed before Run.
 var ErrRunning = errors.New("orchestrator is already running")
+
+// ErrStopped reports a connection asked of an orchestrator that has stopped.
+var ErrStopped = errors.New("the orchestrator has stopped")
 
 // ErrUnknownDocument reports a document ID the project does not hold.
 var ErrUnknownDocument = errors.New("unknown document")
@@ -80,12 +82,11 @@ type inbound struct {
 
 // Orchestrator owns one open project.
 type Orchestrator struct {
-	cfg      Config
-	project  *project
-	journal  *journal
-	lock     *projectLock
-	listener net.Listener
-	ids      *ids.Generator
+	cfg     Config
+	project *project
+	journal *journal
+	lock    *projectLock
+	ids     *ids.Generator
 
 	docs       map[ids.ULID]*documentEntry
 	history    *history
@@ -93,7 +94,6 @@ type Orchestrator struct {
 	windows    map[ids.ULID]*window
 	subscribed map[ids.ULID]map[ids.ULID]*window
 	recent     map[ids.ULID]*ring
-	children   map[ids.ULID]*child
 	hosting    *hosting
 	picks      *picks
 	preview    *preview
@@ -116,20 +116,21 @@ type Orchestrator struct {
 	stopping    bool
 	quit        bool
 	// quitting is set once a window asks to quit: the orchestrator stops
-	// when its last window closes.
+	// when its last window has left.
 	quitting bool
 
-	inbound chan inbound
-	joins   chan *window
-	leaves  chan *window
-	exits   chan childExit
-	stopped chan struct{}
-	running atomic.Bool
+	// accepted are the served ends of connections panes opened.
+	accepted chan net.Conn
+	inbound  chan inbound
+	joins    chan *window
+	leaves   chan *window
+	stopped  chan struct{}
+	running  atomic.Bool
 }
 
 // New opens a project: it takes the project lock, loads and upgrades its
-// documents, replays the journal and starts listening for windows.
-func New(ctx context.Context, cfg Config) (*Orchestrator, error) {
+// documents and replays the journal. Panes connect with Connect.
+func New(cfg Config) (*Orchestrator, error) {
 	cfg, err := cfg.withDefaults()
 	if err != nil {
 		return nil, err
@@ -142,7 +143,7 @@ func New(ctx context.Context, cfg Config) (*Orchestrator, error) {
 		return nil, err
 	}
 	orch := newOrchestrator(cfg, opened)
-	if err := orch.open(ctx); err != nil {
+	if err := orch.open(); err != nil {
 		return nil, errors.Join(err, orch.closeResources())
 	}
 
@@ -155,7 +156,6 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		project:    opened,
 		journal:    nil,
 		lock:       nil,
-		listener:   nil,
 		ids:        ids.NewGenerator(cfg.Clock, cfg.Random),
 		docs:       map[ids.ULID]*documentEntry{},
 		history:    newHistory(cfg.UndoLimit),
@@ -163,7 +163,6 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		windows:    map[ids.ULID]*window{},
 		subscribed: map[ids.ULID]map[ids.ULID]*window{},
 		recent:     map[ids.ULID]*ring{},
-		children:   map[ids.ULID]*child{},
 		hosting:    newHosting(),
 		picks:      newPicks(),
 		preview:    nil,
@@ -176,17 +175,17 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		stopping: false,
 		quit:     false,
 		quitting: false,
+		accepted: make(chan net.Conn),
 		inbound:  make(chan inbound),
 		joins:    make(chan *window),
 		leaves:   make(chan *window),
-		exits:    make(chan childExit),
 		stopped:  make(chan struct{}),
 		running:  atomic.Bool{},
 	}
 }
 
-func (o *Orchestrator) open(ctx context.Context) error {
-	lock, err := acquireLock(o.project.root, lockInfo{Socket: o.cfg.SocketPath, PID: os.Getpid()})
+func (o *Orchestrator) open() error {
+	lock, err := acquireLock(o.project.root, lockInfo{PID: os.Getpid()})
 	if err != nil {
 		return err
 	}
@@ -195,11 +194,8 @@ func (o *Orchestrator) open(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := o.load(); err != nil {
-		return err
-	}
 
-	return o.listen(ctx)
+	return o.load()
 }
 
 func (o *Orchestrator) load() error {
@@ -291,26 +287,18 @@ func (o *Orchestrator) replay() error {
 	return nil
 }
 
-func (o *Orchestrator) listen(ctx context.Context) error {
-	if err := os.Remove(o.cfg.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove stale socket: %w", err)
+// Connect opens a connection to the orchestrator, as a pane does: one end of
+// an in-memory pipe, whose other end the orchestrator serves once it runs.
+func (o *Orchestrator) Connect(ctx context.Context) (net.Conn, error) {
+	pane, served := net.Pipe()
+	select {
+	case o.accepted <- served:
+		return pane, nil
+	case <-o.stopped:
+		return nil, errors.Join(ErrStopped, pane.Close(), served.Close())
+	case <-ctx.Done():
+		return nil, errors.Join(ctx.Err(), pane.Close(), served.Close())
 	}
-	var config net.ListenConfig
-	listener, err := config.Listen(ctx, "unix", o.cfg.SocketPath)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", o.cfg.SocketPath, err)
-	}
-	o.listener = listener
-	if err := os.Chmod(o.cfg.SocketPath, socketPerm); err != nil {
-		return fmt.Errorf("restrict socket: %w", err)
-	}
-
-	return nil
-}
-
-// SocketPath returns where windows connect.
-func (o *Orchestrator) SocketPath() string {
-	return o.cfg.SocketPath
 }
 
 // Documents lists the project's documents, sorted by name. Call before Run.
@@ -429,11 +417,6 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			o.audioFinished(outcome)
 		case answer := <-o.analyses.done:
 			o.analysisFinished(answer)
-		case exit := <-o.exits:
-			o.childExited(exit)
-			if o.quit {
-				return o.shutdown()
-			}
 		case <-flush.C:
 			o.flushLogged()
 			o.watchAudio()
@@ -441,6 +424,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			if err := o.journal.sync(); err != nil {
 				o.cfg.Logger.Error("journal sync failed", "error", err)
 			}
+		}
+		if o.quit {
+			return o.shutdown()
 		}
 	}
 }
@@ -455,7 +441,6 @@ func (o *Orchestrator) shutdown() error {
 	for _, connected := range slices.Collect(maps.Values(o.windows)) {
 		o.leave(connected)
 	}
-	o.waitForChildren(o.cfg.Clock().Add(o.cfg.ShutdownTimeout))
 	o.waitForAudio(o.cfg.Clock().Add(o.cfg.ShutdownTimeout))
 	close(o.stopped)
 	flushErr := o.flush()
@@ -465,14 +450,6 @@ func (o *Orchestrator) shutdown() error {
 
 func (o *Orchestrator) closeResources() error {
 	var errs []error
-	if o.listener != nil {
-		if err := o.listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			errs = append(errs, fmt.Errorf("close listener: %w", err))
-		}
-		if err := os.Remove(o.cfg.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			errs = append(errs, fmt.Errorf("remove socket: %w", err))
-		}
-	}
 	if o.journal != nil {
 		errs = append(errs, o.journal.close())
 	}

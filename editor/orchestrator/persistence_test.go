@@ -1,7 +1,6 @@
 package orchestrator_test
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,17 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
-	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -86,43 +83,31 @@ func TestStopSavesFilesAndEmptiesJournal(t *testing.T) {
 	}
 }
 
-// D9 and increment 1's plan: killing the orchestrator process loses no
-// acknowledged edit. The child process never flushes, so only the journal
-// holds the edits; it is killed with SIGKILL, then the project is reopened.
+// D9 and increment 1's plan: killing the editor's process loses no
+// acknowledged edit. The child process, an orchestrator with a pane, never
+// flushes, so only the journal holds the edits; it is killed with SIGKILL,
+// then the project is reopened.
 func TestKilledOrchestratorLosesNothing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	floor := createProject(t, dir)
-	socket := shortSocket(t)
+	marker := filepath.Join(t.TempDir(), "painted")
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	cmd.Env = append(os.Environ(), envRole+"="+roleOrchestrator, envDir+"="+dir, envSocket+"="+socket)
+	cmd.Env = append(os.Environ(), envRole+"="+roleEditor, envDir+"="+dir, envFloor+"="+floor.String(),
+		envMarker+"="+marker)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-
-	var view *client.Client
-	waitFor(t, "child orchestrator", func() bool {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		var err error
-		view, err = client.Dial(ctx, socket, protocol.Hello{Build: testBuild, View: "map"}, newRegistry(t))
+	waitFor(t, "the child editor to paint", func() bool {
+		_, err := os.Stat(marker)
 		return err == nil
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := view.Subscribe(ctx, floor); err != nil {
-		t.Fatal(err)
-	}
-	const painted = 50
-	for index := range painted {
-		mustPaint(t, view, floor, index%16, index/16, "wall", "")
-	}
 	if err := cmd.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
 	_ = cmd.Wait()
-	_ = view.Close()
+	const painted = killedPaints
 
 	h := start(t, dir, nil)
 	reopened := h.dial(t, "")
@@ -171,7 +156,7 @@ func TestJournalGapRefusesToOpen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".berad", "journal.log"), append(line, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = orchestrator.New(context.Background(), baseConfig(t, dir, shortSocket(t)))
+	_, err = orchestrator.New(baseConfig(t, dir))
 	if !errors.Is(err, orchestrator.ErrJournalGap) {
 		t.Fatalf("err = %v", err)
 	}
@@ -287,7 +272,7 @@ func TestNewerFileRefusesToOpen(t *testing.T) {
 	if err := os.WriteFile(matches[0], encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = orchestrator.New(context.Background(), baseConfig(t, dir, shortSocket(t)))
+	_, err = orchestrator.New(baseConfig(t, dir))
 	if !errors.Is(err, content.ErrNewerVersion) {
 		t.Fatalf("err = %v", err)
 	}
@@ -298,14 +283,10 @@ func TestSecondOrchestratorIsRefused(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	createProject(t, dir)
-	h := start(t, dir, nil)
-	_, err := orchestrator.New(context.Background(), baseConfig(t, dir, shortSocket(t)))
-	if !errors.Is(err, orchestrator.ErrProjectOpen) || !strings.Contains(err.Error(), h.socket) {
+	start(t, dir, nil)
+	_, err := orchestrator.New(baseConfig(t, dir))
+	if !errors.Is(err, orchestrator.ErrProjectOpen) || !strings.Contains(err.Error(), strconv.Itoa(os.Getpid())) {
 		t.Fatalf("err = %v", err)
-	}
-	socket, err := orchestrator.RunningSocket(dir)
-	if err != nil || socket != h.socket {
-		t.Fatalf("running socket %q %v", socket, err)
 	}
 }
 

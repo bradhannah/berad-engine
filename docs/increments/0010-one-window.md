@@ -336,3 +336,7 @@ context ("one Ebitengine process per editor window"), D10 (when the editor
 quits, and crash reports for panes), D13 (opening something already open
 selects its tab), and the vocabulary (window process; new terms for the
 shell, tab, pane, window bar and pinned clock).
+
+Adopted in [increment 13](0013-single-window.md) (2026-10-30), which makes
+the shell the only way the editor opens, moves the orchestrator into its
+process and removes popping out, and makes those changes there.
