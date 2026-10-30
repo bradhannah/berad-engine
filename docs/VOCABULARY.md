@@ -97,6 +97,8 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Acoustic family** | A group of recordings that sound alike, which sets the target measuring aims at |
 | **Profile** | What kind of moment a cue plays for, such as a door starting to open, which a search finds it by |
 | **Distance** | How many cells away an ambient cue is heard, louder closer; 0 is everywhere, as a background |
+| **Ambient sound** | An ambient cue placed on a cell of a floor, heard within its distance |
+| **Zone sounds** | The cues a zone plays the whole time the player is in it, such as music or a bed |
 | **Soundscape** | Up to four cues Audio plays together, two ambient, one music and one SFX, to hear how they sit together; never saved |
 | **Layer** | One cue of the soundscape, with its own gain, mute and solo |
 | **Monitor level** | How loud Audio plays a category while its author listens, standing in for a player's volume settings; never saved |
@@ -130,6 +132,10 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Search** | The project browser's box that shows only the documents whose name, folder or tag holds what is typed; "#town" looks at tags only |
 | **Pick** | Choosing something in a Map for another pane, through the orchestrator |
 | **Preview** | Playing a zone inside the editor, run by the Map that started it (D15); it never changes the project |
+| **Launch** | Playing the project as a game would, in a Play tab, from the player start and as the project was when launched |
+| **Play tab** | The tab Launch opens: the game's screen with nothing of the editor around it |
+| **Player start** | The one cell, on one floor of one zone, where Launch puts the player |
+| **Game runtime** | The engine package that runs a project's zone as a game: the player, NPCs, what is drawn and what is heard; the Play tab and a game's own program both use it |
 | **Run** | One play of a zone from its start; a preview is a run, and each has its own ID |
 
 ## Working terms
