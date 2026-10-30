@@ -2,16 +2,17 @@
 
 `github.com/bradhannah/berad-engine/editor`
 
-The shared editor program used by every game: a headless orchestrator that is
-the only writer of project data, plus one Ebitengine process per editor window.
+The shared editor program used by every game: an orchestrator that is the only
+writer of project data, and the editor window, one Ebitengine window with a tab
+for each view open, in one process.
 It uses the engine module; games never use this module.
 
 | Package | Holds |
 | --- | --- |
-| `cmd/berad-editor` | The program: `open` runs the orchestrator, `window` runs one window |
-| `orchestrator` | Project data, edits, undo, journal, saving, window processes |
+| `cmd/berad-editor` | The program: `open` runs the orchestrator and the editor window |
+| `orchestrator` | Project data, edits, undo, journal, saving, panes' connections and crash reports |
 | `protocol` | Messages, codec and framing |
-| `client` | The window side of the protocol |
+| `client` | A pane's side of the protocol |
 | `model` | Document and edit-kind seams, and the shared undo contract |
 | `plugin` | The explicit plug-in registry |
 | `plugins/project` | The project index and the create, rename and delete edits |
@@ -21,10 +22,10 @@ It uses the engine module; games never use this module.
 | `plugins/workflow` | Workflows: add, remove, change and move nodes; the layout kept in its own file |
 | `plugins/npc` | NPCs and the edits that choose the behaviour and change the notes |
 | `ui`, `ui/textedit` | Widgets in the wireframe look; the text editing core |
-| `views/frame` | What every window shares: requests, status bar, inspector |
-| `views/browser`, `views/mapview`, `views/textview`, `views/workflowview` | The four windows, testable without a screen; the Map window also runs previews |
-| `views/picker` | Pick on map for any window that needs an anchor |
-| `views/watchview` | The Watch window: where the watched NPC is in its workflow during a preview |
-| `views/audioview` | The Audio window: adding sounds with their attribution; editing cues and recordings, their regions, levels, distances, profiles and families; the soundscape |
-| `sound` | Plays the project's cues in a window, from recordings the orchestrator sends, and the Audio window's soundscape at its monitor levels |
-| `window` | Ebitengine host: input and input method, requests, sound, the Open dialog, test scripts; the shell that shows windows as tabs of one window (increment 10) |
+| `views/frame` | What every view shares: requests, status bar, inspector |
+| `views/browser`, `views/mapview`, `views/textview`, `views/workflowview` | The project browser, Map, Text and Workflow, testable without a screen; the Map also runs previews |
+| `views/picker` | Pick on map for any view that needs an anchor |
+| `views/watchview` | Watch: where the watched NPC is in its workflow during a preview |
+| `views/audioview` | Audio: adding sounds with their attribution; editing cues and recordings, their regions, levels, distances, profiles and families; the soundscape |
+| `sound` | Plays the project's cues in a pane, from recordings the orchestrator sends, and Audio's soundscape at its monitor levels |
+| `window` | The editor window: the window bar, tabs, splits and the pinned clock, and each pane's host: input and input method, requests, sound, the Open dialog, test scripts |

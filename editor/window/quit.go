@@ -126,7 +126,7 @@ func (h *host) saveForQuit() bool {
 	if saver.Save(&h.ctx) {
 		h.quitSaving = true
 	} else {
-		h.frame.Status("This window could not save its changes, so it stays open. Fix them, then quit again.")
+		h.frame.Status("This tab could not save its changes, so it stays open. Fix them, then quit again.")
 	}
 
 	return true
@@ -140,7 +140,7 @@ func (h *host) savedForQuit() bool {
 	}
 	h.quitSaving = false
 	if saver, ok := h.view.(frame.Saver); ok && saver.Unsaved(h.conn) > 0 {
-		h.frame.Status("Some changes could not be saved, so this window stays open.")
+		h.frame.Status("Some changes could not be saved, so this tab stays open.")
 
 		return false
 	}
@@ -169,13 +169,16 @@ func (h *host) reportUnsaved() {
 }
 
 // Locate finds a named part of the window for input scripts: the quit
-// dialog's buttons while it shows, the status bar's On top toggle, or the
-// view's parts.
+// dialog's buttons while it shows, how many tabs the editor window has
+// ("state:tabs:1"), the status bar's On top toggle, or the view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
 
 		return h.quitDialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: h.ctx.Size})
+	}
+	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
+		return image.Pt(0, 0), strconv.Itoa(h.tabs()) == count
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" {
 		return point, found

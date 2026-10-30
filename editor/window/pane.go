@@ -27,10 +27,13 @@ type paneSurface struct {
 	closing   closeRequest
 	title     string
 	attention bool
+	// front is an input script asking for the pane's tab to come to the
+	// front, without asking the operating system for attention.
+	front bool
 }
 
 func newPaneSurface() *paneSurface {
-	return &paneSurface{input: ui.NewInput(outside()), closing: closeNone, title: "", attention: false}
+	return &paneSurface{input: ui.NewInput(outside()), closing: closeNone, title: "", attention: false, front: false}
 }
 
 // outside is a cursor position in no pane, for a pane given no mouse.

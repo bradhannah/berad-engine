@@ -319,7 +319,7 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		start := *update.PickStart
 		s.pick = &start
 		s.stroke.active, s.choosing = false, false
-		ctx.Frame.Status("Pick an anchor for " + labelOr(start.Label, "another window") + ". Escape cancels.")
+		ctx.Frame.Status("Pick an anchor for " + labelOr(start.Label, "another tab") + ". Escape cancels.")
 	case update.PickCancel != nil && s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
 		s.pick = nil
 		ctx.Frame.Status("Pick cancelled: " + labelOr(update.PickCancel.Reason, "no reason given"))

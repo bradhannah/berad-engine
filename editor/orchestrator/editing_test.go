@@ -134,8 +134,8 @@ func TestViewsOfOneMapShareUndo(t *testing.T) {
 	}
 }
 
-// D3: separate windows each undo only their own edits, and an undo that would
-// overwrite a later change from another window is refused with a message.
+// D3: separate panes each undo only their own edits, and an undo that would
+// overwrite a later change from another pane is refused with a message.
 func TestUndoClashIsRefused(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

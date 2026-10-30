@@ -117,6 +117,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
 	shown.host.frame.OnTop.On = s.onTop
+	shown.host.tabs = func() int { return len(s.tabs) }
 
 	return shown, nil
 }
@@ -159,7 +160,7 @@ func (s *shell) show(opened openedPane) {
 		opened.err = errors.Join(err, opened.conn.Close())
 	}
 	if panes := s.panes(); len(panes) > 0 {
-		panes[0].host.frame.Status("Could not open a " + opened.args.View + " window: " + opened.err.Error())
+		panes[0].host.frame.Status("Could not open a " + opened.args.View + " tab: " + opened.err.Error())
 	}
 }
 
@@ -226,7 +227,7 @@ func (s *shell) readInput(focused *pane) ui.Input {
 }
 
 // route gives the target pane the frame's input, in its own coordinates, and
-// every other pane none. Closing the shell's window asks the focused pane to
+// every other pane none. Closing the editor window asks the focused pane to
 // quit the editor.
 func (s *shell) route(input ui.Input, target, focused *pane) {
 	for _, shown := range s.panes() {
@@ -330,14 +331,14 @@ func (s *shell) attend() {
 	}
 	for index, each := range s.tabs {
 		for slot, shown := range each.panes {
-			if !shown.place.attention {
+			if !shown.place.attention && !shown.place.front {
 				continue
 			}
-			shown.place.attention = false
 			s.active, each.focus = index, slot
-			if !ebiten.IsFocused() {
+			if shown.place.attention && !ebiten.IsFocused() {
 				ebiten.RequestAttention()
 			}
+			shown.place.attention, shown.place.front = false, false
 		}
 	}
 }

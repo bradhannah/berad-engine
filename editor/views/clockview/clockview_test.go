@@ -199,7 +199,7 @@ func TestClockRunsThePreview(t *testing.T) {
 	}
 }
 
-// TestClockReadoutForTheWindowBar sums the clock up for a shell's bar: the
+// TestClockReadoutForTheWindowBar sums the clock up for the window bar: the
 // next start before a preview, and the preview's time, rate and whether it
 // is stopped while one runs.
 func TestClockReadoutForTheWindowBar(t *testing.T) {

@@ -79,7 +79,7 @@ type Update struct {
 	// PreviewControl asks the window running a preview to watch, pause,
 	// resume or step its NPCs.
 	PreviewControl *protocol.PreviewControl
-	// Host asks a shell to show a window as one of its panes.
+	// Host asks the editor window to show a window as one of its panes.
 	Host *protocol.Host
 }
 

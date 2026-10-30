@@ -16,7 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 )
 
-// The shell's tabs are grouped by kind of window (increment 10, settled by
+// The window bar groups tabs by kind of view (increment 10, settled by
 // its author after trying it): the bar's top row has a tab for each kind with
 // how many are open, and a second row lists the open documents of the kind
 // in front when there are several. A tab's kind is its first pane's, so a Map

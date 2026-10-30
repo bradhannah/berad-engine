@@ -62,7 +62,7 @@ func (c *Client) dispatch(message protocol.Message) {
 
 // dispatchNotice delivers what a window is told without asking: to draw
 // attention to itself, perhaps showing an item, that the audio library
-// changed, or, to a shell, a window to show as a pane.
+// changed, or, to the editor window, a window to show as a pane.
 func (c *Client) dispatchNotice(message protocol.Message) {
 	update := newUpdate()
 	if message.Kind == protocol.KindHost {

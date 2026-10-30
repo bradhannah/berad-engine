@@ -52,7 +52,7 @@ const (
 
 // Messages shown in place of a workflow.
 const (
-	textNoPreview   = "Start a preview in a Map window, then click an NPC."
+	textNoPreview   = "Start a preview in a Map, then click an NPC."
 	textChooseNPC   = "Click an NPC on the map to watch it."
 	textNoBehaviour = "This NPC has no behaviour."
 )

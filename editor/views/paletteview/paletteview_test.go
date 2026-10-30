@@ -297,7 +297,7 @@ func (f *fixture) palette(id ids.ULID) *art.Palette {
 func TestOpensAPaletteAndChoosesColours(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, gloomyID)
-	if title := f.state.Title(f.docs); !strings.HasPrefix(title, "Palette Editor: gloomy  (window ") {
+	if title := f.state.Title(f.docs); !strings.HasPrefix(title, "Palette Editor: gloomy  (view ") {
 		t.Fatalf("title %q", title)
 	}
 	if !f.has("loaded") || !f.has("ramps:smoke,murk,ember,fog") || f.state.ReadOnly() {

@@ -30,7 +30,7 @@ import (
 const ViewName = "text"
 
 // cancelledHere is the reason given when a pick is cancelled in this window.
-const cancelledHere = "cancelled in the text window"
+const cancelledHere = "cancelled in the text"
 
 const (
 	bodyTop       = ui.Inset + ui.LineHeight + 4
@@ -84,7 +84,7 @@ func (s *State) Title(docs frame.Docs) string {
 		}
 	})
 
-	return "Text: " + name + "  (window " + s.window.Short(shortID) + ")"
+	return "Text: " + name + "  (view " + s.window.Short(shortID) + ")"
 }
 
 // Focused returns the focused text field.
@@ -359,7 +359,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.body.Draw(screen)
 	s.save.Draw(screen, s.theme)
 	if s.body.Field.Conflict() {
-		s.theme.DrawText(screen, "Changed in another window since you started. Save keeps your version; Escape takes theirs.",
+		s.theme.DrawText(screen, "Changed in another tab since you started. Save keeps your version; Escape takes theirs.",
 			ui.Inset, s.save.Rect.Max.Y+ui.Gap, ui.ColorWarn())
 	}
 	document, loaded := s.text(docs)
@@ -391,7 +391,7 @@ func (s *State) drawInspector(screen *ebiten.Image, document textdoc.Document, l
 		"ID " + s.document.String(),
 	}
 	if s.picker.Picking() {
-		lines = append(lines, "", "Picking: click an anchor", "in a Map window.")
+		lines = append(lines, "", "Picking: click an anchor", "in a Map.")
 	}
 	for index, line := range lines {
 		ink := ui.ColorInk()

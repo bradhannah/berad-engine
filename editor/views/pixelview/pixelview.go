@@ -137,7 +137,7 @@ func (s *State) Title(docs frame.Docs) string {
 		}
 	})
 
-	return "Sprite: " + name + "  (window " + s.window.Short(shortID) + ")"
+	return "Sprite: " + name + "  (view " + s.window.Short(shortID) + ")"
 }
 
 // Focused returns nil: the Pixel editor has no text fields.

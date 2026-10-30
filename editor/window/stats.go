@@ -10,7 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// statsEnv names a file each window process appends a line of frame
+// statsEnv names a file the editor window appends a line of frame
 // statistics to as it closes, for measuring (increment 10): how long its ticks
 // and draws took, its frame rates, and its views' command-to-event times.
 const statsEnv = "BERAD_FRAME_STATS"

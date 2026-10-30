@@ -71,6 +71,8 @@ type host struct {
 	hosts      func(protocol.Host)
 	// saveShot saves a screenshot, of the whole editor window.
 	saveShot func(screen *ebiten.Image, path string) error
+	// tabs counts the editor window's tabs, for input scripts.
+	tabs func() int
 }
 
 func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn *paneSurface) *host {
@@ -86,7 +88,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		closeQuits: false, hosts: nil, saveShot: saveScreenshot,
+		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil,
 	}
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
@@ -129,6 +131,7 @@ func (h *host) Update() error {
 	h.reportUnsaved()
 	h.flush()
 	if h.script != nil {
+		h.surface.front = h.surface.front || h.script.takeFront()
 		if shot := h.script.takeScreenshot(); shot != "" {
 			h.shot = shot
 		}

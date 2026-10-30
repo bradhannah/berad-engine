@@ -490,7 +490,7 @@ func (s *State) previewGroups(docs frame.Docs) []previewGroup {
 	}
 
 	return []previewGroup{{label: labelPreview, lines: []string{
-		"Starts at " + clock.Format(s.start) + ",", "set in the Clock window.",
+		"Starts at " + clock.Format(s.start) + ",", "set on the window bar's clock.",
 	}}}
 }
 

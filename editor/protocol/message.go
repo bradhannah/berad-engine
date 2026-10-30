@@ -1,5 +1,5 @@
 // Package protocol defines the messages exchanged between the orchestrator and
-// editor window processes, and how they travel over a connection.
+// the editor window's panes, and how they travel over a connection.
 //
 // Every message is a Kind, an optional request number for correlating replies,
 // and a payload. Payload types are defined once here as Go types; the encoding
