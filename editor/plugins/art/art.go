@@ -1,7 +1,7 @@
 // Package art is the editor half of a project's art: the palette, tile,
 // sprite, settings and stand-in sprite documents, the edits that change them,
-// and the documents every project holds, its shared palette, art settings and
-// stand-in sprites.
+// and the documents every project holds: Default, the engine's palette, which
+// is read only, the art settings and the stand-in sprites.
 package art
 
 import (
@@ -28,6 +28,7 @@ const (
 	rampNamePrefix = "ramp-name:"
 	shadePrefix    = "shade:"
 	standInPrefix  = "standin:"
+	rampOrderItem  = "ramp-order"
 	tileSizeItem   = "tile-size"
 )
 
@@ -60,6 +61,10 @@ func (d *PaletteDocument) Encode() (json.RawMessage, error) {
 //
 //nolint:ireturn // Documents are polymorphic; callers hold them as model.Document.
 func (d *PaletteDocument) Clone() model.Document { return &PaletteDocument{Palette: d.Palette.Clone()} }
+
+// KeptWhileUsed keeps a palette while a zone lists it or a tile is painted
+// with it: each reference is removed first.
+func (d *PaletteDocument) KeptWhileUsed() bool { return true }
 
 // DecodePalette reads a saved palette.
 //
@@ -102,6 +107,9 @@ func (d *TileDocument) References() []model.Reference {
 	var references []model.Reference
 	seen := map[model.Reference]bool{}
 	for _, ref := range d.Tile.Colors() {
+		if ref.IsLoose() {
+			continue
+		}
 		for _, item := range []string{RampItem(ref.Ramp), ShadeItem(ref.Shade)} {
 			reference := model.Reference{Document: ref.Palette, Item: item, Label: "painted with it"}
 			if !seen[reference] {
@@ -254,17 +262,60 @@ func DecodeStandIns(data json.RawMessage) (model.Document, error) {
 	return &StandInsDocument{Sprites: sprites}, nil
 }
 
-func starterPalette() (json.RawMessage, error) {
-	palette, err := art.StarterPalette()
+func defaultPalette() (json.RawMessage, error) {
+	palette, err := art.DefaultPalette()
 	if err != nil {
-		return nil, fmt.Errorf("starter palette: %w", err)
+		return nil, fmt.Errorf("default palette: %w", err)
 	}
 	data, err := palette.Encode()
 	if err != nil {
-		return nil, fmt.Errorf("starter palette: %w", err)
+		return nil, fmt.Errorf("default palette: %w", err)
 	}
 
 	return data, nil
+}
+
+// preparePalette gives a new palette's ramps and shades their permanent IDs,
+// as a palette made from colours chosen out of another needs.
+func preparePalette(data json.RawMessage, newID model.IDSource) (json.RawMessage, error) {
+	var wire struct {
+		Ramps []art.Ramp  `json:"ramps"`
+		Moved []art.Moved `json:"moved,omitempty"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	changed := false
+	for at := range wire.Ramps {
+		ramp := &wire.Ramps[at]
+		for _, slot := range append([]*ids.ULID{&ramp.ID}, shadeIDs(ramp.Shades)...) {
+			if !slot.IsZero() {
+				continue
+			}
+			made, err := newID()
+			if err != nil {
+				return nil, fmt.Errorf("palette id: %w", err)
+			}
+			*slot, changed = made, true
+		}
+	}
+	if !changed {
+		return data, nil
+	}
+	if wire.Ramps == nil {
+		wire.Ramps = []art.Ramp{}
+	}
+
+	return encode(wire)
+}
+
+func shadeIDs(shades []art.Shade) []*ids.ULID {
+	found := make([]*ids.ULID, 0, len(shades))
+	for at := range shades {
+		found = append(found, &shades[at].ID)
+	}
+
+	return found
 }
 
 // Plugin returns the art plug-in.
@@ -272,28 +323,28 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name: PluginName,
 		Documents: []model.DocumentType{
-			{Format: art.PaletteFormat(), Decode: DecodePalette, Layout: nil, Prepare: nil},
+			{Format: art.PaletteFormat(), Decode: DecodePalette, Layout: nil, Prepare: preparePalette},
 			{Format: art.TileFormat(), Decode: DecodeTile, Layout: nil, Prepare: nil},
 			{Format: art.SpriteFormat(), Decode: DecodeSprite, Layout: nil, Prepare: nil},
 			{Format: art.SettingsFormat(), Decode: DecodeSettings, Layout: nil, Prepare: nil},
 			{Format: art.StandInsFormat(), Decode: DecodeStandIns, Layout: nil, Prepare: nil},
 		},
 		Edits: []model.EditKind{
-			AddRamp{}, RemoveRamp{}, RenameRamp{}, AddShade{}, RemoveShade{}, SetShade{},
-			Paint{}, SetTileSize{}, SetStandIn{},
+			AddRamp{}, RemoveRamp{}, RenameRamp{}, MoveRamp{}, AddShade{}, RemoveShade{}, SetShade{},
+			MoveShade{}, Paint{}, SetTileSize{}, SetStandIn{},
 		},
 		Required: []model.RequiredDocument{
 			{
-				ID: art.SharedPaletteID(), Format: art.PaletteFormatName, Name: art.SharedPaletteName,
-				Data: starterPalette,
+				ID: art.DefaultPaletteID(), Format: art.PaletteFormatName, Name: art.DefaultPaletteName,
+				Data: defaultPalette, ReadOnly: true,
 			},
 			{
 				ID: art.SettingsID(), Format: art.SettingsFormatName, Name: art.SettingsName,
-				Data: art.DefaultSettings().Encode,
+				Data: art.DefaultSettings().Encode, ReadOnly: false,
 			},
 			{
 				ID: art.StandInsID(), Format: art.StandInsFormatName, Name: art.StandInsName,
-				Data: art.NewStandInSprites().Encode,
+				Data: art.NewStandInSprites().Encode, ReadOnly: false,
 			},
 		},
 	}

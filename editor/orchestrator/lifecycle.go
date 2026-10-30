@@ -126,6 +126,9 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 	if err := o.refuseRequired(deletion.ID); err != nil {
 		return nil, err
 	}
+	if err := o.refuseKept(deletion.ID, entry.document); err != nil {
+		return nil, err
+	}
 	data, err := entry.document.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode %s: %w", entry.info.Name, err)

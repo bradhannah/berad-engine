@@ -78,3 +78,34 @@ func TestEncodeDecode(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPalettes(t *testing.T) {
+	t.Parallel()
+	z := zone.New()
+	for at, palette := range []byte{7, 8} {
+		if err := z.InsertPalette(at, floorID(palette)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := z.InsertPalette(0, floorID(7)); !errors.Is(err, zone.ErrPalette) {
+		t.Fatalf("a palette listed twice: %v", err)
+	}
+	index, err := z.RemovePalette(floorID(7))
+	if err != nil || index != 0 || len(z.Palettes()) != 1 {
+		t.Fatalf("remove palette: %d %v", index, err)
+	}
+	if err := z.InsertPalette(index, floorID(7)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := z.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := zone.Decode(data)
+	if err != nil || !decoded.Equal(z) || decoded.Palettes()[0] != floorID(7) {
+		t.Fatalf("palettes round trip in order: %v %v", decoded, err)
+	}
+	if _, err := z.RemovePalette(floorID(9)); !errors.Is(err, zone.ErrPalette) {
+		t.Fatalf("removing a palette not listed: %v", err)
+	}
+}

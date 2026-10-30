@@ -85,12 +85,15 @@ func (c Command) Succeed(created ids.ULID) {
 
 // Requests records what a view asks for.
 type Requests struct {
-	Commands    []Command
-	Undos       int
-	Redos       int
-	Subscribed  []ids.ULID
-	Opened      []protocol.Open
-	Uses        []func([]protocol.Use, error)
+	Commands   []Command
+	Undos      int
+	Redos      int
+	Subscribed []ids.ULID
+	Opened     []protocol.Open
+	Uses       []func([]protocol.Use, error)
+	// UsesOf are the document and item each where-used question in Uses
+	// asked about, in the same order.
+	UsesOf      []UsesQuestion
 	PickAsks    []func([]protocol.PickMap, error)
 	PickStarts  []protocol.PickStart
 	PickAnswers []protocol.PickAnswer
@@ -313,9 +316,16 @@ func (r *Requests) Publish(topic string, value any) {
 	r.Published = append(r.Published, protocol.Session{Topic: topic, Value: encoded})
 }
 
+// UsesQuestion is what a where-used question asked about.
+type UsesQuestion struct {
+	Document ids.ULID
+	Item     string
+}
+
 // WhereUsed records a where-used question; the test answers it.
-func (r *Requests) WhereUsed(_ ids.ULID, _ string, done func([]protocol.Use, error)) {
+func (r *Requests) WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error)) {
 	r.Uses = append(r.Uses, done)
+	r.UsesOf = append(r.UsesOf, UsesQuestion{Document: document, Item: item})
 }
 
 // PickAsk records a pick question; the test answers it.

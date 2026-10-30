@@ -7,9 +7,12 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	"github.com/bradhannah/berad-engine/editor/client"
+	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
+	"github.com/bradhannah/berad-engine/engine/art"
 )
 
 // Toolbar and canvas geometry, in screen pixels.
@@ -19,6 +22,7 @@ const (
 	zoomLabel   = 56
 	zoomFitW    = 44
 	gridWidth   = 60
+	marksWidth  = 96
 	zoomPercent = 100
 	// canvasMargin is kept clear round a fitted tile, and readoutSpace below
 	// the canvas holds the readout's two lines.
@@ -284,9 +288,36 @@ func (s *State) drawCanvas(screen *ebiten.Image, docs frame.Docs) {
 		}
 	}
 	ui.StrokeRect(area, rect, ui.Hairline, ui.ColorRule())
+	if s.marks.On {
+		s.drawMarks(area, docs, size)
+	}
 	if s.hovering {
 		ui.StrokeRect(area, s.pixelRect(s.hover, size), hoverWidth, ui.ColorSelect())
 	}
+}
+
+// drawMarks outlines the pixels the readout warns about: those painted with
+// a colour that has moved, and loose colours.
+func (s *State) drawMarks(screen *ebiten.Image, docs frame.Docs, size int) {
+	colors := s.colors(docs)
+	tileID, ok := s.tileID(docs)
+	if !ok {
+		return
+	}
+	docs.View(tileID, func(document client.Document) {
+		tileDoc, isTile := document.Model.(*artplugin.TileDocument)
+		if !isTile {
+			return
+		}
+		for row := range size {
+			for col := range size {
+				ref, err := tileDoc.Tile.At(col, row)
+				if err == nil && (ref.IsLoose() || colors.Moved(ref)) {
+					ui.StrokeRect(screen, s.pixelRect(image.Pt(col, row), size).Inset(1), hoverWidth, ui.ColorWarn())
+				}
+			}
+		}
+	})
 }
 
 // drawToolbar draws the tool buttons, the zoom and the grid toggle.
@@ -327,13 +358,50 @@ func (s *State) drawReadout(screen *ebiten.Image, docs frame.Docs) {
 	measure := fmt.Sprintf("%d × %d pixels", size, size)
 	s.theme.DrawText(screen, measure, canvas.Max.X-ui.Inset-s.theme.TextWidth(measure), top, ui.ColorMuted())
 	if problem := s.problem(docs, size); problem != "" {
-		s.theme.DrawText(screen, s.theme.FitText(problem, canvas.Dx()-ui.Half*ui.Inset), ui.Inset,
-			top+ui.LineHeight, ui.ColorWarn())
+		room := canvas.Dx() - ui.Half*ui.Inset
+		if !s.marks.Rect.Empty() {
+			room = s.marks.Rect.Min.X - ui.Gap - ui.Inset
+		}
+		s.theme.DrawText(screen, s.theme.FitText(problem, room), ui.Inset, top+ui.LineHeight, ui.ColorWarn())
+	}
+	if !s.marks.Rect.Empty() {
+		s.marks.Draw(screen, s.theme)
 	}
 }
 
+// layoutReadout places Show them at the right of the readout's second line,
+// while there are pixels to mark.
+func (s *State) layoutReadout(docs frame.Docs) {
+	s.marks.Rect = ui.Zero()
+	if moved, loose := s.warned(docs); moved+loose > 0 {
+		canvas := s.canvas()
+		top := canvas.Max.Y + ui.Gap + ui.LineHeight - ui.Gap
+		right := canvas.Max.X - ui.Inset
+		s.marks.Rect = image.Rect(right-marksWidth, top, right, top+ui.ButtonH)
+	}
+}
+
+// warned counts the tile's pixels painted with a colour that has moved, and
+// its loose colours.
+func (s *State) warned(docs frame.Docs) (int, int) {
+	colors := s.colors(docs)
+	moved, loose := 0, 0
+	if tileID, ok := s.tileID(docs); ok {
+		docs.View(tileID, func(document client.Document) {
+			if tileDoc, isTile := document.Model.(*artplugin.TileDocument); isTile {
+				moved = tileDoc.Tile.Count(colors.Moved)
+				loose = tileDoc.Tile.Count(art.ColorRef.IsLoose)
+			}
+		})
+	}
+
+	return moved, loose
+}
+
 // problem says what is wrong with the tile, if anything: a size other than
-// the project's tile size, or pixels whose colour cannot be found.
+// the project's tile size, pixels whose colour cannot be found, pixels
+// painted with a colour that has moved, or loose colours. The last two stay
+// until the pixels are repainted.
 func (s *State) problem(docs frame.Docs, size int) string {
 	if project, ok := projectTileSize(docs); ok && project != size {
 		return fmt.Sprintf("This tile is %d × %d, but the project's tiles are %d × %d.", size, size, project, project)
@@ -344,6 +412,22 @@ func (s *State) problem(docs frame.Docs, size int) string {
 	case missing > 1:
 		return fmt.Sprintf("%d pixels' colours cannot be found in their palettes, so they show clear.", missing)
 	}
+	moved, loose := s.warned(docs)
+	switch {
+	case moved > 0:
+		return pixels(moved) + " name a colour that has moved to another ramp. Repaint them to clear this."
+	case loose > 0:
+		return pixels(loose) + " are loose colours, outside every palette. Repaint them to clear this."
+	}
 
 	return ""
+}
+
+// pixels counts pixels in words.
+func pixels(count int) string {
+	if count == 1 {
+		return "1 pixel"
+	}
+
+	return fmt.Sprintf("%d pixels", count)
 }

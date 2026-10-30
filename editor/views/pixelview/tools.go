@@ -110,7 +110,7 @@ func (s *State) paint(ctx *frame.Context, pixels []image.Point) {
 	if len(changed) == 0 {
 		return
 	}
-	s.command(ctx, tileID, artplugin.PaintEdit, s.gesture(), artplugin.PaintArgs{Pixels: changed}, nil, nil)
+	s.command(ctx, tileID, artplugin.PaintEdit, s.gesture(), artplugin.PaintArgs{Pixels: changed}, nil)
 }
 
 // fill paints a pixel and every pixel joined to it, side by side, in its
@@ -135,7 +135,7 @@ func (s *State) fill(ctx *frame.Context, start image.Point) {
 		pixels = append(pixels, artplugin.Pixel{Col: pixel.X, Row: pixel.Y, Color: color})
 	}
 	s.stroke.count++
-	s.command(ctx, tileID, artplugin.PaintEdit, s.gesture(), artplugin.PaintArgs{Pixels: pixels}, nil, nil)
+	s.command(ctx, tileID, artplugin.PaintEdit, s.gesture(), artplugin.PaintArgs{Pixels: pixels}, nil)
 }
 
 // fillRegion returns the pixels a fill from start paints: start, and every
@@ -170,11 +170,17 @@ func fillRegion(tile *art.Tile, start image.Point, color art.ColorRef) []image.P
 	return region
 }
 
-// pick chooses the colour of a pixel to paint with. A colour that cannot be
-// found is not chosen.
+// pick chooses the colour of a pixel to paint with: a colour that has moved
+// at its new place. A colour that cannot be found is not chosen, and nor is a
+// loose colour, which names no palette and is not painted with.
 func (s *State) pick(ctx *frame.Context, pixel image.Point) {
 	ref, ok := s.pixelColor(ctx.Docs, pixel)
 	if !ok {
+		return
+	}
+	if ref.IsLoose() {
+		ctx.Frame.Status("A loose colour, " + ref.Value.String() + ", names no palette: repaint it with a palette colour")
+
 		return
 	}
 	name, named := s.colorName(ctx.Docs, ref)
@@ -182,6 +188,11 @@ func (s *State) pick(ctx *frame.Context, pixel image.Point) {
 		ctx.Frame.Status("That pixel's colour cannot be found in its palette")
 
 		return
+	}
+	if found, has := palette(ctx.Docs, ref.Palette); has && !ref.IsClear() {
+		if ramp, placed := found.Place(ref.Shade); placed {
+			ref = art.Named(ref.Palette, ramp, ref.Shade)
+		}
 	}
 	s.color = ref
 	ctx.Frame.Status("Painting with " + name)

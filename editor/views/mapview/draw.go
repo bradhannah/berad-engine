@@ -78,6 +78,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.menu.Draw(screen, s.theme)
 	}
 	s.keySheet.Draw(screen, s.theme)
+	s.zonePalettes.DrawMenu(screen)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
@@ -416,6 +417,10 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.Heading(screen, "INSPECTOR", textX, textY)
 	textY += ui.LineHeight
 	line("Zone: "+zoneName, ui.ColorInk())
+	if s.zonePalettesShown() {
+		s.zonePalettes.Draw(screen)
+		textY = s.zoneListFoot + ui.Inset
+	}
 	loaded := docs.View(s.floor, func(document client.Document) {
 		floorDoc, ok := document.Model.(*tilefloor.Document)
 		if !ok {

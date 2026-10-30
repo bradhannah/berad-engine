@@ -231,7 +231,7 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 ### Palettes and transparency
 
 - **Agreed (2026-10-25):** a pixel refers to a palette colour by its **scoped
-  name**, such as `shared / grass 2` or `gloomy / smoke 1`, never by number or
+  name**, such as `default / grass 2` or `gloomy / smoke 1`, never by number or
   value, so changing a palette colour changes every tile that uses it.
 - **Candidate:** each name sits on a permanent ID, as anchors do, so renaming a
   ramp never breaks a tile.
@@ -239,9 +239,10 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   their hue, numbered dark to light ("grass" 1 to 6); in its author's words,
   "It's not green - it's grassColor1". This is how pixel art is shaded, and
   keeps names few. (Rejected: a name on every colour.)
-- **Agreed (2026-10-25):** **palettes** are documents of their own: one shared
+- **Agreed (2026-10-25):** **palettes** are documents of their own: one
   palette for the game's look, and further palettes named for a feeling rather
-  than a place, such as "gloomy". A further palette adds colours; it never
+  than a place, such as "gloomy". (Changed on 2026-10-28: the palette for the
+  game's look is Default, below.) A further palette adds colours; it never
   recolours the shared ones. A tile can use colours from any palette and keeps
   them wherever it is placed, so a palette matters while drawing, not while
   placing. A zone can refer to a palette, so the editor offers it first while
@@ -252,6 +253,29 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   ("glass 1, 40%"), so painting with it is see-through; one colour is fully
   clear. (Rejected: opacity steps per pixel, dither-only transparency, and one
   opacity for a whole sprite.)
+
+- **Agreed (2026-10-28):** the engine ships one built-in palette, **Default**,
+  of 256 colours of its own making, the same in every game and read only: its
+  colours can be copied, never changed. A game adds palettes of its own beside
+  it, made empty or from Default's ramps and single colours, and every palette
+  but Default can be edited, renamed and deleted.
+- **Agreed (2026-10-28):** all palette editing is in the **Palette Editor**, a
+  window kind of its own; the Pixel editor only picks colours. A colour can
+  carry a short **label**, at most 15 characters and unique within its
+  palette. A **gradient** fills a ramp from a left colour, a right colour and
+  a number of steps, mixing the colour, the opacity or both.
+- **Agreed (2026-10-28):** moving a colour keeps a shadow record of its old
+  place, so tiles still find it and warn until repainted. Deleting a palette
+  is refused while a zone or tile refers to it; removing a palette from a tile
+  keeps each pixel's colour, as Default's exact match or as a **loose colour**
+  that names no palette and is flagged.
+- **Agreed (2026-10-28):** a zone lists the palettes it uses, and the Pixel
+  editor offers the palettes of the zones a sprite is placed in first, A–Z,
+  then Default, then the rest. The details are in
+  [increment 12](increments/0012-palettes.md).
+- **Agreed (2026-10-30):** a colour is chosen with a colour picker as well as
+  by its hex value; the editor draws the picker, so it is the same on every
+  system.
 
 ### Drawing
 

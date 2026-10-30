@@ -29,7 +29,7 @@ var (
 // sprite folder Lights.
 func withArt(f *fixture) {
 	f.t.Helper()
-	palette, err := art.StarterPalette()
+	palette, err := art.DefaultPalette()
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func withArt(f *fixture) {
 	}
 	docs := f.ctx.Docs.(*frametest.Docs)
 	putArtIndex(docs)
-	docs.Put(art.SharedPaletteID(), art.SharedPaletteName, &artplugin.PaletteDocument{Palette: palette})
+	docs.Put(art.DefaultPaletteID(), art.DefaultPaletteName, &artplugin.PaletteDocument{Palette: palette})
 	docs.Put(art.SettingsID(), art.SettingsName, &artplugin.SettingsDocument{Settings: art.Settings{TileSize: 24}})
 	docs.Put(art.StandInsID(), art.StandInsName, &artplugin.StandInsDocument{Sprites: art.NewStandInSprites()})
 	docs.Put(lanternTileID, "Tile 1", &artplugin.TileDocument{Tile: tile})
@@ -55,7 +55,7 @@ func putArtIndex(docs *frametest.Docs, more ...project.Entry) {
 		{ID: dayID, Name: "Clerk day", Format: flow.FormatName},
 		{ID: lanternID, Name: "Lantern", Format: art.SpriteFormatName, Folder: "Lights", Tags: []string{"light"}},
 		{ID: lanternTileID, Name: "Tile 1", Format: art.TileFormatName},
-		{ID: art.SharedPaletteID(), Name: art.SharedPaletteName, Format: art.PaletteFormatName},
+		{ID: art.DefaultPaletteID(), Name: art.DefaultPaletteName, Format: art.PaletteFormatName},
 		{ID: art.SettingsID(), Name: art.SettingsName, Format: art.SettingsFormatName},
 		{ID: art.StandInsID(), Name: art.StandInsName, Format: art.StandInsFormatName},
 	}, more...), []project.Folder{{Format: art.SpriteFormatName, Path: "Lights"}}))
@@ -96,7 +96,8 @@ func (f *fixture) status() string {
 }
 
 // TestArtSections lists the Settings row first with the tile size, then,
-// after Audio, Sprites with its folders and a [+], and Palettes without one.
+// after Audio, Sprites with its folders and a [+], and Palettes with one,
+// Default marked.
 // A sprite's tile, the settings and the stand-in sprites are not listed as
 // documents.
 func TestArtSections(t *testing.T) {
@@ -113,17 +114,20 @@ func TestArtSections(t *testing.T) {
 	}
 	sprites, _ := f.row("section:sprites")
 	palettes, _ := f.row("section:palettes")
-	if sprites.Detail != "1" || !sprites.Add || palettes.Detail != "1" || palettes.Add {
-		t.Fatalf("Sprites has a [+], Palettes none: %+v %+v", sprites, palettes)
+	if sprites.Detail != "1" || !sprites.Add || palettes.Detail != "1" || !palettes.Add {
+		t.Fatalf("Sprites and Palettes have a [+]: %+v %+v", sprites, palettes)
+	}
+	if defaults, _ := f.row(art.DefaultPaletteID().String()); defaults.Detail != "default · read only" {
+		t.Fatalf("Default is marked: %+v", defaults)
 	}
 	if got := f.rowsIn("section:sprites"); !slices.Equal(got, []string{"Lights/0", "Lantern/1"}) {
 		t.Fatalf("sprites %v", got)
 	}
-	if got := f.rowsIn("section:palettes"); !slices.Equal(got, []string{"Shared/0"}) {
+	if got := f.rowsIn("section:palettes"); !slices.Equal(got, []string{"Default/0"}) {
 		t.Fatalf("palettes %v", got)
 	}
 	lantern, _ := f.row(lanternID.String())
-	shared, _ := f.row(art.SharedPaletteID().String())
+	shared, _ := f.row(art.DefaultPaletteID().String())
 	if lantern.Icon != ui.IconSprite || lantern.Aside != "#light" || shared.Icon != ui.IconPalette {
 		t.Fatalf("icons and tags: %+v %+v", lantern, shared)
 	}
@@ -278,22 +282,22 @@ func TestDeleteSpriteTakesItsTile(t *testing.T) {
 	}
 }
 
-// TestSharedPaletteKeepsItsName shows the shared palette's name without a
-// field, and offers no way to rename or delete it, or to make a palette.
-func TestSharedPaletteKeepsItsName(t *testing.T) {
+// TestDefaultPaletteKeepsItsName shows Default's name without a field, and
+// offers no way to rename or delete it.
+func TestDefaultPaletteKeepsItsName(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withArt(f)
-	f.click("row:Shared", false)
+	f.click("row:Default", false)
 	if _, ok := f.state.Locate("ui:name", f.ctx.Docs); ok {
 		t.Fatal("no name field")
 	}
 	f.click("ui:delete", false)
 	f.keys("Cmd+Backspace")
-	if len(f.requests.Uses) != 0 || !strings.HasPrefix(f.status(), "Every project holds “Shared”") {
+	if len(f.requests.Uses) != 0 || !strings.HasPrefix(f.status(), "Every project holds “Default”") {
 		t.Fatalf("not deleted: %d %q", len(f.requests.Uses), f.status())
 	}
-	f.rightClick("row:Shared")
+	f.rightClick("row:Default")
 	f.click("menu:context-rename", false)
 	if f.state.Focused() != nil {
 		t.Fatal("Rename is disabled")
@@ -312,7 +316,8 @@ func TestSharedPaletteKeepsItsName(t *testing.T) {
 }
 
 // TestSpriteOpensInThePixelEditor opens a sprite in a Pixel editor, from the
-// inspector's button and from a double-click; a palette has nothing to open.
+// inspector's button and from a double-click, and a palette in the Palette
+// Editor.
 func TestSpriteOpensInThePixelEditor(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -324,9 +329,10 @@ func TestSpriteOpensInThePixelEditor(t *testing.T) {
 	if len(opened) != 2 || opened[0].View != "sprite" || opened[0].Target != lanternID || opened[1] != opened[0] {
 		t.Fatalf("opened %+v", opened)
 	}
-	f.rightClick("row:Shared")
+	f.rightClick("row:Default")
 	f.click("menu:context-open", false)
-	if len(f.requests.Opened) != 2 {
-		t.Fatalf("a palette opens nothing: %+v", f.requests.Opened)
+	if len(f.requests.Opened) != 3 || f.requests.Opened[2].View != "palette" ||
+		f.requests.Opened[2].Target != art.DefaultPaletteID() {
+		t.Fatalf("a palette opens in the Palette Editor: %+v", f.requests.Opened)
 	}
 }

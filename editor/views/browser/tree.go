@@ -28,18 +28,18 @@ const (
 )
 
 // sectionNew returns what a section's [+] creates, or "" for a section
-// without one, such as Palettes.
+// without one.
 func sectionNew(section string) string {
 	return map[string]string{
 		sectionZones: newZone, sectionWorkflows: newWorkflow, sectionNPCs: newNPC, sectionText: newText,
-		sectionAudio: newSound, sectionSprites: newSprite,
+		sectionAudio: newSound, sectionSprites: newSprite, sectionPalettes: newPalette,
 	}[section]
 }
 
 // newSection returns the section whose [+] creates an item, or "".
 func newSection(item string) string {
 	for _, section := range []string{
-		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio, sectionSprites,
+		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio, sectionSprites, sectionPalettes,
 	} {
 		if sectionNew(section) == item {
 			return section
@@ -126,7 +126,7 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 	}{{sectionSprites, "Sprites", ui.IconSprite}, {sectionPalettes, "Palettes", ui.IconPalette}} {
 		rows = append(rows, s.typeRows(artSection.section, artSection.label, index, match.entry,
 			func(entry project.Entry, depth int) []ui.Row {
-				return []ui.Row{item(entry, artSection.icon, "", depth)}
+				return []ui.Row{item(entry, artSection.icon, paletteDetail(entry), depth)}
 			})...)
 	}
 

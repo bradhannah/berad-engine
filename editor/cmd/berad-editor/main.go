@@ -318,18 +318,22 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 	}
+	paletteID, err := sampleLantern(orch)
+	if err != nil {
+		return ids.ULID{}, err
+	}
 	sampleZone := zoneplugin.NewDocument()
 	for index, floorID := range []ids.ULID{groundID, upperID} {
 		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
 			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 		}
 	}
+	if err := sampleZone.Zone.InsertPalette(0, paletteID); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
 	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	if err := sampleLantern(orch); err != nil {
-		return ids.ULID{}, err
 	}
 	notes := textdoc.NewDocument()
 	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."

@@ -1,5 +1,5 @@
 // Package zone is the editor half of zones: the zone document and the edits
-// that add, remove and reorder its floors.
+// that add, remove and reorder its floors and list the palettes it uses.
 package zone
 
 import (
@@ -22,10 +22,17 @@ const (
 	InsertFloorEdit = "zone.floor.insert"
 	RemoveFloorEdit = "zone.floor.remove"
 	MoveFloorEdit   = "zone.floor.move"
+
+	InsertPaletteEdit = "zone.palette.insert"
+	RemovePaletteEdit = "zone.palette.remove"
 )
 
-// floorsItem is the undo-clash item for the order of a zone's floors.
-const floorsItem = "floors"
+// floorsItem is the undo-clash item for the order of a zone's floors, and
+// palettesItem for the palettes it lists.
+const (
+	floorsItem   = "floors"
+	palettesItem = "palettes"
+)
 
 // ErrNotZone reports a document that is not a zone.
 var ErrNotZone = errors.New("document is not a zone")
@@ -63,14 +70,18 @@ func (d *Document) Clone() model.Document {
 // Parts lists the floors: floor names are unique within their zone.
 func (d *Document) Parts() []ids.ULID { return d.Zone.Floors() }
 
-// References lists the zone's floors.
+// References lists the zone's floors and the palettes it lists, so a palette
+// a zone lists is not deleted from under it.
 func (d *Document) References() []model.Reference {
-	floors := d.Zone.Floors()
-	references := make([]model.Reference, 0, len(floors))
+	floors, palettes := d.Zone.Floors(), d.Zone.Palettes()
+	references := make([]model.Reference, 0, len(floors)+len(palettes))
 	for index, floor := range floors {
 		references = append(references, model.Reference{
 			Document: floor, Item: "", Label: "floor " + strconv.Itoa(index+1) + " from the bottom",
 		})
+	}
+	for _, palette := range palettes {
+		references = append(references, model.Reference{Document: palette, Item: "", Label: "listed by the zone"})
 	}
 
 	return references
@@ -153,19 +164,83 @@ func (MoveFloor) Apply(document model.Document, args json.RawMessage) (model.App
 	})
 }
 
+// PaletteArgs names a palette a zone lists and, for insert, its place in the
+// list.
+type PaletteArgs struct {
+	Palette ids.ULID `json:"palette"`
+	Index   int      `json:"index"`
+}
+
+// InsertPalette is the edit kind that lists a palette for a zone.
+type InsertPalette struct{}
+
+// Name identifies the edit kind.
+func (InsertPalette) Name() string { return InsertPaletteEdit }
+
+// Format names the document format the edit applies to.
+func (InsertPalette) Format() string { return zone.FormatName }
+
+// Apply lists the palette; its inverse takes it off again.
+func (InsertPalette) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return changePalettes(document, args, func(z *zone.Zone, listed PaletteArgs) (string, PaletteArgs, error) {
+		if err := z.InsertPalette(listed.Index, listed.Palette); err != nil {
+			return "", listed, fmt.Errorf("list palette: %w", err)
+		}
+
+		return RemovePaletteEdit, PaletteArgs{Palette: listed.Palette, Index: 0}, nil
+	})
+}
+
+// RemovePalette is the edit kind that takes a palette off a zone's list.
+type RemovePalette struct{}
+
+// Name identifies the edit kind.
+func (RemovePalette) Name() string { return RemovePaletteEdit }
+
+// Format names the document format the edit applies to.
+func (RemovePalette) Format() string { return zone.FormatName }
+
+// Apply takes the palette off; its inverse lists it again where it was.
+func (RemovePalette) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return changePalettes(document, args, func(z *zone.Zone, listed PaletteArgs) (string, PaletteArgs, error) {
+		index, err := z.RemovePalette(listed.Palette)
+		if err != nil {
+			return "", listed, fmt.Errorf("remove palette: %w", err)
+		}
+
+		return InsertPaletteEdit, PaletteArgs{Palette: listed.Palette, Index: index}, nil
+	})
+}
+
 func change(
 	document model.Document, args json.RawMessage,
 	apply func(*zone.Zone, FloorArgs) (string, FloorArgs, error),
+) (model.Applied, error) {
+	return changeZone(document, args, floorsItem, apply)
+}
+
+func changePalettes(
+	document model.Document, args json.RawMessage,
+	apply func(*zone.Zone, PaletteArgs) (string, PaletteArgs, error),
+) (model.Applied, error) {
+	return changeZone(document, args, palettesItem, apply)
+}
+
+// changeZone applies one edit to a zone; apply returns the inverse edit's
+// name, when it is another kind, and its arguments.
+func changeZone[A any](
+	document model.Document, args json.RawMessage, touched string,
+	apply func(*zone.Zone, A) (string, A, error),
 ) (model.Applied, error) {
 	zoneDoc, ok := document.(*Document)
 	if !ok {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotZone)
 	}
-	var floor FloorArgs
-	if err := json.Unmarshal(args, &floor); err != nil {
+	var decoded A
+	if err := json.Unmarshal(args, &decoded); err != nil {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
-	inverseEdit, inverse, err := apply(zoneDoc.Zone, floor)
+	inverseEdit, inverse, err := apply(zoneDoc.Zone, decoded)
 	if err != nil {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
@@ -174,7 +249,7 @@ func change(
 		return model.Applied{}, fmt.Errorf("encode inverse: %w", err)
 	}
 
-	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: []string{floorsItem}, Covers: nil}, nil
+	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: []string{touched}, Covers: nil}, nil
 }
 
 // Plugin returns the zone plug-in.
@@ -182,7 +257,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{InsertFloor{}, RemoveFloor{}, MoveFloor{}},
+		Edits:     []model.EditKind{InsertFloor{}, RemoveFloor{}, MoveFloor{}, InsertPalette{}, RemovePalette{}},
 		Required:  nil,
 	}
 }

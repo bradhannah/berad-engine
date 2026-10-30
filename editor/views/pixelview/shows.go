@@ -71,10 +71,10 @@ func spriteName(docs frame.Docs, sprite ids.ULID) string {
 	return name
 }
 
-// layoutShows places the Shows heading and its button just above the save
-// bar.
-func (s *State) layoutShows(docs frame.Docs, left, width int) {
-	top := s.save.Rect.Min.Y - ui.Inset - ui.ButtonH
+// layoutShows places the Shows heading and its button at the foot of the
+// panel.
+func (s *State) layoutShows(docs frame.Docs, left, width, bottom int) {
+	top := bottom - ui.ButtonH
 	s.shows.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	s.panel.showsTop = top - ui.LineHeight
 	s.shows.Label = "Nothing"
@@ -129,7 +129,7 @@ func (s *State) chooseShows(ctx *frame.Context, standIn string) {
 	gesture := s.gesture()
 	if current != "" {
 		back := artplugin.StandInArgs{StandIn: current, Sprite: ids.ULID{}}
-		s.command(ctx, art.StandInsID(), artplugin.StandInEdit, gesture, back, nil, nil)
+		s.command(ctx, art.StandInsID(), artplugin.StandInEdit, gesture, back, nil)
 	}
 	if standIn == "" {
 		ctx.Frame.Status("Shows nothing: " + standInName(current) + " is its flat colour again")
@@ -141,7 +141,7 @@ func (s *State) chooseShows(ctx *frame.Context, standIn string) {
 		status += ", in place of " + spriteName(ctx.Docs, previous)
 	}
 	set := artplugin.StandInArgs{StandIn: standIn, Sprite: s.sprite}
-	s.command(ctx, art.StandInsID(), artplugin.StandInEdit, gesture, set, func() { ctx.Frame.Status(status) }, nil)
+	s.command(ctx, art.StandInsID(), artplugin.StandInEdit, gesture, set, func() { ctx.Frame.Status(status) })
 }
 
 // drawShows draws the Shows heading and its button.

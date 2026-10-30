@@ -84,18 +84,43 @@ func (c RGB) NRGBA(opacity int) color.NRGBA {
 
 // ColorRef names one colour a pixel is painted with: a shade of a ramp in a
 // palette, by their permanent IDs. The zero ColorRef is the clear colour,
-// which erases.
+// which erases. A loose colour names no palette and carries its own value and
+// opacity instead: what is left of a pixel when its palette is removed from
+// the tile, flagged until it is repainted.
 type ColorRef struct {
 	Palette ids.ULID `json:"palette"`
 	Ramp    ids.ULID `json:"ramp"`
 	Shade   ids.ULID `json:"shade"`
+	Value   RGB      `json:"value,omitempty"`
+	Opacity int      `json:"opacity,omitempty"`
+}
+
+// Named returns the reference to a shade of a ramp in a palette.
+func Named(palette, ramp, shade ids.ULID) ColorRef {
+	return ColorRef{Palette: palette, Ramp: ramp, Shade: shade, Value: 0, Opacity: 0}
+}
+
+// Loose returns a loose colour of a value at an opacity in percent.
+func Loose(value RGB, opacity int) ColorRef {
+	return ColorRef{Palette: ids.ULID{}, Ramp: ids.ULID{}, Shade: ids.ULID{}, Value: value, Opacity: opacity}
 }
 
 // IsClear reports whether the reference is the clear colour.
 func (r ColorRef) IsClear() bool {
-	return r.Palette.IsZero() && r.Ramp.IsZero() && r.Shade.IsZero()
+	return r.Palette.IsZero() && r.Ramp.IsZero() && r.Shade.IsZero() && r.Value == 0 && r.Opacity == 0
+}
+
+// IsLoose reports whether the reference is a loose colour, which names no
+// palette.
+func (r ColorRef) IsLoose() bool {
+	return r.Palette.IsZero() && r.Ramp.IsZero() && r.Shade.IsZero() && r.Opacity > 0
 }
 
 func (r ColorRef) valid() bool {
-	return r.IsClear() || (!r.Palette.IsZero() && !r.Ramp.IsZero() && !r.Shade.IsZero())
+	if r.IsLoose() {
+		return r.Value <= MaxRGB && r.Opacity <= MaxOpacity
+	}
+	named := !r.Palette.IsZero() && !r.Ramp.IsZero() && !r.Shade.IsZero() && r.Value == 0 && r.Opacity == 0
+
+	return r.IsClear() || named
 }

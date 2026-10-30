@@ -119,6 +119,14 @@ func (r *Registry) IsRequired(id ids.ULID) bool {
 	return slices.ContainsFunc(r.required, func(required model.RequiredDocument) bool { return required.ID == id })
 }
 
+// IsReadOnly reports whether a document is one every project holds as the
+// engine made it, which nothing changes.
+func (r *Registry) IsReadOnly(id ids.ULID) bool {
+	return slices.ContainsFunc(r.required, func(required model.RequiredDocument) bool {
+		return required.ID == id && required.ReadOnly
+	})
+}
+
 // Plugins returns plug-in names in registration order.
 func (r *Registry) Plugins() []string {
 	return slices.Clone(r.names)

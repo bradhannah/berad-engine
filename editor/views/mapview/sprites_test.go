@@ -23,38 +23,48 @@ var (
 	lanternTileID = frametest.ID(21)
 	lawnID        = frametest.ID(22)
 	lawnTileID    = frametest.ID(23)
+	gloomyID      = frametest.ID(24)
+	greyRampID    = frametest.ID(25)
 )
 
 const artTileSize = 8
 
+// grey is a shade of the palette gloomy's ramp of five greys.
 func grey(number int) art.ColorRef {
-	return art.ColorRef{Palette: art.SharedPaletteID(), Ramp: art.StarterRampID(), Shade: art.StarterShadeID(number)}
+	return art.Named(gloomyID, greyRampID, frametest.ID(byte(30+number)))
 }
 
-// greyHex is a starter shade's colour as "art:" states name it.
-func greyHex(t *testing.T, number int) string {
+func greyValue(number int) art.RGB {
+	return []art.RGB{0x202020, 0x4A4A4A, 0x7A7A7A, 0xABABAB, 0xDCDCDC}[number-1]
+}
+
+func gloomyPalette(t *testing.T) *art.Palette {
 	t.Helper()
-	palette, err := art.StarterPalette()
-	if err != nil {
+	ramp := art.Ramp{ID: greyRampID, Name: "grey", Shades: nil}
+	for number := 1; number <= 5; number++ {
+		ramp.Shades = append(ramp.Shades, art.Shade{ID: grey(number).Shade, Color: greyValue(number), Opacity: 100})
+	}
+	palette := art.NewPalette()
+	if err := palette.InsertRamp(0, ramp); err != nil {
 		t.Fatal(err)
 	}
-	shade, _, ok := palette.Lookup(art.StarterRampID(), art.StarterShadeID(number))
-	if !ok {
-		t.Fatalf("no grey %d", number)
-	}
 
-	return fmt.Sprintf("#%06X", uint32(shade.Color))
+	return palette
 }
 
-// withArt gives the project 8-pixel tiles and the shared palette. The sprite
+// greyHex is a grey's colour as "art:" states name it.
+func greyHex(t *testing.T, number int) string {
+	t.Helper()
+
+	return fmt.Sprintf("#%06X", uint32(greyValue(number)))
+}
+
+// withArt gives the project 8-pixel tiles and the palette gloomy. The sprite
 // Lantern shows the door, with grey 3 at its tile's top-left pixel; the
 // sprite Lawn shows grass, but its tile is 16 pixels, another size.
 func withArt(t *testing.T, f *fixture) {
 	t.Helper()
-	palette, err := art.StarterPalette()
-	if err != nil {
-		t.Fatal(err)
-	}
+	palette := gloomyPalette(t)
 	lantern, err := art.NewTile(artTileSize)
 	if err != nil {
 		t.Fatal(err)
@@ -79,12 +89,12 @@ func withArt(t *testing.T, f *fixture) {
 		{ID: lanternTileID, Name: "Tile 1", Format: art.TileFormatName},
 		{ID: lawnID, Name: "Lawn", Format: art.SpriteFormatName},
 		{ID: lawnTileID, Name: "Tile 1", Format: art.TileFormatName},
-		{ID: art.SharedPaletteID(), Name: art.SharedPaletteName, Format: art.PaletteFormatName},
+		{ID: gloomyID, Name: "gloomy", Format: art.PaletteFormatName},
 	}))
 	f.docs.Put(art.SettingsID(), art.SettingsName, &artplugin.SettingsDocument{
 		Settings: art.Settings{TileSize: artTileSize},
 	})
-	f.docs.Put(art.SharedPaletteID(), art.SharedPaletteName, &artplugin.PaletteDocument{Palette: palette})
+	f.docs.Put(gloomyID, "gloomy", &artplugin.PaletteDocument{Palette: palette})
 	f.docs.Put(lanternTileID, "Tile 1", &artplugin.TileDocument{Tile: lantern})
 	f.docs.Put(lanternID, "Lantern", &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: lanternTileID}})
 	f.docs.Put(lawnTileID, "Tile 1", &artplugin.TileDocument{Tile: lawn})
@@ -122,7 +132,7 @@ func TestStandInsShowTheirSprites(t *testing.T) {
 	f := newFixture(t)
 	withArt(t, f)
 	for _, document := range []ids.ULID{
-		art.SettingsID(), art.StandInsID(), lanternID, lanternTileID, art.SharedPaletteID(), lawnID, lawnTileID,
+		art.SettingsID(), art.StandInsID(), lanternID, lanternTileID, gloomyID, lawnID, lawnTileID,
 	} {
 		if !slices.Contains(f.requests.Subscribed, document) {
 			t.Fatalf("not subscribed to %s", document)
@@ -143,8 +153,8 @@ func TestStandInsShowTheirSprites(t *testing.T) {
 	if !f.has("art:door:1,0:" + greyHex(t, 5)) {
 		t.Fatal("a stroke shows on the map as it is drawn")
 	}
-	f.apply(art.SharedPaletteID(), artplugin.SetShade{}, artplugin.SetShadeArgs{
-		Ramp: art.StarterRampID(), Shade: art.Shade{ID: art.StarterShadeID(3), Color: 0xff00ff, Opacity: art.MaxOpacity},
+	f.apply(gloomyID, artplugin.SetShade{}, artplugin.SetShadeArgs{
+		Ramp: greyRampID, Shade: art.Shade{ID: grey(3).Shade, Color: 0xff00ff, Opacity: art.MaxOpacity},
 	})
 	if !f.has("art:door:0,0:#FF00FF") {
 		t.Fatal("a shade's new colour recolours the tile on the map")

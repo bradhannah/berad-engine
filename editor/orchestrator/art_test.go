@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,23 +43,49 @@ func withArt(t testing.TB) func(*orchestrator.Config) {
 	return func(cfg *orchestrator.Config) { cfg.Registry = artRegistry(t) }
 }
 
-func grey(number int) art.ColorRef {
-	return art.ColorRef{Palette: art.SharedPaletteID(), Ramp: art.StarterRampID(), Shade: art.StarterShadeID(number)}
+// The tests' own palette, "gloomy", has one ramp, "grey", of five shades.
+func greyRamp() ids.ULID { return ids.MustParse("01J00000000000000000000020") }
+
+func greyShade(number int) ids.ULID {
+	return ids.MustParse(fmt.Sprintf("01J00000000000000000000%03d", 20+number))
 }
 
-// dialArt connects a window that holds the shared palette and a tile.
-func dialArt(t testing.TB, h *harness, group string, tile ids.ULID) *client.Client {
+func grey(palette ids.ULID, number int) art.ColorRef {
+	return art.Named(palette, greyRamp(), greyShade(number))
+}
+
+func gloomy(t testing.TB) *artplugin.PaletteDocument {
+	t.Helper()
+	ramp := art.Ramp{ID: greyRamp(), Name: "grey", Shades: nil}
+	for number, value := range []art.RGB{0x202020, 0x4A4A4A, 0x7A7A7A, 0xABABAB, 0xDCDCDC} {
+		ramp.Shades = append(ramp.Shades, art.Shade{ID: greyShade(number + 1), Color: value, Opacity: art.MaxOpacity})
+	}
+	palette := art.NewPalette()
+	if err := palette.InsertRamp(0, ramp); err != nil {
+		t.Fatal(err)
+	}
+	return &artplugin.PaletteDocument{Palette: palette}
+}
+
+// lantern is a project with the palette gloomy and a sprite, "Lantern",
+// whose tile is painted with gloomy's grey 3.
+type lantern struct {
+	tile, palette ids.ULID
+}
+
+// dialArt connects a window that holds a palette, Default and a tile.
+func dialArt(t testing.TB, h *harness, group string, made lantern) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	connection, err := client.Dial(ctx, h.socket, protocol.Hello{
-		Build: testBuild, View: "map", Target: art.SharedPaletteID(), UndoGroup: group,
+		Build: testBuild, View: "map", Target: made.tile, UndoGroup: group,
 	}, artRegistry(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = connection.Close() })
-	for _, document := range []ids.ULID{art.SharedPaletteID(), tile} {
+	for _, document := range []ids.ULID{made.palette, art.DefaultPaletteID(), made.tile} {
 		if err := connection.Subscribe(ctx, document); err != nil {
 			t.Fatal(err)
 		}
@@ -93,7 +120,7 @@ func TestOlderProjectGetsItsArtDocuments(t *testing.T) {
 			found[document.ID] = document.Name
 		}
 		for fixed, name := range map[ids.ULID]string{
-			art.SharedPaletteID(): art.SharedPaletteName, art.SettingsID(): art.SettingsName,
+			art.DefaultPaletteID(): art.DefaultPaletteName, art.SettingsID(): art.SettingsName,
 			art.StandInsID(): art.StandInsName,
 		} {
 			if found[fixed] != name {
@@ -107,9 +134,9 @@ func TestOlderProjectGetsItsArtDocuments(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for folder, format := range map[string]string{
-		"palettes": art.PaletteFormatName, "art-settings": art.SettingsFormatName,
-		"standin-sprites": art.StandInsFormatName,
+	for folder, format := range map[string]content.Format{
+		"palettes": art.PaletteFormat(), "art-settings": art.SettingsFormat(),
+		"standin-sprites": art.StandInsFormat(),
 	} {
 		files, err := filepath.Glob(filepath.Join(dir, folder, "*.json"))
 		if err != nil || len(files) != 1 {
@@ -120,15 +147,15 @@ func TestOlderProjectGetsItsArtDocuments(t *testing.T) {
 			t.Fatal(err)
 		}
 		envelope, err := content.Decode(raw)
-		if err != nil || envelope.Format != format || envelope.Version != 1 {
+		if err != nil || envelope.Format != format.Name || envelope.Version != format.Current {
 			t.Fatalf("%s: %+v %v", folder, envelope, err)
 		}
 	}
 }
 
-// projectWithLantern makes a project whose sprite "Lantern" has a tile
-// painted with grey 3, and returns the tile's ID.
-func projectWithLantern(t *testing.T, dir string) ids.ULID {
+// projectWithLantern makes a project with the palette gloomy and a sprite,
+// "Lantern", whose tile is painted with gloomy's grey 3.
+func projectWithLantern(t *testing.T, dir string) lantern {
 	t.Helper()
 	createProject(t, dir)
 	cfg := baseConfig(t, dir, shortSocket(t))
@@ -137,11 +164,15 @@ func projectWithLantern(t *testing.T, dir string) ids.ULID {
 	if err != nil {
 		t.Fatal(err)
 	}
+	paletteID, err := orch.CreateDocument("gloomy", gloomy(t))
+	if err != nil {
+		t.Fatal(err)
+	}
 	tile, err := art.NewTile(16)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tile.Set(0, 0, grey(3)); err != nil {
+	if _, err := tile.Set(0, 0, grey(paletteID, 3)); err != nil {
 		t.Fatal(err)
 	}
 	tileID, err := orch.CreateDocument("Frame 1", &artplugin.TileDocument{Tile: tile})
@@ -154,24 +185,26 @@ func projectWithLantern(t *testing.T, dir string) ids.ULID {
 	if err := orch.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return tileID
+	return lantern{tile: tileID, palette: paletteID}
 }
 
 func TestColourInUseIsNotRemoved(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	tileID := projectWithLantern(t, dir)
+	made := projectWithLantern(t, dir)
 	h := start(t, dir, withArt(t))
-	view := dialArt(t, h, "", tileID)
-	palette := art.SharedPaletteID()
+	view := dialArt(t, h, "", made)
+	palette := made.palette
 	result, err := command(t, view, palette, artplugin.RemoveShadeEdit, "", artplugin.RemoveShadeArgs{
-		Ramp: art.StarterRampID(), Shade: art.StarterShadeID(3),
+		Ramp: greyRamp(), Shade: greyShade(3),
 	})
 	refused(t, result, err, "used by Lantern")
-	result, err = command(t, view, palette, artplugin.RemoveRampEdit, "", artplugin.RemoveRampArgs{Ramp: art.StarterRampID()})
+	result, err = command(t, view, palette, artplugin.RemoveRampEdit, "", artplugin.RemoveRampArgs{Ramp: greyRamp()})
+	refused(t, result, err, "used by Lantern")
+	result, err = command(t, view, project.IndexID(), project.DeleteEdit, "", project.DocumentArgs{ID: palette})
 	refused(t, result, err, "used by Lantern")
 	if _, err := command(t, view, palette, artplugin.RemoveShadeEdit, "", artplugin.RemoveShadeArgs{
-		Ramp: art.StarterRampID(), Shade: art.StarterShadeID(1),
+		Ramp: greyRamp(), Shade: greyShade(1),
 	}); err != nil {
 		t.Fatalf("a shade no tile uses can be removed: %v", err)
 	}
@@ -182,7 +215,8 @@ func TestColourInUseIsNotRemoved(t *testing.T) {
 		edit string
 		args any
 	}{
-		{project.DeleteEdit, project.DocumentArgs{ID: palette}},
+		{project.DeleteEdit, project.DocumentArgs{ID: art.DefaultPaletteID()}},
+		{project.RenameEdit, project.RenameArgs{ID: art.DefaultPaletteID(), Name: "Mine"}},
 		{project.RenameEdit, project.RenameArgs{ID: art.SettingsID(), Name: "Mine"}},
 	} {
 		result, err := command(t, view, project.IndexID(), change.edit, "", change.args)
@@ -193,19 +227,20 @@ func TestColourInUseIsNotRemoved(t *testing.T) {
 func TestUndoNeverRemovesAColourInUse(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	tileID := projectWithLantern(t, dir)
+	made := projectWithLantern(t, dir)
+	tileID := made.tile
 	h := start(t, dir, withArt(t))
-	palettes := dialArt(t, h, "", tileID)
-	painter := dialArt(t, h, "painter", tileID)
+	palettes := dialArt(t, h, "", made)
+	painter := dialArt(t, h, "painter", made)
 	sand := art.Ramp{ID: ids.MustParse("01J00000000000000000000001"), Name: "sand", Shades: []art.Shade{
 		{ID: ids.MustParse("01J00000000000000000000002"), Color: 0xC2AE6A, Opacity: 100},
 	}}
-	if _, err := command(t, palettes, art.SharedPaletteID(), artplugin.AddRampEdit, "", artplugin.AddRampArgs{
+	if _, err := command(t, palettes, made.palette, artplugin.AddRampEdit, "", artplugin.AddRampArgs{
 		Index: 1, Ramp: sand,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sand1 := art.ColorRef{Palette: art.SharedPaletteID(), Ramp: sand.ID, Shade: sand.Shades[0].ID}
+	sand1 := art.Named(made.palette, sand.ID, sand.Shades[0].ID)
 	paintAt := func(color art.ColorRef) {
 		if _, err := command(t, painter, tileID, artplugin.PaintEdit, "", artplugin.PaintArgs{
 			Pixels: []artplugin.Pixel{{Col: 1, Row: 1, Color: color}},
@@ -270,5 +305,51 @@ func TestChangeDocumentBeforeRun(t *testing.T) {
 	}
 	if err := orch.ChangeDocument(ids.MustParse("01ARZ3NDEKTSV4RRFFQ69G5FAW"), func(model.Document) error { return nil }); !errors.Is(err, orchestrator.ErrUnknownDocument) {
 		t.Fatalf("an unknown document is reported: %v", err)
+	}
+}
+
+// TestDefaultIsReadOnly refuses every edit to Default, and a project whose
+// saved Default was changed gets the engine's back when it opens.
+func TestDefaultIsReadOnly(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	made := projectWithLantern(t, dir)
+	files, err := filepath.Glob(filepath.Join(dir, "palettes", "default--*.json"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("Default is saved: %v %v", files, err)
+	}
+	raw, err := os.ReadFile(files[0]) //nolint:gosec // A file the test just wrote.
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := strings.Replace(string(raw), `"grey"`, `"gray"`, 1)
+	if changed == string(raw) {
+		t.Fatal("the test expects Default's grey ramp in its file")
+	}
+	if err := os.WriteFile(files[0], []byte(changed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := start(t, dir, withArt(t))
+	view := dialArt(t, h, "", made)
+	var name string
+	view.View(art.DefaultPaletteID(), func(document client.Document) {
+		ramp, _ := document.Model.(*artplugin.PaletteDocument).Palette.Ramp(art.DefaultRampID(1))
+		name = ramp.Name
+	})
+	if name != "grey" {
+		t.Fatalf("a changed Default is restored when the project opens: %q", name)
+	}
+	for _, change := range []struct {
+		edit string
+		args any
+	}{
+		{artplugin.RenameRampEdit, artplugin.RenameRampArgs{Ramp: art.DefaultRampID(1), Name: "gray"}},
+		{artplugin.SetShadeEdit, artplugin.SetShadeArgs{
+			Ramp: art.DefaultRampID(1), Shade: art.Shade{ID: art.DefaultShadeID(1, 1), Color: 1, Opacity: 100, Label: ""},
+		}},
+		{artplugin.MoveRampEdit, artplugin.MoveRampArgs{Ramp: art.DefaultRampID(1), Index: 3}},
+	} {
+		result, err := command(t, view, art.DefaultPaletteID(), change.edit, "", change.args)
+		refused(t, result, err, "read only")
 	}
 }

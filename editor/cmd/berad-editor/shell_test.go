@@ -270,8 +270,8 @@ func TestShellOpensASpriteAsATab(t *testing.T) {
 		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	spriteScript := script(
-		must("state:loaded", 600), wait(5), click("swatch:grey 2"),
-		drag("pixel:2,2", "pixel:6,2", "pixel:6,6"), must("state:pixel:6,6:grey 2", 120),
+		must("state:loaded", 600), wait(5), click("swatch:Default / grey 2"),
+		drag("pixel:2,2", "pixel:6,2", "pixel:6,6"), must("state:pixel:6,6:Default / grey 2", 120),
 	)
 	runShellEditor(t, binary, project, scripts{"browser": {browserScript}, "sprite": {spriteScript}})
 	noCrashes(t, project)
@@ -282,7 +282,7 @@ func TestShellOpensASpriteAsATab(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, pixel := range [][2]int{{2, 2}, {4, 2}, {6, 2}, {6, 4}, {6, 6}} {
-		if ref, _ := tile.At(pixel[0], pixel[1]); ref.Shade != art.StarterShadeID(2) {
+		if ref, _ := tile.At(pixel[0], pixel[1]); ref.Shade != art.DefaultShadeID(1, 2) {
 			t.Fatalf("pixel %v painted in the Sprites tab is %+v", pixel, ref)
 		}
 	}
