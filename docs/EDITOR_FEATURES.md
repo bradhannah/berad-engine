@@ -68,6 +68,9 @@ under consideration), **open** (undecided).
 - **Agreed:** a visual map editor, with a floating zoom control in the map's
   bottom-right corner (−, the zoom as a percentage, + and Fit). Scrolling
   pans the Map, Workflow and Watch the same way.
+- **Agreed (2026-10-30):** a two-finger scroll on a trackpad moves the Map,
+  Watch, Workflow and Pixel editor canvases, and the palette swatch lists,
+  with the fingers, as macOS scrolls pages; it had moved them the other way.
 - **Agreed:** **stand-ins** let an author lay out a map before its art
   exists. Stand-ins are typed (for example ground, generic wall, generic door,
   stairs up and down, small or medium pickup) so their role is recognisable. Default behaviour and
