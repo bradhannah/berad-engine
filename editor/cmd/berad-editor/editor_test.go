@@ -116,9 +116,9 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || len(zoneDoc.(*zoneplugin.Document).Zone.Floors()) != 2 || zoneDoc.(*zoneplugin.Document).Zone.Floors()[0] != envelope.ID {
 		t.Fatalf("sample zone: %v", err)
 	}
-	samplePalette := readEnvelope(t, project, "palettes/sample--*.json")
-	if listed := zoneDoc.(*zoneplugin.Document).Zone.Palettes(); len(listed) != 1 || listed[0] != samplePalette.ID {
-		t.Fatalf("the sample zone lists the sample's palette: %v", listed)
+	gloomyFile := readEnvelope(t, project, "palettes/gloomy--*.json")
+	if listed := zoneDoc.(*zoneplugin.Document).Zone.Palettes(); len(listed) != 1 || listed[0] != gloomyFile.ID {
+		t.Fatalf("the sample zone lists the sample's palette, gloomy: %v", listed)
 	}
 	readEnvelope(t, project, "texts/notes--*.json")
 	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
@@ -130,25 +130,28 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
 		t.Fatalf("the lantern's tile: %v", err)
 	}
-	sample, err := art.DecodePalette(samplePalette.Data)
+	gloomy, err := art.DecodePalette(gloomyFile.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ramps := sample.Ramps()
-	if len(ramps) != 1 || ramps[0].Name != "glass" || len(ramps[0].Shades) != 2 || ramps[0].Shades[0].Opacity != 40 {
-		t.Fatalf("the sample's palette holds the glass ramp: %+v", ramps)
+	ramps := gloomy.Ramps()
+	if len(ramps) != 2 || ramps[0].Name != "iron" || len(ramps[0].Shades) != 5 ||
+		ramps[1].Name != "glass" || len(ramps[1].Shades) != 2 || ramps[1].Shades[0].Opacity != 40 {
+		t.Fatalf("gloomy holds the iron and glass ramps: %+v", ramps)
 	}
-	glassUsed, greysUsed := 0, 0
+	ironUsed, glassUsed := 0, 0
 	for _, ref := range tile.Colors() {
 		switch {
-		case ref.Palette == samplePalette.ID && ref.Ramp == ramps[0].ID:
+		case ref.Palette != gloomyFile.ID:
+			t.Fatalf("the lantern is painted only from gloomy: %+v", ref)
+		case ref.Ramp == ramps[0].ID:
+			ironUsed++
+		case ref.Ramp == ramps[1].ID:
 			glassUsed++
-		case ref.Palette == art.DefaultPaletteID() && ref.Ramp == art.DefaultRampID(1):
-			greysUsed++
 		}
 	}
-	if glassUsed != 2 || greysUsed != 5 {
-		t.Fatalf("the lantern is painted with both shades of glass and five of Default's greys: %+v", tile.Colors())
+	if ironUsed != 5 || glassUsed != 2 {
+		t.Fatalf("the lantern is painted with five iron greys and both shades of glass: %+v", tile.Colors())
 	}
 	defaults, err := art.DecodePalette(readEnvelope(t, project, "palettes/default--*.json").Data)
 	if want, _ := art.DefaultPalette(); err != nil || !defaults.Equal(want) {
@@ -658,7 +661,7 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 // TestPixelEditorPaintsAndUndoes makes a sprite in the project browser and
 // opens it in a Pixel editor, which paints a stroke in Default's grey 3 and
 // another in grey 5, then undoes the second in one step. Then it paints with
-// the sample palette's glass. The saved tile keeps the first stroke and the
+// the glass of the sample's palette, gloomy. The saved tile keeps the first stroke and the
 // glass.
 func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	requireGUI(t)
@@ -679,8 +682,8 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 		must("state:pixel:3,3:Default / grey 5", 120), shoot(painted),
 		keys("Cmd+Z"), must("state:pixel:1,3:clear", 120), must("state:pixel:3,3:clear", 60),
 		must("state:pixel:2,1:Default / grey 3", 60), shoot(undone),
-		click("palette:Sample"), click("swatch:Sample / glass 1"), must("state:color:Sample / glass 1", 120),
-		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:Sample / glass 1", 120),
+		click("palette:gloomy"), click("swatch:gloomy / glass 1"), must("state:color:gloomy / glass 1", 120),
+		drag("pixel:5,0", "pixel:5,1", "pixel:5,2"), must("state:pixel:5,2:gloomy / glass 1", 120),
 		shoot(glassShot), quit(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "sprite": {spriteScript}})
@@ -700,10 +703,10 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	if first, _ := tile.At(2, 1); first.Shade != art.DefaultShadeID(1, 3) {
 		t.Fatalf("the first stroke is grey 3: %+v", first)
 	}
-	sample := readEnvelope(t, project, "palettes/sample--*.json")
+	gloomy := readEnvelope(t, project, "palettes/gloomy--*.json")
 	for row := range 3 {
-		if ref, _ := tile.At(5, row); ref.Palette != sample.ID {
-			t.Fatalf("pixel 5,%d is the sample's glass: %+v", row, ref)
+		if ref, _ := tile.At(5, row); ref.Palette != gloomy.ID {
+			t.Fatalf("pixel 5,%d is gloomy's glass: %+v", row, ref)
 		}
 	}
 	noCrashes(t, project)
@@ -712,14 +715,14 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 
 // TestSpriteShowsOnTheMap makes a sprite show the small pickup, then draws
 // it in the Pixel editor while the Map shows the pickup at 200%. The Pixel
-// editor's Edit palette… opens the sample's palette in a Palette Editor,
-// which adds a ramp of magenta ink: a stroke in it shows on the map as it is
-// drawn, and giving the colour a new value, cyan, recolours it there. A fill
-// of a 40% blue pane, another ramp the Palette Editor adds, shows the
+// editor's Edit palette… opens the sample's palette, gloomy, in a Palette
+// Editor, which adds a ramp of magenta ink: a stroke in it shows on the map as
+// it is drawn, and giving the colour a new value, cyan, recolours it there. A
+// fill of a 40% blue pane, another ramp the Palette Editor adds, shows the
 // pickup's floor through it. Each is checked in the Map's screenshots, its tab
 // brought to the front for each, since a hidden tab is not drawn. The
-// sprite takes the small pickup over from the sample's lantern, whose amber
-// glass shows the floor through it first.
+// sprite takes the small pickup over from the sample's lantern, whose smoky
+// amber glass shows the floor through it first.
 func TestSpriteShowsOnTheMap(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -753,11 +756,11 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		must("state:loaded", 600), wait(5),
 		click("ui:shows"), must("menu:standin:pickup.small", 60), click("menu:standin:pickup.small"),
 		must("state:shows:pickup.small", 120),
-		click("swatch:Sample / glass 1"), must("state:color:Sample / glass 1", 60), click("ui:edit-palette"),
-		must("swatch:Sample / ink 1", 1200), click("swatch:Sample / ink 1"),
-		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:Sample / ink 1", 120),
-		must("swatch:Sample / pane 1", 1200), click("swatch:Sample / pane 1"),
-		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:Sample / pane 1", 120), wait(900), quit(),
+		click("swatch:gloomy / glass 1"), must("state:color:gloomy / glass 1", 60), click("ui:edit-palette"),
+		must("swatch:gloomy / ink 1", 1200), click("swatch:gloomy / ink 1"),
+		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:gloomy / ink 1", 120),
+		must("swatch:gloomy / pane 1", 1200), click("swatch:gloomy / pane 1"),
+		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:gloomy / pane 1", 120), wait(900), quit(),
 	)
 	mapScript := script(
 		expect("state:loaded", 600), wait(5),
@@ -773,7 +776,7 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 	})
 	noCrashes(t, project)
 
-	if got := countColor(t, lanternShot, over(0xb8702a, 40, tiles.ColorOf("floor")), 3); got < 64 {
+	if got := countColor(t, lanternShot, over(0x6b4a2a, 40, tiles.ColorOf("floor")), 3); got < 64 {
 		t.Fatalf("the floor shows through the lantern's glass: %d pixels", got)
 	}
 	magenta, cyan := color.RGBA{R: 0xff, G: 0, B: 0xff, A: 0xff}, color.RGBA{R: 0, G: 0xff, B: 0xff, A: 0xff}

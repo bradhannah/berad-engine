@@ -98,6 +98,17 @@ Chosen while building, for its author to check:
   check drawing bring their pane's tab to the front with a script step
   (`front`).
 
+Asked for by its author on 2026-10-30, after trying it: "can you make the
+lantern use a palette for 'dark and gloomy'?", in the sample, not only in one
+project.
+
+- **The sample's palette is "gloomy",** in place of "Sample": a ramp of five
+  dim iron greys, with a little violet, and the glass ramp in a smoky amber
+  at 40%. The lantern is painted only from it, no longer with Default's
+  greys, and the sample zone lists it. (Chosen for its author to check: the
+  colours, #16151A to #544E60 for the iron and #6B4A2A and #9C7440 for the
+  glass.)
+
 ## Steps
 
 | Step | Builds | Done when | Status |
@@ -193,7 +204,11 @@ Where each step changes code:
 
 - **Trying it:** the sample project in the one window, in a fresh folder
   since the sample is made only in an empty project:
-  `make demo DEMO_PROJECT=.cache/demo-single-window`.
+  `make demo DEMO_PROJECT=.cache/demo-single-window`. After trying it, the
+  sample's lantern is painted from a palette of its own, gloomy, of dim iron
+  and smoky glass; verified with `make check` and the real-window tests of the
+  sample, the Pixel editor and the sprite on the Map, their screenshots
+  checked by eye.
 
 ## Not in this increment
 
