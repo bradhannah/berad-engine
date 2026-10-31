@@ -1265,7 +1265,8 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "palette-editor-made.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300), quitWhenAlone(),
+		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300),
+		must("state:tabs:2", 600), quitWhenAlone(),
 	)
 	paletteScript := script(
 		must("state:loaded", 600), wait(5),
