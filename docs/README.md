@@ -7,6 +7,7 @@
 | [Vocabulary](VOCABULARY.md) | One term per concept: spatial, art and editor terms |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
+| [Workflow design](WORKFLOW_DESIGN.md) | Where workflows are heading: container exits, kinds of workflow, values, calls and conversations (draft) |
 
 ## Increments
 
