@@ -49,7 +49,9 @@ Chosen while building, for its author to check:
 
 - The arrow keys walk, since letter keys choose Map tools. A second arrow key
   pressed within 4 ticks of the first turns the step into a diagonal.
-- A step takes 12 ticks: a fifth of a second, five cells a second.
+- A step takes 12 ticks: a fifth of a second, five cells a second. (Changed
+  in [increment 14](0014-launch.md): a step is taken at once and drawn
+  sliding over 8 ticks; a held key steps every 10.)
 - A diagonal into a wall does not slide along it; the player stays put.
 - Passing one blocking corner diagonally is allowed; only two blocking cells
   stop a diagonal.

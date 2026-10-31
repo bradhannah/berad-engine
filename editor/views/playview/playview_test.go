@@ -23,6 +23,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
+	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
@@ -196,10 +197,10 @@ func TestLaunchPlaysTheGame(t *testing.T) {
 	if !f.has("layer:music/town") || f.has("layer:town/fountain") {
 		t.Fatalf("the music plays, the fountain is out of hearing: %v", f.soundscape().Layers)
 	}
-	for range 12 {
+	for range play.StepTicks {
 		f.frame([]ui.Key{ui.KeyUp})
 	}
-	for range 2 * 12 {
+	for range 2 * play.StepTicks {
 		f.frame([]ui.Key{ui.KeyRight})
 	}
 	f.frame(nil)

@@ -238,6 +238,17 @@ Settled by its author on 2026-10-31, after trying it:
   the door an hour at a time; and a note sums it up. The ground floor gains
   the anchors Shelf and Door. The Workflow window's auto-arrange is exported
   for the sample.
+- **A step is taken the moment its key goes down,** as Ultima V Redux's
+  smooth movement does, in place of a step that counted only once its
+  slide ended, which felt laggy. The player stands in the new cell at once,
+  so stairs, sounds and blocking answer the press, and is only drawn sliding
+  into it, over 8 ticks (about 133 ms). A held key steps every 10 ticks
+  (about 167 ms, six cells a second) in place of 12, so each step settles
+  briefly before the next. A second key within 4 ticks still makes a
+  diagonal, by turning the step just taken. Stairs change floor with the
+  step, with no slide. NPCs walk a cell in the same 10 ticks. This applies
+  to Preview as well as the Play tab, since both run the engine's `play`
+  package.
 
 ## Not in this increment
 

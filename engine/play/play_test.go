@@ -51,16 +51,17 @@ func held(direction play.Direction) play.Input {
 	return play.Input{Held: direction, Pressed: 0}
 }
 
-// tap is a key pressed on one tick and released on the next.
-func tap(run *play.Run, levels play.Levels, direction play.Direction) {
-	run.Step(levels, play.Input{Held: direction, Pressed: direction})
+// tap is a key pressed on one tick and released on the next. It returns the
+// outcome of the tick it was pressed on.
+func tap(run *play.Run, levels play.Levels, direction play.Direction) play.Outcome {
+	return run.Step(levels, play.Input{Held: direction, Pressed: direction})
 }
 
 func standsAt(t *testing.T, run *play.Run, cell image.Point) {
 	t.Helper()
 	player := run.Player()
 	if player.Moving() || player.Cell != cell {
-		t.Fatalf("player at %v moving to %v, want standing at %v", player.Cell, player.To, cell)
+		t.Fatalf("player at %v stepping from %v, want standing at %v", player.Cell, player.From, cell)
 	}
 }
 
@@ -69,8 +70,8 @@ func TestTapMovesExactlyOneCell(t *testing.T) {
 	levels := oneLevel(newFloor(t, nil))
 	run := play.Start(floorID(1), image.Pt(0, 0))
 	tap(run, levels, play.East)
-	if !run.Player().Moving() {
-		t.Fatal("a tap starts a step at once")
+	if player := run.Player(); !player.Moving() || player.Cell != image.Pt(1, 0) {
+		t.Fatalf("a tap takes a step at once: %+v", player)
 	}
 	steps(run, levels, held(0), play.StepTicks*3)
 	standsAt(t, run, image.Pt(1, 0))
@@ -86,15 +87,33 @@ func TestHoldingKeepsWalking(t *testing.T) {
 	standsAt(t, run, image.Pt(0, 3))
 }
 
-func TestSlideBetweenCells(t *testing.T) {
+func TestHeldStepsComeEveryStepTicks(t *testing.T) {
+	t.Parallel()
+	levels := oneLevel(newFloor(t, nil))
+	run := play.Start(floorID(1), image.Pt(0, 0))
+	run.Step(levels, play.Input{Held: play.South, Pressed: play.South})
+	steps(run, levels, held(play.South), play.StepTicks-1)
+	if cell := run.Player().Cell; cell != image.Pt(0, 1) {
+		t.Fatalf("the next step waits StepTicks: %v", cell)
+	}
+	steps(run, levels, held(play.South), 1)
+	if cell := run.Player().Cell; cell != image.Pt(0, 2) {
+		t.Fatalf("the next step comes after StepTicks: %v", cell)
+	}
+}
+
+func TestSlideIntoTheCell(t *testing.T) {
 	t.Parallel()
 	levels := oneLevel(newFloor(t, nil))
 	run := play.Start(floorID(1), image.Pt(0, 0))
 	tap(run, levels, play.East)
-	steps(run, levels, held(0), play.StepTicks/2)
-	x, y := run.Player().At()
-	if x != 0.5 || y != 0 {
-		t.Fatalf("half way through a step: %v,%v", x, y)
+	steps(run, levels, held(0), play.SlideTicks/2-1)
+	if x, y := run.Player().At(); x != 0.5 || y != 0 {
+		t.Fatalf("half way through the slide: %v,%v", x, y)
+	}
+	steps(run, levels, held(0), play.SlideTicks/2)
+	if x, y := run.Player().At(); x != 1 || y != 0 || !run.Player().Moving() {
+		t.Fatalf("the slide ends before the step: %v,%v", x, y)
 	}
 }
 
@@ -209,12 +228,14 @@ func TestStairsChangeFloor(t *testing.T) {
 	t.Parallel()
 	levels := stairsLevels(t)
 	run := play.Start(floorID(1), image.Pt(0, 0))
-	tap(run, levels, play.East)
-	if outcome := steps(run, levels, held(0), play.StepTicks); outcome != play.Climbed {
-		t.Fatalf("outcome %v", outcome)
+	if outcome := tap(run, levels, play.East); outcome != play.Climbed {
+		t.Fatalf("stairs are taken with the step: %v", outcome)
 	}
 	if player := run.Player(); player.Floor != floorID(2) || player.Cell != image.Pt(1, 0) {
 		t.Fatalf("after the stairs up: %+v", player)
+	}
+	if x, y := run.Player().At(); x != 1 || y != 0 {
+		t.Fatalf("no slide from a cell of another floor: %v,%v", x, y)
 	}
 	steps(run, levels, held(0), play.StepTicks)
 	if run.Player().Floor != floorID(2) {
@@ -236,10 +257,10 @@ func TestStairsThatLeadNowhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := play.Start(floorID(1), image.Pt(0, 0))
-	tap(run, levels, play.West)
-	if outcome := steps(run, levels, held(0), play.StepTicks); outcome != play.NoFloor {
+	if outcome := tap(run, levels, play.West); outcome != play.NoFloor {
 		t.Fatalf("no floor below: %v", outcome)
 	}
+	steps(run, levels, held(0), play.StepTicks)
 	if _, err := levels[0].Floor.SetTop(-1, 0, "stairs.up"); err != nil {
 		t.Fatal(err)
 	}
@@ -248,8 +269,7 @@ func TestStairsThatLeadNowhere(t *testing.T) {
 	}
 	tap(run, levels, play.East)
 	steps(run, levels, held(0), play.StepTicks)
-	tap(run, levels, play.West)
-	if outcome := steps(run, levels, held(0), play.StepTicks); outcome != play.StairsBlocked {
+	if outcome := tap(run, levels, play.West); outcome != play.StairsBlocked {
 		t.Fatalf("blocked at the top: %v", outcome)
 	}
 	if player := run.Player(); player.Floor != floorID(1) || player.Cell != image.Pt(-1, 0) {

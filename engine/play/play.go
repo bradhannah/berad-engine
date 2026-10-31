@@ -3,11 +3,13 @@
 // floors as they are on that tick, so the editor's preview and a game behave
 // alike and a test repeats exactly.
 //
-// A tap moves exactly one cell; holding a direction keeps walking. The player
-// slides between cells over StepTicks ticks, in any of eight directions, and
-// cannot squeeze diagonally between two cells that block. Walking onto stairs
-// takes the player to the same cell of the floor above or below; every floor
-// of a zone shares the zone origin, so stairs line up.
+// A tap moves exactly one cell; holding a direction keeps walking, a step
+// every StepTicks ticks, in any of eight directions. A step is taken the tick
+// its key goes down: the player stands in the new cell at once, and is only
+// drawn sliding into it over SlideTicks. The player cannot squeeze diagonally
+// between two cells that block. Walking onto stairs takes the player to the
+// same cell of the floor above or below; every floor of a zone shares the
+// zone origin, so stairs line up.
 package play
 
 import (
@@ -21,11 +23,14 @@ import (
 
 // Timing, in ticks of the game loop (60 a second).
 const (
-	// StepTicks is how long a step from one cell to the next takes.
-	StepTicks = 12
-	// JoinTicks is how soon after a step starts a second direction can turn
-	// it into a diagonal, so two keys pressed almost together move
-	// diagonally.
+	// StepTicks is how long a step lasts: a held direction takes the next
+	// step this many ticks after the last.
+	StepTicks = 10
+	// SlideTicks is how long the player is drawn sliding into the cell a
+	// step took them to. It changes only how the step looks.
+	SlideTicks = 8
+	// JoinTicks is how soon after a step a second direction can turn it into
+	// a diagonal, so two keys pressed almost together move diagonally.
 	JoinTicks = 4
 )
 
@@ -112,28 +117,33 @@ func (l Levels) Floor(id ids.ULID, fn func(*tilefloor.Floor)) bool {
 
 // Player is where the player is.
 type Player struct {
-	// Floor and Cell are where the player stands, or the cell a step is
-	// leaving.
+	// Floor and Cell are where the player stands. A step moves Cell the tick
+	// it is taken.
 	Floor ids.ULID
 	Cell  image.Point
-	// To is the cell the current step moves to; it equals Cell when the
-	// player stands still.
-	To image.Point
-	// Progress counts the ticks of the current step.
+	// From is the cell the current step left, which the player is drawn
+	// sliding from; it equals Cell when the player stands still, or when
+	// stairs took them to another floor.
+	From image.Point
+	// Progress counts the ticks of the current step, from 1 on the tick it
+	// was taken; it is 0 between steps.
 	Progress int
 	// Facing is the direction of the latest step or attempt, one cell.
 	Facing image.Point
 }
 
-// Moving reports whether the player is between two cells.
-func (p Player) Moving() bool { return p.To != p.Cell }
+// Moving reports whether a step is under way, so no other can start yet.
+func (p Player) Moving() bool { return p.Progress > 0 }
 
-// At returns the player's position in cells, between Cell and To during a
-// step.
+// At returns where the player is drawn, in cells: sliding from From to Cell
+// during the first SlideTicks of a step.
 func (p Player) At() (float64, float64) {
-	share := float64(p.Progress) / StepTicks
+	share := float64(min(p.Progress, SlideTicks)) / SlideTicks
+	if !p.Moving() {
+		share = 1
+	}
 
-	return float64(p.Cell.X) + float64(p.To.X-p.Cell.X)*share, float64(p.Cell.Y) + float64(p.To.Y-p.Cell.Y)*share
+	return float64(p.From.X) + float64(p.Cell.X-p.From.X)*share, float64(p.From.Y) + float64(p.Cell.Y-p.From.Y)*share
 }
 
 // Outcome is what a tick did that the player may need telling.
@@ -165,7 +175,7 @@ type Run struct {
 func Start(floor ids.ULID, cell image.Point) *Run {
 	return &Run{
 		tick:   0,
-		player: Player{Floor: floor, Cell: cell, To: cell, Progress: 0, Facing: image.Pt(0, 1)},
+		player: Player{Floor: floor, Cell: cell, From: cell, Progress: 0, Facing: image.Pt(0, 1)},
 		queued: 0,
 	}
 }
@@ -202,61 +212,68 @@ func (r *Run) Step(zone Zone, input Input) Outcome {
 	return r.climb(zone, floors, index+climb)
 }
 
-// walk moves the player on their floor for one tick. On arriving on stairs
-// it returns where they lead, and takes no further step until they are
-// resolved.
+// walk moves the player on their floor for one tick. On a step onto stairs
+// it returns where they lead.
 func (r *Run) walk(floor *tilefloor.Floor, input Input) int {
 	if r.player.Moving() {
-		r.player.Progress++
-		if !r.join(floor, input.Held) && input.Pressed != 0 {
+		climb, joined := r.join(floor, input.Held)
+		if joined {
+			return climb
+		}
+		if input.Pressed != 0 {
 			r.queued = input.Held | input.Pressed
 		}
 		if r.player.Progress < StepTicks {
+			r.player.Progress++
+
 			return 0
 		}
-		r.player.Cell, r.player.Progress = r.player.To, 0
-		if climb := climbAt(floor, r.player.Cell); climb != 0 {
-			return climb
-		}
+		r.player.From, r.player.Progress = r.player.Cell, 0
 	}
 	want := input.Held | input.Pressed
 	if want.Delta() == image.Pt(0, 0) {
 		want = r.queued
 	}
 	r.queued = 0
-	r.begin(floor, want.Delta())
 
-	return 0
+	return r.begin(floor, want.Delta())
 }
 
-// begin starts a step if the player can take it.
-func (r *Run) begin(floor *tilefloor.Floor, delta image.Point) {
+// begin takes a step if the player can, and returns where stairs in its cell
+// lead.
+func (r *Run) begin(floor *tilefloor.Floor, delta image.Point) int {
 	if delta == image.Pt(0, 0) {
-		return
+		return 0
 	}
 	r.player.Facing = delta
-	if CanStep(floor, r.player.Cell, delta) {
-		r.player.To = r.player.Cell.Add(delta)
+	if !CanStep(floor, r.player.Cell, delta) {
+		return 0
 	}
+	r.player.From, r.player.Cell, r.player.Progress = r.player.Cell, r.player.Cell.Add(delta), 1
+
+	return climbAt(floor, r.player.Cell)
 }
 
-// join turns a step that has just started into a diagonal when a second
-// direction arrives soon after the first, and reports whether it did.
-func (r *Run) join(floor *tilefloor.Floor, held Direction) bool {
-	step := r.player.To.Sub(r.player.Cell)
+// join turns a step just taken into a diagonal when a second direction
+// arrives soon after the first, and reports whether it did and where stairs
+// in the new cell lead.
+func (r *Run) join(floor *tilefloor.Floor, held Direction) (int, bool) {
+	step := r.player.Cell.Sub(r.player.From)
 	wanted := held.Delta()
-	if r.player.Progress > JoinTicks || (step.X != 0 && step.Y != 0) || wanted.X == 0 || wanted.Y == 0 {
-		return false
+	if r.player.Progress > JoinTicks || step == image.Pt(0, 0) || (step.X != 0 && step.Y != 0) ||
+		wanted.X == 0 || wanted.Y == 0 {
+		return 0, false
 	}
 	if (step.X == 0 || step.X == wanted.X) && (step.Y == 0 || step.Y == wanted.Y) &&
-		CanStep(floor, r.player.Cell, wanted) {
-		r.player.To = r.player.Cell.Add(wanted)
+		CanStep(floor, r.player.From, wanted) {
+		r.player.Cell = r.player.From.Add(wanted)
 		r.player.Facing = wanted
+		r.player.Progress++
 
-		return true
+		return climbAt(floor, r.player.Cell), true
 	}
 
-	return false
+	return 0, false
 }
 
 // climb takes the player up or down stairs to a floor, by its index, when
@@ -268,7 +285,7 @@ func (r *Run) climb(zone Zone, floors []ids.ULID, target int) Outcome {
 	if !CanStand(zone, floors[target], r.player.Cell) {
 		return StairsBlocked
 	}
-	r.player.Floor = floors[target]
+	r.player.Floor, r.player.From = floors[target], r.player.Cell
 
 	return Climbed
 }

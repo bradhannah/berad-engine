@@ -520,6 +520,10 @@ What the engine provides to games, as far as decided:
   holding keeps walking, and the player slides smoothly between cells, in eight
   directions, never squeezing diagonally between two cells that block (the
   engine's `play` package; see [increment 2](increments/0002-walk-the-map.md)).
+  A step is taken the moment its key goes down and only drawn sliding, as
+  Ultima V Redux does; a held key steps every 10 ticks, the slide taking 8
+  ([increment 14](increments/0014-launch.md)). *Open:* whether a game chooses
+  these timings or the engine fixes them.
 - **Agreed:** uniform pixel scaling is guaranteed (no stretching), and layout
   supports several popular aspect ratios rather than one fixed layout. Text uses
   TTF fonts.
