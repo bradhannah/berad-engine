@@ -11,9 +11,13 @@ GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
 GOIMPORTS := $(TOOLS_DIR)/goimports
 
 EDITOR_BIN := .cache/bin/berad-editor
-DEMO_PROJECT ?= .cache/demo-project
+DEMO_PROJECT ?= .cache/demo
 
-.PHONY: help tools tools-check format format-check lint vet test check editor demo gui-test latency
+# local.mk, never committed, holds settings for this computer alone, such as
+# GAME_PROJECT, the project make game opens.
+-include local.mk
+
+.PHONY: help tools tools-check format format-check lint vet test check editor blank demo game gui-test latency
 
 help:
 	@echo "make tools         install the pinned golangci-lint and goimports (network)"
@@ -24,7 +28,9 @@ help:
 	@echo "make test          tests with the race detector"
 	@echo "make check         all of the above except formatting changes"
 	@echo "make editor        build berad-editor into .cache/bin"
-	@echo "make demo          open a sample project in the editor (DEMO_PROJECT=path to choose)"
+	@echo "make blank         open a new, empty project, a fresh one every time"
+	@echo "make demo          open the sample project, kept between runs in $(DEMO_PROJECT)"
+	@echo "make game          open your game's project, GAME_PROJECT in local.mk"
 	@echo "make gui-test      run the tests that open the real editor window"
 	@echo "make latency       measure strict-mode command-to-event time"
 
@@ -57,8 +63,16 @@ check: format-check lint vet test
 editor:
 	$(GO) -C editor build -o ../$(EDITOR_BIN) ./cmd/berad-editor
 
+blank: editor
+	@dir=$$(mktemp -d -t berad-blank); echo "Blank project in $$dir/project"; \
+		./$(EDITOR_BIN) open --project $$dir/project
+
 demo: editor
 	./$(EDITOR_BIN) open --project $(DEMO_PROJECT) --sample
+
+game: editor
+	@test -n "$(GAME_PROJECT)" || { echo "Set GAME_PROJECT in local.mk, for example: GAME_PROJECT = ../my-game/project"; exit 1; }
+	./$(EDITOR_BIN) open --project $(GAME_PROJECT)
 
 gui-test:
 	BERAD_GUI_TESTS=1 $(GO) -C editor test -count=1 -v ./cmd/berad-editor/
