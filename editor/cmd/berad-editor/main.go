@@ -55,8 +55,9 @@ const (
 	stairsCol      = 4
 	stairsRow      = -2
 	// sampleIDs is how many IDs the sample makes before its documents: the
-	// desk's anchor, the clerk's placement and the hum's.
-	sampleIDs = 3
+	// desk's anchor, the clerk's placement, the hum's, and the anchors at the
+	// shelf and the door.
+	sampleIDs = 5
 )
 
 func main() {
@@ -277,8 +278,11 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	floors, err := sampleFloors(orch, sample)
+	floors, clerk, anchors, err := sampleFloors(orch, sample)
 	if err != nil {
+		return ids.ULID{}, err
+	}
+	if err := sampleRoutine(orch, clerk, anchors); err != nil {
 		return ids.ULID{}, err
 	}
 	zoneID, err := sampleZone(orch, sample, floors)
@@ -298,42 +302,45 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 }
 
 // sampleFloors makes the building's two floors, the ground floor's with the
-// clerk by the desk and the hum, and returns their IDs from the bottom up.
-func sampleFloors(orch *orchestrator.Orchestrator, sample sampleArt) ([]ids.ULID, error) {
+// clerk by the desk, the hum and the anchors the clerk goes to, and returns
+// their IDs from the bottom up, the clerk's and the anchors'.
+func sampleFloors(orch *orchestrator.Orchestrator, sample sampleArt) ([]ids.ULID, ids.ULID, sampleAnchors, error) {
+	var none sampleAnchors
 	made := make([]ids.ULID, 0, sampleIDs)
 	for range sampleIDs {
 		madeID, err := orch.NewID()
 		if err != nil {
-			return nil, fmt.Errorf("create sample: %w", err)
+			return nil, ids.ULID{}, none, fmt.Errorf("create sample: %w", err)
 		}
 		made = append(made, madeID)
 	}
-	desk, placement, hum := made[0], made[1], made[2]
+	anchors := sampleAnchors{floor: ids.ULID{}, desk: made[0], shelf: made[3], door: made[4]}
 	clerk, err := samplePlayers(orch, sample)
 	if err != nil {
-		return nil, err
+		return nil, ids.ULID{}, none, err
 	}
-	ground, err := sampleFloor("grass", "wall.a", true, desk)
+	ground, err := sampleFloor("grass", "wall.a", true, anchors.desk)
 	if err != nil {
-		return nil, err
+		return nil, ids.ULID{}, none, err
 	}
-	if err := samplePlace(ground.Floor, clerk, placement, hum); err != nil {
-		return nil, err
+	if err := samplePlace(ground.Floor, clerk, made[1], made[2], anchors); err != nil {
+		return nil, ids.ULID{}, none, err
 	}
 	upper, err := sampleFloor("", "wall.b", false, ids.ULID{})
 	if err != nil {
-		return nil, err
+		return nil, ids.ULID{}, none, err
 	}
 	groundID, err := orch.CreateDocument("Ground floor", ground)
 	if err != nil {
-		return nil, fmt.Errorf("create sample: %w", err)
+		return nil, ids.ULID{}, none, fmt.Errorf("create sample: %w", err)
 	}
 	upperID, err := orch.CreateDocument("Upper floor", upper)
 	if err != nil {
-		return nil, fmt.Errorf("create sample: %w", err)
+		return nil, ids.ULID{}, none, fmt.Errorf("create sample: %w", err)
 	}
+	anchors.floor = groundID
 
-	return []ids.ULID{groundID, upperID}, nil
+	return []ids.ULID{groundID, upperID}, clerk, anchors, nil
 }
 
 // sampleZone makes the sample zone of the floors, listing gloomy and playing

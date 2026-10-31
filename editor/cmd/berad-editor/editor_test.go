@@ -108,7 +108,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	}
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, -16, -12) != "grass" ||
-		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 1 {
+		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 3 {
 		t.Fatal("sample ground floor not saved")
 	}
 	if ground.Bounds() != floor.Centered(32, 24) || envelope.Version != floor.FormatVersion {
@@ -194,6 +194,20 @@ func checkSamplePlays(t *testing.T, project string, ground *floor.Floor, sampleZ
 	figure := readEnvelope(t, project, "sprites/clerk--*.json")
 	if err != nil || clerk.Sprite != figure.ID {
 		t.Fatalf("the clerk shows their figure: %v", err)
+	}
+	day := readEnvelope(t, project, "workflows/clerk-s-day--????????.json")
+	routine, err := flow.Decode(day.Data)
+	if err != nil || clerk.Behaviour != day.ID || len(routine.Nodes()) != 14 {
+		t.Fatalf("the clerk follows the clerk's day, a node of every kind: %v", err)
+	}
+	kinds := map[string]bool{}
+	for _, node := range routine.Nodes() {
+		kinds[node.Kind] = true
+	}
+	for _, kind := range flow.Kinds() {
+		if !kinds[kind.Name] {
+			t.Fatalf("the clerk's day has no %s", kind.Name)
+		}
 	}
 	if placed, found := ground.PlacementAt(-4, -1); !found || placed.NPC.IsZero() {
 		t.Fatal("the clerk stands by the desk")

@@ -229,6 +229,15 @@ Settled by its author on 2026-10-31, after trying it:
 - **A new project starts with 24-pixel tiles,** in place of 32, as Modern
   Old Game now uses; the sample's lantern, brick and figures are redrawn at
   24, the figures narrower than before, about 14 pixels across.
+- **The sample's clerk follows a workflow, the clerk's day,** with a node of
+  every kind, laid out as Auto-arrange lays it out: a time switch sends the
+  clerk to the shop from 08:00 to 18:00 and to the door otherwise; Shop
+  hours, a time-bound container, has the clerk go to the desk, ring the
+  chime, serve for 20 game minutes, then mostly tidy the shelf and sometimes
+  stretch, by a random choice of three to one; at night the clerk waits by
+  the door an hour at a time; and a note sums it up. The ground floor gains
+  the anchors Shelf and Door. The Workflow window's auto-arrange is exported
+  for the sample.
 
 ## Not in this increment
 

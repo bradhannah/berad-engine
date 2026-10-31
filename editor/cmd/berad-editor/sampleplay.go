@@ -34,6 +34,11 @@ const (
 	brickCourse = 6
 	brickLength = 12
 	clerkName   = "Clerk"
+	// The shelf the clerk tidies, and the cell inside the door where the
+	// clerk waits at night.
+	shelfCol      = -1
+	shelfRow      = -3
+	insideDoorRow = 3
 )
 
 // figureHalf is the left half of a standing figure, mirrored for the right
@@ -192,8 +197,17 @@ func samplePlayers(orch *orchestrator.Orchestrator, sample sampleArt) (ids.ULID,
 	return clerkID, nil
 }
 
-// samplePlace puts the clerk by the desk and the hum in the building.
-func samplePlace(floorData *floor.Floor, clerk, placement, hum ids.ULID) error {
+// samplePlace puts the clerk by the desk, the hum in the building, and the
+// anchors the clerk goes to at the shelf and inside the door.
+func samplePlace(floorData *floor.Floor, clerk, placement, hum ids.ULID, at sampleAnchors) error {
+	for index, anchor := range []floor.Anchor{
+		{ID: at.shelf, Name: "Shelf", Col: shelfCol, Row: shelfRow},
+		{ID: at.door, Name: "Door", Col: doorCol, Row: insideDoorRow},
+	} {
+		if err := floorData.InsertAnchor(1+index, anchor); err != nil {
+			return fmt.Errorf("sample anchors: %w", err)
+		}
+	}
 	placed := floor.Placement{ID: placement, NPC: clerk, Col: clerkCol, Row: clerkRow}
 	if err := floorData.InsertPlacement(0, placed); err != nil {
 		return fmt.Errorf("sample clerk: %w", err)
