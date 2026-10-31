@@ -6,11 +6,10 @@ The fourteenth increment lets an author play their game, not only preview a
 map. **Launch** opens a **Play tab** that runs the project as a game would,
 with nothing of the editor around it: the game's screen of a fixed number of
 cells, filling the tab while keeping its shape, with the player centred and
-starting at
-the **player start**. Everything shows its sprite, walls and characters
-included, and everything is heard: the sounds NPC workflows ask for, ambient
-sounds placed on the map, louder as the player comes closer, and the sounds a
-zone plays throughout. A new engine package, the **game runtime**, runs it,
+starting at the **player start**. Everything shows its sprite, walls and
+characters included, and everything is heard: the sounds NPC workflows ask
+for, ambient sounds placed on the map, louder as the player comes closer, and
+the sounds a zone plays throughout. A new engine package, the **game runtime**, runs it,
 so a game's own program can later run the same thing. It builds on
 [increment 2](0002-walk-the-map.md)'s movement, [increment
 3](0003-npc-workflows.md)'s NPCs, [increment
