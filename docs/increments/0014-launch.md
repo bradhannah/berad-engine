@@ -99,7 +99,7 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 | 3. Game settings and the player start | The game settings document with the screen size; "Set player start here" on the Map's right-click menu, drawn as a marker | Headless tests: the document's format, setting, moving and undoing the start; the marker shows on its floor only | Built |
 | 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Built |
 | 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Built |
-| 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient gains | Planned |
+| 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient distances | Built |
 | 7. Launch and the Play tab | Launch, the Play tab drawing the screen at a whole-number scale with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Planned |
 | 8. The sample plays | The sample project gets a player start, a wall sprite, character sprites, an ambient sound and a zone sound, so `make demo` can launch | The sample's headless test checks each; `make check` and the real-window suite pass | Planned |
 
@@ -156,6 +156,20 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
   offers the library's music and ambient cues by name. Tests: the zone's
   sounds and upgrade, the edits' undo and references, and the Map's list
   adding the brook, a sound effect not offered, and taking it off.
+- **The game runtime:** `game.New` starts a game from a project as it was
+  when launched, the game settings, the start's zone with its floors, and the
+  NPCs placed on them with their behaviours, and refuses one with no start or
+  a start the player cannot stand on. Each `Step` walks the player, moves the
+  clock on and steps every NPC through `npcrun`, as Preview does, returning
+  the cues NPCs asked for, each once. `View` is the settings' screen of cells
+  with the player in the middle; `Characters` are the NPCs where they are
+  now; `Ambient` is each ambient sound on the player's floor with its
+  distance from the player; and `ZoneSounds` the zone's cues. The engine
+  module has no audio dependency, so the runtime reports distances and the
+  Play tab turns them into gains on berad-audio's curve. Tests: the start and
+  the view, refusing a bad start, walking into a wall, hearing the fountain
+  and the clerk's bell once, climbing stairs, where the fountain is not
+  heard, and the same input playing the same game.
 
 ## Not in this increment
 
