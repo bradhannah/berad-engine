@@ -242,7 +242,8 @@ Settled by its author on 2026-10-31, after trying it:
   smooth movement does, in place of a step that counted only once its
   slide ended, which felt laggy. The player stands in the new cell at once,
   so stairs, sounds and blocking answer the press, and is only drawn sliding
-  into it, over 8 ticks (about 133 ms). A held key steps every 10 ticks
+  into it, over 8 ticks (about 133 ms), fast at first and slowing into the
+  cell, so the frame of the press already shows a third of the step. A held key steps every 10 ticks
   (about 167 ms, six cells a second) in place of 12, so each step settles
   briefly before the next. A second key within 4 ticks still makes a
   diagonal, by turning the step just taken. Stairs change floor with the

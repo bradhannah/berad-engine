@@ -27,7 +27,9 @@ const (
 	// step this many ticks after the last.
 	StepTicks = 10
 	// SlideTicks is how long the player is drawn sliding into the cell a
-	// step took them to. It changes only how the step looks.
+	// step took them to, fast at first and slowing into the cell, so the
+	// tick a key goes down already shows a third of the step. It changes
+	// only how the step looks.
 	SlideTicks = 8
 	// JoinTicks is how soon after a step a second direction can turn it into
 	// a diagonal, so two keys pressed almost together move diagonally.
@@ -136,9 +138,10 @@ type Player struct {
 func (p Player) Moving() bool { return p.Progress > 0 }
 
 // At returns where the player is drawn, in cells: sliding from From to Cell
-// during the first SlideTicks of a step.
+// during the first SlideTicks of a step, easing out.
 func (p Player) At() (float64, float64) {
-	share := float64(min(p.Progress, SlideTicks)) / SlideTicks
+	left := 1 - float64(min(p.Progress, SlideTicks))/SlideTicks
+	share := 1 - left*left*left
 	if !p.Moving() {
 		share = 1
 	}

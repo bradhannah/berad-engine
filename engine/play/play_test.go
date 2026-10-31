@@ -107,9 +107,12 @@ func TestSlideIntoTheCell(t *testing.T) {
 	levels := oneLevel(newFloor(t, nil))
 	run := play.Start(floorID(1), image.Pt(0, 0))
 	tap(run, levels, play.East)
+	if x, y := run.Player().At(); x < 0.33 || x > 0.34 || y != 0 {
+		t.Fatalf("the tick of the press shows a third of the step: %v,%v", x, y)
+	}
 	steps(run, levels, held(0), play.SlideTicks/2-1)
-	if x, y := run.Player().At(); x != 0.5 || y != 0 {
-		t.Fatalf("half way through the slide: %v,%v", x, y)
+	if x, _ := run.Player().At(); x < 0.87 || x > 0.88 {
+		t.Fatalf("half way through the slide, most of the step shows: %v", x)
 	}
 	steps(run, levels, held(0), play.SlideTicks/2)
 	if x, y := run.Player().At(); x != 1 || y != 0 || !run.Player().Moving() {
