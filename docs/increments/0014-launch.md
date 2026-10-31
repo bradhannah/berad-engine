@@ -1,6 +1,6 @@
 # Increment 14: Launch
 
-**Status:** Planned
+**Status:** Built
 
 The fourteenth increment lets an author play their game, not only preview a
 map. **Launch** opens a **Play tab** that runs the project as a game would,
@@ -90,6 +90,27 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 - **Sounds play at the Audio window's monitor levels,** which stand in for a
   player's volume settings, as in Preview.
 
+Chosen while building, for its author to check:
+
+- **The runtime reports each ambient sound's distance,** and the Play tab
+  turns it into a gain on berad-audio's curve, the one the Audio window
+  draws, since the engine module has no audio dependency.
+- **The Play tab plays at full monitor levels.** Monitor levels belong to
+  each tab's own player, so the Audio window's are not shared; this departs
+  from the decision above.
+- **A game behind another tab stops and goes quiet,** and carries on when its
+  tab comes back to the front.
+- **Cmd+R launches from any tab,** the project browser included, and Cmd+W
+  closes the Play tab, as in every tab. The status bar stays under the Play
+  tab, as under every tab.
+- **The screen is drawn 1× in the editor window's first size,** since 608 ×
+  352 pixels fit twice across 1,200 but not twice down; a larger window shows
+  it 2×. Smaller than 1× is scaled down smoothly.
+- **Leaving the zone stops the game,** which says to press Cmd+R.
+- **The sample's hum is heard within 5 cells,** where it was heard
+  everywhere, so it can stand on the map; and the sample gains a clerk, an
+  NPC with no behaviour standing by the desk.
+
 ## Steps
 
 | Step | Builds | Done when | Status |
@@ -100,8 +121,8 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
 | 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Built |
 | 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Built |
 | 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient distances | Built |
-| 7. Launch and the Play tab | Launch, the Play tab drawing the screen at a whole-number scale with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Planned |
-| 8. The sample plays | The sample project gets a player start, a wall sprite, character sprites, an ambient sound and a zone sound, so `make demo` can launch | The sample's headless test checks each; `make check` and the real-window suite pass | Planned |
+| 7. Launch and the Play tab | Launch, the Play tab drawing the screen at a whole-number scale with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Built |
+| 8. The sample plays | The sample project gets a player start, a wall sprite, character sprites, an ambient sound and a zone sound, so `make demo` can launch | The sample's headless test checks each; `make check` and the real-window suite pass | Built |
 
 ## Step results
 
@@ -170,6 +191,32 @@ Proposed by the assistant and accepted by its author on 2026-10-30, before build
   the view, refusing a bad start, walking into a wall, hearing the fountain
   and the clerk's bell once, climbing stairs, where the fountain is not
   heard, and the same input playing the same game.
+- **Launch and the Play tab:** a new view, Play, whose target is the game
+  settings, so there is only ever one. Launch, on the window bar left of the
+  pinned clock, and Cmd+R in any tab, open it with the item `launch`; an
+  open Play tab asked for that item launches again. A launch reads the game
+  settings, the start's zone and floors, the NPCs placed on them and their
+  behaviours, and the art they show, subscribing as it goes, and starts the
+  game runtime once all have loaded; it copies what it reads, and draws the
+  art once, so edits change nothing until the next launch. The tab draws the
+  screen's cells around the player, ground then what stands on it, then the
+  characters in order of their row, on a canvas of one pixel per tile pixel,
+  scaled up by the largest whole number that fits and centred on black. NPC
+  cues play as asked; the zone's sounds and the ambient sounds within hearing
+  play as layers of the tab's soundscape, each ambient sound's gain following
+  the player. With no player start it says how to place one. Tests: headless,
+  no start saying how, a launch reading every document, starting at the start
+  with both sprites and a scale of 8, the music playing and the fountain
+  coming within hearing, going quiet behind another tab, and an edit changing
+  nothing until a second launch; and a real-window test that presses Cmd+R in
+  the project browser, waits for the sample's game with brick walls, both
+  figures, the tune and the hum, walks to the stairs and up them, and
+  launches again at the start, with two screenshots.
+- **The sample plays:** the sample gains a player start inside the door,
+  Brick showing the walls of family A, Hero showing the player, a clerk with
+  a figure of their own standing by the desk, the hum placed in the building
+  and the tune played throughout, so `make demo` launches at once. Tests: the
+  headless sample test checks each.
 
 ## Not in this increment
 

@@ -81,37 +81,38 @@ const lanternHalf = `
 `
 
 // sampleLantern makes the sample's palette, gloomy, draws the lantern with it
-// and makes it show the small pickup. It returns the palette's ID.
-func sampleLantern(orch *orchestrator.Orchestrator) (ids.ULID, error) {
+// and makes it show the small pickup. It returns the palette and its ramps.
+func sampleLantern(orch *orchestrator.Orchestrator) (sampleArt, error) {
+	var none sampleArt
 	iron, err := sampleRamp(orch, ironRampName, art.MaxOpacity, ironColors())
 	if err != nil {
-		return ids.ULID{}, err
+		return none, err
 	}
 	glass, err := sampleRamp(orch, glassRampName, glassOpacity, []art.RGB{amberDark, amberLight})
 	if err != nil {
-		return ids.ULID{}, err
+		return none, err
 	}
 	palette := art.NewPalette()
 	for at, ramp := range []art.Ramp{iron, glass} {
 		if err := palette.InsertRamp(at, ramp); err != nil {
-			return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+			return none, fmt.Errorf("sample lantern: %w", err)
 		}
 	}
 	paletteID, err := orch.CreateDocument(paletteName, &artplugin.PaletteDocument{Palette: palette})
 	if err != nil {
-		return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+		return none, fmt.Errorf("sample lantern: %w", err)
 	}
 	tile, err := lanternArt(paletteID, iron, glass)
 	if err != nil {
-		return ids.ULID{}, err
+		return none, err
 	}
 	tileID, err := orch.CreateDocument(lanternTile, &artplugin.TileDocument{Tile: tile})
 	if err != nil {
-		return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+		return none, fmt.Errorf("sample lantern: %w", err)
 	}
 	spriteID, err := orch.CreateDocument(lanternName, &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID}})
 	if err != nil {
-		return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+		return none, fmt.Errorf("sample lantern: %w", err)
 	}
 	err = orch.ChangeDocument(art.StandInsID(), func(document model.Document) error {
 		standIns, ok := document.(*artplugin.StandInsDocument)
@@ -125,10 +126,10 @@ func sampleLantern(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 		return nil
 	})
 	if err != nil {
-		return ids.ULID{}, fmt.Errorf("sample lantern: %w", err)
+		return none, fmt.Errorf("sample lantern: %w", err)
 	}
 
-	return paletteID, nil
+	return sampleArt{palette: paletteID, iron: iron, glass: glass}, nil
 }
 
 // sampleRamp is a ramp of the sample's palette, its colours at one opacity,

@@ -54,6 +54,9 @@ const (
 	mediumOffset   = 4
 	stairsCol      = 4
 	stairsRow      = -2
+	// sampleIDs is how many IDs the sample makes before its documents: the
+	// desk's anchor, the clerk's placement and the hum's.
+	sampleIDs = 3
 )
 
 func main() {
@@ -266,48 +269,90 @@ func ensureDocuments(
 
 // createSample creates placeholder content: a zone with a walled building on
 // the ground floor and its upper floor, an anchor at a desk, a lantern shown
-// as the small pickup, and a text document. It holds no game content.
+// as the small pickup, and a text document; and, so Launch plays it, a player
+// start, brick walls, figures for the player and a clerk, the hum in the
+// building and the tune throughout. It holds no game content.
 func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
-	desk, err := orch.NewID()
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	ground, err := sampleFloor("grass", "wall.a", true, desk)
+	sample, err := sampleLantern(orch)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	upper, err := sampleFloor("", "wall.b", false, ids.ULID{})
+	floors, err := sampleFloors(orch, sample)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	groundID, err := orch.CreateDocument("Ground floor", ground)
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	upperID, err := orch.CreateDocument("Upper floor", upper)
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	paletteID, err := sampleLantern(orch)
+	zoneID, err := sampleZone(orch, sample, floors)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	sampleZone := zoneplugin.NewDocument()
-	for index, floorID := range []ids.ULID{groundID, upperID} {
-		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
-			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-		}
-	}
-	if err := sampleZone.Zone.InsertPalette(0, paletteID); err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	if err := sampleStart(orch, zoneID, floors[0]); err != nil {
+		return ids.ULID{}, err
 	}
 	notes := textdoc.NewDocument()
 	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."
 	if _, err := orch.CreateDocument("Notes", notes); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+
+	return zoneID, nil
+}
+
+// sampleFloors makes the building's two floors, the ground floor's with the
+// clerk by the desk and the hum, and returns their IDs from the bottom up.
+func sampleFloors(orch *orchestrator.Orchestrator, sample sampleArt) ([]ids.ULID, error) {
+	made := make([]ids.ULID, 0, sampleIDs)
+	for range sampleIDs {
+		madeID, err := orch.NewID()
+		if err != nil {
+			return nil, fmt.Errorf("create sample: %w", err)
+		}
+		made = append(made, madeID)
+	}
+	desk, placement, hum := made[0], made[1], made[2]
+	clerk, err := samplePlayers(orch, sample)
+	if err != nil {
+		return nil, err
+	}
+	ground, err := sampleFloor("grass", "wall.a", true, desk)
+	if err != nil {
+		return nil, err
+	}
+	if err := samplePlace(ground.Floor, clerk, placement, hum); err != nil {
+		return nil, err
+	}
+	upper, err := sampleFloor("", "wall.b", false, ids.ULID{})
+	if err != nil {
+		return nil, err
+	}
+	groundID, err := orch.CreateDocument("Ground floor", ground)
+	if err != nil {
+		return nil, fmt.Errorf("create sample: %w", err)
+	}
+	upperID, err := orch.CreateDocument("Upper floor", upper)
+	if err != nil {
+		return nil, fmt.Errorf("create sample: %w", err)
+	}
+
+	return []ids.ULID{groundID, upperID}, nil
+}
+
+// sampleZone makes the sample zone of the floors, listing gloomy and playing
+// the tune throughout.
+func sampleZone(orch *orchestrator.Orchestrator, sample sampleArt, floors []ids.ULID) (ids.ULID, error) {
+	sampleZone := zoneplugin.NewDocument()
+	for index, floorID := range floors {
+		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
+			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+		}
+	}
+	if err := sampleZone.Zone.InsertPalette(0, sample.palette); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	if err := sampleZone.Zone.InsertSound(0, tuneCue); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
+	if err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 	}
 
