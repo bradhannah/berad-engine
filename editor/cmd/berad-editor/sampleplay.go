@@ -31,8 +31,8 @@ const (
 	humCue      = "sample/hum"
 	tuneCue     = "sample/tune"
 	brickShows  = "wall.a"
-	brickCourse = 8
-	brickLength = 16
+	brickCourse = 6
+	brickLength = 12
 	clerkName   = "Clerk"
 )
 
@@ -40,38 +40,30 @@ const (
 // half: "." is clear, o its outline, h its head, e its eyes and b its body,
 // whose colour each figure chooses.
 const figureHalf = `
-................
-................
-................
-................
-............oooo
-..........oohhhh
-.........ohhhhhh
-.........ohhhhhh
-........ohhhhhhh
-........ohhheehh
-........ohhheehh
-.........ohhhhhh
-.........oohhhhh
-..........oohhhh
-............oooo
-.........ooooooo
-.......oobbbbbbb
-......obbbbbbbbb
-.....obbbbbbbbbb
-.....obbbbbbbbbb
-.....obbobbbbbbb
-.....obbobbbbbbb
-.....obbobbbbbbb
-.....obbobbbbbbb
-.....oooobbbbbbb
-........obbbbbbb
-........obbbbbbb
-........obbbbo..
-........obbbbo..
-........obbbbo..
-........oooooo..
-................
+............
+............
+........oooo
+.......ohhhh
+......ohhhhh
+......ohheeh
+......ohhhhh
+.......ohhhh
+........oooo
+......oobbbb
+.....obbbbbb
+.....obbbbbb
+.....obobbbb
+.....obobbbb
+.....obobbbb
+.....ooobbbb
+.......obbbb
+.......obbbb
+.......obbo.
+.......obbo.
+.......obbo.
+.......oooo.
+............
+............
 `
 
 // sampleArt is the sample's palette, gloomy, and its ramps.

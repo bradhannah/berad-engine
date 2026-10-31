@@ -795,7 +795,7 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		must("state:shows:pickup.small", 120),
 		click("swatch:gloomy / glass 1"), must("state:color:gloomy / glass 1", 60), click("ui:edit-palette"),
 		must("swatch:gloomy / ink 1", 1200), click("swatch:gloomy / ink 1"),
-		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:gloomy / ink 1", 120),
+		drag("pixel:0,4", "pixel:23,4"), must("state:pixel:23,4:gloomy / ink 1", 120),
 		must("swatch:gloomy / pane 1", 1200), click("swatch:gloomy / pane 1"),
 		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:gloomy / pane 1", 120), wait(900), quit(),
 	)
@@ -803,8 +803,8 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		expect("state:loaded", 600), wait(5),
 		click("ui:zoom-fit"), click("ui:zoom-reset"), click("ui:zoom-in"), must("state:zoom:200", 60),
 		must("state:sprite:pickup.small", 1800), front(), shoot(lanternShot),
-		mustInFront("state:art:pickup.small:16,4:#FF00FF", 1200), shoot(stroke),
-		mustInFront("state:art:pickup.small:16,4:#00FFFF", 1200), shoot(recoloured),
+		mustInFront("state:art:pickup.small:12,4:#FF00FF", 1200), shoot(stroke),
+		mustInFront("state:art:pickup.small:12,4:#00FFFF", 1200), shoot(recoloured),
 		mustInFront("state:art:pickup.small:0,0:#3060C0", 1200), shoot(glassShot),
 		quit(),
 	)

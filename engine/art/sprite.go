@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultTileSize is the tile size a project starts with.
-const DefaultTileSize = 32
+const DefaultTileSize = 24
 
 // Sprite is what a definition shows. For now a sprite is one frame of one
 // tile, one cell in size; bigger and animated sprites come later.

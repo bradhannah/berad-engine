@@ -226,6 +226,9 @@ Settled by its author on 2026-10-31, after trying it:
   enlarging the screen by the next whole number with hard edges, then
   shrinking it to fit smoothly, so every pixel stays the same size and only
   their edges soften; a whole-number scale is drawn as it is.
+- **A new project starts with 24-pixel tiles,** in place of 32, as Modern
+  Old Game now uses; the sample's lantern, brick and figures are redrawn at
+  24, the figures narrower than before, about 14 pixels across.
 
 ## Not in this increment
 

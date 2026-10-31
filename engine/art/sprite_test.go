@@ -27,8 +27,8 @@ func TestSprite(t *testing.T) {
 
 func TestSettings(t *testing.T) {
 	t.Parallel()
-	if art.DefaultSettings().TileSize != 32 {
-		t.Fatal("projects start with 32-pixel tiles")
+	if art.DefaultSettings().TileSize != 24 {
+		t.Fatal("projects start with 24-pixel tiles")
 	}
 	data, err := art.Settings{TileSize: 24}.Encode()
 	if err != nil || string(data) != `{"tileSize":24}` {
