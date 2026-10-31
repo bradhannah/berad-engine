@@ -62,7 +62,8 @@ Agreed by its author on 2026-10-30, before building:
   replace it.
 - **A fixed screen of cells:** each game sets how many cells its screen
   shows. Modern Old Game's is **19 × 11** (608 × 352 pixels at its 32-pixel
-  tiles), recorded in the research repository.
+  tiles then; 456 × 264 at the 24-pixel tiles its author chose on
+  2026-10-31), recorded in the research repository.
 - **The view keeps the player centred,** always; past a floor's edge is dark.
 - **Launch plays a snapshot:** it plays the project as it was when it
   started, as a game would; relaunching picks up edits.
