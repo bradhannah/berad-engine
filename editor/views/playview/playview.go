@@ -2,7 +2,8 @@
 // as a game would, with nothing of the editor around it. It takes a snapshot
 // of what the game needs when it launches, starts the engine's game runtime
 // at the player start, and draws the game's screen, the settings' columns
-// and rows of cells, scaled by whole numbers with the player in the middle.
+// and rows of cells, filling the tab while keeping its shape, with the player
+// in the middle.
 // Every sprite shows, and every sound is heard: what NPCs ask for, the
 // ambient sounds on the player's floor by distance, and the zone's sounds.
 // Edits made while it runs change nothing until it is launched again.
@@ -58,8 +59,10 @@ type State struct {
 	art        *artSet
 	sound      *sounds
 	// canvas is the game's screen at one pixel per tile pixel; scale is how
-	// many screen pixels each of its pixels takes.
+	// many screen pixels each of its pixels takes; sharp is the canvas
+	// enlarged by a whole number, for a scale that is not one.
 	canvas *ebiten.Image
+	sharp  *ebiten.Image
 	scale  float64
 	tile   int
 	// clockStart is the time of day the clock starts at, as the Clock window
@@ -73,7 +76,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
 		launching: true, launches: 0, floors: nil, held: 0, shown: true, standIns: map[string]ids.ULID{},
 		npcSprites: map[ids.ULID]ids.ULID{}, art: newArtSet(), sound: newSounds(),
-		canvas: nil, scale: 1, tile: 0, clockStart: protocol.DefaultClockStart,
+		canvas: nil, sharp: nil, scale: 1, tile: 0, clockStart: protocol.DefaultClockStart,
 	}
 }
 

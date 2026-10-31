@@ -473,10 +473,10 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   Preview, which stays for quick checks. It starts at the **player start**,
   placed once per project, and plays the project as it was when launched;
   relaunching picks up edits. The screen shows a fixed number of cells set
-  per game, scaled by whole numbers, with the player always centred. NPC
-  cues, ambient sounds placed on the map and a zone's own sounds are heard.
-  The player and each NPC show one sprite. See [increment
-  14](increments/0014-launch.md).
+  per game, filling the tab while keeping its shape (2026-10-31), with the
+  player always centred. NPC cues, ambient sounds placed on the map and a
+  zone's own sounds are heard. The player and each NPC show one sprite. See
+  [increment 14](increments/0014-launch.md).
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
   new time immediately rather than simulating the gap: each restarts its
   workflow from the start and walks to wherever its new branch sends it.

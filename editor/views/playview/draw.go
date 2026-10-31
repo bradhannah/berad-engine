@@ -72,8 +72,8 @@ func (a *artSet) image(key string) (*ebiten.Image, bool) {
 	return picture, ok
 }
 
-// Draw draws the game's screen, scaled up by the largest whole number that
-// fits and centred on black, or why there is no game yet.
+// Draw draws the game's screen, filling the tab while keeping its shape, or
+// why there is no game yet.
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	screen.Fill(ui.Hex(hexDark))
 	if s.game == nil {
@@ -98,16 +98,38 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	s.canvas.Fill(ui.Hex(hexDark))
 	s.drawCells(view)
 	s.drawCharacters(view)
+	s.present(screen, width, height)
+}
+
+// present draws the canvas as large as the tab allows, keeping its shape and
+// centring it on black. A whole-number scale is drawn as it is; any other is
+// first enlarged by the next whole number with hard edges, then shrunk to fit
+// smoothly, so every pixel stays the same size and only their edges soften.
+func (s *State) present(screen *ebiten.Image, width, height int) {
 	bounds := screen.Bounds()
-	s.scale = math.Floor(min(float64(bounds.Dx())/float64(width), float64(bounds.Dy())/float64(height)))
-	if s.scale < 1 {
-		s.scale = min(float64(bounds.Dx())/float64(width), float64(bounds.Dy())/float64(height))
+	s.scale = min(float64(bounds.Dx())/float64(width), float64(bounds.Dy())/float64(height))
+	source, shrink := s.canvas, s.scale
+	if whole := math.Ceil(s.scale); whole != s.scale {
+		size := image.Pt(width*int(whole), height*int(whole))
+		if s.sharp == nil || s.sharp.Bounds().Size() != size {
+			if s.sharp != nil {
+				s.sharp.Deallocate()
+			}
+			s.sharp = ebiten.NewImage(size.X, size.Y)
+		}
+		var enlarge ebiten.DrawImageOptions
+		enlarge.GeoM.Scale(whole, whole)
+		s.sharp.DrawImage(s.canvas, &enlarge)
+		source, shrink = s.sharp, s.scale/whole
 	}
 	var place ebiten.DrawImageOptions
-	place.GeoM.Scale(s.scale, s.scale)
+	place.GeoM.Scale(shrink, shrink)
 	place.GeoM.Translate(math.Round((float64(bounds.Dx())-float64(width)*s.scale)/ui.Half),
 		math.Round((float64(bounds.Dy())-float64(height)*s.scale)/ui.Half))
-	screen.DrawImage(s.canvas, &place)
+	if shrink != 1 {
+		place.Filter = ebiten.FilterLinear
+	}
+	screen.DrawImage(source, &place)
 }
 
 // cellAt is where a cell's top-left corner falls on the canvas.

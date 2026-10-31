@@ -17,8 +17,8 @@ import (
 //     "npc:<id>";
 //   - "heard:<cue>" once an NPC asked for a cue, and "layer:<cue>" while a
 //     zone or ambient sound plays it;
-//   - "scale:N" when the screen is drawn N times its size, and "launches:N"
-//     after N launches;
+//   - "scale:N.NN" when the screen is drawn that many times its size, and
+//     "launches:N" after N launches;
 //   - "ground:C,R:<id>" when the game's floor has that ground there.
 func (s *State) hasState(state string) bool {
 	kind, value, _ := strings.Cut(state, ":")
@@ -36,7 +36,7 @@ func (s *State) hasState(state string) bool {
 	case "layer":
 		return s.sound.playing(value)
 	case "scale":
-		return strconv.FormatFloat(s.scale, 'g', -1, 64) == value
+		return strconv.FormatFloat(s.scale, 'f', 2, 64) == value
 	case "launches":
 		return strconv.Itoa(s.launches) == value
 	}

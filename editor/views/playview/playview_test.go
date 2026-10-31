@@ -174,7 +174,7 @@ func TestNoStartSaysHow(t *testing.T) {
 }
 
 // TestLaunchPlaysTheGame launches at the player start with the player's and
-// Ada's sprites, scaled up by whole numbers, and plays the town's music;
+// Ada's sprites, filling the tab while keeping its shape, and plays the town's music;
 // walking towards the fountain, 3 cells away, brings it within hearing.
 func TestLaunchPlaysTheGame(t *testing.T) {
 	t.Parallel()
@@ -188,8 +188,8 @@ func TestLaunchPlaysTheGame(t *testing.T) {
 		!f.has("sprite:npc:"+clerkID.String()) {
 		t.Fatal("the game starts at the start, with sprites")
 	}
-	if !f.has("scale:8") {
-		t.Fatal("152 by 88 pixels are drawn 8 times their size in 1280 by 800")
+	if !f.has("scale:8.42") {
+		t.Fatal("152 by 88 pixels fill 1280 by 800 across, 8.42 times their size")
 	}
 	f.answerAudio()
 	f.frame(nil)

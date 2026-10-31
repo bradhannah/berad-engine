@@ -5,7 +5,8 @@
 The fourteenth increment lets an author play their game, not only preview a
 map. **Launch** opens a **Play tab** that runs the project as a game would,
 with nothing of the editor around it: the game's screen of a fixed number of
-cells, scaled up by whole numbers, with the player centred and starting at
+cells, filling the tab while keeping its shape, with the player centred and
+starting at
 the **player start**. Everything shows its sprite, walls and characters
 included, and everything is heard: the sounds NPC workflows ask for, ambient
 sounds placed on the map, louder as the player comes closer, and the sounds a
@@ -23,8 +24,8 @@ as [increment 1](0001-foundation.md).
    player start, with no editor chrome; the arrow keys walk, stairs change
    floor, NPCs follow their workflows, and closing the tab stops it.
 2. **The screen is the game's:** the Play tab shows the game's screen size in
-   cells, scaled by the largest whole number that fits, with the player in
-   the middle cell and darkness past the floor's edge.
+   cells, as large as the tab allows while keeping its shape, with the player
+   in the middle cell and darkness past the floor's edge.
 3. **Everything shows its sprite:** ground, walls, doors, stairs, pickups,
    NPCs and the player, each with the sprite chosen for it, or its flat colour
    or disc when it has none.
@@ -103,9 +104,6 @@ Chosen while building, for its author to check:
 - **Cmd+R launches from any tab,** the project browser included, and Cmd+W
   closes the Play tab, as in every tab. The status bar stays under the Play
   tab, as under every tab.
-- **The screen is drawn 1× in the editor window's first size,** since 608 ×
-  352 pixels fit twice across 1,200 but not twice down; a larger window shows
-  it 2×. Smaller than 1× is scaled down smoothly.
 - **Leaving the zone stops the game,** which says to press Cmd+R.
 - **The sample's hum is heard within 5 cells,** where it was heard
   everywhere, so it can stand on the map; and the sample gains a clerk, an
@@ -121,7 +119,7 @@ Chosen while building, for its author to check:
 | 4. Ambient sounds on the map | Placing, moving and removing an ambient sound on a cell, with its marker and distance ring | Headless tests for the floor's new format version, each edit and its undo; only ambient cues are offered | Built |
 | 5. A zone's sounds | The zone lists cues that play throughout, added and removed beside its palettes | Headless tests for the zone's new format version and the list's edits | Built |
 | 6. The game runtime | An engine package that runs a snapshot of a project's zone: the player, NPCs, what is drawn around the player and what is heard, with each ambient sound's gain by distance | Headless tests that step a sample zone and check positions, drawn cells, cues asked for and ambient distances | Built |
-| 7. Launch and the Play tab | Launch, the Play tab drawing the screen at a whole-number scale with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Built |
+| 7. Launch and the Play tab | Launch, the Play tab drawing the screen to fill the tab with the player centred, sounds through the pane's player and soundscape, relaunch | A real-window test that launches the sample, walks, takes stairs and checks what is drawn and heard, with screenshots; editing the map changes nothing until relaunch | Built |
 | 8. The sample plays | The sample project gets a player start, a wall sprite, character sprites, an ambient sound and a zone sound, so `make demo` can launch | The sample's headless test checks each; `make check` and the real-window suite pass | Built |
 
 ## Step results
@@ -201,7 +199,7 @@ Chosen while building, for its author to check:
   art once, so edits change nothing until the next launch. The tab draws the
   screen's cells around the player, ground then what stands on it, then the
   characters in order of their row, on a canvas of one pixel per tile pixel,
-  scaled up by the largest whole number that fits and centred on black. NPC
+  scaled to fill the tab while keeping its shape, and centred on black. NPC
   cues play as asked; the zone's sounds and the ambient sounds within hearing
   play as layers of the tab's soundscape, each ambient sound's gain following
   the player. With no player start it says how to place one. Tests: headless,
@@ -217,6 +215,17 @@ Chosen while building, for its author to check:
   a figure of their own standing by the desk, the hum placed in the building
   and the tune played throughout, so `make demo` launches at once. Tests: the
   headless sample test checks each.
+
+## Changed after its author tried it
+
+Settled by its author on 2026-10-31, after trying it:
+
+- **The screen fills the tab, keeping its shape,** with black bars where the
+  tab's shape differs, in place of the largest whole-number scale, which left
+  the game small in the editor window. A scale that is not whole is drawn by
+  enlarging the screen by the next whole number with hard edges, then
+  shrinking it to fit smoothly, so every pixel stays the same size and only
+  their edges soften; a whole-number scale is drawn as it is.
 
 ## Not in this increment
 
