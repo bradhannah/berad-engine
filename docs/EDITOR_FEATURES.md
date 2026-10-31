@@ -369,6 +369,9 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   take care of itself, with manual arrangement available. Optional colours on
   nodes and containers, annotations and note nodes keep large workflows readable;
   layout is saved apart from logic (D17).
+- **Agreed (2026-10-31):** the Workflow canvas zooms with the Map's floating
+  zoom control and keys, and Recentre in its toolbar brings a workflow panned
+  out of sight back to the middle.
 - **Candidate:** cut scenes as workflows that block player input.
 
 ## NPCs

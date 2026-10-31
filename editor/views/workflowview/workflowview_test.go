@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"image"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -696,4 +697,138 @@ func TestLinesRunOverNotes(t *testing.T) {
 		t.Fatal("a line over a note is clicked, not the note")
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// recentreSlack is how far, in pixels, the start node may sit from the
+// canvas centre after Recentre.
+const recentreSlack = 48
+
+// Recentre brings a workflow panned out of sight back to the middle of the
+// canvas.
+func TestRecentre(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	canvas := f.state.Canvas()
+	away := ui.NewInput(ui.Center(canvas))
+	away.WheelX, away.WheelY = 200, 200
+	f.frame(away)
+	if f.at("node:start:1").In(canvas) {
+		t.Fatal("the wheel pans the start node out of sight")
+	}
+	f.click("ui:recentre")
+	start := f.at("node:start:1")
+	if !start.In(canvas) {
+		t.Fatalf("start node at %v is outside the canvas %v after Recentre", start, canvas)
+	}
+	// The start node is the whole workflow, so it sits in the middle.
+	if off := start.Sub(ui.Center(canvas)); off.X*off.X+off.Y*off.Y > recentreSlack*recentreSlack {
+		t.Fatalf("start node at %v is %v from the canvas centre", start, off)
+	}
+	if f.status() != "Centred on the workflow." {
+		t.Fatalf("status %q", f.status())
+	}
+}
+
+// The zoom card's buttons and Cmd+=, Cmd+− and Cmd+0 step through the zoom
+// levels, stopping at the ends.
+func TestZoomButtonsAndKeys(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	steps := []struct {
+		do   func()
+		want int
+	}{
+		{func() { f.click("ui:zoom-in") }, 150},
+		{func() { f.click("ui:zoom-in") }, 200},
+		{func() { f.click("ui:zoom-in") }, 200},
+		{func() { f.keys("Cmd+0") }, 100},
+		{func() { f.keys("Cmd+Minus") }, 75},
+		{func() { f.keys("Cmd+Equal") }, 100},
+		{func() { f.click("ui:zoom-out") }, 75},
+		{func() { f.click("ui:zoom-out") }, 50},
+		{func() { f.click("ui:zoom-out") }, 33},
+		{func() { f.click("ui:zoom-out") }, 25},
+		{func() { f.click("ui:zoom-out") }, 25},
+		{func() { f.click("ui:zoom-reset") }, 100},
+	}
+	for index, step := range steps {
+		step.do()
+		if got := f.state.ZoomPercent(); got != step.want {
+			t.Fatalf("step %d: zoom %d%%, want %d%%", index+1, got, step.want)
+		}
+	}
+}
+
+// Zoomed out, a drag moves a node by the screen distance at the zoom: twice
+// as far on the canvas at 50%.
+func TestEditingWhileZoomed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindWait)
+	f.click("ui:zoom-out")
+	f.click("ui:zoom-out")
+	wait := f.nth(flow.KindWait, 1)
+	before, _ := f.workflow().Box(wait.ID)
+	from := f.at("node:wait:1")
+	f.drag(from, from.Add(image.Pt(60, 40)))
+	after, _ := f.workflow().Box(wait.ID)
+	if after.X != before.X+120 || after.Y != before.Y+80 {
+		t.Fatalf("at 50%% a 60×40 drag moved the node from %v to %v", before, after)
+	}
+}
+
+// Cmd+scroll zooms about the pointer, keeping what is under it in place, and
+// a plain scroll pans by the same distance on screen at any zoom.
+func TestScrollZoomsAndPans(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	near := func(a, b image.Point) bool {
+		d := a.Sub(b)
+
+		return d.X >= -2 && d.X <= 2 && d.Y >= -2 && d.Y <= 2
+	}
+	under := f.at("node:start:1")
+	zoom := ui.NewInput(under)
+	zoom.Held, zoom.WheelY = ui.Cmd(), 1
+	f.frame(zoom)
+	if f.state.ZoomPercent() != 150 {
+		t.Fatalf("Cmd+scroll zoomed to %d%%", f.state.ZoomPercent())
+	}
+	if moved := f.at("node:start:1"); !near(moved, under) {
+		t.Fatalf("the start node moved from %v to %v while zooming about it", under, moved)
+	}
+	pan := ui.NewInput(under)
+	pan.WheelX, pan.WheelY = 1, 1
+	f.frame(pan)
+	if moved, want := f.at("node:start:1"), under.Add(pan.WheelPan()); !near(moved, want) {
+		t.Fatalf("a scroll at 150%% moved the start node to %v, want %v", moved, want)
+	}
+}
+
+// Fit zooms out until a workflow wider than the canvas shows whole, and
+// leaves a small one at 100%.
+func TestFit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("ui:zoom-in")
+	f.click("ui:zoom-fit")
+	if f.state.ZoomPercent() != 100 {
+		t.Fatalf("Fit on a lone start node zoomed to %d%%", f.state.ZoomPercent())
+	}
+	f.click("node:start:1")
+	const waits = 8
+	for range waits {
+		f.click("palette:" + flow.KindWait)
+	}
+	f.click("ui:zoom-fit")
+	if f.state.ZoomPercent() >= 100 {
+		t.Fatalf("Fit left a wide workflow at %d%%", f.state.ZoomPercent())
+	}
+	canvas := f.state.Canvas()
+	for number := 1; number <= waits; number++ {
+		if at := f.at("node:wait:" + strconv.Itoa(number)); !at.In(canvas) {
+			t.Fatalf("wait %d at %v is outside the canvas %v after Fit", number, at, canvas)
+		}
+	}
 }
