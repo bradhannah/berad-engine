@@ -105,7 +105,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	}
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, -16, -12) != "grass" ||
-		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 1 {
+		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 2 {
 		t.Fatal("sample ground floor not saved")
 	}
 	if ground.Bounds() != floor.Centered(32, 24) || envelope.Version != floor.FormatVersion {
@@ -121,6 +121,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 		t.Fatalf("the sample zone lists the sample's palette, gloomy: %v", listed)
 	}
 	readEnvelope(t, project, "texts/notes--*.json")
+	checkSampleShop(t, project, ground)
 	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
 	sprite, err := art.DecodeSprite(lantern.Data)
 	if err != nil {

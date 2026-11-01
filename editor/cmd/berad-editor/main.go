@@ -265,18 +265,23 @@ func ensureDocuments(
 }
 
 // createSample creates placeholder content: a zone with a walled building on
-// the ground floor and its upper floor, an anchor at a desk, a lantern shown
-// as the small pickup, and a text document. It holds no game content.
+// the ground floor and its upper floor, anchors at a desk and the door, a
+// lantern shown as the small pickup, a shop of two NPCs and a text document.
+// It holds no game content.
 func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
-	desk, err := orch.NewID()
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	var anchors sampleAnchors
+	for _, made := range []*ids.ULID{&anchors.desk, &anchors.door} {
+		id, err := orch.NewID()
+		if err != nil {
+			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+		}
+		*made = id
 	}
-	ground, err := sampleFloor("grass", "wall.a", true, desk)
+	ground, err := sampleFloor("grass", "wall.a", true, anchors)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	upper, err := sampleFloor("", "wall.b", false, ids.ULID{})
+	upper, err := sampleFloor("", "wall.b", false, sampleAnchors{desk: ids.ULID{}, door: ids.ULID{}})
 	if err != nil {
 		return ids.ULID{}, err
 	}
@@ -305,6 +310,9 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 	}
+	if err := sampleShop(orch, shopPlaces{floor: groundID, desk: anchors.desk, door: anchors.door}); err != nil {
+		return ids.ULID{}, err
+	}
 	notes := textdoc.NewDocument()
 	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."
 	if _, err := orch.CreateDocument("Notes", notes); err != nil {
@@ -314,11 +322,17 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	return zoneID, nil
 }
 
+// sampleAnchors are the ground floor's anchors: at the desk and inside the
+// door.
+type sampleAnchors struct {
+	desk, door ids.ULID
+}
+
 // sampleFloor is one floor of the sample building: ground everywhere, walls of
 // one family around the building, plain floor inside and stairs joining the
-// two floors. The ground floor has a door, two pickups and an anchor at the
-// desk.
-func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tilefloor.Document, error) {
+// two floors. The ground floor has a door, two pickups and anchors at the
+// desk and the door.
+func sampleFloor(outside, family string, groundFloor bool, anchors sampleAnchors) (*tilefloor.Document, error) {
 	document, err := tilefloor.NewDocumentAt(floor.Centered(sampleWidth, sampleTall), outside)
 	if err != nil {
 		return nil, fmt.Errorf("sample floor: %w", err)
@@ -329,7 +343,7 @@ func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tile
 	if !groundFloor {
 		return document, nil
 	}
-	if err := sampleFurnishing(document.Floor, desk); err != nil {
+	if err := sampleFurnishing(document.Floor, anchors); err != nil {
 		return nil, err
 	}
 
@@ -369,8 +383,9 @@ func sampleBuilding(floorData *floor.Floor, family string, groundFloor bool) err
 	return nil
 }
 
-// sampleFurnishing adds two pickups and an anchor at the desk.
-func sampleFurnishing(floorData *floor.Floor, desk ids.ULID) error {
+// sampleFurnishing adds two pickups and anchors at the desk and inside the
+// door.
+func sampleFurnishing(floorData *floor.Floor, anchors sampleAnchors) error {
 	for _, item := range []struct {
 		col, row int
 		tile     string
@@ -379,8 +394,13 @@ func sampleFurnishing(floorData *floor.Floor, desk ids.ULID) error {
 			return fmt.Errorf("sample floor: %w", err)
 		}
 	}
-	if err := floorData.InsertAnchor(0, floor.Anchor{ID: desk, Name: "Desk", Col: deskCol, Row: deskRow}); err != nil {
-		return fmt.Errorf("sample floor: %w", err)
+	for index, anchor := range []floor.Anchor{
+		{ID: anchors.desk, Name: "Desk", Col: deskCol, Row: deskRow},
+		{ID: anchors.door, Name: "Door", Col: doorCol, Row: buildingBottom - 1},
+	} {
+		if err := floorData.InsertAnchor(index, anchor); err != nil {
+			return fmt.Errorf("sample floor: %w", err)
+		}
 	}
 
 	return nil
