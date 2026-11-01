@@ -77,6 +77,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if dialog := s.picker.Dialog(); dialog != nil {
 		dialog.Draw(screen, s.theme)
 	}
+	s.contextMenu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
 }
 
@@ -797,7 +798,8 @@ func mod(value, divisor int) int {
 // "entry:<kind>:<n>" for its spare entry dot or "entry:<kind>:<n>:<i>" for
 // its i-th filled one, "add-option:<kind>:<n>" for a
 // random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for
-// a button or field, a dialog button, or "state:..." (see hasState).
+// a button or field, a dialog button, "menu:<id>" for an item of the open
+// right-click menu, or "state:..." (see hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.load(docs)
 	s.layoutWidgets(docs)
@@ -827,6 +829,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		}
 	case "ui":
 		return s.locateWidget(value)
+	case locateMenu:
+		return s.contextMenu.Locate(value)
 	case localPrefix:
 		return s.locateLocal(value)
 	default:

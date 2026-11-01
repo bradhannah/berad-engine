@@ -5,6 +5,7 @@
 // selected one, or drag it onto the canvas; drag from an output's port to a
 // node to connect them, or pick a line up by its arrow end to move it to
 // another node; drag a node to move it; click a line to select it.
+// Right-click a node or a line for a menu that deletes it.
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -160,6 +161,10 @@ type State struct {
 	// locals is the inspector's part for the workflow's local values, shown
 	// while no node or line is selected.
 	locals *localsPanel
+	// contextMenu is the canvas's right-click menu, opened once the
+	// right-click waiting in context has settled the selection.
+	contextMenu ui.Menu
+	context     contextClick
 }
 
 // New returns the Workflow window for a workflow.
@@ -176,6 +181,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
+		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -346,9 +352,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.syncForm(ctx)
 	s.syncLocals()
 	s.layoutWidgets(ctx.Docs)
-	if dialog := s.picker.Dialog(); dialog != nil {
-		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
-
+	if s.updateOverlay(input, ctx) {
 		return
 	}
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
@@ -380,6 +384,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
 	s.guardSelection(ctx)
+	s.openContextMenu()
 }
 
 // updateLineButtons handles Delete line and Reset line for the selected
@@ -506,6 +511,8 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
 		s.updateResize(input, ctx, point)
+	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
+		s.rightClick(point, input.Cursor)
 	case input.Pressed && input.Cursor.In(canvas):
 		s.press(ctx, point)
 	}
