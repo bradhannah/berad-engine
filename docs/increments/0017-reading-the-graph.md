@@ -95,7 +95,7 @@ Chosen while planning, for its author to check:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Handles on every leg | Grips on a back line's drop, level run and end legs; the end-leg offset in `Bend`; layout format version 3; dragging each, and Reset line clearing them | Route tests for each handle and for a line whose nodes then move; the bend edit passes the shared apply-then-undo test; version 2 layouts load | Built |
-| 2. Naming and the legend | The status bar's line description on hover; the Legend toggle and its panel | View tests of the text for a forward line, a loop and a moved line, and of the toggle | Planned |
+| 2. Naming and the legend | The status bar's line description on hover; the Legend toggle and its panel | View tests of the text for a forward line, a loop and a moved line, and of the toggle | Built |
 | 3. Colours | Tints in the layout; Colour rows in the inspector for a node, a container, each outcome of a node with several, and a line, with the three line states; the drawing of tinted faces, ports, rows and lines | The colour edit passes the shared apply-then-undo test; view tests of inherit, set and none, and of lit and live winning | Planned |
 | 4. The outcome's name at the arrowhead | The label on long lines, in the line's ink | A view test of a long and a short line | Planned |
 | 5. Checks | `make check` and the real-window suite; a real-window test drags a back line's end leg and colours an outcome, and both are saved | The checks pass with no lint findings | Planned |
@@ -113,6 +113,14 @@ Chosen while planning, for its author to check:
   test; a version 2 layout upgrades and its bend reads as it was; view
   tests drag the drop and end legs, see the run span them, and reset them.
   `make check` passes with no lint findings.
+- **Naming and the legend:** moving the pointer onto a line puts its
+  description in the status bar, as hovering a problem mark does: the node
+  it leaves, its outcome when that node has several, the node it enters,
+  then "loops back" and "moved by hand" when they apply. A Legend button in
+  the toolbar toggles a card above the zoom control with a sample of each
+  look beside what it means; clicks on the card never reach the canvas.
+  Verified: view tests hover the loop, the start's line and a moved line
+  and read the status bar, and toggle the legend and draw it.
 
 ## Changed after its author tried it
 

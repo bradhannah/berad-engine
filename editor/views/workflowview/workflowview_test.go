@@ -727,6 +727,47 @@ func TestMovingABackLinesLegs(t *testing.T) {
 	}
 }
 
+// TestHoveringALineNamesIt moves the pointer over the loop and over the
+// start's line: the status bar says where each goes, that the loop loops
+// back, and, once it is moved by hand, that it was.
+func TestHoveringALineNamesIt(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	f.frame(ui.NewInput(f.at("line:wait:1:next")))
+	if status := f.status(); !strings.Contains(status, " → ") || !strings.Contains(status, "loops back") {
+		t.Fatalf("hovering the loop names it: %q", status)
+	}
+	f.frame(ui.NewInput(f.at("line:start:1:next")))
+	if status := f.status(); !strings.Contains(status, " → ") || strings.Contains(status, "loops back") {
+		t.Fatalf("hovering the start's line names it: %q", status)
+	}
+	grip := f.at("bend:wait:1:next")
+	f.drag(grip, grip.Add(image.Pt(0, 30)))
+	f.frame(ui.NewInput(f.at("line:wait:1:next")))
+	if status := f.status(); !strings.Contains(status, "moved by hand") {
+		t.Fatalf("a line moved by hand says so: %q", status)
+	}
+}
+
+// TestLegendToggles shows the legend from the toolbar, draws it, and hides
+// it again.
+func TestLegendToggles(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	if f.has("legend") {
+		t.Fatal("the legend starts hidden")
+	}
+	f.click("ui:legend")
+	if !f.has("legend") {
+		t.Fatal("Legend shows the legend")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("ui:legend")
+	if f.has("legend") {
+		t.Fatal("Legend again hides it")
+	}
+}
+
 // TestLinesRunOverNotes puts a note on top of a line: clicking the line
 // there selects the line, not the note.
 func TestLinesRunOverNotes(t *testing.T) {

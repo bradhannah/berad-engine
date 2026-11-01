@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -92,6 +93,43 @@ func (s *State) drawGrip(area *ebiten.Image, corners []image.Point) {
 		ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
 		ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
 	}
+}
+
+// describeLine says where a line goes, for the status bar: the node it
+// leaves and, when that node has several outputs, by which, the node it
+// enters, whether it loops back and whether it was moved by hand.
+func (s *State) describeLine(key routeKey, docs frame.Docs) string {
+	from, ok := s.workflow.Node(key.from)
+	to, linked := s.targetOf(key)
+	target, found := s.workflow.Node(to)
+	if !ok || !linked || !found {
+		return ""
+	}
+	text := s.nodeLabel(from, docs)
+	if outputs := flow.Outputs(from); len(outputs) > 1 {
+		text += " · " + outputLabel(outputs, key.output)
+	}
+	text += " → " + s.nodeLabel(target, docs)
+	if s.loops[key] {
+		text += " · loops back"
+	}
+	if _, bent := s.workflow.Bend(key.from, key.output); bent {
+		text += " · moved by hand"
+	}
+
+	return text
+}
+
+// outputLabel is the label of a node's output, or its name when the node
+// does not declare it.
+func outputLabel(outputs []flow.Output, name string) string {
+	for _, declared := range outputs {
+		if declared.Name == name {
+			return declared.Label
+		}
+	}
+
+	return name
 }
 
 // lineInk is a line's colour: blue when lit, grey for a time switch's

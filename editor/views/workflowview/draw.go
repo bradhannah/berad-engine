@@ -70,6 +70,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.drawZoomed(screen, docs)
 	if s.workflow != nil {
 		s.zoomCard.draw(screen, s.theme)
+		s.drawLegend(screen)
 	}
 	s.drawToolbar(screen, docs)
 	s.drawPalette(screen)
@@ -89,6 +90,7 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawStrong(screen, s.name(docs), ui.Inset+s.theme.TextWidth(trail), textY, ui.ColorInk())
 	s.arrange.Draw(screen, s.theme)
 	s.recentre.Draw(screen, s.theme)
+	s.legend.Draw(screen, s.theme)
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 }
 
@@ -911,7 +913,7 @@ func (s *State) nthNode(value string) (shape, bool) {
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.deleteLine, s.resetLine},
+	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine},
 		s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
@@ -1015,6 +1017,8 @@ func (s *State) hasState(state string) bool {
 		return ok && node.Kind == strings.TrimPrefix(state, "selected:")
 	case state == "picking":
 		return s.picker.Picking()
+	case state == "legend":
+		return s.legend.On
 	case state == "destination":
 		node, ok := s.selectedNode()
 		destination, err := node.Anchor("destination")

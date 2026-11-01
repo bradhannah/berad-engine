@@ -44,6 +44,7 @@ const (
 	groupSpace    = 26
 	arrangeWidth  = 110
 	recentreWidth = 90
+	legendWidth   = 80
 	dragStart     = 4
 	shortID       = 6
 	// newGap is the space between a node and one added after it.
@@ -145,11 +146,15 @@ type State struct {
 	recentre   *ui.Button
 	deleteLine *ui.Button
 	resetLine  *ui.Button
-	form       *form
-	save       *ui.SaveBar
-	guard      frame.Guard
-	focus      ui.Focus
-	picker     *picker.Picker
+	// legend is the toolbar's Legend toggle; legendBox is where the legend
+	// card sits over the canvas while it is on.
+	legend    *ui.Button
+	legendBox image.Rectangle
+	form      *form
+	save      *ui.SaveBar
+	guard     frame.Guard
+	focus     ui.Focus
+	picker    *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -181,6 +186,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
+		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
@@ -309,6 +315,9 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.zoomCard.layout(s.Canvas(), s.zoom, s.lowestZoom())
 	s.recentre.Rect = image.Rect(s.arrange.Rect.Min.X-ui.Inset-recentreWidth, s.arrange.Rect.Min.Y,
 		s.arrange.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
+	s.legend.Rect = image.Rect(s.recentre.Rect.Min.X-ui.Inset-legendWidth, s.arrange.Rect.Min.Y,
+		s.recentre.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
+	s.legendBox = s.legendLayout()
 	top, group := paletteTop, ""
 	for index := range s.palette {
 		entry := &s.palette[index]
@@ -376,17 +385,29 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateLineButtons(input, ctx)
 	s.updateForm(input, ctx)
 	s.updateLocals(input, ctx)
+	s.updateToolbar(input, ctx)
+	s.updateZoom(input)
+	s.updatePalette(input, ctx)
+	s.updateCanvas(input, ctx)
+	s.guardSelection(ctx)
+	s.openContextMenu()
+}
+
+// updateToolbar handles Auto-arrange, Recentre and the Legend toggle, and
+// keeps a press on the legend's card from reaching the canvas under it.
+func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
 	}
 	if s.recentre.Update(input) {
 		s.recentreView(ctx)
 	}
-	s.updateZoom(input)
-	s.updatePalette(input, ctx)
-	s.updateCanvas(input, ctx)
-	s.guardSelection(ctx)
-	s.openContextMenu()
+	if s.legend.Update(input) {
+		s.legend.On = !s.legend.On
+	}
+	if input.Pressed && input.Cursor.In(s.legendBox) {
+		input.ClearPointer()
+	}
 }
 
 // updateLineButtons handles Delete line and Reset line for the selected
@@ -503,7 +524,8 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	point := s.toCanvas(input.Cursor)
-	s.updateHover(ctx, input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor), point)
+	onCanvas := input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor) && !input.Cursor.In(s.legendBox)
+	s.updateHover(ctx, onCanvas, point)
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
@@ -878,11 +900,15 @@ func newBox(kind string, place image.Point) flow.Box {
 // updateHover follows the line and the problem mark under the pointer, and
 // says what the problem is when the pointer comes onto a mark.
 func (s *State) updateHover(ctx *frame.Context, onCanvas bool, point image.Point) {
+	was := s.hoverLink
 	s.hoverLink = noRoute()
 	mark := ids.ULID{}
 	if onCanvas && s.drag == nil && s.resize == nil {
 		s.hoverLink, _ = s.linkAt(point)
 		mark = s.markAt(point)
+	}
+	if s.hoverLink != was && s.hoverLink != noRoute() {
+		ctx.Frame.Status(s.describeLine(s.hoverLink, ctx.Docs))
 	}
 	if mark != s.hoverMark && !mark.IsZero() {
 		ctx.Frame.Status(s.problems[mark])
