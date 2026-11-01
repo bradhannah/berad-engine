@@ -93,7 +93,22 @@ Settled by its author for the Workflow window's lines:
   back.
 - **Notes** are not part of the flow: lines run over them, and they never
   move a line, take a place in auto-arrange or push a new node.
-- **Later:** zoom with fit and a minimap, node titles and frames that only
+- **Recentre,** a toolbar button beside Auto-arrange, pans the canvas back
+  to the workflow after an author has panned away from it: the whole
+  workflow in the middle of the canvas, or its top-left corner, where the
+  start is, when it does not fit. Added on 2026-10-31, after its author lost
+  a workflow by panning.
+- **Zoom,** asked for by its author on 2026-10-31: the canvas has the Map's
+  floating zoom card in its bottom-right corner (−, the zoom as a
+  percentage, + and Fit) and its keys, Cmd+scroll, Cmd+=, Cmd+− and Cmd+0.
+  The levels run from 25% to 200%, with 33% between 25% and 50%. Fit zooms
+  out until the whole workflow shows, never in past 100%, and centres it;
+  Recentre centres at the current zoom. Every gesture works at any zoom.
+  Chosen while building, for its author to check: the canvas is drawn at its
+  own size and the picture scaled, so text is sharp at 100% and 200% and
+  slightly soft between; the zoom is not saved, and the Watch window's live
+  view stays at 100%.
+- **Later:** a minimap, node titles and frames that only
   group nodes, and search. The step 4 runner guards against loops that never
   wait.
 
