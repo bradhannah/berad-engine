@@ -1,5 +1,6 @@
 // Package npc is the editor half of NPCs: the NPC document and the edits that
-// choose its behaviour workflow and change its private notes.
+// choose its behaviour workflow, give it a path name and change its private
+// notes.
 package npc
 
 import (
@@ -20,12 +21,14 @@ const PluginName = "npc"
 const (
 	SetBehaviourEdit = "npc.behaviour.set"
 	SetNotesEdit     = "npc.notes.set"
+	SetPathEdit      = "npc.path.set"
 )
 
 // Undo-clash items.
 const (
 	behaviourItem = "behaviour"
 	notesItem     = "notes"
+	pathItem      = "path"
 )
 
 // ErrNotNPC reports a document that is not an NPC.
@@ -38,7 +41,7 @@ type Document struct {
 
 // NewDocument returns an NPC with no behaviour and no notes.
 func NewDocument() *Document {
-	return &Document{NPC: npc.NPC{Behaviour: ids.ULID{}, Notes: ""}}
+	return &Document{NPC: npc.NPC{Behaviour: ids.ULID{}, Path: "", Notes: ""}}
 }
 
 // Format names the document format.
@@ -91,6 +94,35 @@ type SetBehaviourArgs struct {
 // SetNotesArgs replaces the NPC's notes.
 type SetNotesArgs struct {
 	Notes string `json:"notes"`
+}
+
+// SetPathArgs gives the NPC a path name; "" takes it away.
+type SetPathArgs struct {
+	Path string `json:"path"`
+}
+
+// SetPath is the edit kind that gives an NPC its path name.
+type SetPath struct{}
+
+// Name identifies the edit kind.
+func (SetPath) Name() string { return SetPathEdit }
+
+// Format names the document format the edit applies to.
+func (SetPath) Format() string { return npc.FormatName }
+
+// Apply sets the path name; its inverse restores the previous one.
+func (SetPath) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetPathArgs
+
+	return change(document, args, &set, pathItem, func(changed *npc.NPC) (any, error) {
+		if err := npc.CheckPath(set.Path); err != nil {
+			return nil, fmt.Errorf("set path name: %w", err)
+		}
+		previous := SetPathArgs{Path: changed.Path}
+		changed.Path = set.Path
+
+		return previous, nil
+	})
 }
 
 // SetBehaviour is the edit kind that chooses an NPC's behaviour.
@@ -165,7 +197,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: npc.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{SetBehaviour{}, SetNotes{}},
+		Edits:     []model.EditKind{SetBehaviour{}, SetNotes{}, SetPath{}},
 		Required:  nil,
 	}
 }

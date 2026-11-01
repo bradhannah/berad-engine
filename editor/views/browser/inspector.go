@@ -230,17 +230,18 @@ func (s *State) guardSelection(ctx *frame.Context) {
 }
 
 // Unsaved counts the inspector's typed changes not saved yet: the name, a
-// document's tags, a selected NPC's notes and the tile size.
+// document's tags, a selected NPC's path name and notes, and the tile size.
 func (s *State) Unsaved(frame.Docs) int {
 	count := frame.UnsavedFields(s.name, s.tags, s.tileSize)
 	if !s.npc.npc.IsZero() {
-		count += frame.UnsavedFields(s.npc.notes)
+		count += frame.UnsavedFields(s.npc.path, s.npc.notes)
 	}
 
 	return count
 }
 
-// Save saves the name, the tags, an NPC's notes and the tile size. They are
+// Save saves the name, the tags, an NPC's path name and notes, and the tile
+// size. They are
 // separate changes, so saving several is several undo steps.
 func (s *State) Save(ctx *frame.Context) bool {
 	if s.tileSize.Field.Unsaved() {
@@ -251,6 +252,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 	}
 	if s.tags.Field.Unsaved() {
 		s.commitTags(ctx)
+	}
+	if !s.npc.npc.IsZero() && s.npc.path.Field.Unsaved() {
+		s.commitPath(ctx)
 	}
 	if !s.npc.npc.IsZero() && s.npc.notes.Field.Unsaved() {
 		s.commitNotes(ctx)
@@ -282,6 +286,7 @@ func (s *State) discard() {
 	s.focus.Set(nil)
 	s.name.Field.Revert()
 	s.tags.Field.Revert()
+	s.npc.path.Field.Revert()
 	s.npc.notes.Field.Revert()
 	s.tileSize.Field.Revert()
 }

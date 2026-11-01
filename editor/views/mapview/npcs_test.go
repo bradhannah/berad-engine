@@ -1,6 +1,7 @@
 package mapview_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -104,5 +105,27 @@ func TestInitials(t *testing.T) {
 		if got := mapview.Initials(name); got != want {
 			t.Errorf("initials of %q: %q, want %q", name, got, want)
 		}
+	}
+}
+
+// TestOnePlacementPerZone refuses to place an NPC a second time in a zone,
+// saying why.
+func TestOnePlacementPerZone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withClerk(f)
+	ground := groundFloor(t)
+	if err := ground.Floor.InsertPlacement(0, floor.Placement{ID: placedID, NPC: clerkID, Col: 9, Row: 8}); err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(groundID, "Ground", ground)
+	f.keys("N")
+	f.click("npc:Ada Clerk")
+	f.click("cell:3,3")
+	if added := f.requests.Of(tilefloor.AddPlacementEdit); len(added) != 0 {
+		t.Fatalf("a second placement in one zone is refused: %d sent", len(added))
+	}
+	if !strings.Contains(f.status(), "already placed in this zone") {
+		t.Fatalf("status %q", f.status())
 	}
 }

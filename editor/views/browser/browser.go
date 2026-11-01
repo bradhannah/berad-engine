@@ -160,7 +160,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
-	view.focus.Register(view.search, view.name, view.tags, view.npc.notes, view.tileSize)
+	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.tileSize)
 
 	return view
 }
@@ -1035,7 +1035,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes, s.tileSize} {
+	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.tileSize} {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}

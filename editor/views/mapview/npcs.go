@@ -68,6 +68,7 @@ func (s *State) refreshNPCs(docs frame.Docs) {
 			s.names = project.NewIndex(index.Entries())
 		}
 	})
+	s.countZoneNPCs(docs)
 	s.placedNPC, s.behaviour = ids.ULID{}, ids.ULID{}
 	if s.placement.IsZero() {
 		return
@@ -84,6 +85,21 @@ func (s *State) refreshNPCs(docs frame.Docs) {
 			s.behaviour = npcDoc.NPC.Behaviour
 		}
 	})
+}
+
+// countZoneNPCs counts each NPC's placements on the zone's floors, a floor
+// at a time.
+func (s *State) countZoneNPCs(docs frame.Docs) {
+	s.zoneNPCs = map[ids.ULID]int{}
+	for _, floorID := range s.floors {
+		docs.View(floorID, func(document client.Document) {
+			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+				for _, placement := range floorDoc.Floor.Placements() {
+					s.zoneNPCs[placement.NPC]++
+				}
+			}
+		})
+	}
 }
 
 // subscribeNPC keeps the selected placement's NPC loaded, so its behaviour
@@ -154,6 +170,12 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 		return
 	}
 	name := s.names.Name(npcID, "the NPC")
+	if s.zoneNPCs[npcID] > 0 {
+		ctx.Frame.Status(name + " is already placed in this zone. A zone holds each NPC once; " +
+			"a character that repeats, such as a guard, is several NPCs.")
+
+		return
+	}
 	args := tilefloor.AddPlacementArgs{
 		Placement: floor.Placement{ID: ids.ULID{}, NPC: npcID, Col: cell.X, Row: cell.Y},
 		Index:     len(floorData.Placements()),
@@ -250,7 +272,14 @@ func (s *State) drawPlacementInspector(screen *ebiten.Image, floorData *floor.Fl
 	}
 	*textY += ui.LineHeight
 	s.theme.DrawText(screen, fmt.Sprintf("at %d, %d", placement.Col, placement.Row), textX, *textY, ui.ColorInk())
-	*textY += ui.LineHeight + ui.LineHeight/ui.Half
+	*textY += ui.LineHeight
+	if s.zoneNPCs[placement.NPC] > 1 {
+		s.theme.DrawText(screen, "Placed more than once in this zone.", textX, *textY, ui.ColorWarn())
+		*textY += ui.LineHeight
+		s.theme.DrawText(screen, "Remove all but one.", textX, *textY, ui.ColorWarn())
+		*textY += ui.LineHeight
+	}
+	*textY += ui.LineHeight / ui.Half
 	s.theme.Heading(screen, "BEHAVIOUR", textX, *textY)
 	*textY += ui.LineHeight
 	has := !s.behaviour.IsZero()
