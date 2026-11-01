@@ -80,14 +80,7 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
 	s.name.Rect, s.tags.Rect, s.save.Rect, s.tileSize.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	s.screenCols.Rect, s.screenRows.Rect = ui.Zero(), ui.Zero()
-	if s.list.Selected == settingsRow {
-		s.layoutSettings(docs, left, width)
-		s.layoutNPC(docs, left, width, 0, 0)
-
-		return
-	}
-	if _, isCue := s.selectedCue(); isCue {
-		s.layoutCue(left, width)
+	if s.layoutRow(docs, left, width) {
 		s.layoutNPC(docs, left, width, 0, 0)
 
 		return
@@ -118,6 +111,24 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	top = s.layoutActions(docs, entry, left, width, top)
 	top = s.layoutArt(docs, entry, left, width, top)
 	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
+}
+
+// layoutRow places the inspector for a row that is not a document or a
+// folder: Settings, World state or a cue. It reports whether one was.
+func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
+	switch s.list.Selected {
+	case settingsRow:
+		s.layoutSettings(docs, left, width)
+	case worldStateRow:
+		s.layoutWorldState(left, width)
+	default:
+		if _, isCue := s.selectedCue(); !isCue {
+			return false
+		}
+		s.layoutCue(left, width)
+	}
+
+	return true
 }
 
 // inspectorButtons are the inspector's buttons outside the NPC panel.
@@ -237,19 +248,20 @@ func (s *State) guardSelection(ctx *frame.Context) {
 }
 
 // Unsaved counts the inspector's typed changes not saved yet: the name, a
-// document's tags, a selected NPC's notes, the tile size and the screen.
+// document's tags, a selected NPC's path name and notes, the tile size and
+// the screen.
 func (s *State) Unsaved(frame.Docs) int {
 	count := frame.UnsavedFields(s.name, s.tags, s.tileSize, s.screenCols, s.screenRows)
 	if !s.npc.npc.IsZero() {
-		count += frame.UnsavedFields(s.npc.notes)
+		count += frame.UnsavedFields(s.npc.path, s.npc.notes)
 	}
 
 	return count
 }
 
-// Save saves the name, the tags, an NPC's notes, the tile size and the
-// screen. They are separate changes, so saving several is several undo
-// steps.
+// Save saves the name, the tags, an NPC's path name and notes, the tile
+// size and the screen. They are separate changes, so saving several is
+// several undo steps.
 func (s *State) Save(ctx *frame.Context) bool {
 	if s.tileSize.Field.Unsaved() {
 		s.commitTileSize(ctx)
@@ -262,6 +274,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 	}
 	if s.tags.Field.Unsaved() {
 		s.commitTags(ctx)
+	}
+	if !s.npc.npc.IsZero() && s.npc.path.Field.Unsaved() {
+		s.commitPath(ctx)
 	}
 	if !s.npc.npc.IsZero() && s.npc.notes.Field.Unsaved() {
 		s.commitNotes(ctx)
@@ -293,6 +308,7 @@ func (s *State) discard() {
 	s.focus.Set(nil)
 	s.name.Field.Revert()
 	s.tags.Field.Revert()
+	s.npc.path.Field.Revert()
 	s.npc.notes.Field.Revert()
 	s.tileSize.Field.Revert()
 	s.screenCols.Field.Revert()
@@ -326,6 +342,21 @@ func (s *State) commitName(ctx *frame.Context) {
 		func() { s.name.Field.Failed() })
 }
 
+// drawRow draws the Settings or World state row's inspector, and reports
+// whether one was selected.
+func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
+	switch s.list.Selected {
+	case settingsRow:
+		s.drawSettings(screen, docs, left)
+	case worldStateRow:
+		s.drawWorldState(screen, left)
+	default:
+		return false
+	}
+
+	return true
+}
+
 // drawInspector draws what is selected: a document's type and name, its
 // name field and ID, its tags and folder, its actions, its NPC panel, the
 // save bar and Delete; or a folder's, a cue's or the settings'.
@@ -333,9 +364,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	panel := frame.Inspector(s.size)
 	left := panel.Min.X + ui.Inset
-	if s.list.Selected == settingsRow {
-		s.drawSettings(screen, docs, left)
-
+	if s.drawRow(screen, docs, left) {
 		return
 	}
 	if folder, ok := s.selectedFolder(); ok {

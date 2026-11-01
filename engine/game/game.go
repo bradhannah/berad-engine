@@ -15,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/play"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -25,14 +26,18 @@ var ErrNoStart = errors.New("no player start")
 var ErrStart = errors.New("the player cannot start there")
 
 // Project is what a game plays, as it was when the game started: the game
-// settings, the start's zone with its floors, and the NPCs placed on them
-// with their behaviours. Nothing in it changes while the game runs.
+// settings, the start's zone with its floors, the NPCs placed on them with
+// their behaviours, and the values the project declares. Nothing in it
+// changes while the game runs.
 type Project struct {
 	Settings  Settings
 	Zone      *zone.Zone
 	Floors    map[ids.ULID]*tilefloor.Floor
 	NPCs      map[ids.ULID]npc.NPC
 	Workflows map[ids.ULID]*flow.Workflow
+	// Values are the project's declared values; nil when it declares none,
+	// so the value nodes carry on.
+	Values *worldstate.Catalog
 	// Seconds is the time of day the clock starts at.
 	Seconds float64
 	// Seed fixes the NPCs' random choices, so a run repeats.
@@ -40,7 +45,8 @@ type Project struct {
 }
 
 // Game is a project being played: the player at the start, the NPCs on
-// their placements, and the clock.
+// their placements, the clock, and the values as they are now, each its
+// default when the game starts.
 type Game struct {
 	settings Settings
 	levels   play.Levels
@@ -49,6 +55,7 @@ type Game struct {
 	npcs     []*npcrun.NPC
 	flows    map[ids.ULID]*flow.Workflow
 	clock    *clock.Clock
+	values   *worldstate.Store
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -104,6 +111,10 @@ func New(project Project) (*Game, error) {
 	game := &Game{
 		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, clock: clock.New(project.Seconds, clock.MinutePerSecond),
+		values: nil,
+	}
+	if project.Values != nil {
+		game.values = worldstate.NewStore(project.Values)
 	}
 	for _, level := range levels {
 		if level.Floor == nil {
@@ -135,13 +146,23 @@ func seed(game uint64, placement ids.ULID) uint64 {
 }
 
 // Step runs the game for one tick: the player walks, the clock moves on and
-// the NPCs follow their behaviours.
+// the NPCs follow their behaviours, each seeing where the others were as the
+// tick began.
 func (g *Game) Step(input play.Input) Step {
 	outcome := g.run.Step(g.levels, input)
 	passed := g.clock.Advance()
+	others := make([]npcrun.Other, 0, len(g.npcs))
+	for _, character := range g.npcs {
+		others = append(others, npcrun.Other{
+			Placement: character.Placement, NPC: character.NPC, Floor: character.Floor, Cell: character.Cell,
+		})
+	}
 	var cues []npcrun.Sound
 	for _, character := range g.npcs {
-		world := npcrun.World{Zone: g.levels, Workflow: g.flows[character.NPC], Clock: g.clock, Passed: passed}
+		world := npcrun.World{
+			Zone: g.levels, Workflow: g.flows[character.NPC], Clock: g.clock, Passed: passed, State: g.values,
+			Here: g.settings.Start.Zone, Others: others,
+		}
 		character.Step(world, g.run.Tick())
 		for _, sound := range character.Sounds {
 			if !slices.ContainsFunc(cues, func(other npcrun.Sound) bool { return other.Cue == sound.Cue }) {
@@ -158,6 +179,10 @@ func (g *Game) Player() play.Player { return g.run.Player() }
 
 // Clock returns the game's clock.
 func (g *Game) Clock() *clock.Clock { return g.clock }
+
+// Values returns the values as they are now; nil when the project declares
+// none.
+func (g *Game) Values() *worldstate.Store { return g.values }
 
 // Floor calls fn with a floor of the zone, and reports whether it has one.
 func (g *Game) Floor(floorID ids.ULID, fn func(*tilefloor.Floor)) bool {

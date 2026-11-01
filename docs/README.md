@@ -7,6 +7,7 @@
 | [Vocabulary](VOCABULARY.md) | One term per concept: spatial, art and editor terms |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
+| [Workflow design](WORKFLOW_DESIGN.md) | Where workflows are heading: container exits, kinds of workflow, values, calls and conversations (draft) |
 
 ## Increments
 
@@ -35,4 +36,5 @@ accepted it.
 | [12. Palettes](increments/0012-palettes.md) | Palettes: Default built in, palettes of a game's own, the Palette Editor and a pick-only Pixel editor | Built |
 | [13. Single window](increments/0013-single-window.md) | Single window: the editor as one window in one process, its views as tabs, the multi-window option removed | Built |
 | [14. Launch](increments/0014-launch.md) | Launch: playing the project in a Play tab with sprites and sounds, the player start, ambient and zone sounds, one wall sprite | Built |
+| [15. Values and sensing](increments/0015-values-and-sensing.md) | Values and sensing: declared values in four scopes, Set and Check value, and finding an NPC nearby | Built |
 | [16. Templates](increments/0016-templates.md) | Templates: discouraged and not-allowed pixels and guides to draw to, chosen per sprite and edited in a Template editor | Built |

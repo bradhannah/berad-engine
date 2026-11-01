@@ -12,8 +12,10 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // PluginName identifies the plug-in.
@@ -25,6 +27,9 @@ const (
 	RemoveEdit  = "workflow.nodes.remove"
 	ReplaceEdit = "workflow.node.replace"
 	MoveEdit    = "workflow.layout.move"
+	// ChangeLocalsEdit declares, changes and removes a workflow's local
+	// values, as the world state's change edit does the project's.
+	ChangeLocalsEdit = "workflow.locals.change"
 )
 
 // ErrNotWorkflow reports a document that is not a workflow.
@@ -91,8 +96,9 @@ func (d *Document) Clone() model.Document {
 	return &Document{Workflow: d.Workflow.Clone()}
 }
 
-// References lists the anchors the workflow's Go to nodes lead to and the
-// cues its Play sound nodes play.
+// References lists the anchors the workflow's Go to nodes lead to, the
+// cues its Play sound nodes play, and the world-state values and NPCs its
+// value nodes use.
 func (d *Document) References() []model.Reference {
 	var references []model.Reference
 	for _, node := range d.Workflow.Nodes() {
@@ -113,6 +119,8 @@ func (d *Document) References() []model.Reference {
 			references = append(references, model.Reference{
 				Document: model.AudioLibraryID(), Item: cue, Label: "a Play sound node",
 			})
+		case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+			references = append(references, valueReferences(node)...)
 		}
 	}
 
@@ -405,6 +413,41 @@ func change(
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: items, Covers: nil}, nil
 }
 
+// valueReferences lists the values a value node uses, by ID under the world
+// state, wherever they are declared, and any NPC or zone it names. Local
+// values are the workflow's own.
+func valueReferences(node flow.Node) []model.Reference {
+	kind, _ := flow.KindOf(node.Kind)
+	label := "a " + kind.Label + " node"
+	var references []model.Reference
+	for _, param := range kind.Params {
+		if param.Type != flow.TypeValue {
+			continue
+		}
+		ref, err := node.Ref(param.Name)
+		if err != nil || ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
+			continue
+		}
+		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})
+		if !ref.Owner.IsZero() {
+			references = append(references, model.Reference{Document: ref.Owner, Item: "", Label: label})
+		}
+	}
+
+	return references
+}
+
+// localValues is a workflow's list of local values, for the edits that
+// change it.
+func localValues(document model.Document) (*worldstate.Declarations, error) {
+	workflowDoc, ok := document.(*Document)
+	if !ok {
+		return nil, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotWorkflow)
+	}
+
+	return workflowDoc.Workflow.Locals(), nil
+}
+
 // Plugin returns the workflow plug-in.
 func Plugin() plugin.Plugin {
 	layout := flow.LayoutFormat()
@@ -414,7 +457,8 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{
 			Format: flow.Format(), Decode: Decode, Layout: &layout, Prepare: Prepare,
 		}},
-		Edits:    []model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+			stateplugin.Change{Kind: ChangeLocalsEdit, On: flow.FormatName, List: localValues}),
 		Required: nil,
 	}
 }

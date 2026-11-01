@@ -246,6 +246,26 @@ func (t *Theme) Close() { t.Text.Close() }
 // TextWidth measures text in the ordinary face.
 func (t *Theme) TextWidth(value string) int { return measure(value, t.Face) }
 
+// Wrap breaks text into lines that fit a width, keeping its own line
+// breaks.
+func (t *Theme) Wrap(text string, width int) []string {
+	var lines []string
+	for _, paragraph := range strings.Split(text, "\n") {
+		line := ""
+		for _, word := range strings.Fields(paragraph) {
+			candidate := strings.TrimSpace(line + " " + word)
+			if line != "" && t.TextWidth(candidate) > width {
+				lines = append(lines, line)
+				candidate = word
+			}
+			line = candidate
+		}
+		lines = append(lines, line)
+	}
+
+	return lines
+}
+
 // FitText shortens text in the ordinary face to fit a width, ending it with
 // an ellipsis when it had to be cut.
 func (t *Theme) FitText(value string, width int) string {

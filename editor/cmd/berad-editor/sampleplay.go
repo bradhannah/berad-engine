@@ -34,11 +34,15 @@ const (
 	brickCourse = 6
 	brickLength = 12
 	clerkName   = "Clerk"
+	clerkPath   = "clerk"
 	// The shelf the clerk tidies, and the cell inside the door where the
 	// clerk waits at night.
 	shelfCol      = -1
 	shelfRow      = -3
 	insideDoorRow = 3
+	// The counter, in front of the desk, where a customer waits to be served
+	// by the clerk at the desk.
+	counterRow = deskRow + 2
 )
 
 // figureHalf is the left half of a standing figure, mirrored for the right
@@ -179,9 +183,9 @@ func samplePlayers(orch *orchestrator.Orchestrator, sample sampleArt) (ids.ULID,
 		}
 		shows[made.shows] = spriteID
 	}
-	clerkID, err := orch.CreateDocument(clerkName, &npcplugin.Document{
-		NPC: npc.NPC{Behaviour: ids.ULID{}, Sprite: shows[""], Notes: ""},
-	})
+	clerk := npc.New()
+	clerk.Sprite, clerk.Path = shows[""], clerkPath
+	clerkID, err := orch.CreateDocument(clerkName, &npcplugin.Document{NPC: clerk})
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("sample clerk: %w", err)
 	}
@@ -205,12 +209,14 @@ func samplePlayers(orch *orchestrator.Orchestrator, sample sampleArt) (ids.ULID,
 	return clerkID, nil
 }
 
-// samplePlace puts the clerk by the desk, the hum in the building, and the
-// anchors the clerk goes to at the shelf and inside the door.
+// samplePlace puts the clerk by the desk, the hum in the building, the
+// anchors the clerk goes to at the shelf and inside the door, and the one
+// in front of the desk where a customer waits.
 func samplePlace(floorData *floor.Floor, clerk, placement, hum ids.ULID, at sampleAnchors) error {
 	for index, anchor := range []floor.Anchor{
 		{ID: at.shelf, Name: "Shelf", Col: shelfCol, Row: shelfRow},
 		{ID: at.door, Name: "Door", Col: doorCol, Row: insideDoorRow},
+		{ID: at.counter, Name: "Counter", Col: deskCol, Row: counterRow},
 	} {
 		if err := floorData.InsertAnchor(1+index, anchor); err != nil {
 			return fmt.Errorf("sample anchors: %w", err)

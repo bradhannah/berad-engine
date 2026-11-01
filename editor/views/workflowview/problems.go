@@ -9,6 +9,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -37,6 +38,11 @@ func (s *State) refreshProblems(docs frame.Docs) {
 	docs.View(project.IndexID(), func(document client.Document) {
 		parts = append(parts, "index:"+strconv.FormatUint(document.Revision, 10))
 	})
+	for _, valueDoc := range valuetree.Documents(docs) {
+		revision := "-"
+		docs.View(valueDoc, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
+		parts = append(parts, valueDoc.String()+":"+revision)
+	}
 	for _, floorID := range s.destinationFloors() {
 		revision := "-"
 		docs.View(floorID, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
@@ -70,6 +76,10 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		}
 	case flow.KindPlaySound:
 		if problem := s.cueProblem(node); problem != "" {
+			return problem
+		}
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+		if problem := s.valueProblem(node, docs); problem != "" {
 			return problem
 		}
 	}

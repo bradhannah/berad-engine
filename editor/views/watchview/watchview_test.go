@@ -2,6 +2,7 @@ package watchview_test
 
 import (
 	"image"
+	"slices"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -138,7 +139,7 @@ func TestWatchFollowsTheWatchedNPC(t *testing.T) {
 	if !f.has("previewing") || !f.has("watching:Ada Clerk") || !f.has("live:"+flow.KindWait) {
 		t.Fatal("it watches the clerk on its Wait")
 	}
-	if len(f.requests.Subscribed) == 0 || f.requests.Subscribed[len(f.requests.Subscribed)-1] != routineID {
+	if !slices.Contains(f.requests.Subscribed, routineID) {
 		t.Fatalf("it loads the clerk's workflow: %v", f.requests.Subscribed)
 	}
 	if f.state.Title(f.docs) == "" {

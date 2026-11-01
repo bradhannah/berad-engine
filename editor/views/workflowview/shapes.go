@@ -202,11 +202,12 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, 
 	case flow.KindNote:
 		width := max(box.W, noteWidth)
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, noteHeight(node, width)))}
-	case flow.KindTimeSwitch, flow.KindRandom:
+	case flow.KindTimeSwitch, flow.KindRandom, flow.KindCheckValue, flow.KindFindNPC:
 		head, rows := headHeight, len(outputs)
-		if node.Kind == flow.KindTimeSwitch {
+		switch node.Kind {
+		case flow.KindTimeSwitch:
 			head = switchHead
-		} else {
+		case flow.KindRandom:
 			rows++
 		}
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, max(head+rows*outputRow, entries)))}

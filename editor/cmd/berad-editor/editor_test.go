@@ -108,7 +108,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	}
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, -16, -12) != "grass" ||
-		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 3 {
+		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 4 {
 		t.Fatal("sample ground floor not saved")
 	}
 	if ground.Bounds() != floor.Centered(32, 24) || envelope.Version != floor.FormatVersion {
@@ -124,6 +124,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 		t.Fatalf("the sample zone lists the sample's palette, gloomy: %v", listed)
 	}
 	readEnvelope(t, project, "texts/notes--*.json")
+	checkSampleShop(t, project, ground)
 	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
 	sprite, err := art.DecodeSprite(lantern.Data)
 	if err != nil {
@@ -193,12 +194,12 @@ func checkSamplePlays(t *testing.T, project string, ground *floor.Floor, sampleZ
 	}
 	clerk, err := npc.Decode(readEnvelope(t, project, "npcs/clerk--*.json").Data)
 	figure := readEnvelope(t, project, "sprites/clerk--*.json")
-	if err != nil || clerk.Sprite != figure.ID {
-		t.Fatalf("the clerk shows their figure: %v", err)
+	if err != nil || clerk.Sprite != figure.ID || clerk.Path != "clerk" || len(clerk.Owned.Templates) != 1 {
+		t.Fatalf("the clerk shows their figure and has the shop's values: %v", err)
 	}
 	day := readEnvelope(t, project, "workflows/clerk-s-day--????????.json")
 	routine, err := flow.Decode(day.Data)
-	if err != nil || clerk.Behaviour != day.ID || len(routine.Nodes()) != 14 {
+	if err != nil || clerk.Behaviour != day.ID || len(routine.Nodes()) != 19 || routine.Locals().Len() != 1 {
 		t.Fatalf("the clerk follows the clerk's day, a node of every kind: %v", err)
 	}
 	kinds := map[string]bool{}
@@ -1049,7 +1050,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		click("node:move:1"), wait(5), click("palette:wait"), wait(10),
 		retype("param-duration", "2"), click("ui:duration-seconds"), wait(10),
 		drag("port:move:2:next", "entry:wait:1"), expect("state:entries:wait:1=2", 300), wait(10),
-		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{7, 0}}, wait(10),
+		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{-7, 0}}, wait(10),
 		drag("port:wait:1:next", "node:random:1"), expect("state:entries:random:1=2", 300), wait(10),
 		step{Repeat: 3, At: "entry:random:1:2", Down: true, Pressed: true},
 		step{Repeat: 10, At: "canvas:600,420", Down: true}, step{Repeat: 2, At: "canvas:600,420", Down: true, Screenshot: held},

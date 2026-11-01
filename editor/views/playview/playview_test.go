@@ -13,6 +13,7 @@ import (
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -25,6 +26,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/npc"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -88,6 +90,7 @@ func newFixture(t *testing.T, start bool) *fixture {
 		{ID: gloomyID, Name: "gloomy", Format: art.PaletteFormatName},
 	}))
 	docs.Put(game.SettingsID(), game.SettingsName, &gameplugin.SettingsDocument{Settings: settings})
+	docs.Put(worldstate.ID(), worldstate.Name, stateplugin.NewDocument())
 	docs.Put(zoneID, "Town", &zoneplugin.Document{Zone: town})
 	docs.Put(groundID, "Ground", ground)
 	docs.Put(clerkID, "Ada Clerk", &npcplugin.Document{NPC: npc.NPC{Behaviour: ids.ULID{}, Sprite: lookID, Notes: ""}})

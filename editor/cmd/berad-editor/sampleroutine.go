@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/bradhannah/berad-engine/editor/model"
@@ -11,16 +12,18 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // The clerk's day, the sample's behaviour workflow: it shows each kind of
 // node at work. A time switch sends the clerk to the shop from 08:00 to
 // 18:00 and to the door otherwise. Shop hours are a time-bound container:
-// at the desk the clerk rings the chime and serves for 20 game minutes,
-// then mostly tidies the shelf and now and then stretches. At night the
-// clerk waits by the door an hour at a time. A note sums it up under the
-// rest. It is placeholder behaviour for trying the editor, not game
-// content.
+// at the desk the clerk rings the chime and looks for a customer waiting
+// at the counter, serving one for 20 game minutes, then mostly tidies the
+// shelf and now and then stretches. At night the clerk stops serving, if
+// closing came mid-serve, and waits by the door an hour at a time. A note
+// sums it up under the rest. It is placeholder behaviour for trying the
+// editor, not game content.
 const (
 	routineName  = "Clerk's day"
 	openMinute   = 8 * 60
@@ -33,21 +36,40 @@ const (
 	stretchShare = 1
 	noteHeight   = 96
 	chimeCue     = "sample/chime"
-	routineNote  = "The clerk's day: the shop from 08:00 to 18:00, mostly tidying, sometimes stretching; " +
-		"the door at night."
+	// paramDestination is a Go to's destination.
+	paramDestination = "destination"
+	routineNote      = "The clerk's day: the shop from 08:00 to 18:00, serving whoever waits at the counter, " +
+		"mostly tidying, sometimes stretching; the door at night."
 )
 
 // sampleAnchors are the anchors the clerk's day goes to, on the ground floor.
 type sampleAnchors struct {
-	floor, desk, shelf, door ids.ULID
+	floor, desk, shelf, door, counter ids.ULID
 }
 
 // routineBuilder makes the clerk's day's nodes with new IDs.
 type routineBuilder struct {
-	orch  *orchestrator.Orchestrator
-	nodes []flow.Node
-	links []flow.Link
-	err   error
+	orch   *orchestrator.Orchestrator
+	nodes  []flow.Node
+	links  []flow.Link
+	locals []worldstate.Declaration
+	err    error
+}
+
+// local declares a local value and returns its ID.
+func (b *routineBuilder) local(name string, kind worldstate.Type) ids.ULID {
+	if b.err != nil {
+		return ids.ULID{}
+	}
+	made, err := b.orch.NewID()
+	if err != nil {
+		b.err = fmt.Errorf("sample routine: %w", err)
+
+		return ids.ULID{}
+	}
+	b.locals = append(b.locals, worldstate.New(made, name, worldstate.ScopeLocal, kind))
+
+	return made
 }
 
 // node adds a node of a kind inside a container, zero for none, with
@@ -84,7 +106,7 @@ func (b *routineBuilder) link(from ids.ULID, output string, to ids.ULID) {
 // goTo is a Go to an anchor of the ground floor.
 func (b *routineBuilder) goTo(parent ids.ULID, at sampleAnchors, anchor ids.ULID) ids.ULID {
 	return b.node(flow.KindGoTo, parent, map[string]any{
-		"destination": floor.AnchorRef{Floor: at.floor, Anchor: anchor},
+		paramDestination: floor.AnchorRef{Floor: at.floor, Anchor: anchor},
 	})
 }
 
@@ -95,13 +117,18 @@ func (b *routineBuilder) wait(parent ids.ULID, amount int, unit string) ids.ULID
 	})
 }
 
+// serving sets whether the clerk is serving.
+func (b *routineBuilder) serving(parent ids.ULID, values shopValues, serving string) ids.ULID {
+	return b.node(flow.KindSetValue, parent, setTo(npcValue(values.serving), serving))
+}
+
 // clerksDay builds the clerk's day from its start node.
-func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Workflow, error) {
+func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors, values shopValues) (*flow.Workflow, error) {
 	start, err := orch.NewID()
 	if err != nil {
 		return nil, fmt.Errorf("sample routine: %w", err)
 	}
-	made := &routineBuilder{orch: orch, nodes: nil, links: nil, err: nil}
+	made := &routineBuilder{orch: orch, nodes: nil, links: nil, locals: nil, err: nil}
 	none := ids.ULID{}
 	hours := made.node(flow.KindTimeSwitch, none, map[string]any{
 		"ranges": []flow.TimeRange{{Port: "r1", From: openMinute, To: closeMinute}},
@@ -109,10 +136,20 @@ func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Wo
 	shop := made.node(flow.KindContainer, none, map[string]any{
 		"name": "Shop hours", "bound": flow.TimeRange{Port: "", From: openMinute, To: closeMinute},
 	})
+	closing := made.node(flow.KindCheckValue, none, map[string]any{
+		flow.ParamValue: npcValue(values.serving), "against": json.RawMessage(shopYes),
+	})
+	shut := made.serving(none, values, shopNo)
 	toDoor, sleep := made.goTo(none, anchors, anchors.door), made.wait(none, nightHours, flow.UnitHours)
 	toDesk := made.goTo(shop, anchors, anchors.desk)
 	chime := made.node(flow.KindPlaySound, shop, map[string]any{"cue": chimeCue, "loudness": flow.LoudnessAsCue})
+	find := made.node(flow.KindFindNPC, shop, map[string]any{
+		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes),
+		"into": localValue(made.local("customer", worldstate.TypeNPC)),
+	})
+	open := made.serving(shop, values, shopYes)
 	serve := made.wait(shop, serveMinutes, flow.UnitMinutes)
+	done := made.serving(shop, values, shopNo)
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
 		{Port: "o1", Label: "tidy the shelf", Share: tidyShare}, {Port: "o2", Label: "stretch", Share: stretchShare},
 	}})
@@ -125,10 +162,13 @@ func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Wo
 		output string
 		to     ids.ULID
 	}{
-		{start, flow.OutputNext, hours}, {hours, "r1", shop}, {hours, flow.OutputOtherwise, toDoor},
+		{start, flow.OutputNext, hours}, {hours, "r1", shop}, {hours, flow.OutputOtherwise, closing},
+		{closing, flow.OutputYes, shut}, {closing, flow.OutputOtherwise, toDoor}, {shut, flow.OutputNext, toDoor},
 		{toDoor, flow.OutputNext, sleep}, {sleep, flow.OutputNext, hours},
 		{shop, flow.OutputInside, toDesk}, {shop, flow.OutputExit, hours},
-		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, serve}, {serve, flow.OutputNext, choose},
+		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, find},
+		{find, flow.OutputFound, open}, {find, flow.OutputNone, choose},
+		{open, flow.OutputNext, serve}, {serve, flow.OutputNext, done}, {done, flow.OutputNext, choose},
 		{choose, "o1", toShelf}, {toShelf, flow.OutputNext, tidy}, {tidy, flow.OutputNext, toDesk},
 		{choose, "o2", down}, {down, flow.OutputNext, rise}, {rise, flow.OutputNext, toDesk},
 	} {
@@ -143,12 +183,17 @@ func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Wo
 
 // arrangedRoutine puts the nodes in a workflow, laid out as Auto-arrange
 // lays it out, with the note under everything else.
-func arrangedRoutine(start ids.ULID, b *routineBuilder, note ids.ULID) (*flow.Workflow, error) {
+func arrangedRoutine(start ids.ULID, made *routineBuilder, note ids.ULID) (*flow.Workflow, error) {
 	workflow, err := flow.New(start)
 	if err != nil {
 		return nil, fmt.Errorf("sample routine: %w", err)
 	}
-	if err := workflow.Insert(b.nodes, nil, b.links); err != nil {
+	for _, local := range made.locals {
+		if err := workflow.Locals().Insert(local); err != nil {
+			return nil, fmt.Errorf("sample routine: %w", err)
+		}
+	}
+	if err := workflow.Insert(made.nodes, nil, made.links); err != nil {
 		return nil, fmt.Errorf("sample routine: %w", err)
 	}
 	boxes := workflowview.Arrange(workflow, func(flow.Node, int) int { return noteHeight })
@@ -166,9 +211,10 @@ func arrangedRoutine(start ids.ULID, b *routineBuilder, note ids.ULID) (*flow.Wo
 	return workflow, nil
 }
 
-// sampleRoutine makes the clerk's day and gives it to the clerk.
-func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, at sampleAnchors) error {
-	workflow, err := clerksDay(orch, at)
+// sampleRoutine makes the clerk's day and gives it to the clerk, with the
+// shop's values.
+func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, at sampleAnchors, values shopValues) error {
+	workflow, err := clerksDay(orch, at, values)
 	if err != nil {
 		return err
 	}
@@ -183,7 +229,7 @@ func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, at sampleAnc
 		}
 		npcDoc.NPC.Behaviour = routineID
 
-		return nil
+		return npcDoc.NPC.Owned.Apply(values.template)
 	})
 	if err != nil {
 		return fmt.Errorf("sample routine: %w", err)

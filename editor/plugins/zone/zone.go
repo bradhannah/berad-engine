@@ -1,5 +1,6 @@
 // Package zone is the editor half of zones: the zone document and the edits
-// that add, remove and reorder its floors and list the palettes it uses.
+// that add, remove and reorder its floors, list the palettes it uses, give it
+// a path name, declare its own values and apply templates to it.
 package zone
 
 import (
@@ -10,7 +11,9 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -28,14 +31,23 @@ const (
 
 	InsertSoundEdit = "zone.sound.insert"
 	RemoveSoundEdit = "zone.sound.remove"
+
+	SetPathEdit = "zone.path.set"
+	// ChangeValuesEdit changes the zone's own values; ApplyTemplateEdit and
+	// UnapplyTemplateEdit put a template on it and take one off.
+	ChangeValuesEdit    = "zone.values.change"
+	ApplyTemplateEdit   = "zone.template.apply"
+	UnapplyTemplateEdit = "zone.template.unapply"
 )
 
-// floorsItem is the undo-clash item for the order of a zone's floors, and
-// palettesItem for the palettes it lists.
+// floorsItem is the undo-clash item for the order of a zone's floors,
+// palettesItem for the palettes it lists, soundsItem for its sounds and
+// pathItem for its path name.
 const (
 	floorsItem   = "floors"
 	palettesItem = "palettes"
 	soundsItem   = "sounds"
+	pathItem     = "path"
 )
 
 // ErrNotZone reports a document that is not a zone.
@@ -75,10 +87,11 @@ func (d *Document) Clone() model.Document {
 func (d *Document) Parts() []ids.ULID { return d.Zone.Floors() }
 
 // References lists the zone's floors, the palettes it lists, so a palette a
-// zone lists is not deleted from under it, and the cues it plays throughout.
+// zone lists is not deleted from under it, the cues it plays throughout and
+// the templates applied to it.
 func (d *Document) References() []model.Reference {
 	floors, palettes, sounds := d.Zone.Floors(), d.Zone.Palettes(), d.Zone.Sounds()
-	references := make([]model.Reference, 0, len(floors)+len(palettes)+len(sounds))
+	references := stateplugin.TemplateReferences(d.Zone.Owned)
 	for index, floor := range floors {
 		references = append(references, model.Reference{
 			Document: floor, Item: "", Label: "floor " + strconv.Itoa(index+1) + " from the bottom",
@@ -309,14 +322,61 @@ func changeZone[A any](
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: []string{touched}, Covers: nil}, nil
 }
 
+// SetPathArgs gives a zone its path name; "" takes it away.
+type SetPathArgs struct {
+	Path string `json:"path"`
+}
+
+// SetPath is the edit kind that gives a zone its path name.
+type SetPath struct{}
+
+// Name identifies the edit kind.
+func (SetPath) Name() string { return SetPathEdit }
+
+// Format names the document format the edit applies to.
+func (SetPath) Format() string { return zone.FormatName }
+
+// Apply sets the path name; its inverse restores the previous one.
+func (SetPath) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	zoneDoc, ok := document.(*Document)
+	if !ok {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotZone)
+	}
+	var set SetPathArgs
+	if err := json.Unmarshal(args, &set); err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	if err := zone.CheckPath(set.Path); err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	inverse, err := json.Marshal(SetPathArgs{Path: zoneDoc.Zone.Path})
+	if err != nil {
+		return model.Applied{}, fmt.Errorf("encode inverse: %w", err)
+	}
+	zoneDoc.Zone.Path = set.Path
+
+	return model.Applied{Inverse: inverse, InverseEdit: "", Touched: []string{pathItem}, Covers: nil}, nil
+}
+
+// owned is what a zone document owns, for the edits that change it.
+func owned(document model.Document) (*worldstate.Owned, error) {
+	zoneDoc, ok := document.(*Document)
+	if !ok {
+		return nil, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotZone)
+	}
+
+	return &zoneDoc.Zone.Owned, nil
+}
+
 // Plugin returns the zone plug-in.
 func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits: []model.EditKind{
+		Edits: append([]model.EditKind{
 			InsertFloor{}, RemoveFloor{}, MoveFloor{}, InsertPalette{}, RemovePalette{}, InsertSound{}, RemoveSound{},
-		},
+			SetPath{},
+		}, stateplugin.OwnerEdits("zone", zone.FormatName, owned)...),
 		Required: nil,
 	}
 }

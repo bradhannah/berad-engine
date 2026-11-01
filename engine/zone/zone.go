@@ -2,8 +2,11 @@
 // floors in order from the bottom up. Each floor is its own document; the zone
 // refers to them by ID and the floors do not refer back. A zone also lists the
 // palettes its art uses, which the pixel editor offers first; it is a
-// convenience, not a limit. And it lists its sounds: the cues, such as music
-// or a bed, that play the whole time the player is in it.
+// convenience, not a limit. It lists its sounds: the cues, such as music or a
+// bed, that play the whole time the player is in it. And a zone has a path
+// name that workflows read its values by, such as market in
+// zone.market.crowded, and holds the values it owns and the templates
+// applied to it.
 package zone
 
 import (
@@ -14,15 +17,17 @@ import (
 
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // FormatName identifies zones inside saved envelopes.
 const FormatName = "zone"
 
 // FormatVersion is the zone format version this package writes. Version 2
-// added the palettes a zone uses and version 3 its sounds; each reads the
-// version before it unchanged.
-const FormatVersion = 3
+// added the palettes a zone uses, version 3 its sounds, and version 4 a
+// path name and the zone's own values and templates; each reads the version
+// before it unchanged.
+const FormatVersion = 4
 
 // MaxFloors bounds the floors in one zone.
 const MaxFloors = 256
@@ -54,17 +59,27 @@ type Zone struct {
 	floors   []ids.ULID
 	palettes []ids.ULID
 	sounds   []string
+	// Path is the name workflows read the zone's values by, such as market;
+	// "" until one is given. It follows the rules for value names and is
+	// unique in the project.
+	Path string
+	// Owned is the zone's own values and the templates applied to it.
+	Owned worldstate.Owned
 }
 
 type wireZone struct {
 	Floors   []ids.ULID `json:"floors"`
 	Palettes []ids.ULID `json:"palettes,omitempty"`
 	Sounds   []string   `json:"sounds,omitempty"`
+	Path     string     `json:"path,omitempty"`
+	worldstate.WireOwned
 }
 
 // New returns a zone with no floors.
 func New() *Zone {
-	return &Zone{floors: []ids.ULID{}, palettes: nil, sounds: nil}
+	return &Zone{
+		floors: []ids.ULID{}, palettes: nil, sounds: nil, Path: "", Owned: worldstate.NewOwned(worldstate.ScopeZone),
+	}
 }
 
 // Sounds returns the cues the zone plays throughout, in the order they were
@@ -188,19 +203,45 @@ func (z *Zone) Move(floor ids.ULID, index int) (int, error) {
 
 // Clone returns an independent copy.
 func (z *Zone) Clone() *Zone {
-	return &Zone{floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes), sounds: slices.Clone(z.sounds)}
+	return &Zone{
+		floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes), sounds: slices.Clone(z.sounds),
+		Path: z.Path, Owned: z.Owned.Clone(),
+	}
 }
 
 // Equal reports whether two zones list the same floors, palettes and sounds
-// in the same order.
+// in the same order, with the same path name and values.
 func (z *Zone) Equal(other *Zone) bool {
 	return slices.Equal(z.floors, other.floors) && slices.Equal(z.palettes, other.palettes) &&
-		slices.Equal(z.sounds, other.sounds)
+		slices.Equal(z.sounds, other.sounds) && z.Path == other.Path && z.Owned.Equal(other.Owned)
 }
+
+// CheckPath reports a path name that is not fit for a path; "" is none yet.
+func CheckPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := worldstate.CheckName(path); err != nil {
+		return fmt.Errorf("%w: %w", ErrData, err)
+	}
+
+	return nil
+}
+
+// SuggestPath suggests a path name from a zone's display name, as
+// worldstate.SuggestName does, so Market Square becomes market_square. A
+// name with no letters gives zone.
+func SuggestPath(display string) string { return worldstate.SuggestName(display, "zone") }
 
 // Encode returns the zone's saved data.
 func (z *Zone) Encode() (json.RawMessage, error) {
-	data, err := json.Marshal(wireZone{Floors: z.floors, Palettes: z.palettes, Sounds: z.sounds})
+	owned, err := z.Owned.Wire()
+	if err != nil {
+		return nil, fmt.Errorf("encode zone: %w", err)
+	}
+	data, err := json.Marshal(wireZone{
+		Floors: z.floors, Palettes: z.palettes, Sounds: z.sounds, Path: z.Path, WireOwned: owned,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode zone: %w", err)
 	}
@@ -230,6 +271,14 @@ func Decode(data json.RawMessage) (*Zone, error) {
 			return nil, fmt.Errorf("%w: %w", ErrData, err)
 		}
 	}
+	if err := CheckPath(wire.Path); err != nil {
+		return nil, err
+	}
+	owned, err := worldstate.ReadOwned(worldstate.ScopeZone, wire.WireOwned)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	decoded.Path, decoded.Owned = wire.Path, owned
 
 	return decoded, nil
 }
@@ -237,7 +286,7 @@ func Decode(data json.RawMessage) (*Zone, error) {
 // Format returns the zone format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: unchanged, 2: unchanged,
+		1: unchanged, 2: unchanged, 3: unchanged,
 	}}
 }
 

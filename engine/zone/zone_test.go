@@ -8,6 +8,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -59,6 +60,11 @@ func TestEncodeDecode(t *testing.T) {
 	if err := z.Insert(0, floorID(4)); err != nil {
 		t.Fatal(err)
 	}
+	z.Path = "market"
+	crowded := worldstate.New(floorID(9), "crowded", worldstate.ScopeZone, worldstate.TypeBool)
+	if err := z.Owned.Values.Insert(crowded); err != nil {
+		t.Fatal(err)
+	}
 	data, err := z.Encode()
 	if err != nil {
 		t.Fatal(err)
@@ -73,6 +79,13 @@ func TestEncodeDecode(t *testing.T) {
 	}
 	if _, err := zone.Decode(json.RawMessage(`{"floors":["00000000000000000000000004","00000000000000000000000004"]}`)); !errors.Is(err, zone.ErrData) {
 		t.Fatalf("duplicate floors: %v", err)
+	}
+	if _, err := zone.Decode(json.RawMessage(`{"floors":[],"path":"Market Square"}`)); !errors.Is(err, zone.ErrData) {
+		t.Fatalf("a path name follows the rules for value names: %v", err)
+	}
+	if copied := z.Clone(); copied.Owned.Values.Insert(worldstate.New(floorID(10), "busy", worldstate.ScopeZone,
+		worldstate.TypeBool)) != nil || copied.Equal(z) {
+		t.Fatal("a copy's values are its own")
 	}
 	if err := content.NewRegistry().Register(zone.Format()); err != nil {
 		t.Fatal(err)
@@ -139,7 +152,7 @@ func TestSounds(t *testing.T) {
 		t.Fatalf("sounds round trip in order: %v %v", decoded, err)
 	}
 	upgraded, err := zone.Format().Migrations[2](json.RawMessage(`{"floors":[]}`))
-	if err != nil || zone.Format().Current != 3 {
+	if err != nil || zone.Format().Current != zone.FormatVersion {
 		t.Fatalf("version 2 reads unchanged: %s %v", upgraded, err)
 	}
 	if read, err := zone.Decode(upgraded); err != nil || len(read.Sounds()) != 0 {

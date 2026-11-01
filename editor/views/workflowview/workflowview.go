@@ -5,6 +5,7 @@
 // selected one, or drag it onto the canvas; drag from an output's port to a
 // node to connect them, or pick a line up by its arrow end to move it to
 // another node; drag a node to move it; click a line to select it.
+// Right-click a node or a line for a menu that deletes it.
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -13,6 +14,7 @@ package workflowview
 import (
 	"encoding/json"
 	"image"
+	"math"
 	"slices"
 	"strconv"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/picker"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // ViewName is the Workflow window's view name; its target is a workflow.
@@ -40,6 +43,7 @@ const (
 	paletteTop    = toolbarHeight + ui.Inset
 	groupSpace    = 26
 	arrangeWidth  = 110
+	recentreWidth = 90
 	dragStart     = 4
 	shortID       = 6
 	// newGap is the space between a node and one added after it.
@@ -124,9 +128,19 @@ type State struct {
 	bending *lineDrag
 	panning bool
 	lastPan image.Point
+	// zoom is the canvas's zoom level, an index into zoomLevels; panRest is
+	// the part of a canvas pixel panned but not yet moved, and wheel the
+	// Cmd+scroll not yet zoomed by. drawn is the image a zoomed canvas is
+	// drawn into before it is scaled.
+	zoom     int
+	zoomCard *zoomControl
+	panRest  [2]float64
+	wheel    float64
+	drawn    *ebiten.Image
 
 	palette    []paletteEntry
 	arrange    *ui.Button
+	recentre   *ui.Button
 	deleteLine *ui.Button
 	resetLine  *ui.Button
 	form       *form
@@ -144,6 +158,13 @@ type State struct {
 	audioRevision int
 	audioAsking   bool
 	sounds        frame.Sounds
+	// locals is the inspector's part for the workflow's local values, shown
+	// while no node or line is selected.
+	locals *localsPanel
+	// contextMenu is the canvas's right-click menu, opened once the
+	// right-click waiting in context has settled the selection.
+	contextMenu ui.Menu
+	context     contextClick
 }
 
 // New returns the Workflow window for a workflow.
@@ -155,10 +176,12 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
-		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"),
+		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
+		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
-		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil,
+		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
+		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -268,8 +291,12 @@ func (s *State) toScreen(point image.Point) image.Point {
 	return point.Add(s.Canvas().Min).Add(s.offset)
 }
 
+// toCanvas returns the canvas point under a screen point.
 func (s *State) toCanvas(point image.Point) image.Point {
-	return point.Sub(s.Canvas().Min).Sub(s.offset)
+	from, scale := point.Sub(s.Canvas().Min), s.scale()
+	at := image.Pt(int(math.Floor(float64(from.X)/scale)), int(math.Floor(float64(from.Y)/scale)))
+
+	return at.Sub(s.offset)
 }
 
 // layoutWidgets places the palette, the toolbar and the inspector.
@@ -277,6 +304,9 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	content := frame.Content(s.size)
 	s.arrange.Rect = image.Rect(content.Max.X-ui.Inset-arrangeWidth, (toolbarHeight-ui.ButtonH)/ui.Half,
 		content.Max.X-ui.Inset, (toolbarHeight+ui.ButtonH)/ui.Half)
+	s.zoomCard.layout(s.Canvas(), s.zoom, s.lowestZoom())
+	s.recentre.Rect = image.Rect(s.arrange.Rect.Min.X-ui.Inset-recentreWidth, s.arrange.Rect.Min.Y,
+		s.arrange.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
 	top, group := paletteTop, ""
 	for index := range s.palette {
 		entry := &s.palette[index]
@@ -288,6 +318,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		top += paletteItem + paletteGap
 	}
 	s.layoutForm(docs)
+	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
 	if s.lineSelected() {
 		panel := frame.Inspector(s.size)
@@ -319,10 +350,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.syncForm(ctx)
+	s.syncLocals()
 	s.layoutWidgets(ctx.Docs)
-	if dialog := s.picker.Dialog(); dialog != nil {
-		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
-
+	if s.updateOverlay(input, ctx) {
 		return
 	}
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
@@ -343,12 +373,18 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateLineButtons(input, ctx)
 	s.updateForm(input, ctx)
+	s.updateLocals(input, ctx)
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
 	}
+	if s.recentre.Update(input) {
+		s.recentreView(ctx)
+	}
+	s.updateZoom(input)
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
 	s.guardSelection(ctx)
+	s.openContextMenu()
 }
 
 // updateLineButtons handles Delete line and Reset line for the selected
@@ -367,11 +403,13 @@ func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
 }
 
 // listAudio asks for the audio library once a workflow with a Play sound
-// is shown, for its cues' names and problems.
+// is shown, for its cues' names and problems, and keeps the world state and
+// the NPCs loaded, for its values' paths and problems.
 func (s *State) listAudio(ctx *frame.Context) {
 	if s.workflow != nil && s.audio == nil && s.playsSounds() {
 		s.askAudio(ctx)
 	}
+	s.watchValues(ctx)
 }
 
 // keys handles the window's own keys while no text field has focus. Escape
@@ -388,6 +426,12 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.picker.Cancel(ctx, "cancelled in the workflow")
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
+	case input.Consume(ui.KeyEqual, ui.Cmd()):
+		s.zoomTo(s.zoom+1, s.zoomFocus(input.Cursor))
+	case input.Consume(ui.KeyMinus, ui.Cmd()):
+		s.zoomTo(s.zoom-1, s.zoomFocus(input.Cursor))
+	case input.Consume(ui.Key0, ui.Cmd()):
+		s.zoomTo(defaultZoom, s.zoomFocus(input.Cursor))
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		if s.lineSelected() {
 			s.removeLine(ctx)
@@ -457,7 +501,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	point := s.toCanvas(input.Cursor)
-	s.updateHover(ctx, input.Cursor.In(canvas), point)
+	s.updateHover(ctx, input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor), point)
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
@@ -467,6 +511,8 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
 		s.updateResize(input, ctx, point)
+	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
+		s.rightClick(point, input.Cursor)
 	case input.Pressed && input.Cursor.In(canvas):
 		s.press(ctx, point)
 	}
@@ -474,11 +520,15 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 
 func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 	if input.Cursor.In(canvas) && (input.WheelX != 0 || input.WheelY != 0) {
-		s.offset = s.offset.Add(input.WheelPan())
+		if input.Held.Shortcut && s.live == nil {
+			s.wheelZoom(input)
+		} else {
+			s.panBy(input.WheelPan())
+		}
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
 	if dragPan && s.panning {
-		s.offset = s.offset.Add(input.Cursor.Sub(s.lastPan))
+		s.panBy(input.Cursor.Sub(s.lastPan))
 	}
 	s.panning = dragPan && (s.panning || input.Cursor.In(canvas))
 	s.lastPan = input.Cursor
@@ -904,6 +954,50 @@ func (s *State) autoArrange(ctx *frame.Context) {
 	s.command(ctx, workflowplugin.MoveEdit, "", args, func(protocol.Result) {
 		ctx.Frame.Status("Arranged. Undo puts the nodes back where they were.")
 	})
+}
+
+// recentreView pans the canvas so the whole workflow is in the middle of it,
+// at the current zoom, for an author who has panned away from it.
+func (s *State) recentreView(ctx *frame.Context) {
+	if bounds, ok := s.workflowBounds(); ok {
+		s.centreOn(bounds)
+		ctx.Frame.Status("Centred on the workflow.")
+	}
+}
+
+// workflowBounds is the canvas area every node takes, if there are any.
+func (s *State) workflowBounds() (image.Rectangle, bool) {
+	var bounds image.Rectangle
+	first := true
+	for _, made := range s.shapes {
+		if first {
+			bounds, first = made.rect, false
+		} else {
+			bounds = bounds.Union(made.rect)
+		}
+	}
+
+	return bounds, !first
+}
+
+// centreOn pans the canvas so an area is in the middle of it. An area wider
+// or taller than the canvas shows is shown from its top-left corner instead,
+// where the start is.
+func (s *State) centreOn(bounds image.Rectangle) {
+	room := s.drawnArea().Size()
+	s.offset = image.Pt(centred(bounds.Min.X, bounds.Dx(), room.X), centred(bounds.Min.Y, bounds.Dy(), room.Y))
+	s.panRest = [2]float64{0, 0}
+}
+
+// centred returns the offset that puts a span of the given size, starting at
+// from, in the middle of room, or at an inset from its start when it does not
+// fit.
+func centred(from, size, room int) int {
+	if size > room {
+		return ui.Inset - from
+	}
+
+	return (room-size)/ui.Half - from
 }
 
 // replace sends the edit that changes one node.

@@ -67,9 +67,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.load(docs)
 	s.layoutWidgets(docs)
 	screen.Fill(ui.ColorBackground())
-	canvas := s.Canvas()
-	if area, ok := screen.SubImage(canvas).(*ebiten.Image); ok {
-		s.drawCanvas(area, docs)
+	s.drawZoomed(screen, docs)
+	if s.workflow != nil {
+		s.zoomCard.draw(screen, s.theme)
 	}
 	s.drawToolbar(screen, docs)
 	s.drawPalette(screen)
@@ -77,6 +77,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if dialog := s.picker.Dialog(); dialog != nil {
 		dialog.Draw(screen, s.theme)
 	}
+	s.contextMenu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
 }
 
@@ -87,6 +88,7 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawText(screen, trail, ui.Inset, textY, ui.ColorMuted())
 	s.theme.DrawStrong(screen, s.name(docs), ui.Inset+s.theme.TextWidth(trail), textY, ui.ColorInk())
 	s.arrange.Draw(screen, s.theme)
+	s.recentre.Draw(screen, s.theme)
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 }
 
@@ -125,7 +127,7 @@ func (s *State) drawPalette(screen *ebiten.Image) {
 // drawCanvas draws the dotted ground, then connections behind the nodes.
 func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	area.Fill(ui.ColorCanvas())
-	canvas := s.Canvas()
+	canvas := area.Bounds()
 	origin := canvas.Min.Add(s.offset)
 	dot := ui.ColorRule()
 	startX := canvas.Min.X + mod(origin.X-canvas.Min.X, dotSpacing)
@@ -263,9 +265,17 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		}
 		s.drawOutputRows(area, drawn)
+	case flow.KindCheckValue, flow.KindFindNPC:
+		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+		s.theme.DrawText(area, s.clip(s.valueTitle(drawn.node, docs), drawn.rect.Dx()-ui.Half*textPad),
+			rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
+		s.drawOutputRows(area, drawn)
 	default:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		title := kind.Label + " · " + s.summary(drawn.node, docs)
+		if drawn.node.Kind == flow.KindSetValue {
+			title = s.valueTitle(drawn.node, docs)
+		}
 		clipped := s.clip(title, drawn.rect.Dx()-ui.Half*textPad)
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}
@@ -355,24 +365,31 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 
 		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	case flow.KindPlaySound:
-		cue, err := node.Cue("cue")
-		if err != nil {
-			return "?"
-		}
-		if cue == "" {
-			return "no cue"
-		}
-		if listed, found := s.listedCue(cue); found {
-			cue = listed.Name
-		}
-		if step, found := loudness.Find(choiceOf(node, "loudness")); found {
-			return cue + " · " + strings.ToLower(step.Label) + " this time"
-		}
-
-		return cue
+		return s.playSummary(node)
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+		return s.valueSummary(node, docs)
 	default:
 		return ""
 	}
+}
+
+// playSummary describes a Play sound: its cue, and how loud this time.
+func (s *State) playSummary(node flow.Node) string {
+	cue, err := node.Cue("cue")
+	if err != nil {
+		return "?"
+	}
+	if cue == "" {
+		return "no cue"
+	}
+	if listed, found := s.listedCue(cue); found {
+		cue = listed.Name
+	}
+	if step, found := loudness.Find(choiceOf(node, "loudness")); found {
+		return cue + " · " + strings.ToLower(step.Label) + " this time"
+	}
+
+	return cue
 }
 
 // formatDuration writes a wait as "2 s", "30 min" or "1 h", adding "real"
@@ -438,15 +455,14 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
+	if s.localsActive() {
+		s.drawLocals(screen)
+
+		return
+	}
 	if !nodeSelected || s.form == nil {
 		s.theme.Heading(screen, "Inspector", left, top)
-		lines := []string{
-			"Select a node to change it, or", "add one from the palette: click", "to add after the selected node,",
-			"or drag onto the canvas.",
-		}
-		for index, line := range lines {
-			s.theme.DrawText(screen, line, left, top+(index+1)*ui.LineHeight, ui.ColorMuted())
-		}
+		s.drawHowToSelect(screen, left, top+ui.LineHeight)
 
 		return
 	}
@@ -483,6 +499,22 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			s.theme.DrawText(screen, line, left, above+index*ui.LineHeight, ui.ColorWarn())
 		}
 	}
+}
+
+// hasPartState answers the states about lines, problems, cues and local
+// values, and whether the state is one of them.
+func (s *State) hasPartState(state string) (bool, bool) {
+	if found, handled := s.hasLineState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasCueState(state); handled {
+		return found, true
+	}
+	if strings.HasPrefix(state, localState) {
+		return s.hasLocal(state), true
+	}
+
+	return false, false
 }
 
 // hasLineState answers the states about lines and problems, and whether the
@@ -607,6 +639,10 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		made.clear.Draw(screen, s.theme)
 	case flow.TypeCue:
 		s.drawCue(screen, made, node)
+	case flow.TypeValue:
+		s.drawValue(screen, docs, made, node)
+	case flow.TypeOperand:
+		s.drawOperand(screen, made, left)
 	}
 }
 
@@ -641,7 +677,7 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 		}
 		made.addOption.Draw(screen, s.theme)
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
-		flow.TypeCue:
+		flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 	}
 }
 
@@ -679,6 +715,12 @@ func hintFor(kind string) string {
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindSetValue: "Sets one of this workflow's own values: its NPC's, its zone's, the world's or a " +
+			"local one. Add counts a number up, or down with a minus.",
+		flow.KindCheckValue: "Takes “yes” when the value compares as asked, and “otherwise” when not. It can " +
+			"read another NPC's values: one a local value holds, or one named by its path name.",
+		flow.KindFindNPC: "Looks for the nearest other NPC on its floor within this many tiles, optionally " +
+			"only one whose value matches, and keeps it in a local value for later nodes to read.",
 	}[kind]
 }
 
@@ -690,23 +732,7 @@ func (s *State) noteHeight(node flow.Node, width int) int {
 }
 
 // wrap breaks text into lines that fit a width, keeping its own line breaks.
-func (s *State) wrap(text string, width int) []string {
-	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
-		line := ""
-		for _, word := range strings.Fields(paragraph) {
-			candidate := strings.TrimSpace(line + " " + word)
-			if line != "" && s.theme.TextWidth(candidate) > width {
-				lines = append(lines, line)
-				candidate = word
-			}
-			line = candidate
-		}
-		lines = append(lines, line)
-	}
-
-	return lines
-}
+func (s *State) wrap(text string, width int) []string { return s.theme.Wrap(text, width) }
 
 // clip shortens text with an ellipsis to fit a width.
 func (s *State) clip(text string, width int) string {
@@ -756,7 +782,8 @@ func mod(value, divisor int) int {
 // "entry:<kind>:<n>" for its spare entry dot or "entry:<kind>:<n>:<i>" for
 // its i-th filled one, "add-option:<kind>:<n>" for a
 // random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for
-// a button or field, a dialog button, or "state:..." (see hasState).
+// a button or field, a dialog button, "menu:<id>" for an item of the open
+// right-click menu, or "state:..." (see hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.load(docs)
 	s.layoutWidgets(docs)
@@ -769,7 +796,13 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 	switch kind {
 	case "state":
+		if found, handled := s.hasValueState(value, docs); handled {
+			return image.Pt(0, 0), found
+		}
+
 		return image.Pt(0, 0), s.hasState(value)
+	case locateValue, locateDeclare:
+		return s.locateValueRow(kind, value)
 	case locateCue, locatePlay:
 		return s.locateCueRow(kind, value)
 	case "palette":
@@ -780,9 +813,13 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		}
 	case "ui":
 		return s.locateWidget(value)
+	case locateMenu:
+		return s.contextMenu.Locate(value)
+	case localPrefix:
+		return s.locateLocal(value)
 	default:
 		if at, found := s.locateOnCanvas(kind, value); found {
-			return s.toScreen(at), true
+			return s.onScreen(at), true
 		}
 	}
 
@@ -873,10 +910,14 @@ func (s *State) nthNode(value string) (shape, bool) {
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	for _, button := range []*ui.Button{s.arrange, s.deleteLine, s.resetLine} {
+	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.deleteLine, s.resetLine},
+		s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
+	}
+	if point, found := s.locateLocalsWidget(widget); found {
+		return point, true
 	}
 
 	return s.locateFormWidget(widget)
@@ -894,19 +935,31 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 		return point, true
 	}
 	for _, made := range s.form.controls {
-		fields, buttons := made.widgets()
-		for _, field := range fields {
-			if field != nil && field.ID == widget && !field.Rect.Empty() {
-				return field.Center(), true
-			}
+		if point, found := made.locate(widget); found {
+			return point, true
 		}
-		if widget == "cue" && !made.cueBox.Empty() {
-			return ui.Center(made.cueBox), true
+	}
+
+	return image.Pt(0, 0), false
+}
+
+// locate finds one of a control's fields or buttons, its cue as "cue", or
+// a value parameter's box as "pick-<param>".
+func (made control) locate(widget string) (image.Point, bool) {
+	fields, buttons := made.widgets()
+	for _, field := range fields {
+		if field != nil && field.ID == widget && !field.Rect.Empty() {
+			return field.Center(), true
 		}
-		for _, button := range buttons {
-			if button != nil && button.ID == widget {
-				return ui.Center(button.Rect), true
-			}
+	}
+	box := (made.param.Type == flow.TypeValue && widget == valueBoxPrefix+made.param.Name) ||
+		(made.param.Type == flow.TypeCue && widget == "cue")
+	if box && !made.cueBox.Empty() {
+		return ui.Center(made.cueBox), true
+	}
+	for _, button := range buttons {
+		if button != nil && button.ID == widget {
+			return ui.Center(button.Rect), true
 		}
 	}
 
@@ -940,10 +993,7 @@ func (made control) widgets() ([]*ui.TextField, []*ui.Button) {
 // "problems:N" when N nodes have problems and "problem:<kind>:<n>" when the
 // nth node of a kind has one.
 func (s *State) hasState(state string) bool {
-	if found, handled := s.hasLineState(state); handled {
-		return found
-	}
-	if found, handled := s.hasCueState(state); handled {
+	if found, handled := s.hasPartState(state); handled {
 		return found
 	}
 	switch {

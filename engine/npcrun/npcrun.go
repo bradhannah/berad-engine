@@ -25,6 +25,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/play"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // MaxInstant bounds how many nodes that take no time an NPC follows in one
@@ -56,12 +57,17 @@ type Change struct {
 }
 
 // World is what an NPC needs on a tick: the zone's floors as they are now,
-// its workflow (nil for none), the clock, and the game seconds that passed.
+// its workflow (nil for none), the clock, and the game seconds that passed;
+// the values of the world, the zones and the NPCs, the zone it is in, and
+// the zone's other NPCs as the tick began, in placement order.
 type World struct {
 	Zone     play.Zone
 	Workflow *flow.Workflow
 	Clock    *clock.Clock
 	Passed   float64
+	State    *worldstate.Store
+	Here     ids.ULID
+	Others   []Other
 }
 
 // NPC is one NPC running in a zone.
@@ -95,6 +101,8 @@ type NPC struct {
 	work  work
 	rng   *rand.Rand
 	jumps int
+	// locals are the local values its workflow has set.
+	locals map[ids.ULID]worldstate.Value
 }
 
 // work is what the current node is doing: started once its node has set it
@@ -160,7 +168,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
-		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0,
+		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0, locals: nil,
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
@@ -180,9 +188,9 @@ func (n *NPC) At() (float64, float64) {
 }
 
 // Restart starts the NPC's workflow again from the start, where it stands,
-// as after a clock jump or an edit to its workflow.
+// as after a clock jump or an edit to its workflow. Its local values clear.
 func (n *NPC) Restart() {
-	n.Node, n.Container, n.work, n.Status = ids.ULID{}, ids.ULID{}, idle(), ""
+	n.Node, n.Container, n.work, n.Status, n.locals = ids.ULID{}, ids.ULID{}, idle(), "", nil
 }
 
 // Step runs the NPC for one tick: it finishes or continues a step between
@@ -291,6 +299,14 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 		n.actPlaySound(node)
 
 		return flow.OutputNext, true
+	case flow.KindSetValue:
+		n.actSet(world, node)
+
+		return flow.OutputNext, true
+	case flow.KindCheckValue:
+		return n.actCheck(world, node), true
+	case flow.KindFindNPC:
+		return n.actFind(world, node), true
 	default:
 		return flow.OutputNext, true
 	}

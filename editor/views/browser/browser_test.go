@@ -379,3 +379,35 @@ func TestSelectingAwayAsksAboutUnsavedChanges(t *testing.T) {
 		t.Fatal("Cancel keeps the window open")
 	}
 }
+
+// TestNPCPathName gives a new NPC a path name suggested from its name, and
+// saves one typed into the inspector, refusing one with punctuation.
+func TestNPCPathName(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("ui:new-npc", false)
+	var args project.DocumentArgs
+	if created := f.requests.Of(project.CreateEdit); len(created) != 1 || created[0].Decode(&args) != nil {
+		t.Fatalf("create %d", len(created))
+	}
+	made, err := npc.Decode(args.Data)
+	if err != nil || made.Path != "npc_1" {
+		t.Fatalf("a new NPC's path name comes from its name: %+v %v", made, err)
+	}
+	f.click("row:Ada Clerk", false)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	f.typeInto("npc-path", "ada's")
+	f.state.Save(f.ctx)
+	if len(f.requests.Of(npcplugin.SetPathEdit)) != 0 || f.status() == "" {
+		t.Fatalf("punctuation is refused, saying why: %q", f.status())
+	}
+	f.click("ui:npc-path", false)
+	f.keys("Cmd+A", "Backspace")
+	f.typeText("ada")
+	f.state.Save(f.ctx)
+	set := f.requests.Of(npcplugin.SetPathEdit)
+	var saved npcplugin.SetPathArgs
+	if len(set) != 1 || set[0].Command.Document != clerkID || set[0].Decode(&saved) != nil || saved.Path != "ada" {
+		t.Fatalf("path name %d %+v", len(set), saved)
+	}
+}
