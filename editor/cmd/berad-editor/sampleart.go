@@ -102,7 +102,8 @@ func sampleLantern(orch *orchestrator.Orchestrator) (sampleArt, error) {
 	if err != nil {
 		return none, fmt.Errorf("sample lantern: %w", err)
 	}
-	spriteID, err := orch.CreateDocument(lanternName, &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID}})
+	sprite := &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID, Template: ids.ULID{}}}
+	spriteID, err := orch.CreateDocument(lanternName, sprite)
 	if err != nil {
 		return none, fmt.Errorf("sample lantern: %w", err)
 	}

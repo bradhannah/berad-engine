@@ -124,7 +124,7 @@ func (s *State) addSprite(ctx *frame.Context, sprite newArt, tileID ids.ULID) {
 		deletion := newDocument("", "", ids.ULID{}, nil).withID(tileID)
 		s.command(ctx, project.IndexID(), project.DeleteEdit, gesture, deletion, nil, nil)
 	}
-	data, err := art.Sprite{Tile: tileID}.Encode()
+	data, err := art.Sprite{Tile: tileID, Template: ids.ULID{}}.Encode()
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 		removeTile()

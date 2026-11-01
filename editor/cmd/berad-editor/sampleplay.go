@@ -88,7 +88,8 @@ func sampleSprite(orch *orchestrator.Orchestrator, name string, tile *art.Tile) 
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("sample %s: %w", name, err)
 	}
-	spriteID, err := orch.CreateDocument(name, &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID}})
+	sprite := &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID, Template: ids.ULID{}}}
+	spriteID, err := orch.CreateDocument(name, sprite)
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("sample %s: %w", name, err)
 	}

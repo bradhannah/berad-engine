@@ -15,8 +15,13 @@ const DefaultTileSize = 24
 
 // Sprite is what a definition shows. For now a sprite is one frame of one
 // tile, one cell in size; bigger and animated sprites come later.
+//
+// Template names the template the sprite is drawn to in the editor, if any:
+// rules about where it may be painted and guides to draw to (increment 16).
+// It never changes how the sprite looks, and games ignore it.
 type Sprite struct {
-	Tile ids.ULID `json:"tile"`
+	Tile     ids.ULID `json:"tile"`
+	Template ids.ULID `json:"template,omitzero"`
 }
 
 // Encode returns the sprite's saved data.
