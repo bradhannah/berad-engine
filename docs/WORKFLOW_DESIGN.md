@@ -92,6 +92,20 @@ drawn back to either only repeats what the rule already does.
 - **Agreed: start loose and signal intent.** Any workflow may read any value
   at first; what a workflow is meant for is shown by what it requires, not
   enforced by labelling it. Tighten only what proves confusing.
+- **Agreed: every value is declared before it is used,** with a name, a type,
+  a scope and a default. Names use lower-case letters, digits and
+  underscores. World, zone and NPC values are declared in one window, and a
+  workflow's local values on the workflow itself. [Increment
+  15](increments/0015-values-and-sensing.md) builds the first of them.
+- **Agreed: four scopes.** `local.` belongs to one workflow, `npc.` to the
+  NPC it runs for, `zone.` to the zone it is in, and `world.` to the whole
+  game. A declaration covers its whole scope, so declaring `mood` for NPCs
+  gives every NPC its own. Pairs of NPCs, places and objects may become
+  scopes later.
+- **Agreed: a workflow sets only its own values,** its NPC's, its zone's,
+  the world's and its locals. It can read the values of an NPC it found, but
+  never set them. *Open:* reading a named NPC's values, since one NPC placed
+  twice is two NPCs.
 - **Candidate: three sources of values.**
 
   | Source | Supplied by | Examples |
@@ -112,9 +126,13 @@ drawn back to either only repeats what the rule already does.
 
   | Lifetime | Lasts | Example |
   | --- | --- | --- |
-  | This run | Until the workflow ends or repeats | a price just worked out |
+  | This run | Until the workflow restarts, or its NPC changes zone | a price just worked out |
   | The character | Saved with that NPC's identity | has greeted the player, what it is doing |
   | The world | Saved with the game | flags, provisions, quests |
+
+  **Agreed:** local values, this run's, last through a workflow's repeats.
+  They clear when it restarts after a clock jump or an edit, and when its
+  NPC's zone changes.
 
   A value saved on a character or in the world is declared first, so save
   files keep their format version and upgrade like any other file.
@@ -124,8 +142,13 @@ drawn back to either only repeats what the rule already does.
   one outcome for each, and one for anything else. The time switch is a
   check on the clock; a conversation's stat or skill check is another.
 - **Candidate: an NPC is driven by one workflow at a time.** Actions move
-  only the workflow's own NPC; other NPCs are reached through flags or
-  messages, so two workflows never fight over one body.
+  only the workflow's own NPC; other NPCs are reached through shared values,
+  sensing or messages, so two workflows never fight over one body.
+- **Agreed: NPCs become aware of each other first by sensing.** A Find NPC
+  nearby node looks within a number of tiles, optionally only for NPCs whose
+  value matches, and the workflow then reads the found NPC's values.
+  Messages come later. Pairs of NPCs, slots on places and objects, requests
+  with replies and scenes that cast several NPCs are candidates beyond that.
 
 ## World state
 
@@ -212,4 +235,5 @@ its time is up, even partway through a node:
 (exits, lines kept inside, collapsing); values (what an NPC is doing, the
 world-state tree with provisions, references in parameters, Set and Check
 nodes); sprite workflows reacting to what an NPC is doing; calls between
-workflows; conversations.
+workflows; conversations. Values and sensing are planned first, in
+[increment 15](increments/0015-values-and-sensing.md), ahead of containers.
