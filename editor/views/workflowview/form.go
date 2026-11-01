@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // Inspector layout, in screen pixels.
@@ -81,9 +82,13 @@ type control struct {
 	search *ui.TextField
 	list   *ui.List
 	open   bool
-	// operands are what an operand's buttons set, in order; a value
-	// parameter uses cueBox, search, list and open as a cue does.
-	operands []json.RawMessage
+	// operands are what an operand's buttons set, in order, operandType
+	// the type its value has, and unneeded is set when a Check value asks
+	// about a limit, with nothing to compare with; a value parameter uses
+	// cueBox, search, list and open as a cue does.
+	operands    []json.RawMessage
+	operandType worldstate.Type
+	unneeded    bool
 }
 
 // form is the inspector for the selected node. rows counts a time switch's
@@ -152,7 +157,7 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 	for _, param := range kind.Params {
 		if param.Type == flow.TypeOperand {
 			declared, found := s.operandDeclaration(docs, node, param.Name)
-			shape.WriteString(param.Name + ":" + operandShape(declared, found) + ";")
+			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
 	}
 
@@ -271,7 +276,8 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	for _, param := range kind.Params {
 		made := control{param: param, label: 0, field: nil, from: nil, to: nil, rows: nil, addRange: nil, pick: nil,
 			clear: nil, anchor: ui.Zero(), choices: nil, units: nil, clocks: nil, options: nil, addOption: nil,
-			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil}
+			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil, operandType: "",
+			unneeded: false}
 		switch param.Type {
 		case flow.TypeTiles:
 			made.field = text("param-"+param.Name, false)
@@ -325,7 +331,7 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 		s.newValueControl(made)
 	case flow.TypeOperand:
 		declared, found := s.operandDeclaration(docs, node, made.param.Name)
-		s.newOperandControl(made, declared, found)
+		s.newOperandControl(made, node, declared, found)
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges:
 	}
@@ -746,7 +752,7 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 // formName names the node the form edits, for the guard.
 func (s *State) formName() string {
 	if local, ok := s.selectedLocal(); ok && s.form == nil {
-		return local.Path()
+		return localPath(local)
 	}
 	if s.form == nil {
 		return "this node"

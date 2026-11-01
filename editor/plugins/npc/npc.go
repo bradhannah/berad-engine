@@ -1,6 +1,6 @@
 // Package npc is the editor half of NPCs: the NPC document and the edits that
-// choose its behaviour workflow, give it a path name and change its private
-// notes.
+// choose its behaviour workflow, give it a path name, change its private
+// notes, declare its own values and apply templates to it.
 package npc
 
 import (
@@ -10,8 +10,10 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // PluginName identifies the plug-in.
@@ -22,6 +24,11 @@ const (
 	SetBehaviourEdit = "npc.behaviour.set"
 	SetNotesEdit     = "npc.notes.set"
 	SetPathEdit      = "npc.path.set"
+	// ChangeValuesEdit changes the NPC's own values; ApplyTemplateEdit and
+	// UnapplyTemplateEdit put a template on it and take one off.
+	ChangeValuesEdit    = "npc.values.change"
+	ApplyTemplateEdit   = "npc.template.apply"
+	UnapplyTemplateEdit = "npc.template.unapply"
 )
 
 // Undo-clash items.
@@ -41,7 +48,7 @@ type Document struct {
 
 // NewDocument returns an NPC with no behaviour and no notes.
 func NewDocument() *Document {
-	return &Document{NPC: npc.NPC{Behaviour: ids.ULID{}, Path: "", Notes: ""}}
+	return &Document{NPC: npc.New()}
 }
 
 // Format names the document format.
@@ -61,17 +68,18 @@ func (d *Document) Encode() (json.RawMessage, error) {
 //
 //nolint:ireturn // Documents are polymorphic; callers hold them as model.Document.
 func (d *Document) Clone() model.Document {
-	return &Document{NPC: d.NPC}
+	return &Document{NPC: d.NPC.Clone()}
 }
 
 // References lists the NPC's behaviour workflow, so deleting a workflow
-// shows which NPCs follow it.
+// shows which NPCs follow it, and the templates applied to it.
 func (d *Document) References() []model.Reference {
-	if d.NPC.Behaviour.IsZero() {
-		return nil
+	references := stateplugin.TemplateReferences(d.NPC.Owned)
+	if !d.NPC.Behaviour.IsZero() {
+		references = append(references, model.Reference{Document: d.NPC.Behaviour, Item: "", Label: "behaviour"})
 	}
 
-	return []model.Reference{{Document: d.NPC.Behaviour, Item: "", Label: "behaviour"}}
+	return references
 }
 
 // Decode reads a saved NPC.
@@ -192,12 +200,23 @@ func change(
 	return model.Applied{Inverse: inverseArgs, InverseEdit: "", Touched: []string{item}, Covers: nil}, nil
 }
 
+// owned is what an NPC document owns, for the edits that change it.
+func owned(document model.Document) (*worldstate.Owned, error) {
+	npcDoc, ok := document.(*Document)
+	if !ok {
+		return nil, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotNPC)
+	}
+
+	return &npcDoc.NPC.Owned, nil
+}
+
 // Plugin returns the NPC plug-in.
 func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: npc.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{SetBehaviour{}, SetNotes{}, SetPath{}},
-		Required:  nil,
+		Edits: append([]model.EditKind{SetBehaviour{}, SetNotes{}, SetPath{}},
+			stateplugin.OwnerEdits("npc", npc.FormatName, owned)...),
+		Required: nil,
 	}
 }

@@ -732,23 +732,7 @@ func (s *State) noteHeight(node flow.Node, width int) int {
 }
 
 // wrap breaks text into lines that fit a width, keeping its own line breaks.
-func (s *State) wrap(text string, width int) []string {
-	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
-		line := ""
-		for _, word := range strings.Fields(paragraph) {
-			candidate := strings.TrimSpace(line + " " + word)
-			if line != "" && s.theme.TextWidth(candidate) > width {
-				lines = append(lines, line)
-				candidate = word
-			}
-			line = candidate
-		}
-		lines = append(lines, line)
-	}
-
-	return lines
-}
+func (s *State) wrap(text string, width int) []string { return s.theme.Wrap(text, width) }
 
 // clip shortens text with an ellipsis to fit a width.
 func (s *State) clip(text string, width int) string {

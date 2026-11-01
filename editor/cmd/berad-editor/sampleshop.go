@@ -19,8 +19,8 @@ import (
 
 // The sample shop: a clerk by the desk and a customer who walks up to it,
 // waits to be served, leaves by the door and comes back a while later. It
-// shows values and sensing: NPCs' own values, a world count, local values
-// and Find NPC nearby. Cells are from the zone origin; boxes are canvas
+// shows values and sensing: a shop template giving both NPCs the same
+// values, a world count in a group, local values and Find NPC nearby. Cells are from the zone origin; boxes are canvas
 // columns and rows.
 const (
 	clerkCol     = deskCol
@@ -40,10 +40,11 @@ const (
 	shopDuration = "duration"
 )
 
-// shopValues are the values the sample shop declares: whether an NPC is
-// waiting, serving or served, and how many customers the world has served.
+// shopValues are what the sample shop declares: a shop template of whether
+// an NPC is waiting, serving or served, and a shop group holding how many
+// customers the world has served.
 type shopValues struct {
-	waiting, serving, served, count ids.ULID
+	template, waiting, serving, served, group, count ids.ULID
 }
 
 // shopPlaces are the ground floor and its desk and door anchors.
@@ -75,8 +76,12 @@ func sampleShop(orch *orchestrator.Orchestrator, places shopPlaces) error {
 		{"Clerk", "clerk", clerkFlow, clerkCol, clerkRow},
 		{"Customer", "customer", customerFlow, doorCol, buildingBottom - 1},
 	} {
-		document := &npcplugin.Document{NPC: npc.NPC{Behaviour: made.behaviour, Path: made.path, Notes: ""}}
-		npcID, err := orch.CreateDocument(made.name, document)
+		shopper := npc.New()
+		shopper.Behaviour, shopper.Path = made.behaviour, made.path
+		if err := shopper.Owned.Apply(values.template); err != nil {
+			return fmt.Errorf("sample shop: %w", err)
+		}
+		npcID, err := orch.CreateDocument(made.name, &npcplugin.Document{NPC: shopper})
 		if err != nil {
 			return fmt.Errorf("sample shop: %w", err)
 		}
@@ -90,20 +95,26 @@ func sampleShop(orch *orchestrator.Orchestrator, places shopPlaces) error {
 	return placeShop(orch, places.floor, placements)
 }
 
-// declareShop declares the shop's values in the world state.
+// declareShop declares the shop's template and group in the world state.
 func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 	var values shopValues
 	declared := []struct {
-		id          *ids.ULID
+		id, parent  *ids.ULID
 		name        string
 		scope       worldstate.Scope
 		kind        worldstate.Type
 		description string
 	}{
-		{&values.waiting, "waiting", worldstate.ScopeNPC, worldstate.TypeYesNo, "Waiting at the desk to be served."},
-		{&values.serving, "serving", worldstate.ScopeNPC, worldstate.TypeYesNo, "Serving a customer at the desk."},
-		{&values.served, "served", worldstate.ScopeNPC, worldstate.TypeYesNo, "Served, and on the way out."},
-		{&values.count, "customers_served", worldstate.ScopeWorld, worldstate.TypeNumber, "Customers served so far."},
+		{&values.template, nil, "shop", worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share."},
+		{&values.waiting, &values.template, "waiting", worldstate.ScopeNPC, worldstate.TypeBool,
+			"Waiting at the desk to be served."},
+		{&values.serving, &values.template, "serving", worldstate.ScopeNPC, worldstate.TypeBool,
+			"Serving a customer at the desk."},
+		{&values.served, &values.template, "served", worldstate.ScopeNPC, worldstate.TypeBool,
+			"Served, and on the way out."},
+		{&values.group, nil, "shop", worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts."},
+		{&values.count, &values.group, "customers_served", worldstate.ScopeWorld, worldstate.TypeInteger,
+			"Customers served so far."},
 	}
 	for _, each := range declared {
 		made, err := orch.NewID()
@@ -121,6 +132,9 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 		for _, each := range declared {
 			made := worldstate.New(*each.id, each.name, each.scope, each.kind)
 			made.Description = each.description
+			if each.parent != nil {
+				made.Parent = *each.parent
+			}
 			if err := changed.Insert(made); err != nil {
 				return fmt.Errorf("declare %s: %w", each.name, err)
 			}
@@ -335,15 +349,15 @@ func (b *shopFlow) create(name string) (ids.ULID, error) {
 }
 
 func npcValue(value ids.ULID) flow.ValueRef {
-	return flow.ValueRef{Scope: worldstate.ScopeNPC, Value: value, NPC: ids.ULID{}, Found: ids.ULID{}}
+	return flow.ValueRef{Scope: worldstate.ScopeNPC, Value: value, Owner: ids.ULID{}, Found: ids.ULID{}}
 }
 
 func worldValue(value ids.ULID) flow.ValueRef {
-	return flow.ValueRef{Scope: worldstate.ScopeWorld, Value: value, NPC: ids.ULID{}, Found: ids.ULID{}}
+	return flow.ValueRef{Scope: worldstate.ScopeWorld, Value: value, Owner: ids.ULID{}, Found: ids.ULID{}}
 }
 
 func localValue(value ids.ULID) flow.ValueRef {
-	return flow.ValueRef{Scope: worldstate.ScopeLocal, Value: value, NPC: ids.ULID{}, Found: ids.ULID{}}
+	return flow.ValueRef{Scope: worldstate.ScopeLocal, Value: value, Owner: ids.ULID{}, Found: ids.ULID{}}
 }
 
 func setTo(ref flow.ValueRef, operand string) map[string]any {

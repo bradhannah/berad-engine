@@ -506,7 +506,7 @@ func TestLocalValues(t *testing.T) {
 	if err := flowDoc.Locals().Insert(customer); err != nil {
 		t.Fatal(err)
 	}
-	world := worldstate.New(id(21), "robbed", worldstate.ScopeWorld, worldstate.TypeYesNo)
+	world := worldstate.New(id(21), "robbed", worldstate.ScopeWorld, worldstate.TypeBool)
 	if err := flowDoc.Locals().Insert(world); !errors.Is(err, worldstate.ErrValue) {
 		t.Fatalf("a workflow declares only local values: %v", err)
 	}
@@ -539,6 +539,26 @@ func TestLocalValues(t *testing.T) {
 	if read, err := workflow.Decode(upgraded.Data); err != nil || read.Locals().Len() != 0 {
 		t.Fatalf("a version 3 workflow has no local values: %v", err)
 	}
+	four := `{"start":"` + id(1).String() + `","nodes":[{"id":"` + id(1).String() + `","kind":"start","next":{"next":"` +
+		id(2).String() + `"}},{"id":"` + id(2).String() + `","kind":"check-value","params":{"value":{"scope":"npc","value":"` +
+		id(5).String() + `","npc":"` + id(6).String() + `"}}}],"locals":[{"id":"` + id(20).String() +
+		`","name":"tally","scope":"local","type":"number","default":0}]}`
+	upgraded, _, err = registry.Upgrade(content.Envelope{
+		Format: workflow.FormatName, Version: 4, ID: id(9), Name: "Old", Revision: 1, Data: json.RawMessage(four),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := workflow.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tally, _ := read.Locals().Value(id(20))
+	checked, _ := read.Node(id(2))
+	ref, err := checked.Ref(workflow.ParamValue)
+	if err != nil || tally.Type != worldstate.TypeInteger || ref.Owner != id(6) {
+		t.Fatalf("version 4 upgrades to integer locals and owners: %+v %+v %v", tally, ref, err)
+	}
 }
 
 func TestValueNodes(t *testing.T) {
@@ -557,9 +577,10 @@ func TestValueNodes(t *testing.T) {
 		t.Fatalf("check value outputs %+v", outputs)
 	}
 	for name, ref := range map[string]workflow.ValueRef{
-		"another NPC's local": {Scope: worldstate.ScopeLocal, Value: id(5), NPC: id(6), Found: ids.ULID{}},
-		"two NPCs at once":    {Scope: worldstate.ScopeNPC, Value: id(5), NPC: id(6), Found: id(7)},
-		"no such scope":       {Scope: "party", Value: id(5), NPC: ids.ULID{}, Found: ids.ULID{}},
+		"another NPC's local": {Scope: worldstate.ScopeLocal, Value: id(5), Owner: id(6), Found: ids.ULID{}},
+		"two NPCs at once":    {Scope: worldstate.ScopeNPC, Value: id(5), Owner: id(6), Found: id(7)},
+		"a zone found nearby": {Scope: worldstate.ScopeZone, Value: id(5), Owner: ids.ULID{}, Found: id(7)},
+		"no such scope":       {Scope: "party", Value: id(5), Owner: ids.ULID{}, Found: ids.ULID{}},
 	} {
 		bad, err := check.WithParam(workflow.ParamValue, ref)
 		if err != nil {
@@ -569,11 +590,15 @@ func TestValueNodes(t *testing.T) {
 			t.Errorf("%s is refused: %v", name, err)
 		}
 	}
-	found := workflow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(5), NPC: ids.ULID{}, Found: id(7)}
-	if found.Writable() || !found.Others() {
-		t.Fatal("a found NPC's value is read only")
+	found := workflow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(5), Owner: ids.ULID{}, Found: id(7)}
+	market := workflow.ValueRef{Scope: worldstate.ScopeZone, Value: id(5), Owner: id(8), Found: ids.ULID{}}
+	if found.Writable() || !found.Others() || market.Writable() {
+		t.Fatal("a found NPC's value, and a named zone's, are read only")
 	}
-	for _, operand := range []string{`null`, `12`, `true`, `"c2"`} {
+	if named, err := check.WithParam(workflow.ParamValue, market); err != nil || workflow.CheckParams(named) != nil {
+		t.Fatalf("a named zone's value can be read: %v", err)
+	}
+	for _, operand := range []string{`null`, `12`, `true`, `"c2"`, `"Old Tom"`} {
 		good, err := check.WithParam("against", json.RawMessage(operand))
 		if err != nil || workflow.CheckParams(good) != nil {
 			t.Errorf("operand %s fits: %v", operand, err)

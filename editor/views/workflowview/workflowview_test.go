@@ -56,7 +56,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(theme.Close)
-	registry, err := plugin.NewRegistry(workflowplugin.Plugin(), stateplugin.Plugin())
+	registry, err := plugin.NewRegistry(workflowplugin.Plugin(), stateplugin.Plugin(), npcplugin.Plugin())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func newFixture(t *testing.T) *fixture {
 	docs.Put(floorID, "Office", office)
 	docs.Put(worldstate.ID(), worldstate.Name, stateplugin.NewDocument())
 	ada := npcplugin.NewDocument()
-	ada.NPC.Path = "ada"
+	ada.NPC.Path, ada.NPC.Behaviour = "ada", workflowID
 	docs.Put(adaID, "Ada Clerk", ada)
 	docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
 		{ID: workflowID, Name: "Daily routine", Format: flow.FormatName},

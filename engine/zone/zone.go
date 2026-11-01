@@ -2,7 +2,9 @@
 // floors in order from the bottom up. Each floor is its own document; the zone
 // refers to them by ID and the floors do not refer back. A zone also lists the
 // palettes its art uses, which the pixel editor offers first; it is a
-// convenience, not a limit.
+// convenience, not a limit. A zone has a path name that workflows read its
+// values by, such as market in zone.market.crowded, and holds the values it
+// owns and the templates applied to it.
 package zone
 
 import (
@@ -13,14 +15,16 @@ import (
 
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // FormatName identifies zones inside saved envelopes.
 const FormatName = "zone"
 
 // FormatVersion is the zone format version this package writes. Version 2
-// added the palettes a zone uses, and reads version 1 unchanged.
-const FormatVersion = 2
+// added the palettes a zone uses, and version 3 a path name and the zone's
+// own values and templates; older versions are read unchanged.
+const FormatVersion = 3
 
 // MaxFloors bounds the floors in one zone.
 const MaxFloors = 256
@@ -41,16 +45,24 @@ var ErrPalette = errors.New("invalid zone palette change")
 type Zone struct {
 	floors   []ids.ULID
 	palettes []ids.ULID
+	// Path is the name workflows read the zone's values by, such as market;
+	// "" until one is given. It follows the rules for value names and is
+	// unique in the project.
+	Path string
+	// Owned is the zone's own values and the templates applied to it.
+	Owned worldstate.Owned
 }
 
 type wireZone struct {
 	Floors   []ids.ULID `json:"floors"`
 	Palettes []ids.ULID `json:"palettes,omitempty"`
+	Path     string     `json:"path,omitempty"`
+	worldstate.WireOwned
 }
 
 // New returns a zone with no floors.
 func New() *Zone {
-	return &Zone{floors: []ids.ULID{}, palettes: nil}
+	return &Zone{floors: []ids.ULID{}, palettes: nil, Path: "", Owned: worldstate.NewOwned(worldstate.ScopeZone)}
 }
 
 // Palettes returns the palettes the zone lists, in the order they were added.
@@ -143,18 +155,37 @@ func (z *Zone) Move(floor ids.ULID, index int) (int, error) {
 
 // Clone returns an independent copy.
 func (z *Zone) Clone() *Zone {
-	return &Zone{floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes)}
+	return &Zone{
+		floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes), Path: z.Path, Owned: z.Owned.Clone(),
+	}
 }
 
 // Equal reports whether two zones list the same floors and palettes in the
-// same order.
+// same order, with the same path name and values.
 func (z *Zone) Equal(other *Zone) bool {
-	return slices.Equal(z.floors, other.floors) && slices.Equal(z.palettes, other.palettes)
+	return slices.Equal(z.floors, other.floors) && slices.Equal(z.palettes, other.palettes) &&
+		z.Path == other.Path && z.Owned.Equal(other.Owned)
+}
+
+// CheckPath reports a path name that is not fit for a path; "" is none yet.
+func CheckPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := worldstate.CheckName(path); err != nil {
+		return fmt.Errorf("%w: %w", ErrData, err)
+	}
+
+	return nil
 }
 
 // Encode returns the zone's saved data.
 func (z *Zone) Encode() (json.RawMessage, error) {
-	data, err := json.Marshal(wireZone{Floors: z.floors, Palettes: z.palettes})
+	owned, err := z.Owned.Wire()
+	if err != nil {
+		return nil, fmt.Errorf("encode zone: %w", err)
+	}
+	data, err := json.Marshal(wireZone{Floors: z.floors, Palettes: z.palettes, Path: z.Path, WireOwned: owned})
 	if err != nil {
 		return nil, fmt.Errorf("encode zone: %w", err)
 	}
@@ -179,13 +210,23 @@ func Decode(data json.RawMessage) (*Zone, error) {
 			return nil, fmt.Errorf("%w: %w", ErrData, err)
 		}
 	}
+	if err := CheckPath(wire.Path); err != nil {
+		return nil, err
+	}
+	owned, err := worldstate.ReadOwned(worldstate.ScopeZone, wire.WireOwned)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	decoded.Path, decoded.Owned = wire.Path, owned
 
 	return decoded, nil
 }
 
 // Format returns the zone format registration.
 func Format() content.Format {
+	unchanged := func(data json.RawMessage) (json.RawMessage, error) { return data, nil }
+
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: func(data json.RawMessage) (json.RawMessage, error) { return data, nil },
+		1: unchanged, 2: unchanged,
 	}}
 }

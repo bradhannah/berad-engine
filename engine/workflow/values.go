@@ -38,37 +38,46 @@ const (
 	OutputNone  = "none"
 )
 
-// Ways to set a value, and to compare one.
+// Ways to set a value, and to compare one. At its maximum and at its
+// minimum ask whether an integer is at its limit, with nothing to compare
+// with.
 const (
 	HowSet       = "set"
 	HowAdd       = "add"
 	CompareIs    = "is"
 	CompareLeast = "at-least"
 	CompareBelow = "below"
+	CompareMax   = "at-max"
+	CompareMin   = "at-min"
 )
 
 // Limits on Find NPC nearby.
-const (
-	defaultWithin = 2
-	maxOperand    = 64
-)
+const defaultWithin = 2
 
-// ValueRef refers to a declared value: its scope and ID. An NPC value is
-// this NPC's own, unless NPC names another NPC by its ID or Found names a
-// local value holding the NPC found nearby; another NPC's value can be read,
-// never set. The zero reference is none chosen yet.
+// maxOperand bounds an operand typed as text, in characters.
+const maxOperand = worldstate.MaxText
+
+// ValueRef refers to a declared value: its scope and ID. An NPC or zone
+// value is this NPC's or zone's own, unless Owner names another NPC or zone
+// by its ID, or Found names a local value holding the NPC found nearby;
+// another's value can be read, never set. The zero reference is none chosen
+// yet.
 type ValueRef struct {
 	Scope worldstate.Scope `json:"scope,omitempty"`
 	Value ids.ULID         `json:"value,omitzero"`
-	NPC   ids.ULID         `json:"npc,omitzero"`
+	Owner ids.ULID         `json:"owner,omitzero"`
 	Found ids.ULID         `json:"found,omitzero"`
 }
 
 // IsZero reports whether no value is chosen.
 func (r ValueRef) IsZero() bool { return r.Value.IsZero() }
 
-// Others reports whether the reference reads another NPC's value.
-func (r ValueRef) Others() bool { return !r.NPC.IsZero() || !r.Found.IsZero() }
+// Others reports whether the reference reads another NPC's or zone's value.
+func (r ValueRef) Others() bool { return !r.Owner.IsZero() || !r.Found.IsZero() }
+
+// Unlimited reports whether a comparison asks about a limit, with nothing
+// to compare with.
+func Unlimited(compare string) bool { return compare == CompareMax || compare == CompareMin }
 
 // Writable reports whether a workflow may set the value: its own NPC's, its
 // zone's, the world's or a local one.
@@ -81,8 +90,8 @@ func (n Node) Ref(name string) (ValueRef, error) {
 	return ref, n.decode(name, &ref)
 }
 
-// Operand returns an operand parameter as saved: a number, true or false, a
-// choice's ID, or null before a value is chosen.
+// Operand returns an operand parameter as saved: an integer, true or false,
+// a choice's ID, text, or null before a value is chosen.
 func (n Node) Operand(name string) (json.RawMessage, error) {
 	var raw json.RawMessage
 
@@ -99,7 +108,7 @@ func IsNoOperand(raw json.RawMessage) bool {
 
 // valueKinds declares Set value, Check value and Find NPC nearby.
 func valueKinds(next []Output) []Kind {
-	none := mustJSON(ValueRef{Scope: "", Value: ids.ULID{}, NPC: ids.ULID{}, Found: ids.ULID{}})
+	none := mustJSON(ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}})
 
 	return []Kind{
 		{
@@ -119,7 +128,8 @@ func valueKinds(next []Output) []Kind {
 				{Name: ParamValue, Label: "Value", Type: TypeValue, Default: none, Choices: nil},
 				{Name: "compare", Label: "Compare", Type: TypeChoice, Default: mustJSON(CompareIs), Choices: []Choice{
 					{Value: CompareIs, Label: "is"}, {Value: CompareLeast, Label: "at least"},
-					{Value: CompareBelow, Label: "below"},
+					{Value: CompareBelow, Label: "below"}, {Value: CompareMax, Label: "at its maximum"},
+					{Value: CompareMin, Label: "at its minimum"},
 				}},
 				{Name: "against", Label: "With", Type: TypeOperand, Default: NoOperand(), Choices: nil},
 			},
@@ -150,12 +160,16 @@ func checkRef(value json.RawMessage) error {
 		return nil
 	}
 	switch ref.Scope {
-	case worldstate.ScopeLocal, worldstate.ScopeZone, worldstate.ScopeWorld:
+	case worldstate.ScopeLocal, worldstate.ScopeWorld:
 		if ref.Others() {
-			return fmt.Errorf("%w: only an NPC value can be another NPC's", ErrNode)
+			return fmt.Errorf("%w: only an NPC's or zone's value can be another's", ErrNode)
+		}
+	case worldstate.ScopeZone:
+		if !ref.Found.IsZero() {
+			return fmt.Errorf("%w: only an NPC is found nearby", ErrNode)
 		}
 	case worldstate.ScopeNPC:
-		if !ref.NPC.IsZero() && !ref.Found.IsZero() {
+		if !ref.Owner.IsZero() && !ref.Found.IsZero() {
 			return fmt.Errorf("%w: a value is one NPC's", ErrNode)
 		}
 	default:
@@ -165,8 +179,8 @@ func checkRef(value json.RawMessage) error {
 	return nil
 }
 
-// checkOperand reads an operand: null, a number, true or false, or a short
-// string.
+// checkOperand reads an operand: null, an integer, true or false, or a
+// string no longer than text can be.
 func checkOperand(value json.RawMessage) error {
 	if IsNoOperand(value) {
 		return nil
@@ -186,7 +200,7 @@ func checkOperand(value json.RawMessage) error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: %s is not a number, yes or no, or a choice", ErrNode, value)
+	return fmt.Errorf("%w: %s is not an integer, true or false, a choice or text", ErrNode, value)
 }
 
 // OperandOf returns the parameter whose value an operand is of: Set value's and Check

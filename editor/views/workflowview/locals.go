@@ -56,9 +56,7 @@ func (s *State) localsActive() bool {
 func (s *State) selectedLocal() (worldstate.Declaration, bool) {
 	selected, err := ids.Parse(s.locals.list.Selected)
 	if err != nil || s.workflow == nil {
-		return worldstate.Declaration{
-			ID: ids.ULID{}, Name: "", Scope: "", Type: "", Choices: nil, Default: nil, Description: "",
-		}, false
+		return worldstate.New(ids.ULID{}, "", "", ""), false
 	}
 
 	return s.workflow.Locals().Value(selected)
@@ -75,7 +73,7 @@ func (s *State) syncLocals() {
 	}
 	panel.list.Rows = nil
 	for _, value := range s.workflow.Locals().Values() {
-		row := ui.NewRow(value.ID.String(), value.Path())
+		row := ui.NewRow(value.ID.String(), localPath(value))
 		row.Detail = value.Type.Label()
 		panel.list.Rows = append(panel.list.Rows, row)
 	}
@@ -85,7 +83,7 @@ func (s *State) syncLocals() {
 
 		return
 	}
-	if panel.form.Show(value) || !panel.registered {
+	if panel.form.Show(value, value.Name) || !panel.registered {
 		s.focus = ui.Focus{}
 		s.focus.Register(panel.form.Fields()...)
 		panel.registered = true
@@ -160,15 +158,37 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 	}
 	switch changed, change := panel.form.Update(input); change {
 	case valueform.ChangeValue:
-		s.command(ctx, workflowplugin.SetLocalEdit, "", stateplugin.ValueArgs{Value: changed}, nil)
+		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, changed, ids.ULID{}), nil)
 	case valueform.ChangeDelete:
-		s.command(ctx, workflowplugin.RemoveLocalEdit, "", stateplugin.RemoveValueArgs{ID: changed.ID},
-			func(protocol.Result) { ctx.Frame.Status(changed.Path() + " deleted. Undo brings it back.") })
+		removal := localChange(nil, worldstate.New(ids.ULID{}, "", "", ""), changed.ID)
+		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", removal,
+			func(protocol.Result) { ctx.Frame.Status(localPath(changed) + " deleted. Undo brings it back.") })
 	case valueform.ChangeNone:
 	}
 }
 
-// addLocal declares a local number, named so no local clashes, and selects
+// localPath is how a workflow names a local value, such as local.clerk.
+func localPath(declared worldstate.Declaration) string {
+	return string(worldstate.ScopeLocal) + "." + declared.Name
+}
+
+// localChange is a change to a workflow's local values: one to add, one to
+// set, or one to remove.
+func localChange(added *worldstate.Declaration, set worldstate.Declaration, removed ids.ULID) stateplugin.ChangeArgs {
+	change := stateplugin.ChangeArgs{Add: nil, Set: nil, Remove: nil}
+	switch {
+	case added != nil:
+		change.Add = []worldstate.Declaration{*added}
+	case !removed.IsZero():
+		change.Remove = []ids.ULID{removed}
+	default:
+		change.Set = []worldstate.Declaration{set}
+	}
+
+	return change
+}
+
+// addLocal declares a local integer, named so no local clashes, and selects
 // it.
 func (s *State) addLocal(ctx *frame.Context) {
 	taken := map[string]bool{}
@@ -179,11 +199,12 @@ func (s *State) addLocal(ctx *frame.Context) {
 	for number := 2; taken[name]; number++ {
 		name = "value_" + strconv.Itoa(number)
 	}
-	made := worldstate.New(ids.ULID{}, name, worldstate.ScopeLocal, worldstate.TypeNumber)
-	s.command(ctx, workflowplugin.AddLocalEdit, "", stateplugin.ValueArgs{Value: made}, func(result protocol.Result) {
+	made := worldstate.New(stateplugin.TempID(1), name, worldstate.ScopeLocal, worldstate.TypeInteger)
+	added := func(result protocol.Result) {
 		s.locals.list.Selected = result.Created.String()
-		ctx.Frame.Status("Added " + made.Path() + ". Name it below.")
-	})
+		ctx.Frame.Status("Added " + localPath(made) + ". Name it below.")
+	}
+	s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(&made, made, ids.ULID{}), added)
 }
 
 // saveLocal saves the selected local's typed changes as one change, or says
@@ -195,13 +216,14 @@ func (s *State) saveLocal(ctx *frame.Context) bool {
 
 		return true
 	}
-	typed, field, problem := panel.form.Typed()
+	typed, name, field, problem := panel.form.Typed()
 	if problem != "" {
 		s.focus.Set(field)
 		ctx.Frame.Status(problem)
 
 		return false
 	}
+	typed.Name = name
 	saving := []*ui.TextField{}
 	for _, each := range panel.form.Fields() {
 		if each.Field.Unsaved() {
@@ -209,13 +231,13 @@ func (s *State) saveLocal(ctx *frame.Context) bool {
 			saving = append(saving, each)
 		}
 	}
-	data, err := json.Marshal(stateplugin.ValueArgs{Value: typed})
+	data, err := json.Marshal(localChange(nil, typed, ids.ULID{}))
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
 		return false
 	}
-	command := protocol.Command{Document: s.document, Edit: workflowplugin.SetLocalEdit, Gesture: "", Args: data}
+	command := protocol.Command{Document: s.document, Edit: workflowplugin.ChangeLocalsEdit, Gesture: "", Args: data}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			for _, each := range saving {
@@ -226,7 +248,7 @@ func (s *State) saveLocal(ctx *frame.Context) bool {
 			return
 		}
 		s.focus.Set(nil)
-		ctx.Frame.Status("Saved " + typed.Path())
+		ctx.Frame.Status("Saved " + localPath(typed))
 	})
 
 	return true

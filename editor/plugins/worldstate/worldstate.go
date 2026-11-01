@@ -1,7 +1,8 @@
 // Package worldstate is the editor half of the world state: the document
-// that declares a project's world, zone and NPC values, and the edits that
-// add, change and remove them. Every project holds one world-state document,
-// with a fixed ID.
+// that declares the world's values and the NPC and zone templates, and the
+// edits that change any list of declared values, which the workflow, NPC and
+// zone plug-ins use for their own. Every project holds one world-state
+// document, with a fixed ID.
 package worldstate
 
 import (
@@ -18,12 +19,8 @@ import (
 // PluginName identifies the plug-in.
 const PluginName = "world-state"
 
-// Edit kind names.
-const (
-	AddValueEdit    = "worldstate.value.add"
-	RemoveValueEdit = "worldstate.value.remove"
-	SetValueEdit    = "worldstate.value.set"
-)
+// ChangeEdit changes the world state's declarations.
+const ChangeEdit = "worldstate.values.change"
 
 // ErrNotWorldState reports a document that is not the world state.
 var ErrNotWorldState = errors.New("document is not the world state")
@@ -77,19 +74,45 @@ func emptyState() (json.RawMessage, error) {
 	return data, nil
 }
 
-// ValueArgs adds or changes one declared value.
-type ValueArgs struct {
-	Value worldstate.Declaration `json:"value"`
+// tempMark marks a temporary ID: its time part is zero, its second-last
+// byte this mark and its last a number from 1, so no generated or fixed ID
+// equals one.
+const tempMark = 0xFE
+
+// TempID returns the nth temporary ID, from 1, for a declaration a change
+// adds: preparing the change gives it a permanent one, and any declaration
+// in it whose parent is that temporary ID the same (D4). Temporary IDs let
+// one change declare groups and a value inside them.
+func TempID(n int) ids.ULID {
+	var temp ids.ULID
+	temp[len(temp)-2], temp[len(temp)-1] = tempMark, byte(n) //nolint:gosec // A change adds a handful of declarations.
+
+	return temp
 }
 
-// RemoveValueArgs removes one declared value.
-type RemoveValueArgs struct {
-	ID ids.ULID `json:"id"`
+func isTemp(candidate ids.ULID) bool {
+	for _, part := range candidate[:len(candidate)-2] {
+		if part != 0 {
+			return false
+		}
+	}
+
+	return candidate[len(candidate)-2] == tempMark && candidate[len(candidate)-1] != 0
 }
 
-// Values returns the list an edit changes, and the scopes it takes values
-// in: the world state's, or a workflow's local values. A plug-in whose
-// documents declare values gives its edits one.
+// ChangeArgs changes a list of declarations at once, all or none: it
+// declares Add, then changes each of Set, keeping its ID, then removes
+// Remove. Its inverse is another change, which adds back what it removed,
+// puts back what it set and removes what it added.
+type ChangeArgs struct {
+	Add    []worldstate.Declaration `json:"add,omitempty"`
+	Set    []worldstate.Declaration `json:"set,omitempty"`
+	Remove []ids.ULID               `json:"remove,omitempty"`
+}
+
+// Values returns the list a change applies to: the world state's, an NPC's
+// or zone's own, or a workflow's local values. A plug-in whose documents
+// declare values gives its change edit one.
 type Values func(document model.Document) (*worldstate.Declarations, error)
 
 // worldValues is the world-state document's list.
@@ -102,123 +125,114 @@ func worldValues(document model.Document) (*worldstate.Declarations, error) {
 	return stateDoc.State.Values, nil
 }
 
-// AddValue is an edit kind that declares a value. Arguments without an ID get
-// a permanent one when prepared (D4).
-type AddValue struct {
-	Kind, On, Inverse string
-	List              Values
-}
-
-// Name identifies the edit kind.
-func (a AddValue) Name() string { return a.Kind }
-
-// Format names the document format the edit applies to.
-func (a AddValue) Format() string { return a.On }
-
-// Prepare gives a new value its permanent ID.
-func (a AddValue) Prepare(_ model.Document, args json.RawMessage, newID model.IDSource) (json.RawMessage, error) {
-	var add ValueArgs
-	if err := json.Unmarshal(args, &add); err != nil {
-		return nil, fmt.Errorf("%w: %w", model.ErrArgs, err)
-	}
-	if !add.Value.ID.IsZero() {
-		return args, nil
-	}
-	made, err := newID()
-	if err != nil {
-		return nil, fmt.Errorf("new value ID: %w", err)
-	}
-	add.Value.ID = made
-
-	return encode(add)
-}
-
-// Apply declares the value; its inverse removes it.
-func (a AddValue) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
-	values, err := a.List(document)
-	if err != nil {
-		return model.Applied{}, err
-	}
-	var add ValueArgs
-	if err := json.Unmarshal(args, &add); err != nil {
-		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-	}
-	if err := values.Insert(add.Value); err != nil {
-		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-	}
-
-	return applied(RemoveValueArgs{ID: add.Value.ID}, a.Inverse, add.Value.ID)
-}
-
-// RemoveValue is an edit kind that takes a declared value out. Nodes that
-// used it are marked as problems; undo brings it back.
-type RemoveValue struct {
-	Kind, On, Inverse string
-	List              Values
-}
-
-// Name identifies the edit kind.
-func (r RemoveValue) Name() string { return r.Kind }
-
-// Format names the document format the edit applies to.
-func (r RemoveValue) Format() string { return r.On }
-
-// Apply removes the value; its inverse declares it again.
-func (r RemoveValue) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
-	values, err := r.List(document)
-	if err != nil {
-		return model.Applied{}, err
-	}
-	var remove RemoveValueArgs
-	if err := json.Unmarshal(args, &remove); err != nil {
-		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-	}
-	removed, err := values.Remove(remove.ID)
-	if err != nil {
-		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-	}
-
-	return applied(ValueArgs{Value: removed}, r.Inverse, remove.ID)
-}
-
-// SetValue is an edit kind that changes a declared value: its name, type,
-// choices, default or description.
-type SetValue struct {
+// Change is an edit kind that changes a list of declarations.
+type Change struct {
 	Kind, On string
 	List     Values
 }
 
 // Name identifies the edit kind.
-func (s SetValue) Name() string { return s.Kind }
+func (c Change) Name() string { return c.Kind }
 
 // Format names the document format the edit applies to.
-func (s SetValue) Format() string { return s.On }
+func (c Change) Format() string { return c.On }
 
-// Apply changes the value; its inverse puts it back as it was.
-func (s SetValue) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
-	values, err := s.List(document)
+// Prepare gives each declaration added with a temporary ID its permanent
+// one, in order, so the last added is the edit's Created, and points what
+// was inside it at the new ID.
+func (c Change) Prepare(_ model.Document, args json.RawMessage, newID model.IDSource) (json.RawMessage, error) {
+	var change ChangeArgs
+	if err := json.Unmarshal(args, &change); err != nil {
+		return nil, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	permanent := map[ids.ULID]ids.ULID{}
+	for index, added := range change.Add {
+		if !isTemp(added.ID) {
+			continue
+		}
+		made, err := newID()
+		if err != nil {
+			return nil, fmt.Errorf("new value ID: %w", err)
+		}
+		permanent[added.ID] = made
+		change.Add[index].ID = made
+	}
+	if len(permanent) == 0 {
+		return args, nil
+	}
+	for _, list := range [][]worldstate.Declaration{change.Add, change.Set} {
+		for index, declared := range list {
+			if made, ok := permanent[declared.Parent]; ok {
+				list[index].Parent = made
+			}
+		}
+	}
+
+	return encode(change)
+}
+
+// Apply makes the change; its inverse undoes it.
+func (c Change) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	values, err := c.List(document)
 	if err != nil {
 		return model.Applied{}, err
 	}
-	var set ValueArgs
-	if err := json.Unmarshal(args, &set); err != nil {
+	var change ChangeArgs
+	if err := json.Unmarshal(args, &change); err != nil {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
-	previous, err := values.Replace(set.Value)
+	working := values.Clone()
+	inverse, err := change.apply(working)
 	if err != nil {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
-
-	return applied(ValueArgs{Value: previous}, "", set.Value.ID)
-}
-
-func applied(inverse any, inverseEdit string, value ids.ULID) (model.Applied, error) {
+	*values = *working
 	data, err := encode(inverse)
 	if err != nil {
 		return model.Applied{}, err
 	}
 
-	return model.Applied{Inverse: data, InverseEdit: inverseEdit, Touched: []string{value.String()}, Covers: nil}, nil
+	return model.Applied{Inverse: data, InverseEdit: "", Touched: change.touched(), Covers: nil}, nil
+}
+
+// apply makes the change to a list and returns its inverse.
+func (c ChangeArgs) apply(values *worldstate.Declarations) (ChangeArgs, error) {
+	inverse := ChangeArgs{Add: nil, Set: nil, Remove: nil}
+	if err := values.InsertAll(c.Add); err != nil {
+		return inverse, err //nolint:wrapcheck // Wrapped by Apply.
+	}
+	for _, added := range c.Add {
+		inverse.Remove = append(inverse.Remove, added.ID)
+	}
+	for _, set := range c.Set {
+		previous, err := values.Replace(set)
+		if err != nil {
+			return inverse, err //nolint:wrapcheck // Wrapped by Apply.
+		}
+		inverse.Set = append(inverse.Set, previous)
+	}
+	removed, err := values.RemoveAll(c.Remove)
+	if err != nil {
+		return inverse, err //nolint:wrapcheck // Wrapped by Apply.
+	}
+	inverse.Add = removed
+
+	return inverse, nil
+}
+
+// touched lists every declaration the change touches.
+func (c ChangeArgs) touched() []string {
+	items := make([]string, 0, len(c.Add)+len(c.Set)+len(c.Remove))
+	for _, list := range [][]worldstate.Declaration{c.Add, c.Set} {
+		for _, declared := range list {
+			items = append(items, declared.ID.String())
+		}
+	}
+	for _, removed := range c.Remove {
+		items = append(items, removed.String())
+	}
+
+	return items
 }
 
 func encode(value any) (json.RawMessage, error) {
@@ -230,15 +244,123 @@ func encode(value any) (json.RawMessage, error) {
 	return data, nil
 }
 
-// Edits returns a set of add, remove and change edits for a list of values,
-// named with a prefix such as "worldstate.value".
-func Edits(prefix, format string, list Values) []model.EditKind {
-	add, remove, set := prefix+".add", prefix+".remove", prefix+".set"
+// TemplateArgs applies a template to an NPC or zone, or takes it off; Index
+// is where it goes back when its removal is undone, past the end to append.
+type TemplateArgs struct {
+	Template ids.ULID `json:"template"`
+	Index    int      `json:"index"`
+}
+
+// OwnedOf returns what an NPC or zone document owns, for the edits that
+// apply templates to it.
+type OwnedOf func(document model.Document) (*worldstate.Owned, error)
+
+// ApplyTemplate is an edit kind that applies a template to an NPC or zone.
+type ApplyTemplate struct {
+	Kind, On, Inverse string
+	Owned             OwnedOf
+}
+
+// Name identifies the edit kind.
+func (a ApplyTemplate) Name() string { return a.Kind }
+
+// Format names the document format the edit applies to.
+func (a ApplyTemplate) Format() string { return a.On }
+
+// Apply applies the template; its inverse takes it off.
+func (a ApplyTemplate) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	owned, err := a.Owned(document)
+	if err != nil {
+		return model.Applied{}, err
+	}
+	var apply TemplateArgs
+	if err := json.Unmarshal(args, &apply); err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	index, err := owned.ApplyAt(apply.Template, apply.Index)
+	if err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	data, err := encode(TemplateArgs{Template: apply.Template, Index: index})
+	if err != nil {
+		return model.Applied{}, err
+	}
+
+	return model.Applied{
+		Inverse: data, InverseEdit: a.Inverse, Touched: []string{templateItem(apply.Template)}, Covers: nil,
+	}, nil
+}
+
+// UnapplyTemplate is an edit kind that takes a template off an NPC or zone.
+type UnapplyTemplate struct {
+	Kind, On, Inverse string
+	Owned             OwnedOf
+}
+
+// Name identifies the edit kind.
+func (u UnapplyTemplate) Name() string { return u.Kind }
+
+// Format names the document format the edit applies to.
+func (u UnapplyTemplate) Format() string { return u.On }
+
+// Apply takes the template off; its inverse applies it where it was.
+func (u UnapplyTemplate) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	owned, err := u.Owned(document)
+	if err != nil {
+		return model.Applied{}, err
+	}
+	var unapply TemplateArgs
+	if err := json.Unmarshal(args, &unapply); err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	index, err := owned.Unapply(unapply.Template)
+	if err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	data, err := encode(TemplateArgs{Template: unapply.Template, Index: index})
+	if err != nil {
+		return model.Applied{}, err
+	}
+
+	return model.Applied{
+		Inverse: data, InverseEdit: u.Inverse, Touched: []string{templateItem(unapply.Template)}, Covers: nil,
+	}, nil
+}
+
+// TemplateItem names an applied template as an edit touches it.
+func templateItem(template ids.ULID) string { return "template:" + template.String() }
+
+// TemplateReferences lists the templates applied to an NPC or zone, in the
+// world state, so a template shows where it is applied.
+func TemplateReferences(owned worldstate.Owned) []model.Reference {
+	references := make([]model.Reference, 0, len(owned.Templates))
+	for _, template := range owned.Templates {
+		references = append(references, model.Reference{
+			Document: worldstate.ID(), Item: template.String(), Label: "applied template",
+		})
+	}
+
+	return references
+}
+
+// OwnerEdits returns the edits an NPC or zone plug-in needs for what its
+// documents own: a change to its own values, and applying and taking off
+// templates, named with a prefix such as "npc".
+func OwnerEdits(prefix, format string, owned OwnedOf) []model.EditKind {
+	values := func(document model.Document) (*worldstate.Declarations, error) {
+		held, err := owned(document)
+		if err != nil {
+			return nil, err
+		}
+
+		return held.Values, nil
+	}
+	apply, unapply := prefix+".template.apply", prefix+".template.unapply"
 
 	return []model.EditKind{
-		AddValue{Kind: add, On: format, Inverse: remove, List: list},
-		RemoveValue{Kind: remove, On: format, Inverse: add, List: list},
-		SetValue{Kind: set, On: format, List: list},
+		Change{Kind: prefix + ".values.change", On: format, List: values},
+		ApplyTemplate{Kind: apply, On: format, Inverse: unapply, Owned: owned},
+		UnapplyTemplate{Kind: unapply, On: format, Inverse: apply, Owned: owned},
 	}
 }
 
@@ -247,7 +369,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: worldstate.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     Edits("worldstate.value", worldstate.FormatName, worldValues),
+		Edits:     []model.EditKind{Change{Kind: ChangeEdit, On: worldstate.FormatName, List: worldValues}},
 		Required: []model.RequiredDocument{{
 			ID: worldstate.ID(), Format: worldstate.FormatName, Name: worldstate.Name, Data: emptyState,
 			ReadOnly: false,

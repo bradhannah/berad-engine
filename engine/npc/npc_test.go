@@ -8,22 +8,36 @@ import (
 
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 func TestNPCRoundTrips(t *testing.T) {
 	t.Parallel()
 	var routine ids.ULID
 	routine[15] = 9
-	clerk := npc.NPC{Behaviour: routine, Path: "clerk", Notes: "Works the front desk.\nNever shown to players."}
+	clerk := npc.New()
+	clerk.Behaviour, clerk.Path, clerk.Notes = routine, "clerk", "Works the front desk.\nNever shown to players."
+	var secret, guards ids.ULID
+	secret[0], secret[15], guards[0], guards[15] = 1, 1, 1, 2
+	if err := clerk.Owned.Values.Insert(worldstate.New(secret, "secret", worldstate.ScopeNPC, worldstate.TypeBool)); err != nil {
+		t.Fatal(err)
+	}
+	if err := clerk.Owned.Apply(guards); err != nil {
+		t.Fatal(err)
+	}
 	data, err := clerk.Encode()
 	if err != nil {
 		t.Fatal(err)
 	}
 	decoded, err := npc.Decode(data)
-	if err != nil || decoded != clerk {
+	if err != nil || !decoded.Equal(clerk) {
 		t.Fatalf("round trip %+v %v", decoded, err)
 	}
-	empty, err := (npc.NPC{Behaviour: ids.ULID{}, Path: "", Notes: ""}).Encode()
+	copied := clerk.Clone()
+	if _, err := copied.Owned.Values.Remove(secret); err != nil || copied.Equal(clerk) {
+		t.Fatalf("a copy's values are its own: %v", err)
+	}
+	empty, err := npc.New().Encode()
 	if err != nil || string(empty) != "{}" {
 		t.Fatalf("an NPC with nothing set saves as {}: %s %v", empty, err)
 	}

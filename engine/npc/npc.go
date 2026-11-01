@@ -1,8 +1,9 @@
-// Package npc is the NPC document: one NPC's definition, kept once however
-// many floors place it. It names the workflow that is the NPC's behaviour,
-// gives the NPC a path name that workflows read its values by, such as
-// george in npc.george.mood, and holds the author's private notes about the
-// NPC, which players never see.
+// Package npc is the NPC document: one NPC's definition, placed once in the
+// whole project. It names the workflow that is the NPC's behaviour, gives
+// the NPC a path name that workflows read its values by, such as george in
+// npc.george.secret, holds the values the NPC owns and the templates applied
+// to it, and the author's private notes about the NPC, which players never
+// see.
 package npc
 
 import (
@@ -22,8 +23,8 @@ import (
 const FormatName = "npc"
 
 // FormatVersion is the NPC format version this package writes. Version 2
-// gave NPCs a path name.
-const FormatVersion = 2
+// gave NPCs a path name, and version 3 their own values and templates.
+const FormatVersion = 3
 
 // MaxNotes bounds an NPC's notes, in characters.
 const MaxNotes = 20000
@@ -48,6 +49,33 @@ type NPC struct {
 	// Notes are the author's own notes about the NPC, never shown to
 	// players.
 	Notes string `json:"notes,omitempty"`
+	// Owned is the NPC's own values and the templates applied to it.
+	Owned worldstate.Owned `json:"-"`
+}
+
+// New returns an NPC with nothing set.
+func New() NPC {
+	return NPC{Behaviour: ids.ULID{}, Path: "", Notes: "", Owned: worldstate.NewOwned(worldstate.ScopeNPC)}
+}
+
+// Clone returns an independent copy.
+func (n NPC) Clone() NPC {
+	n.Owned = n.Owned.Clone()
+
+	return n
+}
+
+// Equal reports whether two NPCs are the same.
+func (n NPC) Equal(other NPC) bool {
+	return n.Behaviour == other.Behaviour && n.Path == other.Path && n.Notes == other.Notes &&
+		n.Owned.Equal(other.Owned)
+}
+
+type wireNPC struct {
+	Behaviour ids.ULID `json:"behaviour,omitzero"`
+	Path      string   `json:"path,omitempty"`
+	Notes     string   `json:"notes,omitempty"`
+	worldstate.WireOwned
 }
 
 // CheckPath reports a path name that is not fit for a path; "" is none yet.
@@ -123,7 +151,11 @@ func CheckNotes(notes string) error {
 
 // Encode returns the NPC's saved data.
 func (n NPC) Encode() (json.RawMessage, error) {
-	data, err := json.Marshal(n)
+	owned, err := n.Owned.Wire()
+	if err != nil {
+		return nil, fmt.Errorf("encode NPC: %w", err)
+	}
+	data, err := json.Marshal(wireNPC{Behaviour: n.Behaviour, Path: n.Path, Notes: n.Notes, WireOwned: owned})
 	if err != nil {
 		return nil, fmt.Errorf("encode NPC: %w", err)
 	}
@@ -133,25 +165,32 @@ func (n NPC) Encode() (json.RawMessage, error) {
 
 // Decode reads saved NPC data.
 func Decode(data json.RawMessage) (NPC, error) {
-	var decoded NPC
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return NPC{Behaviour: ids.ULID{}, Path: "", Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
+	var wire wireNPC
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return New(), fmt.Errorf("%w: %w", ErrData, err)
 	}
-	if err := CheckNotes(decoded.Notes); err != nil {
-		return NPC{Behaviour: ids.ULID{}, Path: "", Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
+	if err := CheckNotes(wire.Notes); err != nil {
+		return New(), fmt.Errorf("%w: %w", ErrData, err)
 	}
-	if err := CheckPath(decoded.Path); err != nil {
-		return NPC{Behaviour: ids.ULID{}, Path: "", Notes: ""}, fmt.Errorf("%w: %w", ErrData, err)
+	if err := CheckPath(wire.Path); err != nil {
+		return New(), fmt.Errorf("%w: %w", ErrData, err)
+	}
+	owned, err := worldstate.ReadOwned(worldstate.ScopeNPC, wire.WireOwned)
+	if err != nil {
+		return New(), fmt.Errorf("%w: %w", ErrData, err)
 	}
 
-	return decoded, nil
+	return NPC{Behaviour: wire.Behaviour, Path: wire.Path, Notes: wire.Notes, Owned: owned}, nil
 }
 
 // Format returns the NPC format registration.
 func Format() content.Format {
-	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{1: upgradeFrom1}}
+	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
+		1: unchanged, 2: unchanged,
+	}}
 }
 
-// upgradeFrom1 reads a version 1 NPC unchanged: it has no path name until
-// its author gives it one.
-func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) { return data, nil }
+// unchanged reads an older NPC as it is: one from version 1 has no path
+// name until its author gives it one, and one from version 2 owns no values
+// yet.
+func unchanged(data json.RawMessage) (json.RawMessage, error) { return data, nil }

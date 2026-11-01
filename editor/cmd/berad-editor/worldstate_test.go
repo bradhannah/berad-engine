@@ -2,7 +2,6 @@ package main_test
 
 import (
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -16,8 +15,9 @@ import (
 )
 
 // TestWorldStateDeclaresValues opens the World state window from the
-// project browser, declares an NPC value, names it and makes it a list of
-// choices: the saved world state holds npc.mood.
+// project browser, adds a world value, names it into a new group and makes
+// it a list of choices: the saved world state holds world.quests.mood. The
+// sample's NPCs and their shop template are in the tree.
 func TestWorldStateDeclaresValues(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -25,10 +25,10 @@ func TestWorldStateDeclaresValues(t *testing.T) {
 	shot := shotPath(t, "world-state.png")
 	browserScript := script(must("row:World state", 600), wait(5), doubleClick("row:World state"), quitWhenAlone())
 	stateScript := script(
-		must("state:loaded", 600), wait(5), click("scope:npc"), wait(5), click("ui:add-value"),
-		must("state:selected=npc.value", 300), wait(5), click("ui:value-name"), keys("Cmd+A", "Backspace"),
-		typed("mood"), keys("Enter"), must("state:selected=npc.mood", 300), wait(5),
-		click("ui:value-type-choice"), must("state:value=npc.mood:choice:first", 300), wait(30),
+		must("state:loaded", 600), must("row:npc.shop.waiting", 600), wait(5), click("ui:add-value"),
+		must("state:selected=world.value", 300), wait(5), click("ui:value-name"), keys("Cmd+A", "Backspace"),
+		typed("quests.mood"), keys("Enter"), must("state:selected=world.quests.mood", 300), wait(5),
+		click("ui:value-type-choice"), must("state:value=world.quests.mood:choice:first", 300), wait(30),
 		shoot(shot), wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "world-state": {stateScript}})
@@ -38,19 +38,19 @@ func TestWorldStateDeclaresValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	values := decoded.(*stateplugin.Document).State.Values.Values()
-	mood := slices.IndexFunc(values, func(value worldstate.Declaration) bool { return value.Path() == "npc.mood" })
-	if saved.ID != worldstate.ID() || mood < 0 || values[mood].Type != worldstate.TypeChoice ||
-		len(values[mood].Choices) != 2 {
-		t.Fatalf("the world state was saved as %+v", values)
+	values := decoded.(*stateplugin.Document).State.Values
+	quests, found := values.Find(worldstate.ScopeWorld, ids.ULID{}, "quests")
+	mood, held := values.Find(worldstate.ScopeWorld, quests.ID, "mood")
+	if saved.ID != worldstate.ID() || !found || !held || mood.Type != worldstate.TypeChoice || len(mood.Choices) != 2 {
+		t.Fatalf("the world state was saved as %+v", values.Values())
 	}
 	t.Logf("screenshot: %s", shot)
 }
 
 // TestValueNodesInAWorkflow builds a Set value and a Check value in a real
-// Workflow: the Set value declares npc.done from its chooser and sets it
+// Workflow: the Set value declares world.done from its chooser and sets it
 // to 1, and the Check value checks it; then, with nothing selected, a local
-// value is added. The world state holds npc.done and the workflow the
+// value is added. The world state holds world.done and the workflow the
 // local and both nodes.
 func TestValueNodesInAWorkflow(t *testing.T) {
 	requireGUI(t)
@@ -64,14 +64,14 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
 		click("node:start:1"), wait(5), click("palette:set-value"), must("state:selected:set-value", 300),
-		click("ui:pick-value"), wait(5), typed("done"), wait(5), must("declare:npc", 120), click("declare:npc"),
-		must("state:value:value=npc.done", 300), wait(5),
+		click("ui:pick-value"), wait(5), typed("done"), wait(5), must("declare:world.done", 120),
+		click("declare:world.done"), must("state:value:value=world.done", 300), wait(5),
 		click("ui:operand-to"), keys("Cmd+A"), typed("1"), keys("Enter"), must("state:operand:to=1", 300), wait(10),
 		shoot(setShot),
 		click("palette:check-value"), must("state:selected:check-value", 300),
-		click("ui:pick-value"), wait(5), must("valuerow:npc.done", 120), click("valuerow:npc.done"),
-		must("state:value:value=npc.done", 300), wait(10), shoot(checkShot),
-		keys("Escape"), wait(5), click("ui:add-local"), must("state:local=value:number:0", 300), wait(10),
+		click("ui:pick-value"), wait(5), must("valuerow:world.done", 120), click("valuerow:world.done"),
+		must("state:value:value=world.done", 300), wait(10), shoot(checkShot),
+		keys("Escape"), wait(5), click("ui:add-local"), must("state:local=value:integer:0", 300), wait(10),
 		shoot(localShot), wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
@@ -81,11 +81,11 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	values := decodedState.(*stateplugin.Document).State.Values.Values()
-	if !slices.ContainsFunc(values, func(value worldstate.Declaration) bool { return value.Path() == "npc.done" }) {
-		t.Fatalf("the world state holds %+v", values)
+	if done, found := decodedState.(*stateplugin.Document).State.Values.Find(worldstate.ScopeWorld, ids.ULID{},
+		"done"); !found || done.Type != worldstate.TypeInteger {
+		t.Fatalf("the world state holds world.done: %+v", done)
 	}
-	logic := readEnvelope(t, project, "workflows/workflow-1--*[^t].json")
+	logic := readEnvelope(t, project, "workflows/workflow-1--????????.json")
 	decoded, err := workflowplugin.Decode(logic.Data)
 	if err != nil {
 		t.Fatal(err)
@@ -101,26 +101,25 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 	t.Logf("screenshots: %s %s %s", setShot, checkShot, localShot)
 }
 
-// TestShopkeeperServesACustomer builds a shop from nodes alone. The
-// customer's workflow looks for a clerk serving within two tiles: found, it
-// stops waiting; none, it waits. The clerk's looks for a waiting customer
-// within two tiles and serves it. Both declare their values from the
-// choosers, as npc.busy and npc.queued, since the sample's own shop
-// declares npc.serving and npc.waiting. Placed side by side and previewed,
-// the Watch window shows the customer no longer waiting, keeping the clerk
-// it found: it stops only on finding a clerk serving, which the clerk is
-// only once it has found the customer waiting.
+// TestShopkeeperServesACustomer builds a shop in the editor's windows
+// alone. The World state window makes a stall template and applies it to
+// two new NPCs. The customer's workflow looks for an NPC whose
+// npc.stall.busy is 1 within two tiles: found, it stops queueing; none, it
+// queues. The clerk's looks for a queueing customer within two tiles and is
+// busy serving it. Both declare the template's values from their choosers.
+// Placed side by side and previewed, the Watch window shows the customer no
+// longer queueing, keeping the clerk it found.
 func TestShopkeeperServesACustomer(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	customerShot := shotPath(t, "shop-customer.png")
+	customerShot, stateShot := shotPath(t, "shop-customer.png"), shotPath(t, "shop-state.png")
 	mapShot, flowShot := shotPath(t, "shop-map.png"), shotPath(t, "shop-workflow.png")
 	retype := func(field, text string) []step {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
 	choose := func(param, name, row string) []step {
-		return script(click("ui:pick-"+param), wait(5), typed(name), must(row, 1800), click(row), wait(10))
+		return script(click("ui:pick-"+param), wait(5), typed(name), must(row, 3600), click(row), wait(10))
 	}
 	pause := func() []step {
 		return script(click("palette:wait"), wait(10), retype("param-duration", "1"), click("ui:duration-seconds"), wait(10))
@@ -131,46 +130,55 @@ func TestShopkeeperServesACustomer(t *testing.T) {
 		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
 		click("ui:use"), wait(30),
 		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 2"), wait(5),
-		click("ui:use"), wait(30), quitWhenAlone(),
+		click("ui:use"), wait(30), doubleClick("row:World state"), quitWhenAlone(),
+	)
+	stateScript := script(
+		must("state:loaded", 600), must("row:npc.npc_1", 3600), must("row:npc.npc_2", 3600), wait(5),
+		click("row:npc.npc_1"), wait(5), click("ui:add-template"), must("state:selected=npc.template", 300),
+		retype("value-name", "stall"), must("state:selected=npc.stall", 300),
+		click("row:npc.npc_1"), wait(5), click("ui:template-stall"), must("state:applied=npc.npc_1:stall", 300),
+		click("row:npc.npc_2"), wait(5), click("ui:template-stall"), must("state:applied=npc.npc_2:stall", 300),
+		click("toggle:npc.npc_2"), must("row:npc.npc_2.stall.busy", 3600), wait(10), shoot(stateShot), wait(10), quit(),
 	)
 	customerScript := script(
 		must("state:loaded", 600), wait(5),
 		click("node:start:1"), wait(5), click("palette:find-npc"), must("state:selected:find-npc", 300),
-		choose("where", "busy", "declare:npc"), must("state:value:where=npc.busy", 300),
+		choose("where", "npc.stall.busy", "declare:npc.stall.busy"), must("state:value:where=npc.stall.busy", 300),
 		retype("operand-is", "1"), must("state:operand:is=1", 300),
-		choose("into", "clerk", "declare:local"), must("state:value:into=local.clerk", 300),
+		choose("into", "clerk", "declare:local.clerk"), must("state:value:into=local.clerk", 300),
 		click("palette:set-value"), must("state:selected:set-value", 300),
-		choose("value", "queued", "declare:npc"), must("state:operand:to=0", 300), pause(),
+		choose("value", "npc.stall.queued", "declare:npc.stall.queued"), must("state:operand:to=0", 300), pause(),
 		click("node:find-npc:1"), wait(5), click("palette:set-value"), must("state:selected:set-value", 300),
-		choose("value", "queued", "valuerow:npc.queued"), retype("operand-to", "1"), must("state:operand:to=1", 300),
-		pause(), click("ui:arrange"), wait(20), shoot(flowShot), wait(10), quit(),
+		choose("value", "queued", "valuerow:npc.stall.queued"), retype("operand-to", "1"),
+		must("state:operand:to=1", 300), pause(), click("ui:arrange"), wait(20), shoot(flowShot), wait(10), quit(),
 	)
 	clerkScript := script(
 		must("state:loaded", 600), wait(5),
 		click("node:start:1"), wait(5), click("palette:find-npc"), must("state:selected:find-npc", 300),
-		choose("where", "queued", "valuerow:npc.queued"), retype("operand-is", "1"), must("state:operand:is=1", 300),
-		choose("into", "customer", "declare:local"), must("state:value:into=local.customer", 300),
+		choose("where", "queued", "valuerow:npc.stall.queued"), retype("operand-is", "1"),
+		must("state:operand:is=1", 300),
+		choose("into", "customer", "declare:local.customer"), must("state:value:into=local.customer", 300),
 		click("palette:set-value"), must("state:selected:set-value", 300),
-		choose("value", "busy", "valuerow:npc.busy"), retype("operand-to", "1"), must("state:operand:to=1", 300),
+		choose("value", "busy", "valuerow:npc.stall.busy"), retype("operand-to", "1"), must("state:operand:to=1", 300),
 		pause(), click("node:find-npc:1"), wait(5), pause(), wait(10), quit(),
 	)
 	mapScript := script(
 		must("state:loaded", 600), wait(5), keys("N"), must("npc:NPC 2", 3600), click("npc:NPC 1"), wait(5),
 		click("cell:1,1"), must("state:placement:1,1=NPC 1", 300), click("npc:NPC 2"), wait(5),
-		click("cell:2,1"), must("state:placement:2,1=NPC 2", 300), wait(900),
+		click("cell:2,1"), must("state:placement:2,1=NPC 2", 300), wait(1500),
 		keys("P"), click("cell:2,-2"), must("state:previewing", 300), wait(30),
 		click("live-npc:NPC 1"), wait(5), click("live-npc:NPC 1"), must("state:watching", 300), wait(10),
 		click("ui:watch"), wait(400), shoot(mapShot), keys("P"), wait(30), quit(),
 	)
 	watchScript := script(
-		must("state:previewing", 1800), must("state:watching:NPC 1", 600),
-		must("state:value:npc.queued=0", 600), must("state:value:local.clerk=NPC 2", 300), wait(30),
+		must("state:previewing", 3600), must("state:watching:NPC 1", 600),
+		must("state:value:npc.stall.queued=0", 600), must("state:value:local.clerk=NPC 2", 300), wait(30),
 		shoot(customerShot), wait(10), quit(),
 	)
 	clockScript := script(must("state:running", 3600), wait(30), quit())
 	runEditor(t, binary, project, scripts{
-		"browser": {browserScript}, "workflow": {customerScript, clerkScript}, "map": {mapScript},
-		"watch": {watchScript}, "clock": {clockScript},
+		"browser": {browserScript}, "world-state": {stateScript}, "workflow": {customerScript, clerkScript},
+		"map": {mapScript}, "watch": {watchScript}, "clock": {clockScript},
 	})
 	noCrashes(t, project)
 	state := readEnvelope(t, project, "world-states/*.json")
@@ -178,14 +186,14 @@ func TestShopkeeperServesACustomer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths := []string{}
-	for _, value := range decoded.(*stateplugin.Document).State.Values.Values() {
-		paths = append(paths, value.Path())
+	values := decoded.(*stateplugin.Document).State.Values
+	stall, found := values.Find(worldstate.ScopeNPC, ids.ULID{}, "stall")
+	_, busy := values.Find(worldstate.ScopeNPC, stall.ID, "busy")
+	_, queued := values.Find(worldstate.ScopeNPC, stall.ID, "queued")
+	if !found || !busy || !queued {
+		t.Fatalf("the stall template holds busy and queued: %+v", values.Values())
 	}
-	if !slices.Contains(paths, "npc.busy") || !slices.Contains(paths, "npc.queued") {
-		t.Fatalf("the world state holds %v", paths)
-	}
-	t.Logf("screenshots: %s %s %s", flowShot, mapShot, customerShot)
+	t.Logf("screenshots: %s %s %s %s", stateShot, flowShot, mapShot, customerShot)
 }
 
 // checkSampleShop checks the sample's shop: its four values declared, and a
@@ -198,10 +206,12 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 		t.Fatal(err)
 	}
 	var paths []string
-	for _, value := range decoded.(*stateplugin.Document).State.Values.Values() {
-		paths = append(paths, value.Path())
+	values := decoded.(*stateplugin.Document).State.Values
+	for _, value := range values.Values() {
+		paths = append(paths, values.Path(value.ID))
 	}
-	if got := strings.Join(paths, " "); got != "npc.waiting npc.serving npc.served world.customers_served" {
+	if got := strings.Join(paths, " "); got != "npc.shop npc.shop.waiting npc.shop.serving npc.shop.served world.shop "+
+		"world.shop.customers_served" {
 		t.Fatalf("the sample declares the shop's values: %s", got)
 	}
 	placed := map[ids.ULID]bool{}
@@ -246,7 +256,7 @@ func TestSampleShopRuns(t *testing.T) {
 	)
 	watchScript := script(
 		must("state:previewing", 1800), must("state:watching:Customer", 600),
-		must("state:value:world.customers_served=1", 900), must("state:value:npc.served=yes", 60),
+		must("state:value:world.shop.customers_served=1", 900), must("state:value:npc.shop.served=true", 60),
 		shoot(watchShot), wait(10), quit(),
 	)
 	clockScript := script(must("state:running", 3600), wait(30), quit())

@@ -7,6 +7,7 @@ import (
 	"image"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -17,10 +18,10 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
-	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
@@ -367,16 +368,22 @@ func othersOf(runners []*npcRun) []npcrun.Other {
 }
 
 // declareValues gives the preview's values the project's declarations as
-// they are now, keeping what has been set.
+// they are now, keeping what has been set: the world state's, and each NPC's
+// and zone's own and the templates applied to it.
 func (s *State) declareValues(docs frame.Docs) {
-	docs.View(worldstate.ID(), func(document client.Document) {
-		stateDoc, ok := document.Model.(*stateplugin.Document)
-		if !ok || (document.Revision == s.preview.declared && s.preview.declared != 0) {
-			return
-		}
-		s.preview.values.Declare(stateDoc.State.Values)
-		s.preview.declared = document.Revision
-	})
+	var revisions strings.Builder
+	for _, document := range valuetree.Documents(docs) {
+		docs.View(document, func(held client.Document) {
+			revisions.WriteString(document.String() + ":" + strconv.FormatUint(held.Revision, 10) + ";")
+		})
+	}
+	if revisions.String() == s.preview.declared {
+		return
+	}
+	if catalog, ready := valuetree.Catalog(docs); ready {
+		s.preview.values.Declare(catalog)
+		s.preview.declared = revisions.String()
+	}
 }
 
 // watchedValues lists the watched NPC's values: its workflow's locals and
@@ -399,7 +406,7 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 			if declared.Type == worldstate.TypeNPC && !value.NPC.IsZero() {
 				label = s.names.Name(value.NPC, label)
 			}
-			shown = append(shown, protocol.PreviewValue{Path: declared.Path(), Value: label})
+			shown = append(shown, protocol.PreviewValue{Path: string(worldstate.ScopeLocal) + "." + declared.Name, Value: label})
 		}
 	}
 	values := s.preview.values

@@ -38,10 +38,11 @@ func (n *NPC) Locals() map[ids.ULID]worldstate.Value {
 }
 
 // lookup finds a reference's declaration and whose value it is: no one's
-// for a local or a world value, the zone's, or an NPC's. An NPC value is
-// this NPC's, the NPC a local holds, or the NPC named.
+// for a local or a world value, or an NPC's or zone's. An NPC or zone value
+// is this NPC's or its zone's, the one named, or the NPC a local holds; it
+// is found only if that NPC or zone has it.
 func (n *NPC) lookup(world World, ref flow.ValueRef) (worldstate.Declaration, ids.ULID, bool) {
-	var none worldstate.Declaration
+	none := worldstate.New(ids.ULID{}, "", "", "")
 	if ref.IsZero() {
 		return none, ids.ULID{}, false
 	}
@@ -50,31 +51,35 @@ func (n *NPC) lookup(world World, ref flow.ValueRef) (worldstate.Declaration, id
 
 		return declared, ids.ULID{}, ok
 	}
-	if world.State == nil {
+	owner, known := n.ownerOf(world, ref)
+	if world.State == nil || !known {
 		return none, ids.ULID{}, false
 	}
-	declared, ok := world.State.Declared(ref.Value)
-	if !ok || declared.Scope != ref.Scope {
-		return none, ids.ULID{}, false
-	}
+	declared, found := world.State.Catalog().Lookup(ref.Scope, owner, ref.Value)
+
+	return declared, owner, found
+}
+
+// ownerOf returns whose value a reference is.
+func (n *NPC) ownerOf(world World, ref flow.ValueRef) (ids.ULID, bool) {
 	switch {
+	case ref.Scope == worldstate.ScopeWorld:
+		return ids.ULID{}, true
+	case !ref.Owner.IsZero():
+		return ref.Owner, true
 	case ref.Scope == worldstate.ScopeZone:
-		return declared, world.Here, true
-	case ref.Scope != worldstate.ScopeNPC:
-		return declared, ids.ULID{}, true
-	case !ref.NPC.IsZero():
-		return declared, ref.NPC, true
+		return world.Here, true
 	case !ref.Found.IsZero():
 		holder, held := world.Workflow.Locals().Value(ref.Found)
 		if !held || holder.Type != worldstate.TypeNPC {
-			return none, ids.ULID{}, false
+			return ids.ULID{}, false
 		}
 		found := n.local(holder).NPC
 
-		return declared, found, !found.IsZero()
+		return found, !found.IsZero()
 	}
 
-	return declared, n.NPC, true
+	return n.NPC, true
 }
 
 // local returns a local value as it is now.
@@ -90,7 +95,7 @@ func (n *NPC) local(declared worldstate.Declaration) worldstate.Value {
 func (n *NPC) read(world World, ref flow.ValueRef) (worldstate.Declaration, worldstate.Value, bool) {
 	declared, owner, ok := n.lookup(world, ref)
 	if !ok {
-		return declared, worldstate.Value{Type: "", Number: 0, Yes: false, Choice: "", NPC: ids.ULID{}}, false
+		return declared, worldstate.NoValue(), false
 	}
 	if declared.Scope == worldstate.ScopeLocal {
 		return declared, n.local(declared), true
@@ -100,7 +105,7 @@ func (n *NPC) read(world World, ref flow.ValueRef) (worldstate.Declaration, worl
 }
 
 // write sets one of the workflow's own values: a local one, its NPC's, its
-// zone's or the world's. It never sets another NPC's.
+// zone's or the world's. It never sets another NPC's or zone's.
 func (n *NPC) write(world World, ref flow.ValueRef, value worldstate.Value) bool {
 	if !ref.Writable() {
 		return false
@@ -125,14 +130,15 @@ func (n *NPC) write(world World, ref flow.ValueRef, value worldstate.Value) bool
 func operand(node flow.Node, name string, declared worldstate.Declaration) (worldstate.Value, bool) {
 	raw, err := node.Operand(name)
 	if err != nil || flow.IsNoOperand(raw) {
-		return worldstate.Value{Type: "", Number: 0, Yes: false, Choice: "", NPC: ids.ULID{}}, false
+		return worldstate.NoValue(), false
 	}
 	value, err := declared.Parse(raw)
 
 	return value, err == nil
 }
 
-// actSet sets a value, or adds to a number, and carries on.
+// actSet sets a value, or adds to an integer, holding an integer at its
+// limits, and carries on.
 func (n *NPC) actSet(world World, node flow.Node) {
 	ref, err := node.Ref(flow.ParamValue)
 	if err != nil {
@@ -153,19 +159,23 @@ func (n *NPC) actSet(world World, node flow.Node) {
 		return
 	}
 	if how, err := node.Choice("how"); err == nil && how == flow.HowAdd {
-		if declared.Type != worldstate.TypeNumber {
+		if declared.Type != worldstate.TypeInteger {
 			n.work.skipped = StatusNoValue
 
 			return
 		}
-		given.Number = min(max(current.Number+given.Number, -worldstate.MaxNumber), worldstate.MaxNumber)
+		given.Integer += current.Integer
+	}
+	if declared.Type == worldstate.TypeInteger {
+		given.Integer = declared.Hold(given.Integer)
 	}
 	if !n.write(world, ref, given) {
 		n.work.skipped = StatusNoValue
 	}
 }
 
-// actCheck compares a value and takes "yes" or "otherwise".
+// actCheck compares a value, or asks whether an integer is at a limit, and
+// takes "yes" or "otherwise".
 func (n *NPC) actCheck(world World, node flow.Node) string {
 	ref, err := node.Ref(flow.ParamValue)
 	if err != nil {
@@ -179,28 +189,37 @@ func (n *NPC) actCheck(world World, node flow.Node) string {
 
 		return flow.OutputOtherwise
 	}
+	compare, err := node.Choice("compare")
+	if err != nil {
+		compare = flow.CompareIs
+	}
+	switch {
+	case compare == flow.CompareMax && declared.AtMost(current), compare == flow.CompareMin && declared.AtLeast(current):
+		return flow.OutputYes
+	case flow.Unlimited(compare):
+		return flow.OutputOtherwise
+	}
 	against, fits := operand(node, "against", declared)
 	if !fits {
 		n.work.skipped = StatusNoOperand
 
 		return flow.OutputOtherwise
 	}
-	compare, err := node.Choice("compare")
-	if err == nil && compares(compare, current, against) {
+	if compares(compare, current, against) {
 		return flow.OutputYes
 	}
 
 	return flow.OutputOtherwise
 }
 
-// compares reports whether two values compare as a Check value asks: is, at least or
-// below, the last two for numbers only.
+// compares reports whether two values compare as a Check value asks: is, at
+// least or below, the last two for integers only.
 func compares(compare string, current, against worldstate.Value) bool {
 	switch compare {
 	case flow.CompareLeast:
-		return current.Type == worldstate.TypeNumber && current.Number >= against.Number
+		return current.Type == worldstate.TypeInteger && current.Integer >= against.Integer
 	case flow.CompareBelow:
-		return current.Type == worldstate.TypeNumber && current.Number < against.Number
+		return current.Type == worldstate.TypeInteger && current.Integer < against.Integer
 	}
 
 	return current.Equal(against)
@@ -232,7 +251,8 @@ func (n *NPC) actFind(world World, node flow.Node) string {
 		}
 		nearest, best = other.NPC, distance
 	}
-	found := worldstate.Value{Type: worldstate.TypeNPC, Number: 0, Yes: false, Choice: "", NPC: nearest}
+	found := worldstate.NoValue()
+	found.Type, found.NPC = worldstate.TypeNPC, nearest
 	n.write(world, keep, found)
 	if nearest.IsZero() {
 		return flow.OutputNone
@@ -241,8 +261,8 @@ func (n *NPC) actFind(world World, node flow.Node) string {
 	return flow.OutputFound
 }
 
-// matcher returns what a Find NPC nearby looks for: any NPC, or one whose
-// own value is the one asked for.
+// matcher returns what a Find NPC nearby looks for: any NPC, or one that has
+// the value asked about, set to what is asked for.
 func (n *NPC) matcher(world World, node flow.Node) func(npc ids.ULID) bool {
 	where, err := node.Ref("where")
 	if err != nil || where.IsZero() {
@@ -254,8 +274,9 @@ func (n *NPC) matcher(world World, node flow.Node) func(npc ids.ULID) bool {
 
 		return nobody
 	}
-	declared, known := world.State.Declared(where.Value)
-	if !known || declared.Scope != worldstate.ScopeNPC {
+	catalog := world.State.Catalog()
+	declared, _, known := catalog.Declared(where.Value)
+	if !known || declared.Scope != worldstate.ScopeNPC || !declared.Type.IsValue() {
 		n.work.skipped = StatusNoValue
 
 		return nobody
@@ -267,7 +288,11 @@ func (n *NPC) matcher(world World, node flow.Node) func(npc ids.ULID) bool {
 		return nobody
 	}
 
-	return func(npc ids.ULID) bool { return world.State.Get(declared, npc).Equal(wanted) }
+	return func(npc ids.ULID) bool {
+		held, has := catalog.Lookup(worldstate.ScopeNPC, npc, where.Value)
+
+		return has && world.State.Get(held, npc).Equal(wanted)
+	}
 }
 
 func abs(value int) int {

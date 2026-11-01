@@ -28,10 +28,11 @@ import (
 // envelopes; the Layout names identify its layout. Version 2 gave random
 // choices any number of options and waits a unit and a clock; version 3 gave
 // Play sound how loud to play its cue this time; version 4 gave workflows
-// local values.
+// local values; version 5 renamed local types to integer and bool, and named
+// a value reference's NPC or zone its owner.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 4
+	FormatVersion       = 5
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 2
 )
@@ -117,7 +118,7 @@ func New(start ids.ULID) (*Workflow, error) {
 	node := Node{ID: start, Kind: KindStart, Parent: ids.ULID{}, Params: map[string]json.RawMessage{}, Next: nil}
 
 	return &Workflow{
-		start: start, nodes: []Node{node}, locals: worldstate.NewDeclarations(worldstate.ScopeLocal),
+		start: start, nodes: []Node{node}, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
 		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
 	}, nil
 }
@@ -346,7 +347,7 @@ func Decode(data json.RawMessage) (*Workflow, error) {
 		return nil, fmt.Errorf("%w: %w", ErrData, err)
 	}
 	decoded := &Workflow{
-		start: wire.Start, nodes: wire.Nodes, locals: worldstate.NewDeclarations(worldstate.ScopeLocal),
+		start: wire.Start, nodes: wire.Nodes, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
 		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
 	}
 	if len(wire.Locals) > 0 {
@@ -392,7 +393,55 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 func Format() content.Format {
 	return content.Format{
 		Name: FormatName, Current: FormatVersion,
-		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3},
+		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4},
+	}
+}
+
+// upgradeFrom4 renames local values' types, number to integer and yes-no to
+// bool, as the world state did, and the NPC a value reference names to its
+// owner, which can now be a zone.
+func upgradeFrom4(data json.RawMessage) (json.RawMessage, error) {
+	var wire map[string]any
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrNode, err)
+	}
+	if locals, listed := wire["locals"].([]any); listed {
+		for _, local := range locals {
+			if declared, ok := local.(map[string]any); ok {
+				if kind, named := declared["type"].(string); named {
+					declared["type"] = worldstate.UpgradeType(kind)
+				}
+			}
+		}
+	}
+	if nodes, listed := wire["nodes"].([]any); listed {
+		for _, node := range nodes {
+			if read, ok := node.(map[string]any); ok {
+				renameOwners(read)
+			}
+		}
+	}
+	upgraded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade workflow: %w", err)
+	}
+
+	return upgraded, nil
+}
+
+// renameOwners renames the NPC a version 4 node's value references name to
+// their owner.
+func renameOwners(node map[string]any) {
+	params, ok := node["params"].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, param := range params {
+		ref, isRef := param.(map[string]any)
+		if npc, named := ref["npc"]; isRef && named {
+			ref["owner"] = npc
+			delete(ref, "npc")
+		}
 	}
 }
 

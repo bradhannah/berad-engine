@@ -9,9 +9,9 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
-	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // Problem marks, in canvas pixels: a small round mark at a node's top-right
@@ -38,7 +38,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 	docs.View(project.IndexID(), func(document client.Document) {
 		parts = append(parts, "index:"+strconv.FormatUint(document.Revision, 10))
 	})
-	for _, valueDoc := range append([]ids.ULID{worldstate.ID()}, s.npcIDs(docs)...) {
+	for _, valueDoc := range valuetree.Documents(docs) {
 		revision := "-"
 		docs.View(valueDoc, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
 		parts = append(parts, valueDoc.String()+":"+revision)

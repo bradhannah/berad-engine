@@ -27,12 +27,9 @@ const (
 	RemoveEdit  = "workflow.nodes.remove"
 	ReplaceEdit = "workflow.node.replace"
 	MoveEdit    = "workflow.layout.move"
-	// AddLocalEdit, RemoveLocalEdit and SetLocalEdit declare, remove and
-	// change a workflow's local values, as the world-state edits do the
-	// project's.
-	AddLocalEdit    = "workflow.local.add"
-	RemoveLocalEdit = "workflow.local.remove"
-	SetLocalEdit    = "workflow.local.set"
+	// ChangeLocalsEdit declares, changes and removes a workflow's local
+	// values, as the world state's change edit does the project's.
+	ChangeLocalsEdit = "workflow.locals.change"
 )
 
 // ErrNotWorkflow reports a document that is not a workflow.
@@ -416,8 +413,9 @@ func change(
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: items, Covers: nil}, nil
 }
 
-// valueReferences lists the world-state values a value node uses, and any
-// NPC it names. Local values are the workflow's own.
+// valueReferences lists the values a value node uses, by ID under the world
+// state, wherever they are declared, and any NPC or zone it names. Local
+// values are the workflow's own.
 func valueReferences(node flow.Node) []model.Reference {
 	kind, _ := flow.KindOf(node.Kind)
 	label := "a " + kind.Label + " node"
@@ -431,8 +429,8 @@ func valueReferences(node flow.Node) []model.Reference {
 			continue
 		}
 		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})
-		if !ref.NPC.IsZero() {
-			references = append(references, model.Reference{Document: ref.NPC, Item: "", Label: label})
+		if !ref.Owner.IsZero() {
+			references = append(references, model.Reference{Document: ref.Owner, Item: "", Label: label})
 		}
 	}
 
@@ -460,7 +458,7 @@ func Plugin() plugin.Plugin {
 			Format: flow.Format(), Decode: Decode, Layout: &layout, Prepare: Prepare,
 		}},
 		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
-			stateplugin.Edits("workflow.local", flow.FormatName, localValues)...),
+			stateplugin.Change{Kind: ChangeLocalsEdit, On: flow.FormatName, List: localValues}),
 		Required: nil,
 	}
 }

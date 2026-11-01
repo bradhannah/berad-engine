@@ -22,8 +22,8 @@ func TestLocalValues(t *testing.T) {
 	f := newFixture(t)
 	f.keys("Escape")
 	f.click("ui:add-local")
-	if !f.has("local=value:number:0") {
-		t.Fatalf("a new local is a number named value: %+v", f.workflow().Locals().Values())
+	if !f.has("local=value:integer:0") {
+		t.Fatalf("a new local is an integer named value: %+v", f.workflow().Locals().Values())
 	}
 	f.click("ui:value-name")
 	f.keys("Cmd+A", "Backspace")

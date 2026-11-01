@@ -1,15 +1,21 @@
 // Package worldstate is a project's declared values: what workflows can set
-// and check. Every value is declared before it is used, with a name, a type,
-// a scope and a default, so every reader knows its type and a typo cannot
-// make a second value.
+// and check. Every value is declared before it is used, with a name, a type
+// and a default, so every reader knows its type and a typo cannot make a
+// second value.
 //
 // A value's scope says whose it is. A world value is one for the whole game,
-// a zone value one in each zone, and an NPC value one on each NPC, kept with
-// the NPC wherever it is placed. A local value belongs to one workflow and is
-// declared on the workflow itself, not here. A declaration covers its whole
-// scope: declaring mood for NPCs gives every NPC its own mood.
+// declared in the world-state document. An NPC's values and a zone's are its
+// own: declared in its own document, or given to it by a template, a named
+// set of values declared in the world-state document and applied to any
+// number of NPCs or zones, each of which then has its own copy of each value.
+// Every NPC also has a name. A local value belongs to one workflow and is
+// declared on the workflow itself.
 //
-// References keep each value's ID, so renaming a value changes no workflow.
+// Values are organised in groups, as in world.quests.dragon_slain, which are
+// declared like values and hold them. Local values have no groups.
+//
+// References keep each value's ID, so renaming or regrouping a value changes
+// no workflow.
 package worldstate
 
 import (
@@ -20,6 +26,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/bradhannah/berad-engine/engine/content"
@@ -27,10 +34,11 @@ import (
 )
 
 // FormatName and FormatVersion identify the world-state document inside
-// saved envelopes.
+// saved envelopes. Version 2 added groups, templates and the integer, bool
+// and text types; version 1 is upgraded to it.
 const (
 	FormatName    = "world-state"
-	FormatVersion = 1
+	FormatVersion = 2
 )
 
 // Name is the world-state document's name in every project.
@@ -45,16 +53,23 @@ func ID() ids.ULID { return ids.MustParse(worldStateID) }
 
 // Limits on declarations.
 const (
-	// MaxValues bounds the values one document or workflow declares.
+	// MaxValues bounds the values and groups one document or workflow
+	// declares.
 	MaxValues = 1000
 	// MaxName bounds a value's name and a choice's name, in characters.
 	MaxName = 40
+	// MaxDepth bounds how many groups deep a value can be, a template
+	// counting as one.
+	MaxDepth = 6
 	// MaxChoices bounds the choices of a list of choices.
 	MaxChoices = 24
-	// MaxDescription bounds a value's description, in characters.
+	// MaxDescription bounds a description, in characters.
 	MaxDescription = 2000
-	// MaxNumber bounds a number, either side of zero.
-	MaxNumber = 1_000_000_000
+	// MaxInteger bounds an integer, either side of zero: in practice no
+	// limit.
+	MaxInteger = 1_000_000_000_000_000
+	// MaxText bounds a text value, in characters.
+	MaxText = 200
 )
 
 // Scope says whose a value is.
@@ -68,8 +83,7 @@ const (
 	ScopeWorld Scope = "world"
 )
 
-// Scopes returns the scopes the world-state document declares values in, in
-// the order windows list them.
+// Scopes returns the scopes the World state window shows, in its order.
 func Scopes() []Scope { return []Scope{ScopeWorld, ScopeZone, ScopeNPC} }
 
 // Label names a scope for people.
@@ -88,38 +102,44 @@ func (s Scope) Label() string {
 	return string(s)
 }
 
-// Type is the kind of value a declaration holds.
+// Owned reports whether each NPC or zone has its own values in the scope.
+func (s Scope) Owned() bool { return s == ScopeNPC || s == ScopeZone }
+
+// Type is the kind of value a declaration holds, or a group or template
+// holding other declarations.
 type Type string
 
 // Types. An NPC value names an NPC, or none, and is for local values only:
-// keeping an NPC in a saved value waits until saves are designed.
+// keeping an NPC in a saved value waits until saves are designed. A group
+// holds values and other groups; a template, an NPC or zone scope's own kind
+// of group, is applied to NPCs or zones.
 const (
-	TypeNumber Type = "number"
-	TypeYesNo  Type = "yes-no"
-	TypeChoice Type = "choice"
-	TypeNPC    Type = "npc"
+	TypeInteger  Type = "integer"
+	TypeBool     Type = "bool"
+	TypeChoice   Type = "choice"
+	TypeText     Type = "text"
+	TypeNPC      Type = "npc"
+	TypeGroup    Type = "group"
+	TypeTemplate Type = "template"
 )
 
-// Types returns the types a scope's values can have, in the order windows
-// offer them.
+// Types returns the value types a scope's values can have, in the order
+// windows offer them.
 func Types(scope Scope) []Type {
 	if scope == ScopeLocal {
-		return []Type{TypeNumber, TypeYesNo, TypeChoice, TypeNPC}
+		return []Type{TypeInteger, TypeBool, TypeChoice, TypeText, TypeNPC}
 	}
 
-	return []Type{TypeNumber, TypeYesNo, TypeChoice}
+	return []Type{TypeInteger, TypeBool, TypeChoice, TypeText}
 }
+
+// IsValue reports whether a declaration of the type holds a value, rather
+// than other declarations.
+func (t Type) IsValue() bool { return t != TypeGroup && t != TypeTemplate }
 
 // Label names a type for people.
 func (t Type) Label() string {
-	switch t {
-	case TypeNumber:
-		return "number"
-	case TypeYesNo:
-		return "yes or no"
-	case TypeChoice:
-		return "choice"
-	case TypeNPC:
+	if t == TypeNPC {
 		return "NPC"
 	}
 
@@ -148,6 +168,22 @@ func CheckName(name string) error {
 	return nil
 }
 
+// SplitName splits a dotted name, such as quests.dragon_slain, into the
+// names of its groups and its own name, checking each.
+func SplitName(dotted string) ([]string, error) {
+	names := strings.Split(dotted, ".")
+	if len(names) > MaxDepth+1 {
+		return nil, fmt.Errorf("%w: %q: at most %d groups deep", ErrValue, dotted, MaxDepth)
+	}
+	for _, name := range names {
+		if err := CheckName(name); err != nil {
+			return nil, err
+		}
+	}
+
+	return names, nil
+}
+
 // Choice is one value of a list of choices. Its ID stays the same when it is
 // renamed, so what workflows set and check keeps working.
 type Choice struct {
@@ -155,17 +191,22 @@ type Choice struct {
 	Name string `json:"name"`
 }
 
-// Declaration declares one value.
+// Declaration declares one value, group or template.
 type Declaration struct {
 	ID    ids.ULID `json:"id"`
 	Name  string   `json:"name"`
 	Scope Scope    `json:"scope"`
 	Type  Type     `json:"type"`
+	// Parent is the group or template it is in; zero at the top.
+	Parent ids.ULID `json:"parent,omitzero"`
 	// Choices are a list of choices' values, in order.
 	Choices []Choice `json:"choices,omitempty"`
+	// Min and Max are an integer's limits, if it has them.
+	Min *int `json:"min,omitempty"`
+	Max *int `json:"max,omitempty"`
 	// Default is the value it holds before anything sets it, as Encode
-	// writes it.
-	Default     json.RawMessage `json:"default"`
+	// writes it; a group or template has none.
+	Default     json.RawMessage `json:"default,omitempty"`
 	Description string          `json:"description,omitempty"`
 }
 
@@ -173,19 +214,34 @@ type Declaration struct {
 func (d Declaration) Clone() Declaration {
 	d.Choices = slices.Clone(d.Choices)
 	d.Default = slices.Clone(d.Default)
+	d.Min, d.Max = cloneLimit(d.Min), cloneLimit(d.Max)
 
 	return d
 }
 
+func cloneLimit(limit *int) *int {
+	if limit == nil {
+		return nil
+	}
+	copied := *limit
+
+	return &copied
+}
+
+// Limit returns an integer limit to keep in a declaration.
+func Limit(value int) *int { return &value }
+
 // Equal reports whether two declarations are the same.
 func (d Declaration) Equal(other Declaration) bool {
 	return d.ID == other.ID && d.Name == other.Name && d.Scope == other.Scope && d.Type == other.Type &&
-		slices.Equal(d.Choices, other.Choices) && bytes.Equal(compact(d.Default), compact(other.Default)) &&
-		d.Description == other.Description
+		d.Parent == other.Parent && slices.Equal(d.Choices, other.Choices) &&
+		limitsEqual(d.Min, other.Min) && limitsEqual(d.Max, other.Max) &&
+		bytes.Equal(compact(d.Default), compact(other.Default)) && d.Description == other.Description
 }
 
-// Path is how windows show the value, such as npc.mood.
-func (d Declaration) Path() string { return string(d.Scope) + "." + d.Name }
+func limitsEqual(a, b *int) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
 
 // Choice returns one of a list of choices by ID.
 func (d Declaration) Choice(id string) (Choice, bool) {
@@ -207,50 +263,88 @@ func (d Declaration) NewChoiceID() string {
 	}
 }
 
+// Lowest returns the least an integer can be: its minimum, or the engine's.
+func (d Declaration) Lowest() int {
+	if d.Min != nil {
+		return *d.Min
+	}
+
+	return -MaxInteger
+}
+
+// Highest returns the greatest an integer can be: its maximum, or the
+// engine's.
+func (d Declaration) Highest() int {
+	if d.Max != nil {
+		return *d.Max
+	}
+
+	return MaxInteger
+}
+
+// Hold returns an integer held within the declaration's limits.
+func (d Declaration) Hold(number int) int { return min(max(number, d.Lowest()), d.Highest()) }
+
 // Zero returns the value a declaration starts at: its default, or the type's
 // own zero when the default cannot be read.
 func (d Declaration) Zero() Value {
 	value, err := d.Parse(d.Default)
-	if err != nil {
+	if err != nil || !d.Fits(value) {
 		return d.Empty()
 	}
 
 	return value
 }
 
-// Empty returns the type's own zero: nothing, no, the first choice or none.
+// Empty returns the type's own zero: nought held within its limits, false,
+// the first choice, no text or no NPC.
 func (d Declaration) Empty() Value {
-	empty := Value{Type: d.Type, Number: 0, Yes: false, Choice: "", NPC: ids.ULID{}}
-	if d.Type == TypeChoice && len(d.Choices) > 0 {
-		empty.Choice = d.Choices[0].ID
+	empty := NoValue()
+	empty.Type = d.Type
+	switch d.Type {
+	case TypeInteger:
+		empty.Integer = d.Hold(0)
+	case TypeChoice:
+		if len(d.Choices) > 0 {
+			empty.Choice = d.Choices[0].ID
+		}
+	case TypeBool, TypeText, TypeNPC, TypeGroup, TypeTemplate:
 	}
 
 	return empty
 }
 
-// New returns a declaration of a type in a scope with the type's own default.
+// New returns a declaration of a type in a scope, at the top, with the
+// type's own default; a list starts with two choices.
 func New(id ids.ULID, name string, scope Scope, kind Type) Declaration {
 	declared := Declaration{
-		ID: id, Name: name, Scope: scope, Type: kind, Choices: nil, Default: nil, Description: "",
+		ID: id, Name: name, Scope: scope, Type: kind, Parent: ids.ULID{}, Choices: nil, Min: nil, Max: nil,
+		Default: nil, Description: "",
 	}
 	if kind == TypeChoice {
 		declared.Choices = []Choice{{ID: "c1", Name: "first"}, {ID: "c2", Name: "second"}}
 	}
-	declared.Default = declared.Empty().Encode()
+	if kind.IsValue() {
+		declared.Default = declared.Empty().Encode()
+	}
 
 	return declared
 }
 
-// Check reports a declaration that is not valid in one of the scopes given.
-func (d Declaration) Check(scopes ...Scope) error {
+// Check reports a declaration that is not valid on its own; where it sits is
+// checked by the list it is in.
+func (d Declaration) Check() error {
 	if d.ID.IsZero() {
 		return fmt.Errorf("%w: a value needs an ID", ErrValue)
 	}
 	if err := CheckName(d.Name); err != nil {
 		return err
 	}
-	if !slices.Contains(scopes, d.Scope) {
-		return fmt.Errorf("%w: %s cannot be declared here", ErrValue, d.Scope.Label())
+	if utf8.RuneCountInString(d.Description) > MaxDescription {
+		return fmt.Errorf("%w: a description is at most %d characters", ErrValue, MaxDescription)
+	}
+	if !d.Type.IsValue() {
+		return d.checkContainer()
 	}
 	if !slices.Contains(Types(d.Scope), d.Type) {
 		return fmt.Errorf("%w: a %s value cannot be a %s", ErrValue, d.Scope.Label(), d.Type.Label())
@@ -258,11 +352,31 @@ func (d Declaration) Check(scopes ...Scope) error {
 	if err := d.checkChoices(); err != nil {
 		return err
 	}
-	if _, err := d.Parse(d.Default); err != nil {
+	if err := d.checkLimits(); err != nil {
+		return err
+	}
+	value, err := d.Parse(d.Default)
+	if err != nil {
 		return fmt.Errorf("%w: default: %w", ErrValue, err)
 	}
-	if utf8.RuneCountInString(d.Description) > MaxDescription {
-		return fmt.Errorf("%w: a description is at most %d characters", ErrValue, MaxDescription)
+	if !d.Fits(value) {
+		return fmt.Errorf("%w: its default is from %d to %d", ErrValue, d.Lowest(), d.Highest())
+	}
+
+	return nil
+}
+
+// checkContainer checks a group or template: it holds nothing of its own,
+// and a template belongs to the NPC or zone scope.
+func (d Declaration) checkContainer() error {
+	if len(d.Choices) > 0 || d.Min != nil || d.Max != nil || len(d.Default) > 0 {
+		return fmt.Errorf("%w: a %s holds values, not a value of its own", ErrValue, d.Type.Label())
+	}
+	switch {
+	case d.Type == TypeTemplate && !d.Scope.Owned():
+		return fmt.Errorf("%w: templates are for NPCs and zones", ErrValue)
+	case d.Type == TypeGroup && d.Scope == ScopeLocal:
+		return fmt.Errorf("%w: local values have no groups", ErrValue)
 	}
 
 	return nil
@@ -293,97 +407,212 @@ func (d Declaration) checkChoices() error {
 	return nil
 }
 
+func (d Declaration) checkLimits() error {
+	if d.Type != TypeInteger {
+		if d.Min != nil || d.Max != nil {
+			return fmt.Errorf("%w: only an integer has limits", ErrValue)
+		}
+
+		return nil
+	}
+	for _, limit := range []*int{d.Min, d.Max} {
+		if limit != nil && (*limit > MaxInteger || *limit < -MaxInteger) {
+			return fmt.Errorf("%w: a limit is from %d to %d", ErrValue, -MaxInteger, MaxInteger)
+		}
+	}
+	if d.Lowest() > d.Highest() {
+		return fmt.Errorf("%w: the minimum is more than the maximum", ErrValue)
+	}
+
+	return nil
+}
+
+// Fits reports whether a value is one of a declaration's: its type, for an
+// integer within its limits, and for a list one of its choices.
+func (d Declaration) Fits(value Value) bool {
+	if value.Type != d.Type {
+		return false
+	}
+	switch d.Type {
+	case TypeInteger:
+		return value.Integer >= d.Lowest() && value.Integer <= d.Highest()
+	case TypeChoice:
+		_, found := d.Choice(value.Choice)
+
+		return found
+	case TypeBool, TypeText, TypeNPC, TypeGroup, TypeTemplate:
+	}
+
+	return true
+}
+
+// AtMost reports whether an integer is at its maximum; one with no maximum
+// never is.
+func (d Declaration) AtMost(value Value) bool {
+	return d.Type == TypeInteger && d.Max != nil && value.Integer >= *d.Max
+}
+
+// AtLeast reports whether an integer is at its minimum; one with no minimum
+// never is.
+func (d Declaration) AtLeast(value Value) bool {
+	return d.Type == TypeInteger && d.Min != nil && value.Integer <= *d.Min
+}
+
 // Value is one value as it is now.
 type Value struct {
-	Type   Type
-	Number int
-	Yes    bool
+	Type    Type
+	Integer int
+	Bool    bool
 	// Choice is a choice's ID.
 	Choice string
+	Text   string
 	// NPC is an NPC's ID; zero is none.
 	NPC ids.ULID
+}
+
+// NoValue returns a value of no type.
+func NoValue() Value {
+	return Value{Type: "", Integer: 0, Bool: false, Choice: "", Text: "", NPC: ids.ULID{}}
 }
 
 // Equal reports whether two values are the same.
 func (v Value) Equal(other Value) bool { return v == other }
 
-// Encode writes a value as saved: a number, true or false, a choice's ID, or
-// an NPC's ID with "" for none.
+// Encode writes a value as saved: an integer, true or false, a choice's ID,
+// text, or an NPC's ID with "" for none.
 func (v Value) Encode() json.RawMessage {
 	var encoded []byte
 	switch v.Type {
-	case TypeNumber:
-		encoded = []byte(strconv.Itoa(v.Number))
-	case TypeYesNo:
-		encoded = []byte(strconv.FormatBool(v.Yes))
+	case TypeInteger:
+		encoded = []byte(strconv.Itoa(v.Integer))
+	case TypeBool:
+		encoded = []byte(strconv.FormatBool(v.Bool))
 	case TypeChoice:
-		encoded = []byte(strconv.Quote(v.Choice))
+		encoded = quoted(v.Choice)
+	case TypeText:
+		encoded = quoted(v.Text)
 	case TypeNPC:
 		npc := ""
 		if !v.NPC.IsZero() {
 			npc = v.NPC.String()
 		}
-		encoded = []byte(strconv.Quote(npc))
+		encoded = quoted(npc)
+	case TypeGroup, TypeTemplate:
 	}
 
 	return encoded
 }
 
-// Parse reads a saved value of the declaration's type.
-func (d Declaration) Parse(raw json.RawMessage) (Value, error) {
-	value := Value{Type: d.Type, Number: 0, Yes: false, Choice: "", NPC: ids.ULID{}}
-	var err error
-	switch d.Type {
-	case TypeNumber:
-		err = json.Unmarshal(raw, &value.Number)
-		if err == nil && (value.Number > MaxNumber || value.Number < -MaxNumber) {
-			err = fmt.Errorf("%w: a number is from %d to %d", ErrValue, -MaxNumber, MaxNumber)
-		}
-	case TypeYesNo:
-		err = json.Unmarshal(raw, &value.Yes)
-	case TypeChoice:
-		err = json.Unmarshal(raw, &value.Choice)
-		if _, found := d.Choice(value.Choice); err == nil && !found {
-			err = fmt.Errorf("%w: %q is not one of its choices", ErrValue, value.Choice)
-		}
-	case TypeNPC:
-		var npc string
-		if err = json.Unmarshal(raw, &npc); err == nil && npc != "" {
-			value.NPC, err = ids.Parse(npc)
-		}
-	default:
-		err = fmt.Errorf("%w: unknown type %q", ErrValue, d.Type)
-	}
+func quoted(text string) []byte {
+	data, err := json.Marshal(text)
 	if err != nil {
-		return value, fmt.Errorf("%w: %s: %w", ErrValue, d.Path(), err)
+		return []byte(`""`)
+	}
+
+	return data
+}
+
+// Parse reads a saved value of the declaration's type. An integer is read
+// within the engine's bounds; whether it is within the declaration's own
+// limits is for Fits.
+func (d Declaration) Parse(raw json.RawMessage) (Value, error) {
+	value := NoValue()
+	value.Type = d.Type
+	if err := d.parseInto(raw, &value); err != nil {
+		return value, fmt.Errorf("%w: %s: %w", ErrValue, d.Name, err)
 	}
 
 	return value, nil
 }
 
-// Label shows a value for people: 12, yes, a choice's name, or an NPC's ID.
+// parseInto reads a saved value into the field its type keeps it in.
+//
+//nolint:wrapcheck // Parse wraps what this returns.
+func (d Declaration) parseInto(raw json.RawMessage, value *Value) error {
+	switch d.Type {
+	case TypeInteger:
+		return parseInteger(raw, &value.Integer)
+	case TypeBool:
+		return json.Unmarshal(raw, &value.Bool)
+	case TypeChoice:
+		if err := json.Unmarshal(raw, &value.Choice); err != nil {
+			return err
+		}
+		if _, found := d.Choice(value.Choice); !found {
+			return fmt.Errorf("%w: %q is not one of its choices", ErrValue, value.Choice)
+		}
+	case TypeText:
+		return parseText(raw, &value.Text)
+	case TypeNPC:
+		return parseNPC(raw, &value.NPC)
+	case TypeGroup, TypeTemplate:
+		return fmt.Errorf("%w: a %s has no value", ErrValue, d.Type.Label())
+	default:
+		return fmt.Errorf("%w: unknown type %q", ErrValue, d.Type)
+	}
+
+	return nil
+}
+
+//nolint:wrapcheck // Parse wraps what this returns.
+func parseInteger(raw json.RawMessage, integer *int) error {
+	if err := json.Unmarshal(raw, integer); err != nil {
+		return err
+	}
+	if *integer > MaxInteger || *integer < -MaxInteger {
+		return fmt.Errorf("%w: an integer is from %d to %d", ErrValue, -MaxInteger, MaxInteger)
+	}
+
+	return nil
+}
+
+//nolint:wrapcheck // Parse wraps what this returns.
+func parseText(raw json.RawMessage, text *string) error {
+	if err := json.Unmarshal(raw, text); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(*text) > MaxText {
+		return fmt.Errorf("%w: text is at most %d characters", ErrValue, MaxText)
+	}
+
+	return nil
+}
+
+// parseNPC reads an NPC's ID, or "" for none.
+//
+//nolint:wrapcheck // Parse wraps what this returns.
+func parseNPC(raw json.RawMessage, npc *ids.ULID) error {
+	var saved string
+	if err := json.Unmarshal(raw, &saved); err != nil || saved == "" {
+		return err
+	}
+	parsed, err := ids.Parse(saved)
+	*npc = parsed
+
+	return err
+}
+
+// Label shows a value for people: 12, true, a choice's name, text in
+// quotes, or an NPC's ID.
 func (d Declaration) Label(value Value) string {
 	switch d.Type {
-	case TypeNumber:
-		return strconv.Itoa(value.Number)
-	case TypeYesNo:
-		if value.Yes {
-			return "yes"
-		}
-
-		return "no"
+	case TypeInteger:
+		return strconv.Itoa(value.Integer)
+	case TypeBool:
+		return strconv.FormatBool(value.Bool)
 	case TypeChoice:
 		if choice, found := d.Choice(value.Choice); found {
 			return choice.Name
 		}
-
-		return "?"
+	case TypeText:
+		return string(quoted(value.Text))
 	case TypeNPC:
 		if value.NPC.IsZero() {
 			return "none"
 		}
 
 		return value.NPC.String()
+	case TypeGroup, TypeTemplate:
 	}
 
 	return "?"
@@ -399,175 +628,36 @@ func compact(raw json.RawMessage) []byte {
 	return buffer.Bytes()
 }
 
-// Declarations is a list of declared values kept in ID order, which is the
-// order they were made in. The world-state document holds one, and so does
-// each workflow for its local values.
-type Declarations struct {
-	scopes []Scope
-	values []Declaration
+// nameID is the ID of every NPC's name value. Its time part is zero, so no
+// generated ID ever equals it.
+const nameID = "0000000000000000000000NAME"
+
+// NameID returns the ID of every NPC's name value.
+func NameID() ids.ULID { return ids.MustParse(nameID) }
+
+// NameDeclaration returns an NPC's name value: text that starts as its
+// display name, which workflows may set, such as to a name the player
+// learns.
+func NameDeclaration(display string) Declaration {
+	declared := New(NameID(), "name", ScopeNPC, TypeText)
+	if utf8.RuneCountInString(display) > MaxText {
+		display = string([]rune(display)[:MaxText])
+	}
+	declared.Default = quoted(display)
+	declared.Description = "The NPC's name. It starts as its name in the project browser."
+
+	return declared
 }
 
-// NewDeclarations returns an empty list for values of the scopes given.
-func NewDeclarations(scopes ...Scope) *Declarations {
-	return &Declarations{scopes: slices.Clone(scopes), values: nil}
-}
-
-// Values returns copies of the declarations, in ID order.
-func (l *Declarations) Values() []Declaration {
-	copies := make([]Declaration, 0, len(l.values))
-	for _, declared := range l.values {
-		copies = append(copies, declared.Clone())
-	}
-
-	return copies
-}
-
-// Len counts the declarations.
-func (l *Declarations) Len() int { return len(l.values) }
-
-// Value returns a declaration by ID.
-func (l *Declarations) Value(id ids.ULID) (Declaration, bool) {
-	index := l.index(id)
-	if index < 0 {
-		return Declaration{
-			ID: ids.ULID{}, Name: "", Scope: "", Type: "", Choices: nil, Default: nil, Description: "",
-		}, false
-	}
-
-	return l.values[index].Clone(), true
-}
-
-// Insert adds a declaration.
-func (l *Declarations) Insert(declared Declaration) error {
-	if l.index(declared.ID) >= 0 {
-		return fmt.Errorf("%w: %s is already declared", ErrValue, declared.ID)
-	}
-	if len(l.values) >= MaxValues {
-		return fmt.Errorf("%w: at most %d values", ErrValue, MaxValues)
-	}
-	working := append(slices.Clone(l.values), declared.Clone())
-	if err := l.check(working); err != nil {
-		return err
-	}
-	l.values = working
-	l.sort()
-
-	return nil
-}
-
-// Remove takes a declaration out and returns it.
-func (l *Declarations) Remove(id ids.ULID) (Declaration, error) {
-	index := l.index(id)
-	if index < 0 {
-		return Declaration{
-			ID: ids.ULID{}, Name: "", Scope: "", Type: "", Choices: nil, Default: nil, Description: "",
-		}, fmt.Errorf("%w: no value %s", ErrValue, id)
-	}
-	removed := l.values[index]
-	l.values = slices.Delete(slices.Clone(l.values), index, index+1)
-
-	return removed, nil
-}
-
-// Replace changes a declaration, keeping its ID, and returns it as it was.
-func (l *Declarations) Replace(declared Declaration) (Declaration, error) {
-	index := l.index(declared.ID)
-	if index < 0 {
-		return Declaration{
-			ID: ids.ULID{}, Name: "", Scope: "", Type: "", Choices: nil, Default: nil, Description: "",
-		}, fmt.Errorf("%w: no value %s", ErrValue, declared.ID)
-	}
-	working := slices.Clone(l.values)
-	previous := working[index]
-	working[index] = declared.Clone()
-	if err := l.check(working); err != nil {
-		return previous, err
-	}
-	l.values = working
-
-	return previous.Clone(), nil
-}
-
-// Clone returns an independent copy.
-func (l *Declarations) Clone() *Declarations {
-	return &Declarations{scopes: slices.Clone(l.scopes), values: l.Values()}
-}
-
-// Equal reports whether two lists declare the same values.
-func (l *Declarations) Equal(other *Declarations) bool {
-	return slices.EqualFunc(l.values, other.values, Declaration.Equal)
-}
-
-// MarshalJSON writes the declarations as a list.
-func (l *Declarations) MarshalJSON() ([]byte, error) {
-	values := l.values
-	if values == nil {
-		values = []Declaration{}
-	}
-	data, err := json.Marshal(values)
-	if err != nil {
-		return nil, fmt.Errorf("encode values: %w", err)
-	}
-
-	return data, nil
-}
-
-// Read reads a saved list of declarations for the scopes the list was made
-// for.
-func (l *Declarations) Read(data json.RawMessage) error {
-	var values []Declaration
-	if err := json.Unmarshal(data, &values); err != nil {
-		return fmt.Errorf("%w: %w", ErrData, err)
-	}
-	if err := l.check(values); err != nil {
-		return fmt.Errorf("%w: %w", ErrData, err)
-	}
-	l.values = values
-	l.sort()
-
-	return nil
-}
-
-// check enforces what every list keeps: valid declarations with unique IDs,
-// and names unique within each scope.
-func (l *Declarations) check(values []Declaration) error {
-	if len(values) > MaxValues {
-		return fmt.Errorf("%w: at most %d values", ErrValue, MaxValues)
-	}
-	seen, paths := map[ids.ULID]bool{}, map[string]bool{}
-	for _, declared := range values {
-		if err := declared.Check(l.scopes...); err != nil {
-			return err
-		}
-		if seen[declared.ID] {
-			return fmt.Errorf("%w: %s is declared twice", ErrValue, declared.ID)
-		}
-		if paths[declared.Path()] {
-			return fmt.Errorf("%w: %s is already declared", ErrValue, declared.Path())
-		}
-		seen[declared.ID], paths[declared.Path()] = true, true
-	}
-
-	return nil
-}
-
-func (l *Declarations) sort() {
-	slices.SortFunc(l.values, func(a, b Declaration) int { return a.ID.Compare(b.ID) })
-}
-
-func (l *Declarations) index(id ids.ULID) int {
-	return slices.IndexFunc(l.values, func(declared Declaration) bool { return declared.ID == id })
-}
-
-// Document is a project's world state: the world, zone and NPC values it
-// declares.
+// Document is a project's world state: the world's values and their groups,
+// and the NPC and zone templates.
 type Document struct {
 	Values *Declarations
 }
 
 // NewDocument returns a world state that declares nothing yet.
 func NewDocument() *Document {
-	return &Document{Values: NewDeclarations(Scopes()...)}
+	return &Document{Values: NewDeclarations(HoldsWorldState)}
 }
 
 type wireDocument struct {
@@ -609,5 +699,7 @@ func Decode(data json.RawMessage) (*Document, error) {
 
 // Format returns the world-state format registration.
 func Format() content.Format {
-	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: nil}
+	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
+		1: upgradeFrom1,
+	}}
 }
