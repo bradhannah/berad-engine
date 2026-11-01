@@ -431,7 +431,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 		top += ui.LineHeight
 		switch made.param.Type {
 		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
-			top = layoutChoices(made, left, width, top)
+			top = s.layoutChoices(made, left, width, top)
 		case flow.TypeTiles, flow.TypeText:
 			height := ui.ButtonH
 			if made.field.Multiline {

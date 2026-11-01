@@ -80,19 +80,40 @@ func markChosen(buttons []*ui.Button, choices []flow.Choice, chosen string) {
 	}
 }
 
-// layoutChoices places a choice's buttons in a row; a wait's amount, then
-// its units and its clocks; or a random choice's options, one to a row,
-// with Add option under them. It returns where the next control goes.
-func layoutChoices(made *control, left, width, top int) int {
-	row := func(buttons []*ui.Button) {
-		gaps := (len(buttons) - 1) * rowSpace
-		for index, button := range buttons {
-			from := left + index*(width-gaps)/len(buttons) + index*rowSpace
-			to := left + (index+1)*(width-gaps)/len(buttons) + index*rowSpace
+// buttonPad is the room a choice button keeps either side of its label.
+const buttonPad = 10
+
+// layoutButtonRows places buttons in rows of equal widths across the width,
+// as many to a row as their labels fit, and returns where the next row goes.
+func (s *State) layoutButtonRows(buttons []*ui.Button, left, width, top int) int {
+	for start := 0; start < len(buttons); {
+		end, widest := start, 0
+		for end < len(buttons) {
+			need := max(widest, s.theme.TextWidth(buttons[end].Label)+ui.Half*buttonPad)
+			if count := end - start + 1; count > 1 && need*count+(count-1)*rowSpace > width {
+				break
+			}
+			widest, end = need, end+1
+		}
+		row := buttons[start:end]
+		gaps := (len(row) - 1) * rowSpace
+		for index, button := range row {
+			from := left + index*(width-gaps)/len(row) + index*rowSpace
+			to := left + (index+1)*(width-gaps)/len(row) + index*rowSpace
 			button.Rect = image.Rect(from, top, to, top+ui.ButtonH)
 		}
 		top += ui.ButtonH + rowSpace
+		start = end
 	}
+
+	return top
+}
+
+// layoutChoices places a choice's buttons in rows; a wait's amount, then
+// its units and its clocks; or a random choice's options, one to a row,
+// with Add option under them. It returns where the next control goes.
+func (s *State) layoutChoices(made *control, left, width, top int) int {
+	row := func(buttons []*ui.Button) { top = s.layoutButtonRows(buttons, left, width, top) }
 	switch made.param.Type {
 	case flow.TypeChoice:
 		row(made.choices)

@@ -261,6 +261,8 @@ Settled by its author on 2026-11-01, after trying it:
   as NPCs do.
 - **Every NPC has a `name` value,** text that starts as its display name
   and that workflows may set, such as a name the player learns.
+- **A choice's buttons wrap into rows when their labels do not fit:**
+  Check value's five comparisons overflowed one row of the inspector.
 - **The types are integer, bool, choice and text,** with NPC for local
   values only. An integer has an optional minimum and maximum, and a Set
   value or Add that would pass one holds it at the limit; Check value asks
