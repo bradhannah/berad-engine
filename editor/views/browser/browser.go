@@ -654,7 +654,9 @@ func (a documentArgs) withID(id ids.ULID) project.DocumentArgs {
 // createZone creates a zone with one floor, as one undo step.
 func (s *State) createZone(ctx *frame.Context) {
 	name := uniqueName("Zone", names(s.entries(ctx.Docs, zone.FormatName)))
-	data, err := zoneplugin.NewDocument().Encode()
+	made := zoneplugin.NewDocument()
+	made.Zone.Path = worldstate.UniqueName(zone.SuggestPath(name), s.zonePaths(ctx.Docs))
+	data, err := made.Encode()
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
@@ -669,6 +671,20 @@ func (s *State) createZone(ctx *frame.Context) {
 		s.addFloor(ctx, result.Created, "Floor 1", floor.Centered(defaultWidth, defaultHeight), "grass", 0, gesture)
 		ctx.Frame.Status("Created “" + name + "” with one floor")
 	}, nil)
+}
+
+// zonePaths lists the path names the window's zones use.
+func (s *State) zonePaths(docs frame.Docs) map[string]bool {
+	taken := map[string]bool{}
+	for _, entry := range s.entries(docs, zone.FormatName) {
+		docs.View(entry.ID, func(document client.Document) {
+			if zoneDoc, ok := document.Model.(*zoneplugin.Document); ok && zoneDoc.Zone.Path != "" {
+				taken[zoneDoc.Zone.Path] = true
+			}
+		})
+	}
+
+	return taken
 }
 
 // createFloor adds a floor on top of the selected zone (or the zone of the

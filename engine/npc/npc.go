@@ -10,8 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/bradhannah/berad-engine/engine/content"
@@ -90,54 +88,15 @@ func CheckPath(path string) error {
 	return nil
 }
 
-// SuggestPath suggests a path name from an NPC's display name: lower case,
-// with each run of other characters an underscore, so George becomes george
-// and Old Tom old_tom. A name with no letters gives npc.
-func SuggestPath(display string) string {
-	var built strings.Builder
-	gap := false
-	for _, char := range strings.ToLower(display) {
-		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') {
-			if gap && built.Len() > 0 {
-				built.WriteByte('_')
-			}
-			built.WriteRune(char)
-			gap = false
-
-			continue
-		}
-		gap = true
-	}
-	path := built.String()
-	if path == "" {
-		return "npc"
-	}
-	if path[0] >= '0' && path[0] <= '9' {
-		path = "npc_" + path
-	}
-	if len(path) > worldstate.MaxName {
-		path = strings.TrimRight(path[:worldstate.MaxName], "_")
-	}
-
-	return path
-}
+// SuggestPath suggests a path name from an NPC's display name, as
+// worldstate.SuggestName does, so George becomes george and Old Tom
+// old_tom. A name with no letters gives npc.
+func SuggestPath(display string) string { return worldstate.SuggestName(display, "npc") }
 
 // UniquePath returns a path name not in taken: the suggestion, or it with a
 // number added.
 func UniquePath(suggestion string, taken map[string]bool) string {
-	if !taken[suggestion] {
-		return suggestion
-	}
-	for number := 2; ; number++ {
-		suffix := "_" + strconv.Itoa(number)
-		base := suggestion
-		if len(base)+len(suffix) > worldstate.MaxName {
-			base = base[:worldstate.MaxName-len(suffix)]
-		}
-		if candidate := base + suffix; !taken[candidate] {
-			return candidate
-		}
-	}
+	return worldstate.UniqueName(suggestion, taken)
 }
 
 // CheckNotes reports notes that are too long.

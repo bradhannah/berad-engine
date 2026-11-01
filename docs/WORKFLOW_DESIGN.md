@@ -87,7 +87,7 @@ drawn back to either only repeats what the rule already does.
 
 - **Agreed: one type system** for node parameters, module inputs and
   outputs, a character's values and world state. Today's parameter types
-  (place, duration, time range, sound cue) join number, yes or no, text, NPC,
+  (place, duration, time range, sound cue) join integer, bool, text, NPC,
   item and quest as they are needed.
 - **Agreed: start loose and signal intent.** Any workflow may read any value
   at first; what a workflow is meant for is shown by what it requires, not

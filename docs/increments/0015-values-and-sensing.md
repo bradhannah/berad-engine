@@ -1,6 +1,6 @@
 # Increment 15: Values and sensing
 
-**Status:** Building
+**Status:** Built
 
 The first world state, and the first way for NPCs to be aware of each other.
 An author declares typed values in the World state window, or on a workflow
@@ -143,11 +143,11 @@ Chosen while building, for its author to check:
 | 5. The nodes in the editor | Set value, Check value and Find NPC nearby; a value parameter whose picker groups values by scope, offers only those a workflow may use, including other NPCs' values to read, and can declare a new one; a parameter that follows the chosen value's type; problem marks for missing or mismatched values | Each node can be built and checked in the Workflow window, and a broken value is marked | Built |
 | 6. Running them | The engine's world state: values for the world, each zone and each NPC, kept with the NPC wherever it is placed, and each running workflow's locals; the three nodes in the runner; locals cleared on restart and on a change of zone; values in the preview stream and the Watch window | A shopkeeper serves a waiting customer in the preview, the same way every run, judged by its author | Built |
 | 7. A shop to try, and deleting by right-click | The sample project's shop: its values, a clerk and a customer with their workflows, placed; a right-click menu on Workflow nodes and lines that deletes them | A new sample project previews the shop working; a right-click deletes a node or a line | Built |
-| 8. Types, groups and templates | World-state format 2 and the upgrades to it: integer with optional limits, bool and text; groups; NPC and zone templates; each NPC's and zone's own values and applied templates in its own document, with an NPC's name; zone path names | Every kind of item can be declared, saved and read back unchanged, and older files upgrade | Planned |
-| 9. Editing them | Edits for groups, templates, applying them, and NPCs' and zones' own values, passing the shared undo test; dotted names that declare their groups; deleting refused while anything in it is used | Each change can be made and undone, and a used value cannot be deleted | Planned |
-| 10. The World state window as a tree | World, Zone and NPC, with templates and each zone and NPC as parents; an inspector for each kind of item; limits and Default; delete warnings that say where things are used | An author can organise values into groups and templates, and apply templates, without leaving the window | Planned |
-| 11. Values in workflows | Workflow format 5; choosers that show paths in the tree and declare groups from a typed path; problems for an NPC or zone that lacks a value a workflow uses; Check value's "at its maximum" and "at its minimum"; text values | A guard behaviour shared by two guards uses a template's values, and a missing one is marked | Planned |
-| 12. Running them again | One placement per NPC in the whole project; the runner holding integers at their limits, text, templates and named zones; the preview, the Watch window's tree of values, and the sample shop using a template and a group | The sample shop runs with its values in a template, the same way every run | Planned |
+| 8. Types, groups and templates | World-state format 2 and the upgrades to it: integer with optional limits, bool and text; groups; NPC and zone templates; each NPC's and zone's own values and applied templates in its own document, with an NPC's name; zone path names | Every kind of item can be declared, saved and read back unchanged, and older files upgrade | Built |
+| 9. Editing them | Edits for groups, templates, applying them, and NPCs' and zones' own values, passing the shared undo test; dotted names that declare their groups; deleting refused while anything in it is used | Each change can be made and undone, and a used value cannot be deleted | Built |
+| 10. The World state window as a tree | World, Zone and NPC, with templates and each zone and NPC as parents; an inspector for each kind of item; limits and Default; delete warnings that say where things are used | An author can organise values into groups and templates, and apply templates, without leaving the window | Built |
+| 11. Values in workflows | Workflow format 5; choosers that show paths in the tree and declare groups from a typed path; problems for an NPC or zone that lacks a value a workflow uses; Check value's "at its maximum" and "at its minimum"; text values | A guard behaviour shared by two guards uses a template's values, and a missing one is marked | Built |
+| 12. Running them again | One placement per NPC in the whole project; the runner holding integers at their limits, text, templates and named zones; the preview, the Watch window's tree of values, and the sample shop using a template and a group | The sample shop runs with its values in a template, the same way every run | Built |
 
 ## Step results
 
@@ -200,6 +200,37 @@ real-window test passing, the new tests' screenshots checked.
   alone, places them side by side and previews them: the customer finds the
   clerk serving and stops waiting.
 
+- **A shop to try, and deleting by right-click:** the sample project
+  declares the shop's values and places a clerk and a customer, each with
+  its own workflow; the Workflow window's right-click menu deletes a node or
+  a line. A real-window test previews the sample and waits for the world to
+  count a customer served.
+- **Types, groups and templates:** world-state format 2, upgraded from 1,
+  holds groups, templates and the integer, bool and text types; NPC and zone
+  format 3 hold each one's own values and applied templates, and zones a
+  path name. `worldstate.Catalog` finds a value for the world, an NPC or a
+  zone: its own, an NPC's name, or a template's applied to it.
+- **Editing them:** one change edit for any list of declarations, and edits
+  that apply templates and set a zone's path name, all passing the shared
+  undo test.
+- **The World state window as a tree:** World, Zone and NPC, each scope's
+  templates, and each NPC and zone with its own values, its name and its
+  templates; forms for values, groups and templates with limits and
+  Default; path names; applying templates; deleting refused while used,
+  saying where.
+- **Values in workflows:** workflow format 5, upgraded from 4; choosers
+  offering what a workflow's NPCs have and declaring into groups and
+  templates from a dotted name; a problem for an NPC following the workflow
+  without a value it uses; Check value's "at its maximum" and "at its
+  minimum".
+- **Running them again:** the runner holds integers at their limits, reads
+  named zones and sets text; the preview builds the catalog from every
+  NPC's and zone's document; the Watch window lists grouped paths; an NPC
+  is placed once in the whole project. A real-window test builds a shop in
+  the editor's windows alone, a template made and applied in the World
+  state window, and previews it; the sample shop uses a template and a
+  group.
+
 ## Changed after its author tried it
 
 Settled by its author on 2026-11-01, after trying it:
@@ -243,6 +274,44 @@ Settled by its author on 2026-11-01, after trying it:
   NPC that seems to travel is several NPCs, shown or hidden by values.
   This replaces placing one NPC once in each zone.
 
+Chosen while building these changes, for its author to check:
+
+- **One change edit adds, changes and removes declarations together,** all
+  or none, so a dotted name's groups and its value, or a group with what it
+  holds, are one undo step. New declarations carry temporary IDs that the
+  orchestrator makes permanent (D4).
+- **A name for one NPC's or zone's own values cannot be a template's
+  applied to it,** and a template cannot be applied while the NPC or zone
+  has its own value or group of that name, so no path means two values.
+- **Deleting a value nothing uses happens at once,** as Undo brings it back;
+  a group or template asks first, saying how many values go with it. A
+  template applied to any NPC or zone counts as used, and the refusal names
+  where.
+- **In the World state window, NPCs and zones start closed,** as a project
+  has many; groups and templates start open. An NPC's or zone's path name is
+  edited there as well as in the project browser, and a new zone gets one
+  suggested from its name; the sample zone is sample_zone.
+- **Moving a value into or out of a group is renaming it,** with a dotted
+  name from the top of its scope or its template: quests.dragon_slain moves
+  it into quests, and dragon_slain moves it back out.
+- **A chooser's "this NPC" values are those the workflow's NPCs have:** the
+  name, their templates' values and their own. While no NPC follows the
+  workflow, it offers every template's values. A dotted name starting with a
+  template declares into the template; otherwise it can be one following
+  NPC's own.
+- **Only NPCs are checked for lacking a value a workflow uses.** A zone value
+  is checked for being declared somewhere; checking each zone a workflow's
+  NPCs are placed in is left for later.
+- **An integer with no limits is held within a thousand million million
+  either side of nought,** in practice no limit. Text is at most 200
+  characters and is shown in quotes.
+- **A world state from before the change is upgraded:** values declared for
+  every NPC or every zone move into a template named shared for each,
+  applied to nothing until its author applies it, as the world state cannot
+  see the NPCs and zones.
+- **Placing an NPC asks where it is placed already,** and is refused,
+  naming the floor, if any floor in the project places it.
+
 ## Not in this increment
 
 - Messages between NPCs, and requests with replies.
@@ -254,3 +323,6 @@ Settled by its author on 2026-11-01, after trying it:
 - Placement conditions, such as an NPC appearing in a new zone after an
   event.
 - Keeping values in game saves, whose format is still open.
+- Checking that each zone a workflow's NPCs are placed in has the zone
+  values it uses.
+- Giving one NPC its own default for a template's value.

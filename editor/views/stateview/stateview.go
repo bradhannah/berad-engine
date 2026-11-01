@@ -48,6 +48,7 @@ const (
 	addValueID    = "add-value"
 	addGroupID    = "add-group"
 	addTemplateID = "add-template"
+	pathID        = "owner-path"
 	takeOffID     = "take-off"
 	templateID    = "template-"
 	rowLocate     = "row:"
@@ -83,9 +84,12 @@ type State struct {
 	usesOf     string
 	usesAsking bool
 	// templates are the selected NPC's or zone's templates to apply or take
-	// off, and takeOff takes the selected applied template off.
+	// off, and takeOff takes the selected applied template off; path is its
+	// path name, for the row pathOf.
 	templates []*ui.Button
 	takeOff   *ui.Button
+	path      *ui.TextField
+	pathOf    string
 	// dialog asks before a delete, or says why it cannot be; deleting is
 	// what it would delete.
 	dialog   *ui.Dialog
@@ -106,7 +110,9 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil,
+		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
+	view.path.Placeholder = "such as george or market"
 	view.form.Dotted = true
 
 	return view
@@ -207,6 +213,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	case ui.RevertID:
 		s.focus.Set(nil)
 		s.form.Revert()
+		s.path.Field.Revert()
 
 		return
 	}
@@ -237,19 +244,26 @@ func (s *State) updateTree(input *ui.Input, ctx *frame.Context) {
 	}
 }
 
-// Unsaved counts the selected declaration's typed changes not saved yet.
+// Unsaved counts the selected declaration's, or NPC's or zone's path
+// name's, typed changes not saved yet.
 func (s *State) Unsaved(frame.Docs) int {
-	if s.named == "" {
-		return 0
+	switch {
+	case s.named != "":
+		return s.form.Unsaved()
+	case s.pathOf != "":
+		return frame.UnsavedFields(s.path)
 	}
 
-	return s.form.Unsaved()
+	return 0
 }
 
 // UnsavedName names the declaration with unsaved changes.
 func (s *State) UnsavedName(frame.Docs) string {
 	if meaning, found := s.shown.items[s.named]; found {
 		return meaning.path
+	}
+	if meaning, found := s.shown.items[s.pathOf]; found {
+		return meaning.owner.Name + "'s path name"
 	}
 
 	return "this value"
@@ -264,6 +278,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 		s.focus.Set(nil)
 
 		return true
+	}
+	if s.named == "" {
+		return s.savePath(ctx)
 	}
 	meaning := s.shown.items[s.named]
 	typed, dotted, field, problem := s.form.Typed()
@@ -353,6 +370,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
+	}
+	if widget == pathID && !s.path.Rect.Empty() {
+		return s.path.Center(), true
 	}
 	for _, button := range append(append(append([]*ui.Button{}, s.adds...), s.templates...), s.takeOff) {
 		if button.ID == widget && !button.Rect.Empty() {

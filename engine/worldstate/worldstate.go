@@ -184,6 +184,57 @@ func SplitName(dotted string) ([]string, error) {
 	return names, nil
 }
 
+// SuggestName suggests a name from a display name, such as an NPC's or a
+// zone's path name: lower case, with each run of other characters an
+// underscore, so Old Tom becomes old_tom. A name with no letters gives the
+// fallback, and one starting with a digit has it first.
+func SuggestName(display, fallback string) string {
+	var built strings.Builder
+	gap := false
+	for _, char := range strings.ToLower(display) {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') {
+			if gap && built.Len() > 0 {
+				built.WriteByte('_')
+			}
+			built.WriteRune(char)
+			gap = false
+
+			continue
+		}
+		gap = true
+	}
+	name := built.String()
+	if name == "" {
+		return fallback
+	}
+	if name[0] >= '0' && name[0] <= '9' {
+		name = fallback + "_" + name
+	}
+	if len(name) > MaxName {
+		name = strings.TrimRight(name[:MaxName], "_")
+	}
+
+	return name
+}
+
+// UniqueName returns a name not in taken: the suggestion, or it with a
+// number added.
+func UniqueName(suggestion string, taken map[string]bool) string {
+	if !taken[suggestion] {
+		return suggestion
+	}
+	for number := 2; ; number++ {
+		suffix := "_" + strconv.Itoa(number)
+		base := suggestion
+		if len(base)+len(suffix) > MaxName {
+			base = base[:MaxName-len(suffix)]
+		}
+		if candidate := base + suffix; !taken[candidate] {
+			return candidate
+		}
+	}
+}
+
 // Choice is one value of a list of choices. Its ID stays the same when it is
 // renamed, so what workflows set and check keeps working.
 type Choice struct {

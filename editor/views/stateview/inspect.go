@@ -29,6 +29,7 @@ func (s *State) inspect(selected item) {
 		s.focus = ui.Focus{}
 	}
 	s.named = ""
+	s.inspectPath(selected)
 	if selected.kind == itemDeclared {
 		if s.form.Show(selected.declared, valuetree.Dotted(selected.list.Values, selected.declared.ID)) {
 			s.focus = ui.Focus{}
@@ -58,6 +59,23 @@ func (s *State) inspect(selected item) {
 	}
 }
 
+// inspectPath shows the selected NPC's or zone's path name in its field,
+// keeping what is typed while it stays selected.
+func (s *State) inspectPath(selected item) {
+	if selected.kind != itemOwner {
+		s.pathOf = ""
+
+		return
+	}
+	if s.pathOf != s.list.Selected {
+		s.path.Field.Revert()
+		s.focus = ui.Focus{}
+		s.focus.Register(s.path)
+		s.pathOf = s.list.Selected
+	}
+	s.path.Field.SetSaved(selected.owner.Path)
+}
+
 // templatesOf lists a scope's templates, in name order.
 func (s *State) templatesOf(scope worldstate.Scope) []worldstate.Declaration {
 	var templates []worldstate.Declaration
@@ -81,7 +99,7 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	bottom := panel.Max.Y - ui.Inset
 	s.form.Hide()
-	s.save.Rect, s.takeOff.Rect = ui.Zero(), ui.Zero()
+	s.save.Rect, s.takeOff.Rect, s.path.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	for _, button := range s.templates {
 		button.Rect = ui.Zero()
 	}
@@ -94,7 +112,11 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
 		s.form.Layout(left, inspectorTop(panel), width)
 	case selected.kind == itemOwner:
-		top := inspectorTop(panel) + noteLines*ui.LineHeight + ui.LineHeight
+		pathTop := inspectorTop(panel) + ui.LineHeight
+		s.path.Rect = image.Rect(left, pathTop, left+width, pathTop+ui.ButtonH)
+		top := pathTop + ui.ButtonH + ui.Gap + noteLines*ui.LineHeight + ui.LineHeight
+		saveTop := bottom - ui.SaveBarHeight(width)
+		s.save.Rect = image.Rect(left, saveTop, left+width, bottom)
 		gap := ui.Gap
 		for index, button := range s.templates {
 			column, row := index%templatesPerRow, index/templatesPerRow
@@ -242,12 +264,12 @@ func plural(scope worldstate.Scope) string {
 
 // drawOwner draws an NPC's or zone's path name and its templates.
 func (s *State) drawOwner(screen *ebiten.Image, selected item, left, top, width int) {
-	path := "Its path name is " + selected.owner.Path + ", changed in the project browser."
-	if selected.owner.Path == "" {
-		path = "It has no path name yet; give it one in the project browser, so workflows can name it."
-	}
-	s.drawNote(screen, path, left, top, width)
+	s.theme.Heading(screen, "PATH NAME", left, top)
+	s.path.Draw(screen)
+	top = s.path.Rect.Max.Y + ui.Gap
+	s.drawNote(screen, s.pathNote(selected), left, top, width)
 	top += noteLines * ui.LineHeight
+	s.save.Draw(screen, s.theme)
 	s.theme.Heading(screen, "TEMPLATES", left, top)
 	if len(s.templates) == 0 {
 		s.theme.DrawText(screen, "No "+string(selected.scope)+" templates yet.", left, top+ui.LineHeight, ui.ColorMuted())
@@ -287,4 +309,27 @@ func (s *State) drawUses(screen *ebiten.Image, left, top, width int) {
 			top += ui.LineHeight
 		}
 	}
+}
+
+// pathNote says what is worth knowing about an NPC's or zone's path name:
+// how workflows name its values, that another has it too, or a suggestion
+// while it has none.
+func (s *State) pathNote(selected item) string {
+	catalog, owner := s.shown.catalog, selected.owner
+	taken := map[string]bool{}
+	for _, other := range catalog.Owners(selected.scope) {
+		held, _ := catalog.Owner(other)
+		if other != selected.ownerID && held.Path != "" {
+			if held.Path == owner.Path {
+				return "Also the path name of " + held.Name + ". Give each its own."
+			}
+			taken[held.Path] = true
+		}
+	}
+	if owner.Path == "" {
+		return "None yet, so workflows cannot name it. Suggested: " +
+			worldstate.UniqueName(worldstate.SuggestName(owner.Name, string(selected.scope)), taken)
+	}
+
+	return "Workflows name its values as " + string(selected.scope) + "." + owner.Path + ".… from elsewhere."
 }

@@ -179,6 +179,11 @@ func CheckPath(path string) error {
 	return nil
 }
 
+// SuggestPath suggests a path name from a zone's display name, as
+// worldstate.SuggestName does, so Market Square becomes market_square. A
+// name with no letters gives zone.
+func SuggestPath(display string) string { return worldstate.SuggestName(display, "zone") }
+
 // Encode returns the zone's saved data.
 func (z *Zone) Encode() (json.RawMessage, error) {
 	owned, err := z.Owned.Wire()

@@ -398,3 +398,21 @@ func TestRenamedTemplateApplies(t *testing.T) {
 		t.Fatalf("George's own secret stops a secret template: %q", f.status())
 	}
 }
+
+// TestPathNames renames the market zone's path name in its inspector, and
+// refuses punctuation.
+func TestPathNames(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("row:zone.market")
+	f.typeInto("owner-path", "town's")
+	if !strings.Contains(f.status(), "lower-case") {
+		t.Fatalf("punctuation is refused: %q", f.status())
+	}
+	f.typeInto("owner-path", "town_square")
+	var path string
+	f.docs.View(marketID, func(document client.Document) { path = document.Model.(*zoneplugin.Document).Zone.Path })
+	if path != "town_square" || !f.has("selected=zone.town_square") {
+		t.Fatalf("the zone is renamed: %q", path)
+	}
+}

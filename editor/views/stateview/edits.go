@@ -5,6 +5,7 @@ import (
 	"image"
 	"slices"
 	"strconv"
+	"strings"
 
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
@@ -258,4 +259,38 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		s.change(ctx, going.list, stateplugin.ChangeArgs{Add: nil, Set: nil, Remove: going.removing},
 			going.path+" deleted. Undo brings it back.")
 	}
+}
+
+// savePath saves the selected NPC's or zone's path name, or says what is
+// wrong with it.
+func (s *State) savePath(ctx *frame.Context) bool {
+	typed := strings.TrimSpace(s.path.Field.Value())
+	if typed != "" && worldstate.CheckName(typed) != nil {
+		s.focus.Set(s.path)
+		ctx.Frame.Status("A path name is lower-case letters, digits and underscores, starting with a letter")
+
+		return false
+	}
+	if _, changed := s.path.Field.Commit(); !changed {
+		s.focus.Set(nil)
+
+		return true
+	}
+	meaning := s.shown.items[s.pathOf]
+	edit, args := npcplugin.SetPathEdit, any(npcplugin.SetPathArgs{Path: typed})
+	if meaning.scope == worldstate.ScopeZone {
+		edit, args = zoneplugin.SetPathEdit, zoneplugin.SetPathArgs{Path: typed}
+	}
+	s.send(ctx, meaning.ownerID, edit, args, func(result protocol.Result, err error) {
+		if err != nil {
+			s.path.Field.Failed()
+			ctx.Frame.Report("")(result, err)
+
+			return
+		}
+		s.focus.Set(nil)
+		ctx.Frame.Status("Path name saved")
+	})
+
+	return true
 }

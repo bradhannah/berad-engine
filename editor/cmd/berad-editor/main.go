@@ -298,6 +298,7 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 		return ids.ULID{}, err
 	}
 	sampleZone := zoneplugin.NewDocument()
+	sampleZone.Zone.Path = "sample_zone"
 	for index, floorID := range []ids.ULID{groundID, upperID} {
 		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
 			return ids.ULID{}, fmt.Errorf("create sample: %w", err)

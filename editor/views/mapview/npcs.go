@@ -102,6 +102,35 @@ func (s *State) countZoneNPCs(docs frame.Docs) {
 	}
 }
 
+// askPlacing asks how many floors place the selected placement's NPC, once
+// for each NPC and change.
+func (s *State) askPlacing(ctx *frame.Context) {
+	asked := s.placedNPC
+	if asked.IsZero() || asked == s.floorsFor || s.floorsAsking {
+		return
+	}
+	s.floorsAsking = true
+	ctx.Requests.WhereUsed(asked, "", func(uses []protocol.Use, err error) {
+		s.floorsAsking = false
+		if err == nil {
+			s.floorsOf, s.floorsFor = len(floorsPlacing(uses)), asked
+		}
+	})
+}
+
+// floorsPlacing keeps the floors among where an NPC is used: those placing
+// it.
+func floorsPlacing(uses []protocol.Use) []protocol.Use {
+	var floors []protocol.Use
+	for _, use := range uses {
+		if use.Format == floor.FormatName {
+			floors = append(floors, use)
+		}
+	}
+
+	return floors
+}
+
 // subscribeNPC keeps the selected placement's NPC loaded, so its behaviour
 // can be shown.
 func (s *State) subscribeNPC(ctx *frame.Context) {
@@ -170,19 +199,32 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 		return
 	}
 	name := s.names.Name(npcID, "the NPC")
+	once := " An NPC is placed once in the whole project; one that seems to travel is several NPCs, " +
+		"and a character that repeats, such as a guard, is several NPCs."
 	if s.zoneNPCs[npcID] > 0 {
-		ctx.Frame.Status(name + " is already placed in this zone. A zone holds each NPC once; " +
-			"a character that repeats, such as a guard, is several NPCs.")
+		ctx.Frame.Status(name + " is already placed in this zone." + once)
 
 		return
 	}
-	args := tilefloor.AddPlacementArgs{
-		Placement: floor.Placement{ID: ids.ULID{}, NPC: npcID, Col: cell.X, Row: cell.Y},
-		Index:     len(floorData.Placements()),
-	}
-	s.command(ctx, s.floor, tilefloor.AddPlacementEdit, "", args, func(result protocol.Result) {
-		s.selectPlacement(result.Created)
-		ctx.Frame.Status(fmt.Sprintf("Placed %s at %d, %d", name, cell.X, cell.Y))
+	floorID, index := s.floor, len(floorData.Placements())
+	ctx.Requests.WhereUsed(npcID, "", func(uses []protocol.Use, err error) {
+		if err != nil {
+			ctx.Frame.Status(err.Error())
+
+			return
+		}
+		if placed := floorsPlacing(uses); len(placed) > 0 {
+			ctx.Frame.Status(name + " is already placed on " + placed[0].Name + "." + once)
+
+			return
+		}
+		args := tilefloor.AddPlacementArgs{
+			Placement: floor.Placement{ID: ids.ULID{}, NPC: npcID, Col: cell.X, Row: cell.Y}, Index: index,
+		}
+		s.command(ctx, floorID, tilefloor.AddPlacementEdit, "", args, func(result protocol.Result) {
+			s.selectPlacement(result.Created)
+			ctx.Frame.Status(fmt.Sprintf("Placed %s at %d, %d", name, cell.X, cell.Y))
+		})
 	})
 }
 
@@ -273,8 +315,8 @@ func (s *State) drawPlacementInspector(screen *ebiten.Image, floorData *floor.Fl
 	*textY += ui.LineHeight
 	s.theme.DrawText(screen, fmt.Sprintf("at %d, %d", placement.Col, placement.Row), textX, *textY, ui.ColorInk())
 	*textY += ui.LineHeight
-	if s.zoneNPCs[placement.NPC] > 1 {
-		s.theme.DrawText(screen, "Placed more than once in this zone.", textX, *textY, ui.ColorWarn())
+	if s.zoneNPCs[placement.NPC] > 1 || (s.floorsFor == placement.NPC && s.floorsOf > 1) {
+		s.theme.DrawText(screen, "Placed more than once in the project.", textX, *textY, ui.ColorWarn())
 		*textY += ui.LineHeight
 		s.theme.DrawText(screen, "Remove all but one.", textX, *textY, ui.ColorWarn())
 		*textY += ui.LineHeight

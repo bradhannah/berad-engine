@@ -160,11 +160,15 @@ type State struct {
 	placing   *placementDrag
 	names     *project.Index
 	placedNPC ids.ULID
-	// zoneNPCs counts how often each NPC is placed on the zone's floors:
-	// once at most, as one zone runs at a time and an NPC's values are
-	// its own wherever it is placed.
-	zoneNPCs  map[ids.ULID]int
-	behaviour ids.ULID
+	// zoneNPCs counts how often each NPC is placed on the zone's floors,
+	// and floorsOf how many floors in the project place the selected
+	// placement's NPC, as asked for floorsFor: an NPC is placed once in the
+	// whole project.
+	zoneNPCs     map[ids.ULID]int
+	floorsOf     int
+	floorsFor    ids.ULID
+	floorsAsking bool
+	behaviour    ids.ULID
 	// menu is the open right-click menu; openLoaded is the placement whose
 	// behaviour it asked to open, waiting for the NPC to load.
 	menu       *cellMenu
@@ -226,7 +230,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		outside: false,
 		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
-		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{}, behaviour: ids.ULID{},
+		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{}, floorsOf: 0,
+		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
 		menu: nil, openLoaded: ids.ULID{},
 		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
@@ -309,6 +314,7 @@ func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.Event != nil || update.Snapshot != nil {
 		s.syncArt(ctx)
+		s.floorsFor = ids.ULID{}
 	}
 	switch {
 	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
@@ -575,6 +581,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updatePanels(input, ctx)
 	s.subscribeNPC(ctx)
+	s.askPlacing(ctx)
 	s.openWhenLoaded(ctx)
 	if s.preview != nil {
 		s.stepPreview(input, ctx)
