@@ -1,6 +1,6 @@
 # Increment 15: Values and sensing
 
-**Status:** Built
+**Status:** Building
 
 The first world state, and the first way for NPCs to be aware of each other.
 An author declares typed values in the World state window, or on a workflow
@@ -142,6 +142,12 @@ Chosen while building, for its author to check:
 | 4. Local values | Workflow logic format 4, upgraded from 3, with the workflow's local values; Local values in the inspector when no node is selected; their edits, passing the shared undo test | A workflow's locals can be declared, changed and undone | Built |
 | 5. The nodes in the editor | Set value, Check value and Find NPC nearby; a value parameter whose picker groups values by scope, offers only those a workflow may use, including other NPCs' values to read, and can declare a new one; a parameter that follows the chosen value's type; problem marks for missing or mismatched values | Each node can be built and checked in the Workflow window, and a broken value is marked | Built |
 | 6. Running them | The engine's world state: values for the world, each zone and each NPC, kept with the NPC wherever it is placed, and each running workflow's locals; the three nodes in the runner; locals cleared on restart and on a change of zone; values in the preview stream and the Watch window | A shopkeeper serves a waiting customer in the preview, the same way every run, judged by its author | Built |
+| 7. A shop to try, and deleting by right-click | The sample project's shop: its values, a clerk and a customer with their workflows, placed; a right-click menu on Workflow nodes and lines that deletes them | A new sample project previews the shop working; a right-click deletes a node or a line | Built |
+| 8. Types, groups and templates | World-state format 2 and the upgrades to it: integer with optional limits, bool and text; groups; NPC and zone templates; each NPC's and zone's own values and applied templates in its own document, with an NPC's name; zone path names | Every kind of item can be declared, saved and read back unchanged, and older files upgrade | Planned |
+| 9. Editing them | Edits for groups, templates, applying them, and NPCs' and zones' own values, passing the shared undo test; dotted names that declare their groups; deleting refused while anything in it is used | Each change can be made and undone, and a used value cannot be deleted | Planned |
+| 10. The World state window as a tree | World, Zone and NPC, with templates and each zone and NPC as parents; an inspector for each kind of item; limits and Default; delete warnings that say where things are used | An author can organise values into groups and templates, and apply templates, without leaving the window | Planned |
+| 11. Values in workflows | Workflow format 5; choosers that show paths in the tree and declare groups from a typed path; problems for an NPC or zone that lacks a value a workflow uses; Check value's "at its maximum" and "at its minimum"; text values | A guard behaviour shared by two guards uses a template's values, and a missing one is marked | Planned |
+| 12. Running them again | One placement per NPC in the whole project; the runner holding integers at their limits, text, templates and named zones; the preview, the Watch window's tree of values, and the sample shop using a template and a group | The sample shop runs with its values in a template, the same way every run | Planned |
 
 ## Step results
 
@@ -196,7 +202,46 @@ real-window test passing, the new tests' screenshots checked.
 
 ## Changed after its author tried it
 
-None yet.
+Settled by its author on 2026-11-01, after trying it:
+
+- **The sample project has a shop to try:** a clerk and a customer, each
+  with its own workflow, and the values they use.
+- **Right-clicking a Workflow node or line opens a menu that deletes it,**
+  as Backspace does. The start node cannot be deleted.
+- **Values are organised in groups,** so `world.quests.dragon_slain` sits
+  in the group `quests`, and the World state window shows a tree. A group is
+  declared, with a name and a description, and stays until it is deleted.
+  Typing a dotted name, in the window or in a chooser, declares the groups
+  it needs. World, zone and NPC values can be grouped; local values stay
+  flat, belonging to one workflow.
+- **Each NPC and each zone owns its values,** listed under it in the tree:
+  `npc.george.secret` is George's alone. A **template** is a named set of
+  values, such as `guards` holding `how_many_arrested`; applied to an NPC it
+  gives that NPC the set, as `npc.guard1.guards.how_many_arrested`, and
+  editing the template changes it for every NPC it is applied to. Zones
+  have templates too. This replaces declaring an NPC or zone value for every
+  NPC or zone at once.
+- **A workflow names its own NPC's values without the NPC's name,** as
+  `npc.guards.how_many_arrested`, so one behaviour serves every NPC with the
+  template; an NPC following a workflow that lacks a value it uses is marked
+  as a problem. Another NPC's values are read, never set, by name, and a
+  zone's the same way, as `zone.market.crowded`, so zones have path names
+  as NPCs do.
+- **Every NPC has a `name` value,** text that starts as its display name
+  and that workflows may set, such as a name the player learns.
+- **The types are integer, bool, choice and text,** with NPC for local
+  values only. An integer has an optional minimum and maximum, and a Set
+  value or Add that would pass one holds it at the limit; Check value asks
+  whether it is at its maximum or its minimum. A bool is true or false.
+  Every type's starting value is called its **Default**.
+- **Deleting is refused while anything is used:** a value, a group or a
+  template that a workflow uses cannot be deleted, and the window says
+  where it is used. Otherwise deleting a group or a template warns how many
+  values go with it, and Undo brings them back. An NPC's or zone's place in
+  the tree goes only when the NPC or zone is deleted.
+- **An NPC is placed once in the whole project,** keeping things simple. An
+  NPC that seems to travel is several NPCs, shown or hidden by values.
+  This replaces placing one NPC once in each zone.
 
 ## Not in this increment
 
