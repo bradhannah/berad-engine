@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -57,6 +58,8 @@ func kindOf(format string) kind {
 		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: "Open sprite"}
 	case art.PaletteFormatName:
 		return kind{label: "Palette", noun: "palette", icon: ui.IconPalette, open: "Open in Palette Editor"}
+	case artplugin.TemplateFormatName:
+		return kind{label: "Template", noun: "template", icon: ui.IconTemplate, open: "Open in Template editor"}
 	}
 
 	return kind{label: "Document", noun: "document", icon: ui.IconNone, open: ""}
@@ -168,7 +171,8 @@ func (s *State) layoutActions(docs frame.Docs, entry project.Entry, left, width,
 		s.down.Rect = image.Rect(left+half+buttonGap, top, left+width, top+ui.ButtonH)
 		_, inZone := s.zoneOf(docs, entry.ID)
 		s.open.Disabled, s.up.Disabled, s.down.Disabled = !inZone, !inZone, !inZone
-	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName, art.PaletteFormatName:
+	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName, art.PaletteFormatName,
+		artplugin.TemplateFormatName:
 		s.open.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	}
 

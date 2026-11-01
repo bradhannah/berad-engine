@@ -81,9 +81,14 @@ func everyProjectHolds(documentID ids.ULID) bool {
 	return documentID == art.DefaultPaletteID() || documentID == art.SettingsID() || documentID == art.StandInsID()
 }
 
-// createSprite makes a sprite with one tile at the project's tile size, as
-// one undo step. The tile is made first, since a sprite names its tile.
-func (s *State) createSprite(ctx *frame.Context) {
+// createSprite makes a sprite with one tile at the project's tile size,
+// drawn to no template.
+func (s *State) createSprite(ctx *frame.Context) { s.createSpriteDrawnTo(ctx, ids.ULID{}) }
+
+// createSpriteDrawnTo makes a sprite with one tile at the project's tile
+// size, drawn to a template or to none, as one undo step. The tile is made
+// first, since a sprite names its tile.
+func (s *State) createSpriteDrawnTo(ctx *frame.Context, template ids.ULID) {
 	size, ok := s.projectTileSize(ctx.Docs)
 	if !ok {
 		size = art.DefaultTileSize
@@ -105,15 +110,22 @@ func (s *State) createSprite(ctx *frame.Context) {
 	gesture := s.gesture()
 	args := newDocument(art.TileFormatName, firstTile, ids.ULID{}, data)
 	made := fmt.Sprintf("Created “%s” with one tile, %d × %d pixels", name, size, size)
+	if !template.IsZero() {
+		made = fmt.Sprintf("Created “%s”, drawn to %s, with one tile, %d × %d pixels", name,
+			s.index(ctx.Docs).Name(template, "a template"), size, size)
+	}
+	sprite := newArt{name: name, folder: folder, gesture: gesture, made: made, template: template}
 	s.command(ctx, project.IndexID(), project.CreateEdit, gesture, args, func(result protocol.Result, _ error) {
-		s.addSprite(ctx, newArt{name: name, folder: folder, gesture: gesture, made: made}, result.Created)
+		s.addSprite(ctx, sprite, result.Created)
 	}, nil)
 }
 
 // newArt is a sprite on its way: its name and folder, the gesture that makes
-// it with its tile, and what the status bar says once it is made.
+// it with its tile, what the status bar says once it is made, and the
+// template it is drawn to.
 type newArt struct {
 	name, folder, gesture, made string
+	template                    ids.ULID
 }
 
 // addSprite makes the sprite that shows a new tile. When the sprite is
@@ -124,7 +136,7 @@ func (s *State) addSprite(ctx *frame.Context, sprite newArt, tileID ids.ULID) {
 		deletion := newDocument("", "", ids.ULID{}, nil).withID(tileID)
 		s.command(ctx, project.IndexID(), project.DeleteEdit, gesture, deletion, nil, nil)
 	}
-	data, err := art.Sprite{Tile: tileID, Template: ids.ULID{}}.Encode()
+	data, err := art.Sprite{Tile: tileID, Template: sprite.template}.Encode()
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 		removeTile()
