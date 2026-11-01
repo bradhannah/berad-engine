@@ -394,6 +394,43 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 - **Agreed (2026-10-31):** the Workflow canvas zooms with the Map's floating
   zoom control and keys, and Recentre in its toolbar brings a workflow panned
   out of sight back to the middle.
+- **Agreed (2026-11-01):** every interior leg of a line can be dragged: a
+  forward line's upright part, as today, and a back line's drop, level run
+  and end legs. Each is one offset saved with the layout, measured from the
+  line's own node, so the line keeps its shape when its nodes move; Reset
+  route puts it back where the editor would run it. No free waypoints: lines
+  stay level and upright. *Candidate:* an Add bend menu item that splits a
+  leg in three, if a real workflow ever needs a line to go round something.
+- **Agreed (2026-11-01):** the status bar names the line under the pointer:
+  where it leaves, by which outcome, where it enters, whether it loops back
+  and whether it was moved by hand. A Legend toggle in the toolbar says what
+  each look means: solid goes forward, dashed loops back, grey is a time
+  switch's otherwise, blue is lit, orange is live.
+- **Agreed (2026-11-01):** colour is organisation, not meaning. The editor
+  offers seven fixed tints, none blue and none red, so selection and
+  problems stay unmistakable; the project declares no colours of its own. A
+  node, a container or an outcome (one output of a node) can be given one. A
+  line's colour is unset, from its outcome, or set by hand, and the
+  inspector says which; selected and live always win over it. Colours are
+  layout, saved with positions and bends, and mean nothing to the engine.
+- **Agreed (2026-11-01):** a long line shows its outcome's name again near
+  its arrowhead, small and muted; a short line does not, since the outcome's
+  own row is in view.
+- **Agreed (2026-11-01):** several nodes and containers can be selected,
+  with Shift-click or a box dragged from empty canvas, and moved, coloured,
+  duplicated (Cmd+D, or copied and pasted into another workflow) or deleted
+  together, each one undo step. Lines are never part of a group. A
+  container brings its contents, and a dragged group stops at a container's
+  wall, as one node does. Arrow keys nudge the selection, and Arrange can
+  lay out the selection alone.
+- **Agreed (2026-11-01):** dropping a node onto a line, from the palette or
+  from the canvas, puts it in the flow: the line ends at the new node, and
+  the node's first output continues to the old target; its other outputs
+  stay free, labelled as free outputs are. A target with several entries
+  takes the line on its next free dot.
+- **Candidate:** reusable blocks of text, paragraphs long, kept in the
+  project view rather than in one workflow (its author's "static strings").
+  *Open:* what they are for, given that the Texts view holds a game's texts.
 - **Candidate:** cut scenes as workflows that block player input.
 
 ## NPCs

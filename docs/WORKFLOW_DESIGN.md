@@ -255,3 +255,11 @@ world-state tree with provisions, references in parameters, Set and Check
 nodes); sprite workflows reacting to what an NPC is doing; calls between
 workflows; conversations. Values and sensing are planned first, in
 [increment 15](increments/0015-values-and-sensing.md), ahead of containers.
+
+**Agreed (2026-11-01):** two canvas increments come before containers, so
+that building workflows stops snagging on the canvas: [increment
+17](increments/0017-reading-the-graph.md), reading the graph (handles on
+every leg of a line, the status bar naming a line, colours), and a planned
+one for working with many nodes (multi-select, duplicate, nudge, dropping a
+node onto a line). Both are layout: nothing in them changes what the engine
+runs.

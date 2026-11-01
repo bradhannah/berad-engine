@@ -38,3 +38,4 @@ accepted it.
 | [14. Launch](increments/0014-launch.md) | Launch: playing the project in a Play tab with sprites and sounds, the player start, ambient and zone sounds, one wall sprite | Built |
 | [15. Values and sensing](increments/0015-values-and-sensing.md) | Values and sensing: declared values in four scopes, Set and Check value, and finding an NPC nearby | Built |
 | [16. Templates](increments/0016-templates.md) | Templates: discouraged and not-allowed pixels and guides to draw to, chosen per sprite and edited in a Template editor | Built |
+| [17. Reading the graph](increments/0017-reading-the-graph.md) | Reading the graph: a handle on every leg of a line, the status bar naming a line and a legend, colours on nodes, containers, outcomes and lines, the outcome's name at a long line's arrowhead | Planned |
