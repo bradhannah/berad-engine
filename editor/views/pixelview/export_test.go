@@ -21,3 +21,9 @@ func (s *State) Problem(docs frame.Docs) string {
 
 	return s.problem(docs, size)
 }
+
+// Note is what the readout's second line says when nothing is wrong.
+func (s *State) Note(docs frame.Docs) string { return s.templateNote(docs) }
+
+// EditTemplateItem is the Template menu's Edit template… item.
+func EditTemplateItem() string { return editTemplateItem }

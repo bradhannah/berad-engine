@@ -31,12 +31,12 @@ const (
 )
 
 // Format versions this package writes. Version 2 of palettes added labels
-// and moved colours' shadow records, and of tiles loose colours; both read
-// version 1 unchanged.
+// and moved colours' shadow records, of tiles loose colours, and of sprites
+// the template a sprite is drawn to; each reads version 1 unchanged.
 const (
 	PaletteVersion  = 2
 	TileVersion     = 2
-	SpriteVersion   = 1
+	SpriteVersion   = 2
 	SettingsVersion = 1
 	StandInsVersion = 1
 )
@@ -134,7 +134,7 @@ func unchanged() map[int]content.Migration {
 
 // SpriteFormat returns the sprite format registration.
 func SpriteFormat() content.Format {
-	return content.Format{Name: SpriteFormatName, Current: SpriteVersion, Migrations: nil}
+	return content.Format{Name: SpriteFormatName, Current: SpriteVersion, Migrations: unchanged()}
 }
 
 // SettingsFormat returns the art settings format registration.

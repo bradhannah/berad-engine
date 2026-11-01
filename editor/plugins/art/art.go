@@ -1,7 +1,7 @@
 // Package art is the editor half of a project's art: the palette, tile,
-// sprite, settings and stand-in sprite documents, the edits that change them,
-// and the documents every project holds: Default, the engine's palette, which
-// is read only, the art settings and the stand-in sprites.
+// sprite, settings, stand-in sprite and template documents, the edits that
+// change them, and the documents every project holds: Default, the engine's
+// palette, which is read only, the art settings and the stand-in sprites.
 package art
 
 import (
@@ -30,6 +30,7 @@ const (
 	standInPrefix  = "standin:"
 	rampOrderItem  = "ramp-order"
 	tileSizeItem   = "tile-size"
+	templateItem   = "template"
 )
 
 // RampItem names a ramp, as a tile's references and a ramp's removal name it.
@@ -160,6 +161,16 @@ func (d *SpriteDocument) Clone() model.Document { return &SpriteDocument{Sprite:
 
 // Parts lists the sprite's tile.
 func (d *SpriteDocument) Parts() []ids.ULID { return []ids.ULID{d.Sprite.Tile} }
+
+// References lists the template the sprite is drawn to, so deleting the
+// template shows the sprites drawn to it.
+func (d *SpriteDocument) References() []model.Reference {
+	if d.Sprite.Template.IsZero() {
+		return nil
+	}
+
+	return []model.Reference{{Document: d.Sprite.Template, Item: "", Label: "drawn to it"}}
+}
 
 // DecodeSprite reads a saved sprite.
 //
@@ -328,10 +339,11 @@ func Plugin() plugin.Plugin {
 			{Format: art.SpriteFormat(), Decode: DecodeSprite, Layout: nil, Prepare: nil},
 			{Format: art.SettingsFormat(), Decode: DecodeSettings, Layout: nil, Prepare: nil},
 			{Format: art.StandInsFormat(), Decode: DecodeStandIns, Layout: nil, Prepare: nil},
+			{Format: TemplateFormat(), Decode: DecodeTemplate, Layout: nil, Prepare: nil},
 		},
 		Edits: []model.EditKind{
 			AddRamp{}, RemoveRamp{}, RenameRamp{}, MoveRamp{}, AddShade{}, RemoveShade{}, SetShade{},
-			MoveShade{}, Paint{}, SetTileSize{}, SetStandIn{},
+			MoveShade{}, Paint{}, SetTileSize{}, SetStandIn{}, SetTemplate{}, UseTemplate{},
 		},
 		Required: []model.RequiredDocument{
 			{

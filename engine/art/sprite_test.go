@@ -2,6 +2,7 @@ package art_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -22,6 +23,30 @@ func TestSprite(t *testing.T) {
 	}
 	if _, err := art.DecodeSprite([]byte(`{"tile":"00000000000000000000000000"}`)); !errors.Is(err, art.ErrData) {
 		t.Fatalf("a sprite without a tile: %v", err)
+	}
+}
+
+func TestSpriteTemplate(t *testing.T) {
+	t.Parallel()
+	sprite := art.Sprite{Tile: id(5), Template: id(6)}
+	data, err := sprite.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := art.DecodeSprite(data)
+	if err != nil || decoded != sprite {
+		t.Fatalf("round trip: %+v %v", decoded, err)
+	}
+	plain, err := art.Sprite{Tile: id(5), Template: ids.ULID{}}.Encode()
+	if err != nil || strings.Contains(string(plain), "template") {
+		t.Fatalf("a sprite drawn to no template is saved as %s: %v", plain, err)
+	}
+	if art.SpriteFormat().Current != 2 || art.SpriteFormat().Migrations[1] == nil {
+		t.Fatal("sprites are version 2 and read version 1")
+	}
+	upgraded, err := art.SpriteFormat().Migrations[1](plain)
+	if err != nil || string(upgraded) != string(plain) {
+		t.Fatalf("a version 1 sprite reads unchanged: %s %v", upgraded, err)
 	}
 }
 

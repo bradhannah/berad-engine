@@ -196,7 +196,11 @@ under consideration), **open** (undecided).
 - **Agreed:** no vector art; shape tools produce pixel art.
 - **Agreed (2026-10-25):** art is drawn only in the built-in pixel editor.
   Nothing is imported from, or round-tripped with, other tools such as
-  Aseprite.
+  Aseprite. (Changed on 2026-11-01: art may be **imported one way**, such
+  as a bought pack or a stand-in, and is never exported or round-tripped.
+  How it comes in, sprite sheets or separate files, is worked out with its
+  author once there is a real pack to bring in, together with each tile's
+  origin and whether it was made with AI.)
 - **Candidate:** editing an item's art and definition together.
 
 Asked for by its author on 2026-10-25, paraphrased: an editor in the spirit of
@@ -299,6 +303,19 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   the pencil cannot paint, so the floor below shows through stairs or a hole,
   besides the guides it gives to draw to, such as a step angle or a floor
   height. Guides are never part of the tile.
+- **Agreed (2026-11-01):** a template marks pixels **not allowed** (its
+  author's words, for "kept clear") or **discouraged**: an item that never
+  uses its outside border pixels, a character that keeps three pixels clear
+  at each side. Not allowed is absolute: the tools never paint there, and
+  breaking it means changing or removing the template. Discouraged pixels
+  can be painted, and are shown and counted. Templates are documents of
+  their own, edited in a **Template editor** tab; the Pixel editor chooses a
+  sprite's template, and New ▾ makes a sprite already drawn to one
+  ([increment 16](increments/0016-templates.md)).
+- **Candidate:** a folder names the template its new sprites are drawn to,
+  once folders can carry settings; and families of pieces, such as a wall
+  family made into a folder of its pieces, each with a template made from
+  the family's guides.
 - **Agreed (2026-10-25):** **drawing layers** (base, detail, shading) while
   painting a tile, kept by the editor for later edits and flattened into one
   tile for the game. (Moss and the like are overlays, not layers: see

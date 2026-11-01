@@ -17,6 +17,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/client"
+	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
@@ -184,6 +185,7 @@ func menuItems() []ui.MenuItem {
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
 		{ID: newSprite, Label: "Sprite", Icon: ui.IconSprite, Disabled: false, Danger: false, Rule: false},
 		{ID: newPalette, Label: "Palette", Icon: ui.IconPalette, Disabled: false, Danger: false, Rule: false},
+		{ID: newTemplate, Label: "Template", Icon: ui.IconTemplate, Disabled: false, Danger: false, Rule: false},
 		{ID: newFolderPrefix + zone.FormatName, Label: "Zone folder", Icon: ui.IconFolder, Disabled: false, Danger: false,
 			Rule: true},
 		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
@@ -196,6 +198,8 @@ func menuItems() []ui.MenuItem {
 			Danger: false, Rule: false},
 		{ID: newFolderPrefix + art.PaletteFormatName, Label: "Palette folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
+		{ID: newFolderPrefix + artplugin.TemplateFormatName, Label: "Template folder", Icon: ui.IconFolder,
+			Disabled: false, Danger: false, Rule: false},
 	}
 }
 
@@ -547,8 +551,10 @@ func (s *State) saveBar(input *ui.Input, ctx *frame.Context) bool {
 	return true
 }
 
-// openMenu shows New ▾; a floor needs a zone, or a floor of one, selected.
+// openMenu shows New ▾, with a sprite drawn to each template; a floor needs
+// a zone, or a floor of one, selected.
 func (s *State) openMenu(docs frame.Docs) {
+	s.menu.Items = s.newItems(docs)
 	_, hasZone := s.selectedZone(docs)
 	for index := range s.menu.Items {
 		if s.menu.Items[index].ID == newFloor {
@@ -562,6 +568,11 @@ func (s *State) openMenu(docs frame.Docs) {
 func (s *State) create(ctx *frame.Context, item string) {
 	if format, isFolder := strings.CutPrefix(item, newFolderPrefix); isFolder {
 		s.createFolder(ctx, format)
+
+		return
+	}
+	if template, drawn := drawnItem(item); drawn {
+		s.createDrawn(ctx, template)
 
 		return
 	}
@@ -582,6 +593,8 @@ func (s *State) create(ctx *frame.Context, item string) {
 		s.createSprite(ctx)
 	case newPalette:
 		s.createPalette(ctx)
+	case newTemplate:
+		s.createTemplate(ctx)
 	}
 }
 
@@ -787,6 +800,17 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 	}, nil)
 }
 
+// documentView names the view a document of a format opens in, for the
+// formats that open in a view of their own.
+func documentView(format string) (string, bool) {
+	view, ok := map[string]string{
+		textdoc.FormatName: textView, flow.FormatName: workflowView, art.SpriteFormatName: spriteView,
+		art.PaletteFormatName: paletteView, artplugin.TemplateFormatName: templateView,
+	}[format]
+
+	return view, ok
+}
+
 // openRow opens what the selected row shows: the World state window for
 // the World state row, or what openSelected opens.
 func (s *State) openRow(ctx *frame.Context) {
@@ -800,7 +824,8 @@ func (s *State) openRow(ctx *frame.Context) {
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
 // document in a Text window, a workflow, or an NPC's behaviour workflow, in a
-// Workflow window, and a sprite in a Pixel editor. A folder opens or closes.
+// Workflow window, a sprite in a Pixel editor, a palette in the Palette
+// Editor and a template in the Template editor. A folder opens or closes.
 func (s *State) openSelected(ctx *frame.Context) {
 	if s.openCue(ctx) {
 		return
@@ -820,6 +845,11 @@ func (s *State) openSelected(ctx *frame.Context) {
 	if !ok {
 		return
 	}
+	if view, own := documentView(entry.Format); own {
+		ctx.Requests.Open(view, entry.ID, false)
+
+		return
+	}
 	switch entry.Format {
 	case zone.FormatName:
 		ctx.Requests.Open(mapView, entry.ID, false)
@@ -831,14 +861,6 @@ func (s *State) openSelected(ctx *frame.Context) {
 			return
 		}
 		ctx.Requests.Open(mapView, zoneID, false)
-	case textdoc.FormatName:
-		ctx.Requests.Open(textView, entry.ID, false)
-	case flow.FormatName:
-		ctx.Requests.Open(workflowView, entry.ID, false)
-	case art.SpriteFormatName:
-		ctx.Requests.Open(spriteView, entry.ID, false)
-	case art.PaletteFormatName:
-		ctx.Requests.Open(paletteView, entry.ID, false)
 	case npc.FormatName:
 		if found, loaded := s.npcOf(ctx.Docs, entry.ID); loaded && !found.Behaviour.IsZero() {
 			ctx.Requests.Open(workflowView, found.Behaviour, false)

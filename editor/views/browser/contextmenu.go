@@ -4,6 +4,7 @@ import (
 	"image"
 	"strings"
 
+	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -29,6 +30,7 @@ func typeLabel(format string) string {
 	return map[string]string{
 		zone.FormatName: "zone", flow.FormatName: "workflow", npc.FormatName: npcLabel,
 		textdoc.FormatName: "text document", art.SpriteFormatName: "sprite", art.PaletteFormatName: "palette",
+		artplugin.TemplateFormatName: "template",
 	}[format]
 }
 
@@ -37,6 +39,7 @@ func typeIcon(format string) ui.Icon {
 	return map[string]ui.Icon{
 		zone.FormatName: ui.IconZone, flow.FormatName: ui.IconWorkflow, npc.FormatName: ui.IconNPC,
 		textdoc.FormatName: ui.IconText, art.SpriteFormatName: ui.IconSprite, art.PaletteFormatName: ui.IconPalette,
+		artplugin.TemplateFormatName: ui.IconTemplate,
 	}[format]
 }
 
@@ -124,7 +127,7 @@ func (s *State) contextItems(docs frame.Docs, row string) []ui.MenuItem {
 	}
 	if row == "" {
 		var items []ui.MenuItem
-		for _, item := range menuItems() {
+		for _, item := range s.newItems(docs) {
 			if item.ID != newFloor {
 				items = append(items, item)
 			}

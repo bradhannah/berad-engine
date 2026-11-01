@@ -20,6 +20,9 @@ import (
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
+	if kind == "menu" && s.templateMenu.IsOpen() {
+		return s.templateMenu.Locate(value)
+	}
 	if kind == "menu" {
 		return s.showsMenu.Locate(value)
 	}
@@ -82,13 +85,14 @@ func (s *State) headerName(paletteID ids.ULID) string {
 
 // locateWidget finds a button, a field or the grid toggle by its ID.
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	buttons := append([]*ui.Button{s.zoomOut, s.zoomIn, s.zoomFit, s.edit, s.shows}, s.tools...)
+	buttons := append([]*ui.Button{s.zoomOut, s.zoomIn, s.zoomFit, s.edit, s.shows, s.templateChoice, s.clearThem},
+		s.tools...)
 	for _, button := range buttons {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
 	}
-	for _, toggle := range []*ui.Toggle{s.grid, s.marks} {
+	for _, toggle := range []*ui.Toggle{s.grid, s.marks, s.overlay} {
 		if widget == toggle.ID && !toggle.Rect.Empty() {
 			return ui.Center(toggle.Rect), true
 		}
@@ -100,8 +104,11 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 // hasState answers input scripts waiting for the window: "loaded" once the
 // tile and Default are, "tool:<tool>", "color:<colour>",
 // "zoom:<whole number>", "pixel:<col>,<row>:<colour>" once a pixel is that
-// colour, and "shows:<stand-in>" once the sprite shows that stand-in
-// ("shows:" for none).
+// colour, "shows:<stand-in>" once the sprite shows that stand-in ("shows:"
+// for none), "template:<name>" once it is drawn to that template
+// ("template:" for none), and "painted:<discouraged>,<not allowed>" once
+// that many pixels are painted where its template discourages them and
+// does not allow them.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	kind, value, _ := strings.Cut(state, ":")
 	switch kind {
@@ -122,6 +129,12 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasPixel(value, docs)
 	case "shows":
 		return s.shownStandIn(docs) == value
+	case "template":
+		return s.templateName(docs) == value
+	case "painted":
+		discouraged, notAllowed := s.templatePixels(docs)
+
+		return strconv.Itoa(len(discouraged))+","+strconv.Itoa(len(notAllowed)) == value
 	}
 
 	return false

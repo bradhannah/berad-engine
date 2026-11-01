@@ -24,6 +24,8 @@ const (
 	PaintEdit       = "art.tile.paint"
 	TileSizeEdit    = "art.settings.tile-size"
 	StandInEdit     = "art.standin.set"
+	TemplateEdit    = "art.template.set"
+	UseTemplateEdit = "art.sprite.template"
 )
 
 // MaxPixels bounds the pixels one paint command may change.
@@ -106,6 +108,17 @@ type TileSizeArgs struct {
 type StandInArgs struct {
 	StandIn string   `json:"standIn"`
 	Sprite  ids.ULID `json:"sprite"`
+}
+
+// TemplateArgs sets a template's rules and guides.
+type TemplateArgs struct {
+	Template Template `json:"template"`
+}
+
+// UseTemplateArgs chooses the template a sprite is drawn to; a zero template
+// means none.
+type UseTemplateArgs struct {
+	Template ids.ULID `json:"template"`
 }
 
 // change applies one edit to a document of type D with arguments of type A.
@@ -487,5 +500,47 @@ func (SetStandIn) Apply(document model.Document, args json.RawMessage) (model.Ap
 		}
 
 		return StandInArgs{StandIn: set.StandIn, Sprite: previous}, []string{standInPrefix + set.StandIn}, nil
+	})
+}
+
+// SetTemplate is the edit kind that sets a template's rules and guides.
+type SetTemplate struct{}
+
+// Name identifies the edit kind.
+func (SetTemplate) Name() string { return TemplateEdit }
+
+// Format names the document format the edit applies to.
+func (SetTemplate) Format() string { return TemplateFormatName }
+
+// Apply sets the rules and guides; its inverse restores the previous ones.
+func (SetTemplate) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return change(document, args, "", func(target *TemplateDocument, set TemplateArgs) (any, []string, error) {
+		if err := set.Template.Validate(); err != nil {
+			return nil, nil, fmt.Errorf("template: %w", err)
+		}
+		previous := target.Template
+		target.Template = set.Template.Clone()
+
+		return TemplateArgs{Template: previous}, []string{templateItem}, nil
+	})
+}
+
+// UseTemplate is the edit kind that chooses the template a sprite is drawn
+// to.
+type UseTemplate struct{}
+
+// Name identifies the edit kind.
+func (UseTemplate) Name() string { return UseTemplateEdit }
+
+// Format names the document format the edit applies to.
+func (UseTemplate) Format() string { return art.SpriteFormatName }
+
+// Apply sets the sprite's template; its inverse restores the previous one.
+func (UseTemplate) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	return change(document, args, "", func(target *SpriteDocument, use UseTemplateArgs) (any, []string, error) {
+		previous := target.Sprite.Template
+		target.Sprite.Template = use.Template
+
+		return UseTemplateArgs{Template: previous}, []string{templateItem}, nil
 	})
 }

@@ -33,6 +33,8 @@ const (
 	IconSettings
 	// IconPlay marks the Play tab and Launch.
 	IconPlay
+	// IconTemplate is a template: a frame round a clear middle.
+	IconTemplate
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -66,6 +68,9 @@ const (
 	iconSwatch = 4
 	fadeStep   = 0x55
 	iconKnob   = 4
+	// A template's frame has a fainter frame this far inside it.
+	iconFrame = 4
+	frameFade = 0x99
 )
 
 // IconColor returns the muted colour of an icon's type.
@@ -85,7 +90,7 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorMuted()
 	case IconWatch, IconPlay:
 		return ColorLive()
-	case IconSprite, IconPalette:
+	case IconSprite, IconPalette, IconTemplate:
 		return ColorArt()
 	case IconNone, IconProject, IconClock, IconSettings:
 	}
@@ -137,7 +142,7 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 		drawSpeaker(screen, left, top, ink)
 	case IconProject, IconClock, IconWatch:
 		drawWindowIcon(screen, icon, left, top, ink)
-	case IconSprite, IconPalette, IconSettings:
+	case IconSprite, IconPalette, IconSettings, IconTemplate:
 		drawArtIcon(screen, icon, left, top, ink)
 	case IconPlay:
 		drawPlay(screen, left, top, ink)
@@ -177,11 +182,12 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 	case IconWatch:
 		drawEye(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings, IconPlay:
+		IconPalette, IconSettings, IconPlay, IconTemplate:
 	}
 }
 
-// drawArtIcon draws the icon of a sprite, a palette or the settings.
+// drawArtIcon draws the icon of a sprite, a palette, the settings or a
+// template.
 func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.RGBA) {
 	switch icon {
 	case IconSprite:
@@ -190,9 +196,20 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 		drawRamp(screen, left, top, ink)
 	case IconSettings:
 		drawSliders(screen, left, top, ink)
+	case IconTemplate:
+		drawFrame(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconProject,
 		IconClock, IconWatch, IconPlay:
 	}
+}
+
+// drawFrame draws a template: a square frame round a clear middle, with a
+// fainter frame inside it.
+func drawFrame(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	vector.StrokeRect(screen, left+1, top+1, IconSize-Half, IconSize-Half, iconStroke, ink, false)
+	inner := float32(iconFrame)
+	vector.StrokeRect(screen, left+inner, top+inner, IconSize-Half*inner, IconSize-Half*inner, 1, fade(ink, frameFade),
+		false)
 }
 
 // heartRows is a sprite's icon, a heart in pixels, one string per row.

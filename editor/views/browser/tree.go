@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -33,6 +34,7 @@ func sectionNew(section string) string {
 	return map[string]string{
 		sectionZones: newZone, sectionWorkflows: newWorkflow, sectionNPCs: newNPC, sectionText: newText,
 		sectionAudio: newSound, sectionSprites: newSprite, sectionPalettes: newPalette,
+		sectionTemplates: newTemplate,
 	}[section]
 }
 
@@ -40,6 +42,7 @@ func sectionNew(section string) string {
 func newSection(item string) string {
 	for _, section := range []string{
 		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio, sectionSprites, sectionPalettes,
+		sectionTemplates,
 	} {
 		if sectionNew(section) == item {
 			return section
@@ -55,13 +58,14 @@ func sectionFormat(section string) string {
 	return map[string]string{
 		sectionZones: zone.FormatName, sectionWorkflows: flow.FormatName, sectionNPCs: npc.FormatName,
 		sectionText: textdoc.FormatName, sectionSprites: art.SpriteFormatName, sectionPalettes: art.PaletteFormatName,
+		sectionTemplates: artplugin.TemplateFormatName,
 	}[section]
 }
 
 // formatSection returns the section listing a document type, or "".
 func formatSection(format string) string {
 	for _, section := range []string{
-		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionSprites, sectionPalettes,
+		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionSprites, sectionPalettes, sectionTemplates,
 	} {
 		if sectionFormat(section) == format {
 			return section
@@ -124,7 +128,10 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 	for _, artSection := range []struct {
 		section, label string
 		icon           ui.Icon
-	}{{sectionSprites, "Sprites", ui.IconSprite}, {sectionPalettes, "Palettes", ui.IconPalette}} {
+	}{
+		{sectionSprites, "Sprites", ui.IconSprite}, {sectionPalettes, "Palettes", ui.IconPalette},
+		{sectionTemplates, "Templates", ui.IconTemplate},
+	} {
 		rows = append(rows, s.typeRows(artSection.section, artSection.label, index, match.entry,
 			func(entry project.Entry, depth int) []ui.Row {
 				return []ui.Row{item(entry, artSection.icon, paletteDetail(entry), depth)}

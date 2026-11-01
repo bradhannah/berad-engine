@@ -134,6 +134,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
 		t.Fatalf("the lantern's tile: %v", err)
 	}
+	checkSampleTemplates(t, project, sprite, tile)
 	gloomy, err := art.DecodePalette(gloomyFile.Data)
 	if err != nil {
 		t.Fatal(err)
@@ -414,9 +415,10 @@ func quitWhenAlone() []step {
 }
 
 // browseZone is a project browser script that opens the sample zone, then
-// quits the editor once the test's other tabs have closed.
+// quits the editor once the test's other tabs have closed. It waits for the
+// Map's tab first, so it is not alone only because the Map has not opened yet.
 func browseZone() []step {
-	return script(openZone(), quitWhenAlone())
+	return script(openZone(), expect("state:tabs:2", 600), quitWhenAlone())
 }
 
 // TestMapPaintsDrawsAndUndoes drives a real Map: a drag paints the
