@@ -791,6 +791,27 @@ func TestColours(t *testing.T) {
 	}
 }
 
+// TestLongLinesRepeatTheirOutcome moves the Wait far from the random
+// choice: the line from its first outcome, now long, repeats the outcome's
+// name near its arrowhead; a short line, and a line from a node with one
+// output, show nothing.
+func TestLongLinesRepeatTheirOutcome(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	if f.has("far-label:random:1:o1") {
+		t.Fatal("a short line shows no name at its arrowhead")
+	}
+	wait := f.at("node:wait:1")
+	f.drag(wait, wait.Add(image.Pt(200, 0)))
+	if !f.has("far-label:random:1:o1") {
+		t.Fatal("a long line repeats its outcome's name near its arrowhead")
+	}
+	if f.has("far-label:start:1:next") {
+		t.Fatal("a node with one output has no name worth repeating")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
 // TestLegendToggles shows the legend from the toolbar, draws it, and hides
 // it again.
 func TestLegendToggles(t *testing.T) {

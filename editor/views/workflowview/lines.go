@@ -75,9 +75,53 @@ func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 		}
 	}
 	drawArrowhead(area, s.toScreen(corners[len(corners)-1]), ink)
+	if text, far := s.farLabel(link.key); far {
+		s.drawFarLabel(area, corners, text, link.key, lit)
+	}
 	if link.key == s.hoverLink || link.key == s.selectedLink {
 		s.drawGrip(area, corners)
 	}
+}
+
+// farLabelRun is how long a line is, in canvas pixels, before it repeats
+// its outcome's name near its arrowhead, where the outcome's own row is far
+// out of view.
+const farLabelRun = 200
+
+// farLabel is the outcome's name a long line repeats near its arrowhead:
+// only when the node it leaves has several outputs, so the name tells
+// something, and the line runs farLabelRun or more.
+func (s *State) farLabel(key routeKey) (string, bool) {
+	from, ok := s.workflow.Node(key.from)
+	outputs := flow.Outputs(from)
+	if !ok || len(outputs) < ui.Half || key.output == flow.OutputInside {
+		return "", false
+	}
+	corners, length := s.routes[key], 0
+	for index := 1; index < len(corners); index++ {
+		length += abs(corners[index].X-corners[index-1].X) + abs(corners[index].Y-corners[index-1].Y)
+	}
+	if length < farLabelRun {
+		return "", false
+	}
+
+	return outputLabel(outputs, key.output), true
+}
+
+// drawFarLabel draws the name small above the line's last stretch, ending
+// short of the arrowhead, in the line's tint, muted without one, blue when
+// lit, as the free-output labels are drawn.
+func (s *State) drawFarLabel(area *ebiten.Image, corners []image.Point, text string, key routeKey, lit bool) {
+	ink := ui.ColorMuted()
+	if coloured, ok := s.lineTint(key); ok {
+		ink = coloured.ink
+	}
+	if lit {
+		ink = ui.ColorSelect()
+	}
+	tip := s.toScreen(corners[len(corners)-1])
+	left, top := tip.X-arrowSize-freeLabelGap-s.theme.SmallWidth(text), tip.Y-ui.LabelSize-freeLabelGap/ui.Half
+	s.theme.DrawSmall(area, text, left, top, ink)
 }
 
 // drawGrip draws a small handle across the middle of each part of a line

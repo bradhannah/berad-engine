@@ -549,6 +549,11 @@ func (s *State) hasLineState(state string) (bool, bool) {
 		_, bent := s.workflow.Bend(key.from, key.output)
 
 		return ok && bent, true
+	case strings.HasPrefix(state, "far-label:"):
+		key, ok := s.lineNamed(strings.TrimPrefix(state, "far-label:"))
+		_, far := s.farLabel(key)
+
+		return ok && far, true
 	case strings.HasPrefix(state, "lit:"):
 		where := strings.Split(strings.TrimPrefix(state, "lit:"), ":")
 		if len(where) != portParts {

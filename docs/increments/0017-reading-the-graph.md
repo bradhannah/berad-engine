@@ -107,7 +107,7 @@ Chosen while building, for its author to check:
 | 1. Handles on every leg | Grips on a back line's drop, level run and end legs; the end-leg offset in `Bend`; layout format version 3; dragging each, and Reset line clearing them | Route tests for each handle and for a line whose nodes then move; the bend edit passes the shared apply-then-undo test; version 2 layouts load | Built |
 | 2. Naming and the legend | The status bar's line description on hover; the Legend toggle and its panel | View tests of the text for a forward line, a loop and a moved line, and of the toggle | Built |
 | 3. Colours | Tints in the layout; Colour rows in the inspector for a node, a container, each outcome of a node with several, and a line, with the three line states; the drawing of tinted faces, ports, rows and lines | The colour edit passes the shared apply-then-undo test; view tests of inherit, set and none, and of lit and live winning | Built |
-| 4. The outcome's name at the arrowhead | The label on long lines, in the line's ink | A view test of a long and a short line | Planned |
+| 4. The outcome's name at the arrowhead | The label on long lines, in the line's ink | A view test of a long and a short line | Built |
 | 5. Checks | `make check` and the real-window suite; a real-window test drags a back line's end leg and colours an outcome, and both are saved | The checks pass with no lint findings | Planned |
 
 ## Step results
@@ -144,6 +144,12 @@ Chosen while building, for its author to check:
   colours a node, an outcome and its line, overrides the line, takes the
   colour away, gives the outcome's back and draws it all. Lit and live
   winning is by the order `lineInk` applies them, not a test of its own.
+- **The outcome's name at the arrowhead:** a line 200 canvas pixels or
+  longer, leaving a node with several outputs, draws its outcome's label
+  small above its last stretch, short of the arrowhead, in its tint's ink,
+  muted without one and blue when lit. Verified: a view test sees no label
+  on the short line from a random choice, moves the node it goes to 200
+  pixels away and sees one, and none on the start's line.
 
 ## Changed after its author tried it
 
