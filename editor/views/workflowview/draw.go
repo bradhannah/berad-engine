@@ -264,6 +264,12 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		}
 		s.drawOutputRows(area, drawn)
+	case flow.KindCheckValue, flow.KindFindNPC:
+		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+		title := kind.Label + " · " + s.summary(drawn.node, docs)
+		s.theme.DrawText(area, s.clip(title, drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
+			rect.Min.Y+titleDrop, ui.ColorInk())
+		s.drawOutputRows(area, drawn)
 	default:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		title := kind.Label + " · " + s.summary(drawn.node, docs)
@@ -356,24 +362,31 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 
 		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	case flow.KindPlaySound:
-		cue, err := node.Cue("cue")
-		if err != nil {
-			return "?"
-		}
-		if cue == "" {
-			return "no cue"
-		}
-		if listed, found := s.listedCue(cue); found {
-			cue = listed.Name
-		}
-		if step, found := loudness.Find(choiceOf(node, "loudness")); found {
-			return cue + " · " + strings.ToLower(step.Label) + " this time"
-		}
-
-		return cue
+		return s.playSummary(node)
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+		return s.valueSummary(node, docs)
 	default:
 		return ""
 	}
+}
+
+// playSummary describes a Play sound: its cue, and how loud this time.
+func (s *State) playSummary(node flow.Node) string {
+	cue, err := node.Cue("cue")
+	if err != nil {
+		return "?"
+	}
+	if cue == "" {
+		return "no cue"
+	}
+	if listed, found := s.listedCue(cue); found {
+		cue = listed.Name
+	}
+	if step, found := loudness.Find(choiceOf(node, "loudness")); found {
+		return cue + " · " + strings.ToLower(step.Label) + " this time"
+	}
+
+	return cue
 }
 
 // formatDuration writes a wait as "2 s", "30 min" or "1 h", adding "real"
@@ -623,6 +636,10 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		made.clear.Draw(screen, s.theme)
 	case flow.TypeCue:
 		s.drawCue(screen, made, node)
+	case flow.TypeValue:
+		s.drawValue(screen, docs, made, node)
+	case flow.TypeOperand:
+		s.drawOperand(screen, made, left)
 	}
 }
 
@@ -657,7 +674,7 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 		}
 		made.addOption.Draw(screen, s.theme)
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
-		flow.TypeCue:
+		flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 	}
 }
 
@@ -695,6 +712,12 @@ func hintFor(kind string) string {
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindSetValue: "Sets one of this workflow's own values: its NPC's, its zone's, the world's or a " +
+			"local one. Add counts a number up, or down with a minus.",
+		flow.KindCheckValue: "Takes “yes” when the value compares as asked, and “otherwise” when not. It can " +
+			"read another NPC's values: one a local value holds, or one named by its path name.",
+		flow.KindFindNPC: "Looks for the nearest other NPC on its floor within this many tiles, optionally " +
+			"only one whose value matches, and keeps it in a local value for later nodes to read.",
 	}[kind]
 }
 
@@ -785,7 +808,13 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 	switch kind {
 	case "state":
+		if found, handled := s.hasValueState(value, docs); handled {
+			return image.Pt(0, 0), found
+		}
+
 		return image.Pt(0, 0), s.hasState(value)
+	case locateValue, locateDeclare:
+		return s.locateValueRow(kind, value)
 	case locateCue, locatePlay:
 		return s.locateCueRow(kind, value)
 	case "palette":
@@ -916,19 +945,31 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 		return point, true
 	}
 	for _, made := range s.form.controls {
-		fields, buttons := made.widgets()
-		for _, field := range fields {
-			if field != nil && field.ID == widget && !field.Rect.Empty() {
-				return field.Center(), true
-			}
+		if point, found := made.locate(widget); found {
+			return point, true
 		}
-		if widget == "cue" && !made.cueBox.Empty() {
-			return ui.Center(made.cueBox), true
+	}
+
+	return image.Pt(0, 0), false
+}
+
+// locate finds one of a control's fields or buttons, its cue as "cue", or
+// a value parameter's box as "pick-<param>".
+func (made control) locate(widget string) (image.Point, bool) {
+	fields, buttons := made.widgets()
+	for _, field := range fields {
+		if field != nil && field.ID == widget && !field.Rect.Empty() {
+			return field.Center(), true
 		}
-		for _, button := range buttons {
-			if button != nil && button.ID == widget {
-				return ui.Center(button.Rect), true
-			}
+	}
+	box := (made.param.Type == flow.TypeValue && widget == valueBoxPrefix+made.param.Name) ||
+		(made.param.Type == flow.TypeCue && widget == "cue")
+	if box && !made.cueBox.Empty() {
+		return ui.Center(made.cueBox), true
+	}
+	for _, button := range buttons {
+		if button != nil && button.ID == widget {
+			return ui.Center(button.Rect), true
 		}
 	}
 

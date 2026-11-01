@@ -99,8 +99,9 @@ func (d *Document) Clone() model.Document {
 	return &Document{Workflow: d.Workflow.Clone()}
 }
 
-// References lists the anchors the workflow's Go to nodes lead to and the
-// cues its Play sound nodes play.
+// References lists the anchors the workflow's Go to nodes lead to, the
+// cues its Play sound nodes play, and the world-state values and NPCs its
+// value nodes use.
 func (d *Document) References() []model.Reference {
 	var references []model.Reference
 	for _, node := range d.Workflow.Nodes() {
@@ -121,6 +122,8 @@ func (d *Document) References() []model.Reference {
 			references = append(references, model.Reference{
 				Document: model.AudioLibraryID(), Item: cue, Label: "a Play sound node",
 			})
+		case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+			references = append(references, valueReferences(node)...)
 		}
 	}
 
@@ -411,6 +414,29 @@ func change(
 	}
 
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: items, Covers: nil}, nil
+}
+
+// valueReferences lists the world-state values a value node uses, and any
+// NPC it names. Local values are the workflow's own.
+func valueReferences(node flow.Node) []model.Reference {
+	kind, _ := flow.KindOf(node.Kind)
+	label := "a " + kind.Label + " node"
+	var references []model.Reference
+	for _, param := range kind.Params {
+		if param.Type != flow.TypeValue {
+			continue
+		}
+		ref, err := node.Ref(param.Name)
+		if err != nil || ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
+			continue
+		}
+		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})
+		if !ref.NPC.IsZero() {
+			references = append(references, model.Reference{Document: ref.NPC, Item: "", Label: label})
+		}
+	}
+
+	return references
 }
 
 // localValues is a workflow's list of local values, for the edits that

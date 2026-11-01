@@ -540,3 +540,47 @@ func TestLocalValues(t *testing.T) {
 		t.Fatalf("a version 3 workflow has no local values: %v", err)
 	}
 }
+
+func TestValueNodes(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{workflow.KindSetValue, workflow.KindCheckValue, workflow.KindFindNPC} {
+		made, err := workflow.NewNode(kind)
+		if err != nil || workflow.CheckParams(made) != nil {
+			t.Fatalf("%s: a new node fits its kind: %v", kind, err)
+		}
+	}
+	check, err := workflow.NewNode(workflow.KindCheckValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outputs := workflow.Outputs(check); len(outputs) != 2 || outputs[0].Name != workflow.OutputYes {
+		t.Fatalf("check value outputs %+v", outputs)
+	}
+	for name, ref := range map[string]workflow.ValueRef{
+		"another NPC's local": {Scope: worldstate.ScopeLocal, Value: id(5), NPC: id(6), Found: ids.ULID{}},
+		"two NPCs at once":    {Scope: worldstate.ScopeNPC, Value: id(5), NPC: id(6), Found: id(7)},
+		"no such scope":       {Scope: "party", Value: id(5), NPC: ids.ULID{}, Found: ids.ULID{}},
+	} {
+		bad, err := check.WithParam(workflow.ParamValue, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := workflow.CheckParams(bad); !errors.Is(err, workflow.ErrNode) {
+			t.Errorf("%s is refused: %v", name, err)
+		}
+	}
+	found := workflow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(5), NPC: ids.ULID{}, Found: id(7)}
+	if found.Writable() || !found.Others() {
+		t.Fatal("a found NPC's value is read only")
+	}
+	for _, operand := range []string{`null`, `12`, `true`, `"c2"`} {
+		good, err := check.WithParam("against", json.RawMessage(operand))
+		if err != nil || workflow.CheckParams(good) != nil {
+			t.Errorf("operand %s fits: %v", operand, err)
+		}
+	}
+	bad, err := check.WithParam("against", json.RawMessage(`{"x":1}`))
+	if err != nil || !errors.Is(workflow.CheckParams(bad), workflow.ErrNode) {
+		t.Fatalf("an object is not an operand: %v", err)
+	}
+}

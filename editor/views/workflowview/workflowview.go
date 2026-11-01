@@ -398,11 +398,13 @@ func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
 }
 
 // listAudio asks for the audio library once a workflow with a Play sound
-// is shown, for its cues' names and problems.
+// is shown, for its cues' names and problems, and keeps the world state and
+// the NPCs loaded, for its values' paths and problems.
 func (s *State) listAudio(ctx *frame.Context) {
 	if s.workflow != nil && s.audio == nil && s.playsSounds() {
 		s.askAudio(ctx)
 	}
+	s.watchValues(ctx)
 }
 
 // keys handles the window's own keys while no text field has focus. Escape

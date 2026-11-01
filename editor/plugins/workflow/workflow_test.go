@@ -283,3 +283,25 @@ func TestLocalValueEditsMeetUndoContract(t *testing.T) {
 		t.Fatalf("a workflow declares only local values: %v", err)
 	}
 }
+
+func TestReferencesListValuesAndNPCs(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	check := newNode(t, flow.KindCheckValue, 3, ids.ULID{})
+	ref := flow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(20), NPC: id(21), Found: ids.ULID{}}
+	check, err := check.WithParam(flow.ParamValue, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := newNode(t, flow.KindSetValue, 4, ids.ULID{})
+	local := flow.ValueRef{Scope: worldstate.ScopeLocal, Value: id(22), NPC: ids.ULID{}, Found: ids.ULID{}}
+	if set, err = set.WithParam(flow.ParamValue, local); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{check, set}, Boxes: nil, Links: nil}))
+	references := document.References()
+	if len(references) != 2 || references[0].Document != worldstate.ID() || references[0].Item != id(20).String() ||
+		references[1].Document != id(21) {
+		t.Fatalf("a value node refers to its world-state value and the NPC it names, not its locals: %+v", references)
+	}
+}

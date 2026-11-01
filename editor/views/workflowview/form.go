@@ -81,6 +81,9 @@ type control struct {
 	search *ui.TextField
 	list   *ui.List
 	open   bool
+	// operands are what an operand's buttons set, in order; a value
+	// parameter uses cueBox, search, list and open as a cue does.
+	operands []json.RawMessage
 }
 
 // form is the inspector for the selected node. rows counts a time switch's
@@ -90,6 +93,7 @@ type form struct {
 	node     ids.ULID
 	kind     flow.Kind
 	rows     int
+	shape    string
 	controls []control
 	remove   *ui.Button
 }
@@ -111,14 +115,7 @@ func (s *State) syncForm(ctx *frame.Context) {
 
 		return
 	}
-	var drafts map[string]string
-	rebuild := s.form == nil || s.form.node != node.ID || s.form.rows != rowCount(node)
-	if rebuild {
-		if s.form != nil && s.form.node == node.ID {
-			drafts = s.form.drafts()
-		}
-		s.form = s.buildForm(node)
-	}
+	drafts := s.rebuildForm(ctx.Docs, node)
 	for index := range s.form.controls {
 		s.setSaved(&s.form.controls[index], node, ctx)
 	}
@@ -127,6 +124,39 @@ func (s *State) syncForm(ctx *frame.Context) {
 			field.Field.Restore(draft)
 		}
 	}
+}
+
+// rebuildForm builds the form again for a new node, or when the node's
+// times, options or operands have changed, and returns what was typed into
+// the form it replaces, for the same node.
+func (s *State) rebuildForm(docs frame.Docs, node flow.Node) map[string]string {
+	shape := s.formShape(docs, node)
+	if s.form != nil && s.form.node == node.ID && s.form.rows == rowCount(node) && s.form.shape == shape {
+		return nil
+	}
+	var drafts map[string]string
+	if s.form != nil && s.form.node == node.ID {
+		drafts = s.form.drafts()
+	}
+	s.form = s.buildForm(docs, node)
+	s.form.shape = shape
+
+	return drafts
+}
+
+// formShape says what a node's operands are made of, so the form is rebuilt
+// when the value an operand follows changes type or choices.
+func (s *State) formShape(docs frame.Docs, node flow.Node) string {
+	kind, _ := flow.KindOf(node.Kind)
+	var shape strings.Builder
+	for _, param := range kind.Params {
+		if param.Type == flow.TypeOperand {
+			declared, found := s.operandDeclaration(docs, node, param.Name)
+			shape.WriteString(param.Name + ":" + operandShape(declared, found) + ";")
+		}
+	}
+
+	return shape.String()
 }
 
 // hasCue reports whether the form edits a cue.
@@ -225,9 +255,9 @@ func rowCount(node flow.Node) int {
 }
 
 // buildForm makes a control for each of a node's parameters.
-func (s *State) buildForm(node flow.Node) *form {
+func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
-	built := &form{node: node.ID, kind: kind, rows: rowCount(node), controls: nil, remove: nil}
+	built := &form{node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, remove: nil}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
@@ -241,7 +271,7 @@ func (s *State) buildForm(node flow.Node) *form {
 	for _, param := range kind.Params {
 		made := control{param: param, label: 0, field: nil, from: nil, to: nil, rows: nil, addRange: nil, pick: nil,
 			clear: nil, anchor: ui.Zero(), choices: nil, units: nil, clocks: nil, options: nil, addOption: nil,
-			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false}
+			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil}
 		switch param.Type {
 		case flow.TypeTiles:
 			made.field = text("param-"+param.Name, false)
@@ -274,15 +304,31 @@ func (s *State) buildForm(node flow.Node) *form {
 				})
 			}
 			made.addRange = ui.NewButton("add-time", "Add time")
-		case flow.TypeAnchor:
-			made.pick, made.clear = anchorButtons()
-		case flow.TypeCue:
-			s.newCueControl(&made)
+		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
+			s.newReferenceControl(docs, node, &made)
 		}
 		built.controls = append(built.controls, made)
 	}
 
 	return built
+}
+
+// newReferenceControl makes the widgets of a parameter that refers to
+// something: an anchor, a cue, a value, or an operand that follows one.
+func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *control) {
+	switch made.param.Type {
+	case flow.TypeAnchor:
+		made.pick, made.clear = anchorButtons()
+	case flow.TypeCue:
+		s.newCueControl(made)
+	case flow.TypeValue:
+		s.newValueControl(made)
+	case flow.TypeOperand:
+		declared, found := s.operandDeclaration(docs, node, made.param.Name)
+		s.newOperandControl(made, declared, found)
+	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
+		flow.TypeTimeRanges:
+	}
 }
 
 // anchorButtons returns an anchor parameter's Pick on map, the usual choice,
@@ -333,6 +379,9 @@ func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 		}
 	case flow.TypeAnchor, flow.TypeCue:
 		s.setSavedReference(made, node, ctx)
+	case flow.TypeOperand:
+		setSavedOperand(made, node)
+	case flow.TypeValue:
 	}
 }
 
@@ -359,10 +408,11 @@ func (s *State) notesTop(panel image.Rectangle, width int) int {
 }
 
 // layoutForm places the inspector's fields and buttons.
-func (s *State) layoutForm(frame.Docs) {
+func (s *State) layoutForm(docs frame.Docs) {
 	if s.form == nil {
 		return
 	}
+	node, _ := s.selectedNode()
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	top := panel.Min.Y + formTop
@@ -392,18 +442,38 @@ func (s *State) layoutForm(frame.Docs) {
 			}
 			made.addRange.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 			top += ui.ButtonH + fieldSpace
-		case flow.TypeAnchor:
-			made.anchor = image.Rect(left, top, left+width, top+ui.ButtonH)
-			top += ui.ButtonH + rowSpace + ui.LineHeight
-			half := (width - rowSpace) / ui.Half
-			made.pick.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
-			made.clear.Rect = image.Rect(left+half+rowSpace, top, left+width, top+ui.ButtonH)
-			top += ui.ButtonH + fieldSpace
-		case flow.TypeCue:
-			top = s.layoutCue(made, left, width, top, footer)
+		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
+			top = s.layoutReference(docs, made, node, image.Rect(left, top, left+width, footer))
 		}
 	}
 	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
+}
+
+// layoutReference places a parameter that refers to something, from the
+// top of room down to no lower than its bottom, and returns where the next
+// control goes.
+func (s *State) layoutReference(docs frame.Docs, made *control, node flow.Node, room image.Rectangle) int {
+	left, width, top := room.Min.X, room.Dx(), room.Min.Y
+	switch made.param.Type {
+	case flow.TypeAnchor:
+		made.anchor = image.Rect(left, top, left+width, top+ui.ButtonH)
+		top += ui.ButtonH + rowSpace + ui.LineHeight
+		half := (width - rowSpace) / ui.Half
+		made.pick.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
+		made.clear.Rect = image.Rect(left+half+rowSpace, top, left+width, top+ui.ButtonH)
+
+		return top + ui.ButtonH + fieldSpace
+	case flow.TypeCue:
+		return s.layoutCue(made, left, width, top, room.Max.Y)
+	case flow.TypeValue:
+		return s.layoutValue(docs, made, node, left, width, top, room.Max.Y)
+	case flow.TypeOperand:
+		return layoutOperand(made, left, width, top)
+	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
+		flow.TypeTimeRanges:
+	}
+
+	return top
 }
 
 // layoutFooter places Delete node at the foot of the inspector and the save
@@ -451,20 +521,28 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	for index := range s.form.controls {
-		made := &s.form.controls[index]
-		switch made.param.Type {
-		case flow.TypeTimeRanges:
-			s.updateRanges(input, ctx, made, node)
-		case flow.TypeAnchor:
-			s.updateAnchor(input, ctx, made, node)
-		case flow.TypeChoice, flow.TypeDuration:
-			s.updateChoices(input, ctx, made, node)
-		case flow.TypeShares:
-			s.updateOptions(input, ctx, made, node)
-		case flow.TypeCue:
-			s.updateCue(input, ctx, made, node)
-		case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange:
-		}
+		s.updateControl(input, ctx, &s.form.controls[index], node)
+	}
+}
+
+// updateControl handles one parameter's buttons and chooser.
+func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
+	switch made.param.Type {
+	case flow.TypeTimeRanges:
+		s.updateRanges(input, ctx, made, node)
+	case flow.TypeAnchor:
+		s.updateAnchor(input, ctx, made, node)
+	case flow.TypeChoice, flow.TypeDuration:
+		s.updateChoices(input, ctx, made, node)
+	case flow.TypeShares:
+		s.updateOptions(input, ctx, made, node)
+	case flow.TypeCue:
+		s.updateCue(input, ctx, made, node)
+	case flow.TypeValue:
+		s.updateValue(input, ctx, made, node)
+	case flow.TypeOperand:
+		s.updateOperand(input, ctx, made, node)
+	case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange:
 	}
 }
 
@@ -735,7 +813,9 @@ func parseFor(made *control, field *ui.TextField, value string, node flow.Node) 
 		return parseRangeField(made, field, value, node)
 	case flow.TypeTimeRanges:
 		return parseRangesField(made, field, value, node)
-	case flow.TypeAnchor, flow.TypeCue:
+	case flow.TypeOperand:
+		return parseOperand(made, field, value)
+	case flow.TypeAnchor, flow.TypeCue, flow.TypeValue:
 	}
 
 	return nil, false, ""
