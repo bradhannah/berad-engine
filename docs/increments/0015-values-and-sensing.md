@@ -20,7 +20,7 @@ checks as [increment 1](0001-foundation.md).
    waiting within two tiles and serves them, and the customer sees it is
    being served, built only from nodes.
 3. **No NPC reaches into another:** a workflow sets only its own values, and
-   reads another NPC's.
+   reads another NPC's, found nearby or named.
 4. **Runs repeat exactly:** the same preview gives the same values and the
    same choices every time.
 
@@ -42,8 +42,8 @@ Agreed by its author on 2026-10-31, before building:
 - **World, zone and NPC values are declared in one window,** saved as one
   project file. Local values are declared on their own workflow.
 - **A workflow sets only its own values:** its NPC's, its zone's, the
-  world's and its locals. It can read the values of an NPC it found, but
-  never set them.
+  world's and its locals. It can read the values of an NPC it found, or of
+  one it names, such as `npc.george.mood`, but never set them.
 - **Local values last through a workflow's repeats.** They clear when it
   restarts after a clock jump or an edit, and when its NPC's zone changes.
 - **The first types are number, yes or no, and a list of choices.**
@@ -51,6 +51,17 @@ Agreed by its author on 2026-10-31, before building:
   NPC nearby looks within a number of tiles, and can look only for NPCs
   whose value matches.
 - **Messages wait for a later increment.**
+
+Agreed by its author on 2026-10-31, settling named reads:
+
+- **An NPC's values belong to the NPC,** one set shared wherever it is
+  placed, so George carries his mood from zone to zone. `npc.george.mood` is
+  George's, with no numbering of placements and no `.all`.
+- **An NPC is placed at most once in a zone,** and one zone runs at a time.
+  A character that repeats, such as a guard, is several NPCs sharing one
+  behaviour, and later one module.
+- **Each NPC has a path name, such as `george`,** unique in the project and
+  following the rules for value names.
 - **NPCs act in a fixed order each tick, and each write is seen at once,**
   so a run repeats exactly.
 
@@ -59,8 +70,13 @@ Chosen while planning, for its author to check:
 - **The window is the World state window** the [editor
   inventory](../EDITOR_FEATURES.md#editor-inventory) already names, rather
   than a new Values window.
-- **An NPC value belongs to each placed NPC.** One NPC placed twice is two
-  NPCs, each with its own values, as each runs its own workflow today.
+- **An NPC's path name is suggested from its display name** when it is
+  made, and can be changed. Files keep the NPC's ID, so a rename changes no
+  workflow.
+- **A project that already places an NPC twice in a zone opens,** with the
+  zone marked as a problem; the Map window refuses a new second placement.
+- **An NPC in a zone that is not running keeps its values.** In the
+  preview, which runs one zone, that means its defaults until saves exist.
 - **A fourth type, NPC, is for local values only.** Find NPC nearby puts
   what it finds in one, such as `local.customer`. Keeping an NPC in a saved
   value waits until saves are designed.
@@ -80,22 +96,16 @@ Chosen while planning, for its author to check:
 - **The Watch window shows the watched NPC's values,** its local values, and
   the zone's and the world's.
 
-Open, to settle before building:
-
-- **Reading a named NPC's values,** such as `npc.george.mood`. An NPC placed
-  more than once is several NPCs, so a name may not say which. Each NPC
-  would also need a name fit for a path, apart from its display name. The
-  steps below leave named reads out until this is settled.
-
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Declarations | The world-state document: each value's ID, name, scope, type, choices, default and description, with a format version; name rules; edits to add, remove, rename and change a value, passing the shared undo test; where-used for values | A project's values can be declared, changed and undone, and save and load unchanged | Planned |
-| 2. The World state window | Scopes, each scope's values with their type, default and how many workflows use them, and an inspector for the selected value; each change saved as it is made and undone with Cmd+Z | An author can declare and change values without leaving the editor | Planned |
-| 3. Local values | Workflow logic format 4, upgraded from 3, with the workflow's local values; Local values in the inspector when no node is selected; their edits, passing the shared undo test | A workflow's locals can be declared, changed and undone | Planned |
-| 4. The nodes in the editor | Set value, Check value and Find NPC nearby; a value parameter whose picker groups values by scope, offers only those a workflow may use, and can declare a new one; a parameter that follows the chosen value's type; problem marks for missing or mismatched values | Each node can be built and checked in the Workflow window, and a broken value is marked | Planned |
-| 5. Running them | The engine's world state: values for the world, each zone and each NPC, and each NPC's locals; the three nodes in the runner; locals cleared on restart and on a change of zone; values in the preview stream and the Watch window | A shopkeeper serves a waiting customer in the preview, the same way every run, judged by its author | Planned |
+| 2. NPC names and placements | NPC format 2, upgraded from 1, with a unique path name suggested from the display name; the Map window refusing a second placement of an NPC in one zone, and a problem for a zone that already has one | Every NPC has a unique path name, and no zone gains a second placement of one NPC | Planned |
+| 3. The World state window | Scopes, each scope's values with their type, default and how many workflows use them, and an inspector for the selected value; each change saved as it is made and undone with Cmd+Z | An author can declare and change values without leaving the editor | Planned |
+| 4. Local values | Workflow logic format 4, upgraded from 3, with the workflow's local values; Local values in the inspector when no node is selected; their edits, passing the shared undo test | A workflow's locals can be declared, changed and undone | Planned |
+| 5. The nodes in the editor | Set value, Check value and Find NPC nearby; a value parameter whose picker groups values by scope, offers only those a workflow may use, including other NPCs' values to read, and can declare a new one; a parameter that follows the chosen value's type; problem marks for missing or mismatched values | Each node can be built and checked in the Workflow window, and a broken value is marked | Planned |
+| 6. Running them | The engine's world state: values for the world, each zone and each NPC, kept with the NPC wherever it is placed, and each running workflow's locals; the three nodes in the runner; locals cleared on restart and on a change of zone; values in the preview stream and the Watch window | A shopkeeper serves a waiting customer in the preview, the same way every run, judged by its author | Planned |
 
 ## Step results
 
@@ -113,4 +123,6 @@ None yet.
   design](../WORKFLOW_DESIGN.md#world-state): stats, provisions and
   inventory, and the flags, skills and capabilities of the world-state tree.
 - Values in conversations and sprite workflows, and what an NPC is doing.
+- Placement conditions, such as an NPC appearing in a new zone after an
+  event.
 - Keeping values in game saves, whose format is still open.

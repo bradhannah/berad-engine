@@ -104,8 +104,13 @@ drawn back to either only repeats what the rule already does.
   scopes later.
 - **Agreed: a workflow sets only its own values,** its NPC's, its zone's,
   the world's and its locals. It can read the values of an NPC it found, but
-  never set them. *Open:* reading a named NPC's values, since one NPC placed
-  twice is two NPCs.
+  never set them, whether it found the NPC nearby or names it, as in
+  `npc.george.mood`.
+- **Agreed: an NPC's values belong to the NPC,** shared wherever it is
+  placed, so it carries them from zone to zone. An NPC is placed at most
+  once in a zone, one zone runs at a time, and a character that repeats,
+  such as a guard, is several NPCs sharing one behaviour. Each NPC has a
+  unique path name, such as `george`.
 - **Candidate: three sources of values.**
 
   | Source | Supplied by | Examples |
