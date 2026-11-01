@@ -428,6 +428,18 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   the node's first output continues to the old target; its other outputs
   stay free, labelled as free outputs are. A target with several entries
   takes the line on its next free dot.
+- **Agreed (2026-11-01):** Check value compares by its value's type, and
+  shows only the comparisons that type allows. An integer compares with
+  `=`, `≠`, `<`, `≤`, `>` and `≥`, as symbols, or is between two numbers,
+  both included, or at its maximum or minimum; its right side is a typed
+  number or another integer value the node may read, and a line under the
+  row reads the chosen symbol back in words. A bool has no comparison to
+  choose, only true or false. A choice is any of, or none of, a ticked list
+  of its choices. Text is, or is not, typed text. A bool is true or false
+  in every word of the editor, never yes or no; a Check value's outcomes
+  stay yes and otherwise. *Candidate:* a Switch on a value, one outcome per
+  choice, when a workflow wants a fan-out; Check value stays a yes or no
+  question.
 - **Candidate:** reusable blocks of text, paragraphs long, kept in the
   project view rather than in one workflow (its author's "static strings").
   *Open:* what they are for, given that the Texts view holds a game's texts.
