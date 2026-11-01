@@ -67,9 +67,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.load(docs)
 	s.layoutWidgets(docs)
 	screen.Fill(ui.ColorBackground())
-	canvas := s.Canvas()
-	if area, ok := screen.SubImage(canvas).(*ebiten.Image); ok {
-		s.drawCanvas(area, docs)
+	s.drawZoomed(screen, docs)
+	if s.workflow != nil {
+		s.zoomCard.draw(screen, s.theme)
 	}
 	s.drawToolbar(screen, docs)
 	s.drawPalette(screen)
@@ -87,6 +87,7 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawText(screen, trail, ui.Inset, textY, ui.ColorMuted())
 	s.theme.DrawStrong(screen, s.name(docs), ui.Inset+s.theme.TextWidth(trail), textY, ui.ColorInk())
 	s.arrange.Draw(screen, s.theme)
+	s.recentre.Draw(screen, s.theme)
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 }
 
@@ -125,7 +126,7 @@ func (s *State) drawPalette(screen *ebiten.Image) {
 // drawCanvas draws the dotted ground, then connections behind the nodes.
 func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	area.Fill(ui.ColorCanvas())
-	canvas := s.Canvas()
+	canvas := area.Bounds()
 	origin := canvas.Min.Add(s.offset)
 	dot := ui.ColorRule()
 	startX := canvas.Min.X + mod(origin.X-canvas.Min.X, dotSpacing)
@@ -782,7 +783,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.locateWidget(value)
 	default:
 		if at, found := s.locateOnCanvas(kind, value); found {
-			return s.toScreen(at), true
+			return s.onScreen(at), true
 		}
 	}
 
@@ -873,7 +874,8 @@ func (s *State) nthNode(value string) (shape, bool) {
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	for _, button := range []*ui.Button{s.arrange, s.deleteLine, s.resetLine} {
+	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.deleteLine, s.resetLine},
+		s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
