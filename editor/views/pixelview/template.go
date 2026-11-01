@@ -1,11 +1,8 @@
 package pixelview
 
 import (
-	"cmp"
 	"fmt"
 	"image"
-	"image/color"
-	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -16,6 +13,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/templateview"
+	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -37,30 +35,11 @@ const (
 	editTemplateItem = "edit-template"
 )
 
-// Template geometry and inks. From hatchZoom, marks show a pattern as well as
-// a tint; guides are dashed and reach past the tile by guideReach.
+// Template widgets' widths, in screen pixels.
 const (
-	hatchZoom       = 6
-	dotDivisor      = 6
-	minDot          = 2
-	dashLength      = 6
-	dashGap         = 4
-	guideWidth      = 2
-	guideReach      = 10
-	clearWidth      = 96
-	templateWidth   = 74
-	hexNotAllowed   = 0x1f2328
-	hexDiscouraged  = 0xa16207
-	notAllowedTint  = 0x40
-	notAllowedHatch = 0x80
-	discouragedTint = 0x38
-	discouragedDot  = 0xc0
+	clearWidth    = 96
+	templateWidth = 74
 )
-
-func notAllowedFill() color.RGBA  { return ui.HexAlpha(hexNotAllowed, notAllowedTint) }
-func notAllowedInk() color.RGBA   { return ui.HexAlpha(hexNotAllowed, notAllowedHatch) }
-func discouragedFill() color.RGBA { return ui.HexAlpha(hexDiscouraged, discouragedTint) }
-func discouragedInk() color.RGBA  { return ui.HexAlpha(hexDiscouraged, discouragedDot) }
 
 // templateID returns the template the sprite is drawn to.
 func (s *State) templateID(docs frame.Docs) (ids.ULID, bool) {
@@ -111,16 +90,13 @@ func documentName(docs frame.Docs, document ids.ULID, fallback string) string {
 	return name
 }
 
-// templates lists the project's templates, A–Z.
+// templates lists the project's templates, A–Z, as the index orders them.
 func templates(docs frame.Docs) []project.Entry {
 	var entries []project.Entry
 	docs.View(project.IndexID(), func(document client.Document) {
 		if index, ok := document.Model.(*project.Index); ok {
 			entries = index.OfFormat(artplugin.TemplateFormatName)
 		}
-	})
-	slices.SortStableFunc(entries, func(a, b project.Entry) int {
-		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 
 	return entries
@@ -306,61 +282,9 @@ func (s *State) drawTemplate(screen *ebiten.Image, docs frame.Docs, size int) {
 	if !ok || !s.overlay.On {
 		return
 	}
-	pattern := s.zoom >= hatchZoom
-	for row := range size {
-		for col := range size {
-			rect := s.pixelRect(image.Pt(col, row), size)
-			switch template.Mark(col, row, size, size) {
-			case artplugin.MarkNotAllowed:
-				ui.FillRect(screen, rect, notAllowedFill())
-				if pattern {
-					ui.Line(screen, image.Pt(rect.Min.X, rect.Max.Y), image.Pt(rect.Max.X, rect.Min.Y), ui.Hairline,
-						notAllowedInk())
-				}
-			case artplugin.MarkDiscouraged:
-				ui.FillRect(screen, rect, discouragedFill())
-				if pattern {
-					dot := max(minDot, s.zoom/dotDivisor)
-					corner := ui.Center(rect).Sub(image.Pt(dot/ui.Half, dot/ui.Half))
-					ui.FillRect(screen, image.Rectangle{Min: corner, Max: corner.Add(image.Pt(dot, dot))}, discouragedInk())
-				}
-			case artplugin.MarkOpen:
-			}
-		}
-	}
-	for _, guide := range template.Guides {
-		s.drawGuide(screen, guide, size)
-	}
-}
-
-// drawGuide draws a guide as a dashed line reaching past the tile, with its
-// name at its start.
-func (s *State) drawGuide(screen *ebiten.Image, guide artplugin.Guide, size int) {
 	rect := s.tileRect(size)
-	offset := guide.Position(size, size) * max(s.zoom, 1)
-	ink := ui.ColorSelect()
-	if guide.Line == artplugin.LineDown {
-		x := rect.Min.X + offset
-		dashed(screen, image.Pt(x, rect.Min.Y-guideReach), image.Pt(x, rect.Max.Y+guideReach), ink)
-		s.theme.DrawSmall(screen, guide.Name, x-s.theme.SmallWidth(guide.Name)/ui.Half,
-			rect.Min.Y-guideReach-ui.LineHeight, ink)
-
-		return
-	}
-	y := rect.Min.Y + offset
-	dashed(screen, image.Pt(rect.Min.X-guideReach, y), image.Pt(rect.Max.X+guideReach, y), ink)
-	s.theme.DrawSmall(screen, guide.Name, rect.Min.X-guideReach-ui.Gap-s.theme.SmallWidth(guide.Name),
-		y-ui.LineHeight/ui.Half, ink)
-}
-
-// dashed draws a dashed line across or down.
-func dashed(screen *ebiten.Image, from, to image.Point, ink color.Color) {
-	length := max(abs(to.X-from.X), abs(to.Y-from.Y))
-	step := image.Pt(sign(to.X-from.X), sign(to.Y-from.Y))
-	for start := 0; start < length; start += dashLength + dashGap {
-		end := min(length, start+dashLength)
-		ui.Line(screen, from.Add(step.Mul(start)), from.Add(step.Mul(end)), guideWidth, ink)
-	}
+	tileart.DrawMarks(screen, template, rect, size, s.zoom)
+	tileart.DrawGuides(screen, s.theme, template, rect, size, s.zoom)
 }
 
 // drawTemplateMarks outlines the pixels painted where the template
@@ -368,7 +292,7 @@ func dashed(screen *ebiten.Image, from, to image.Point, ink color.Color) {
 func (s *State) drawTemplateMarks(screen *ebiten.Image, docs frame.Docs, size int) {
 	discouraged, notAllowed := s.templatePixels(docs)
 	for _, pixel := range discouraged {
-		ui.StrokeRect(screen, s.pixelRect(pixel, size).Inset(1), hoverWidth, discouragedInk())
+		ui.StrokeRect(screen, s.pixelRect(pixel, size).Inset(1), hoverWidth, tileart.DiscouragedInk())
 	}
 	for _, pixel := range notAllowed {
 		ui.StrokeRect(screen, s.pixelRect(pixel, size).Inset(1), hoverWidth, ui.ColorWarn())

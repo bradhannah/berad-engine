@@ -12,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/editor/views/pixelview"
 	"github.com/bradhannah/berad-engine/editor/views/playview"
+	"github.com/bradhannah/berad-engine/editor/views/templateview"
 	"github.com/bradhannah/berad-engine/editor/views/textview"
 	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
@@ -27,7 +28,8 @@ import (
 func kindOrder() []string {
 	return []string{
 		browser.ViewName, mapview.ViewName, workflowview.ViewName, textview.ViewName, audioview.ViewName,
-		pixelview.ViewName, paletteview.ViewName, watchview.ViewName, playview.ViewName, clockview.ViewName,
+		pixelview.ViewName, templateview.ViewName, paletteview.ViewName, watchview.ViewName, playview.ViewName,
+		clockview.ViewName,
 	}
 }
 
@@ -48,6 +50,8 @@ func viewIcon(view string) ui.Icon {
 		return ui.IconSprite
 	case paletteview.ViewName:
 		return ui.IconPalette
+	case templateview.ViewName:
+		return ui.IconTemplate
 	case clockview.ViewName:
 		return ui.IconClock
 	case watchview.ViewName:
@@ -76,6 +80,8 @@ func kindName(view string) string {
 		return "Sprites"
 	case paletteview.ViewName:
 		return "Palette Editor"
+	case templateview.ViewName:
+		return "Templates"
 	case watchview.ViewName:
 		return "Watch"
 	case clockview.ViewName:
