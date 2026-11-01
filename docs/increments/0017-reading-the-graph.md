@@ -89,8 +89,8 @@ Chosen while building, for its author to check:
   colour comes from.
 - **The tints:** green, amber, teal, purple, pink, brown and slate, the
   editor's existing family hues (zones, art, workflows, sounds, texts and
-  NPCs) plus amber, each a wash for a node's face and a darker ink for a
-  line, its port and an outcome's row. A tinted outcome's port is filled
+  NPCs) plus amber, each a wash for a node's face and an outcome's row and
+  a darker ink for a line and its port. A tinted outcome's port is filled
   with its ink, so the colour is visible at both ends of the line.
 - **What wins:** a lit line (blue) and a live one (orange) over any tint; a
   tint over the grey of a time switch's otherwise, which is only the look
@@ -134,8 +134,8 @@ Chosen while building, for its author to check:
 - **Colours:** the engine's layout gains `Tints`, names for nodes,
   outcomes and lines, with `SetTints` returning what they were; the
   workflow plug-in gains the tint edit. The view offers seven tints as
-  swatches: a node's face takes its tint's wash and a container's heading
-  too; an outcome's row, its port and its lines take its ink; a line takes
+  swatches: a node's face takes its tint's wash, and a container's heading
+  and an outcome's row too; an outcome's port and its lines take its ink; a line takes
   its own tint over its outcome's, or none; lit blue and live orange still
   win, and a tint beats the grey of a time switch's otherwise. The legend
   gains a row for a coloured line. Verified: engine tests set, save,
@@ -159,7 +159,11 @@ Chosen while building, for its author to check:
 
 ## Changed after its author tried it
 
-Not yet tried.
+Settled by its author on 2026-11-01, after trying it:
+
+- **An outcome's row is washed in its tint, like a node's face,** and its
+  text stays ink; the first build coloured the text instead. The outcome's
+  port and lines keep the tint's ink.
 
 ## Not in this increment
 

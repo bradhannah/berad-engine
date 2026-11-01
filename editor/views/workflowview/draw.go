@@ -296,16 +296,17 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 // one row per output, the options with what their shares work out to and
 // "+ option" under them.
 func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
+	bottom := s.screenRect(drawn.rect).Max.Y
 	for index, out := range drawn.ports {
 		row := s.screenRect(out.row)
+		if coloured, ok := s.outcomeTint(routeKey{from: drawn.node.ID, output: out.output.Name}); ok {
+			washRow(area, row, row.Max.Y >= bottom-ui.Half, coloured.wash)
+		}
 		ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
 			ui.ColorRule())
 		label, ink := out.output.Label, ui.ColorInk()
 		if drawn.node.Kind == flow.KindTimeSwitch && out.output.Name == flow.OutputOtherwise {
 			ink = ui.ColorMuted()
-		}
-		if coloured, ok := s.outcomeTint(routeKey{from: drawn.node.ID, output: out.output.Name}); ok {
-			ink = coloured.ink
 		}
 		textY := row.Min.Y + (outputRow-ui.MonoSize)/ui.Half - 1
 		switch {
@@ -324,6 +325,20 @@ func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
 	if drawn.node.Kind == flow.KindRandom {
 		s.drawAddOption(area, drawn)
 	}
+}
+
+// washRow fills an outcome's row with its tint's wash, inside the node's
+// border; a row at the node's foot follows its rounded corners.
+func washRow(area *ebiten.Image, row image.Rectangle, last bool, wash color.Color) {
+	washed := image.Rect(row.Min.X+ui.Half, row.Min.Y, row.Max.X-ui.Half, row.Max.Y)
+	if !last {
+		ui.FillRect(area, washed, wash)
+
+		return
+	}
+	washed.Max.Y -= ui.Half
+	ui.FillRound(area, washed, ui.Radius, wash)
+	ui.FillRect(area, image.Rect(washed.Min.X, washed.Min.Y, washed.Max.X, washed.Max.Y-int(ui.Radius)), wash)
 }
 
 // shareLabel is what a random choice's option works out to, as "25%".
