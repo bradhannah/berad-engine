@@ -157,6 +157,9 @@ type State struct {
 	audioRevision int
 	audioAsking   bool
 	sounds        frame.Sounds
+	// locals is the inspector's part for the workflow's local values, shown
+	// while no node or line is selected.
+	locals *localsPanel
 }
 
 // New returns the Workflow window for a workflow.
@@ -172,7 +175,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
-		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil,
+		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -309,6 +312,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		top += paletteItem + paletteGap
 	}
 	s.layoutForm(docs)
+	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
 	if s.lineSelected() {
 		panel := frame.Inspector(s.size)
@@ -340,6 +344,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.syncForm(ctx)
+	s.syncLocals()
 	s.layoutWidgets(ctx.Docs)
 	if dialog := s.picker.Dialog(); dialog != nil {
 		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
@@ -364,6 +369,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateLineButtons(input, ctx)
 	s.updateForm(input, ctx)
+	s.updateLocals(input, ctx)
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
 	}

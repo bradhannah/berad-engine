@@ -12,8 +12,10 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // PluginName identifies the plug-in.
@@ -25,6 +27,12 @@ const (
 	RemoveEdit  = "workflow.nodes.remove"
 	ReplaceEdit = "workflow.node.replace"
 	MoveEdit    = "workflow.layout.move"
+	// AddLocalEdit, RemoveLocalEdit and SetLocalEdit declare, remove and
+	// change a workflow's local values, as the world-state edits do the
+	// project's.
+	AddLocalEdit    = "workflow.local.add"
+	RemoveLocalEdit = "workflow.local.remove"
+	SetLocalEdit    = "workflow.local.set"
 )
 
 // ErrNotWorkflow reports a document that is not a workflow.
@@ -405,6 +413,17 @@ func change(
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: items, Covers: nil}, nil
 }
 
+// localValues is a workflow's list of local values, for the edits that
+// change it.
+func localValues(document model.Document) (*worldstate.Declarations, error) {
+	workflowDoc, ok := document.(*Document)
+	if !ok {
+		return nil, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotWorkflow)
+	}
+
+	return workflowDoc.Workflow.Locals(), nil
+}
+
 // Plugin returns the workflow plug-in.
 func Plugin() plugin.Plugin {
 	layout := flow.LayoutFormat()
@@ -414,7 +433,8 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{
 			Format: flow.Format(), Decode: Decode, Layout: &layout, Prepare: Prepare,
 		}},
-		Edits:    []model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+			stateplugin.Edits("workflow.local", flow.FormatName, localValues)...),
 		Required: nil,
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 func id(seed byte) ids.ULID {
@@ -491,5 +492,51 @@ func TestLayoutUpgradeFromVersion1(t *testing.T) {
 	}
 	if box, ok := flow.Box(id(2)); !ok || box.Y != 20 || len(flow.Bends()) != 0 {
 		t.Fatalf("box %v %v, bends %v", box, ok, flow.Bends())
+	}
+}
+
+func TestLocalValues(t *testing.T) {
+	t.Parallel()
+	flowDoc := routine(t)
+	data, err := flowDoc.Encode()
+	if err != nil || strings.Contains(string(data), "locals") {
+		t.Fatalf("a workflow with no local values saves none: %s %v", data, err)
+	}
+	customer := worldstate.New(id(20), "customer", worldstate.ScopeLocal, worldstate.TypeNPC)
+	if err := flowDoc.Locals().Insert(customer); err != nil {
+		t.Fatal(err)
+	}
+	world := worldstate.New(id(21), "robbed", worldstate.ScopeWorld, worldstate.TypeYesNo)
+	if err := flowDoc.Locals().Insert(world); !errors.Is(err, worldstate.ErrValue) {
+		t.Fatalf("a workflow declares only local values: %v", err)
+	}
+	copied := flowDoc.Clone()
+	if !copied.Equal(flowDoc) {
+		t.Fatal("a copy keeps the local values")
+	}
+	data, err = flowDoc.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := workflow.Decode(data)
+	if err != nil || !decoded.Locals().Equal(flowDoc.Locals()) {
+		t.Fatalf("local values saved and read unchanged: %v", err)
+	}
+	if _, err := copied.Locals().Remove(id(20)); err != nil || copied.Equal(flowDoc) {
+		t.Fatalf("a copy's local values are its own: %v", err)
+	}
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.Format()); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"start":"` + id(1).String() + `","nodes":[{"id":"` + id(1).String() + `","kind":"start"}]}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.FormatName, Version: 3, ID: id(9), Name: "Old", Revision: 1, Data: json.RawMessage(old),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.FormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	if read, err := workflow.Decode(upgraded.Data); err != nil || read.Locals().Len() != 0 {
+		t.Fatalf("a version 3 workflow has no local values: %v", err)
 	}
 }

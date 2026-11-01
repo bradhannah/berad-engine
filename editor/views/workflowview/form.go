@@ -565,6 +565,10 @@ func (s *State) currentNode(docs frame.Docs, nodeID ids.ULID) (flow.Node, bool) 
 // Unsaved counts the selected node's typed changes not saved yet.
 func (s *State) Unsaved(frame.Docs) int {
 	if s.form == nil {
+		if _, ok := s.selectedLocal(); ok && s.localsActive() {
+			return s.locals.form.Unsaved()
+		}
+
 		return 0
 	}
 
@@ -575,6 +579,9 @@ func (s *State) Unsaved(frame.Docs) int {
 // single command, so one undo step. If a field cannot be read, nothing is
 // saved, that field takes focus and the status says why.
 func (s *State) Save(ctx *frame.Context) bool {
+	if _, local := s.selectedLocal(); local && s.localsActive() {
+		return s.saveLocal(ctx)
+	}
 	node, ok := s.selectedNode()
 	if !ok || s.form == nil {
 		return true
@@ -660,6 +667,9 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 
 // formName names the node the form edits, for the guard.
 func (s *State) formName() string {
+	if local, ok := s.selectedLocal(); ok && s.form == nil {
+		return local.Path()
+	}
 	if s.form == nil {
 		return "this node"
 	}
@@ -671,6 +681,8 @@ func (s *State) formName() string {
 func (s *State) discardForm() {
 	s.focus.Set(nil)
 	if s.form == nil {
+		s.locals.form.Revert()
+
 		return
 	}
 	for _, field := range s.form.fields() {

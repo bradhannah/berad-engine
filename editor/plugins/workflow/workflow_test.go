@@ -8,9 +8,11 @@ import (
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 func id(seed byte) ids.ULID {
@@ -242,5 +244,42 @@ func TestLayoutTravelsWithTheDocument(t *testing.T) {
 	}
 	if _, ok := registry.Formats().Lookup(flow.LayoutFormatName); !ok {
 		t.Fatal("the layout format is registered so old layouts can be upgraded")
+	}
+}
+
+func TestLocalValueEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	registry, err := plugin.NewRegistry(workflow.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := newDocument(t)
+	customer := worldstate.New(id(9), "customer", worldstate.ScopeLocal, worldstate.TypeNPC)
+	renamed := customer.Clone()
+	renamed.Name = "shopper"
+	edit := func(name string) model.EditKind {
+		kind, ok := registry.Edit(name)
+		if !ok {
+			t.Fatalf("no edit %s", name)
+		}
+
+		return kind
+	}
+	for _, check := range []struct {
+		edit string
+		args json.RawMessage
+	}{
+		{workflow.AddLocalEdit, encode(t, stateplugin.ValueArgs{Value: customer})},
+		{workflow.SetLocalEdit, encode(t, stateplugin.ValueArgs{Value: renamed})},
+		{workflow.RemoveLocalEdit, encode(t, stateplugin.RemoveValueArgs{ID: id(9)})},
+	} {
+		if err := model.VerifyUndo(document, edit(check.edit), check.args, registry.Edit); err != nil {
+			t.Fatalf("%s: %v", check.edit, err)
+		}
+		apply(t, document, edit(check.edit), check.args)
+	}
+	world := worldstate.New(id(10), "robbed", worldstate.ScopeWorld, worldstate.TypeYesNo)
+	if _, err := edit(workflow.AddLocalEdit).Apply(document, encode(t, stateplugin.ValueArgs{Value: world})); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("a workflow declares only local values: %v", err)
 	}
 }

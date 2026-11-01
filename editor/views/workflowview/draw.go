@@ -439,15 +439,14 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
+	if s.localsActive() {
+		s.drawLocals(screen)
+
+		return
+	}
 	if !nodeSelected || s.form == nil {
 		s.theme.Heading(screen, "Inspector", left, top)
-		lines := []string{
-			"Select a node to change it, or", "add one from the palette: click", "to add after the selected node,",
-			"or drag onto the canvas.",
-		}
-		for index, line := range lines {
-			s.theme.DrawText(screen, line, left, top+(index+1)*ui.LineHeight, ui.ColorMuted())
-		}
+		s.drawHowToSelect(screen, left, top+ui.LineHeight)
 
 		return
 	}
@@ -484,6 +483,22 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			s.theme.DrawText(screen, line, left, above+index*ui.LineHeight, ui.ColorWarn())
 		}
 	}
+}
+
+// hasPartState answers the states about lines, problems, cues and local
+// values, and whether the state is one of them.
+func (s *State) hasPartState(state string) (bool, bool) {
+	if found, handled := s.hasLineState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasCueState(state); handled {
+		return found, true
+	}
+	if strings.HasPrefix(state, localState) {
+		return s.hasLocal(state), true
+	}
+
+	return false, false
 }
 
 // hasLineState answers the states about lines and problems, and whether the
@@ -781,6 +796,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		}
 	case "ui":
 		return s.locateWidget(value)
+	case localPrefix:
+		return s.locateLocal(value)
 	default:
 		if at, found := s.locateOnCanvas(kind, value); found {
 			return s.onScreen(at), true
@@ -880,6 +897,9 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 			return ui.Center(button.Rect), true
 		}
 	}
+	if point, found := s.locateLocalsWidget(widget); found {
+		return point, true
+	}
 
 	return s.locateFormWidget(widget)
 }
@@ -942,10 +962,7 @@ func (made control) widgets() ([]*ui.TextField, []*ui.Button) {
 // "problems:N" when N nodes have problems and "problem:<kind>:<n>" when the
 // nth node of a kind has one.
 func (s *State) hasState(state string) bool {
-	if found, handled := s.hasLineState(state); handled {
-		return found
-	}
-	if found, handled := s.hasCueState(state); handled {
+	if found, handled := s.hasPartState(state); handled {
 		return found
 	}
 	switch {
