@@ -160,13 +160,16 @@ type Row struct {
 	// Aside is drawn subdued just after a tree row's label, such as its
 	// tags.
 	Aside string
+	// Tree draws the row as part of a tree, lined up with the rows that have
+	// an icon, a guide or a triangle, even when it has none of them.
+	Tree bool
 }
 
 // NewRow returns a plain selectable row; set its other fields as needed.
 func NewRow(id, label string) Row {
 	return Row{
 		ID: id, Label: label, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false, Icon: IconNone,
-		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false, Aside: "",
+		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false, Aside: "", Tree: false,
 	}
 }
 
@@ -425,7 +428,7 @@ func (l *List) SelectedRow() (Row, bool) {
 
 // treeRow reports whether a row is drawn as part of a tree.
 func treeRow(row Row) bool {
-	return row.Icon != IconNone || row.Guide != GuideNone || row.Toggle != DisclosureNone
+	return row.Tree || row.Icon != IconNone || row.Guide != GuideNone || row.Toggle != DisclosureNone
 }
 
 // treeLeft is where a tree row's disclosure column starts.

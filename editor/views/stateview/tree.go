@@ -117,8 +117,10 @@ func (s *State) disclosure(row string) ui.Disclosure {
 	return ui.DisclosureClosed
 }
 
-// add adds a row and what it means.
+// add adds a row and what it means, drawn as part of the tree so every
+// row lines up under the one holding it.
 func (t *tree) add(row ui.Row, meaning item) {
+	row.Tree = true
 	t.rows = append(t.rows, row)
 	t.items[row.ID] = meaning
 }
@@ -207,6 +209,9 @@ func (s *State) heldRows(
 		row := ui.NewRow(heldPrefix+ownerID.String()+":"+declared.ID.String(), declared.Name)
 		row.Indent, row.Detail = depth, detail(declared, built.catalog)
 		row.Strong = !declared.Type.IsValue()
+		if declared.Type == worldstate.TypeGroup {
+			row.Icon = ui.IconFolder
+		}
 		built.add(row, item{
 			kind: itemHeld, scope: owner.Scope, list: world, declared: declared, owner: owner, ownerID: ownerID,
 			path: worldstate.NamedPath(world.Values.Path(declared.ID), ownerName(owner, ownerID)),
@@ -234,6 +239,9 @@ func (s *State) declaredRows(
 		if owner != nil {
 			meaning.owner, meaning.ownerID = owner.owner, owner.id
 			meaning.path = worldstate.NamedPath(path, ownerName(owner.owner, owner.id))
+		}
+		if declared.Type == worldstate.TypeGroup {
+			row.Icon = ui.IconFolder
 		}
 		if !declared.Type.IsValue() {
 			row.Strong = true
