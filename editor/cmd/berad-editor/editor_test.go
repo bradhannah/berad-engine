@@ -133,6 +133,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if err != nil || tile.Size() != art.DefaultTileSize || sprite.Tile.IsZero() {
 		t.Fatalf("the lantern's tile: %v", err)
 	}
+	checkSampleTemplates(t, project, sprite, tile)
 	gloomy, err := art.DecodePalette(gloomyFile.Data)
 	if err != nil {
 		t.Fatal(err)

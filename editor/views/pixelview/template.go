@@ -284,7 +284,8 @@ func (s *State) drawTemplate(screen *ebiten.Image, docs frame.Docs, size int) {
 	}
 	rect := s.tileRect(size)
 	tileart.DrawMarks(screen, template, rect, size, s.zoom)
-	tileart.DrawGuides(screen, s.theme, template, rect, size, s.zoom)
+	placed := tileart.Placed{Rect: rect, Size: size, Zoom: s.zoom, Within: s.canvas()}
+	tileart.DrawGuides(screen, s.theme, template, placed)
 }
 
 // drawTemplateMarks outlines the pixels painted where the template

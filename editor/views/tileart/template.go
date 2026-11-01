@@ -31,6 +31,10 @@ const (
 	notAllowedHatch = 0x80
 	discouragedTint = 0x38
 	discouragedDot  = 0xc0
+	// A guide's name sits on a pale label, so it reads over the art.
+	labelPad   = 3
+	hexLabel   = 0xffffff
+	labelAlpha = 0xd8
 )
 
 // NotAllowedInk is the ink of what a template does not allow.
@@ -68,28 +72,41 @@ func DrawMarks(screen *ebiten.Image, template artplugin.Template, rect image.Rec
 	}
 }
 
-// DrawGuides draws a template's guides over a tile of a size shown in rect
-// at a whole magnification: across guides named at their left, down guides
-// above the tile.
-func DrawGuides(screen *ebiten.Image, theme *ui.Theme, template artplugin.Template, rect image.Rectangle, size,
-	zoom int,
-) {
-	zoom = max(zoom, 1)
+// Placed is where a tile shows: its rectangle on screen, its size in pixels,
+// its whole magnification, and the area it is seen through, which guides'
+// names stay within.
+type Placed struct {
+	Rect   image.Rectangle
+	Size   int
+	Zoom   int
+	Within image.Rectangle
+}
+
+// DrawGuides draws a template's guides over a placed tile: across guides
+// named at their left, down guides above the tile, each name moved inside
+// the area the tile is seen through when it would fall outside it.
+func DrawGuides(screen *ebiten.Image, theme *ui.Theme, template artplugin.Template, placed Placed) {
+	zoom, rect := max(placed.Zoom, 1), placed.Rect
 	ink := ui.ColorSelect()
 	for _, guide := range template.Guides {
-		offset := guide.Position(size, size) * zoom
+		offset := guide.Position(placed.Size, placed.Size) * zoom
+		width := theme.SmallWidth(guide.Name)
+		var corner image.Point
 		if guide.Line == artplugin.LineDown {
 			x := rect.Min.X + offset
 			dashed(screen, image.Pt(x, rect.Min.Y-guideReach), image.Pt(x, rect.Max.Y+guideReach), ink)
-			theme.DrawSmall(screen, guide.Name, x-theme.SmallWidth(guide.Name)/ui.Half,
-				rect.Min.Y-guideReach-ui.LineHeight, ink)
-
-			continue
+			corner = image.Pt(x-width/ui.Half, rect.Min.Y-guideReach-ui.LineHeight)
+		} else {
+			y := rect.Min.Y + offset
+			dashed(screen, image.Pt(rect.Min.X-guideReach, y), image.Pt(rect.Max.X+guideReach, y), ink)
+			corner = image.Pt(rect.Min.X-guideReach-ui.Gap-width, y-ui.LineHeight/ui.Half)
 		}
-		y := rect.Min.Y + offset
-		dashed(screen, image.Pt(rect.Min.X-guideReach, y), image.Pt(rect.Max.X+guideReach, y), ink)
-		theme.DrawSmall(screen, guide.Name, rect.Min.X-guideReach-ui.Gap-theme.SmallWidth(guide.Name),
-			y-ui.LineHeight/ui.Half, ink)
+		inside := placed.Within.Inset(ui.Gap)
+		corner.X = max(inside.Min.X, min(corner.X, inside.Max.X-width))
+		corner.Y = max(inside.Min.Y, min(corner.Y, inside.Max.Y-ui.LineHeight))
+		label := image.Rect(corner.X-labelPad, corner.Y, corner.X+width+labelPad, corner.Y+ui.LineHeight)
+		ui.FillRect(screen, label, ui.HexAlpha(hexLabel, labelAlpha))
+		theme.DrawSmall(screen, guide.Name, corner.X, corner.Y, ink)
 	}
 }
 

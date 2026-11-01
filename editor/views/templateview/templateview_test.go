@@ -151,8 +151,9 @@ func TestOpensTheTemplate(t *testing.T) {
 	if !f.has("loaded") || !f.has("rules:1") || !f.has("guides:1") || !f.has("shown:") {
 		t.Fatal("the template's rule and guide are listed, over no sprite")
 	}
-	if !slices.Contains(f.requests.Subscribed, art.SettingsID()) {
-		t.Fatal("the preview follows the project's tile size")
+	if !slices.Contains(f.requests.Subscribed, art.SettingsID()) ||
+		!slices.Contains(f.requests.Subscribed, project.IndexID()) {
+		t.Fatal("the preview follows the project's tile size, and the index names the template")
 	}
 }
 

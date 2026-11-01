@@ -72,10 +72,15 @@ const lanternHalf = `
 ............
 `
 
-// sampleLantern makes the sample's palette, gloomy, draws the lantern with it
-// and makes it show the small pickup. It returns the palette and its ramps.
+// sampleLantern makes the sample's templates and its palette, gloomy, draws
+// the lantern with it, drawn to the pickup template, and makes it show the
+// small pickup. It returns the palette, its ramps and the templates.
 func sampleLantern(orch *orchestrator.Orchestrator) (sampleArt, error) {
 	var none sampleArt
+	pickup, character, err := sampleTemplates(orch)
+	if err != nil {
+		return none, err
+	}
 	iron, err := sampleRamp(orch, ironRampName, art.MaxOpacity, ironColors())
 	if err != nil {
 		return none, err
@@ -102,7 +107,7 @@ func sampleLantern(orch *orchestrator.Orchestrator) (sampleArt, error) {
 	if err != nil {
 		return none, fmt.Errorf("sample lantern: %w", err)
 	}
-	sprite := &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID, Template: ids.ULID{}}}
+	sprite := &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID, Template: pickup}}
 	spriteID, err := orch.CreateDocument(lanternName, sprite)
 	if err != nil {
 		return none, fmt.Errorf("sample lantern: %w", err)
@@ -122,7 +127,56 @@ func sampleLantern(orch *orchestrator.Orchestrator) (sampleArt, error) {
 		return none, fmt.Errorf("sample lantern: %w", err)
 	}
 
-	return sampleArt{palette: paletteID, iron: iron, glass: glass}, nil
+	return sampleArt{palette: paletteID, iron: iron, glass: glass, pickup: pickup, character: character}, nil
+}
+
+// The sample's templates (increment 16): a pickup keeps its outermost pixels
+// clear and discourages the next ring in, and a character keeps three pixels
+// clear at each side and discourages the fourth and its top two rows. Their
+// guides mark the middle, where a pickup rests and a figure's feet and eyes.
+const (
+	pickupTemplate    = "Pickup"
+	characterTemplate = "Character"
+	sideWidth         = 3
+	restsAt           = 2
+	eyesAt            = 5
+)
+
+// sampleTemplates makes the pickup and character templates and returns their
+// IDs.
+func sampleTemplates(orch *orchestrator.Orchestrator) (ids.ULID, ids.ULID, error) {
+	middle := artplugin.Guide{Name: "middle", Line: artplugin.LineDown, From: artplugin.FromMiddle, At: 0}
+	pickup := artplugin.Template{
+		Rules: []artplugin.Rule{
+			{Edge: artplugin.EdgeBorder, Width: 1, Mark: artplugin.MarkNotAllowed},
+			{Edge: artplugin.EdgeBorder, Width: 2, Mark: artplugin.MarkDiscouraged}, //nolint:mnd // The next ring in.
+		},
+		Guides: []artplugin.Guide{
+			middle, {Name: "rests on", Line: artplugin.LineAcross, From: artplugin.FromEnd, At: restsAt},
+		},
+	}
+	character := artplugin.Template{
+		Rules: []artplugin.Rule{
+			{Edge: artplugin.EdgeSides, Width: sideWidth, Mark: artplugin.MarkNotAllowed},
+			{Edge: artplugin.EdgeSides, Width: sideWidth + 1, Mark: artplugin.MarkDiscouraged},
+			{Edge: artplugin.EdgeTop, Width: 2, Mark: artplugin.MarkDiscouraged}, //nolint:mnd // The top two rows.
+		},
+		Guides: []artplugin.Guide{
+			middle,
+			{Name: "eyes", Line: artplugin.LineAcross, From: artplugin.FromStart, At: eyesAt},
+			{Name: "feet", Line: artplugin.LineAcross, From: artplugin.FromEnd, At: restsAt},
+		},
+	}
+	pickupID, err := orch.CreateDocument(pickupTemplate, &artplugin.TemplateDocument{Template: pickup})
+	if err != nil {
+		return ids.ULID{}, ids.ULID{}, fmt.Errorf("sample templates: %w", err)
+	}
+	characterID, err := orch.CreateDocument(characterTemplate, &artplugin.TemplateDocument{Template: character})
+	if err != nil {
+		return ids.ULID{}, ids.ULID{}, fmt.Errorf("sample templates: %w", err)
+	}
+
+	return pickupID, characterID, nil
 }
 
 // sampleRamp is a ramp of the sample's palette, its colours at one opacity,

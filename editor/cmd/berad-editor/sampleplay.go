@@ -71,10 +71,12 @@ const figureHalf = `
 ............
 `
 
-// sampleArt is the sample's palette, gloomy, and its ramps.
+// sampleArt is the sample's palette, gloomy, its ramps, and its pickup and
+// character templates.
 type sampleArt struct {
-	palette     ids.ULID
-	iron, glass art.Ramp
+	palette           ids.ULID
+	iron, glass       art.Ramp
+	pickup, character ids.ULID
 }
 
 // ironShade is one of the iron greys, 1 to 5, as a colour of gloomy.
@@ -82,13 +84,14 @@ func (a sampleArt) ironShade(mark int) art.ColorRef {
 	return art.Named(a.palette, a.iron.ID, a.iron.Shades[mark-1].ID)
 }
 
-// sampleSprite makes a sprite of one tile, named for what it shows.
-func sampleSprite(orch *orchestrator.Orchestrator, name string, tile *art.Tile) (ids.ULID, error) {
+// sampleSprite makes a sprite of one tile, named for what it shows, drawn to
+// a template or to none.
+func sampleSprite(orch *orchestrator.Orchestrator, name string, tile *art.Tile, template ids.ULID) (ids.ULID, error) {
 	tileID, err := orch.CreateDocument(name, &artplugin.TileDocument{Tile: tile})
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("sample %s: %w", name, err)
 	}
-	sprite := &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID, Template: ids.ULID{}}}
+	sprite := &artplugin.SpriteDocument{Sprite: art.Sprite{Tile: tileID, Template: template}}
 	spriteID, err := orch.CreateDocument(name, sprite)
 	if err != nil {
 		return ids.ULID{}, fmt.Errorf("sample %s: %w", name, err)
@@ -146,8 +149,8 @@ func figureArt(sample sampleArt, body art.ColorRef) (*art.Tile, error) {
 }
 
 // samplePlayers makes brick show the walls of family A and a figure show the
-// player, and the clerk, an NPC with a figure of their own. It returns the
-// clerk's ID.
+// player, and the clerk, an NPC with a figure of their own; both figures are
+// drawn to the character template. It returns the clerk's ID.
 func samplePlayers(orch *orchestrator.Orchestrator, sample sampleArt) (ids.ULID, error) {
 	brick, err := brickArt(sample)
 	if err != nil {
@@ -165,8 +168,12 @@ func samplePlayers(orch *orchestrator.Orchestrator, sample sampleArt) (ids.ULID,
 	for _, made := range []struct {
 		name, shows string
 		tile        *art.Tile
-	}{{"Brick", brickShows, brick}, {"Hero", art.Player, hero}, {clerkName, "", apron}} {
-		spriteID, err := sampleSprite(orch, made.name, made.tile)
+		template    ids.ULID
+	}{
+		{"Brick", brickShows, brick, ids.ULID{}}, {"Hero", art.Player, hero, sample.character},
+		{clerkName, "", apron, sample.character},
+	} {
+		spriteID, err := sampleSprite(orch, made.name, made.tile, made.template)
 		if err != nil {
 			return ids.ULID{}, err
 		}

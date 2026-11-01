@@ -133,7 +133,7 @@ func (s *State) Start(ctx *frame.Context) {
 }
 
 func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
-	if s.subs[document] || document.IsZero() {
+	if s.subs[document] {
 		return
 	}
 	s.subs[document] = true
@@ -326,9 +326,11 @@ func next[T comparable](items []T, item T) T {
 }
 
 // layout places the rules and guides in the list at the left, with the save
-// bar at its foot, and the preview at the right.
+// bar at its foot, and the preview at the right, across the whole window: the
+// Template editor has no inspector.
 func (s *State) layout(template artplugin.Template, docs frame.Docs) {
 	content := frame.Content(s.size)
+	content.Max.X = s.size.X
 	s.headings[0] = ui.Inset
 	top := s.layoutRules(template, ui.Inset+ui.LineHeight+headGap)
 	s.headings[1] = top
@@ -755,7 +757,7 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, template artp
 		}
 	}
 	tileart.DrawMarks(area, template, rect, size, zoom)
-	tileart.DrawGuides(area, s.theme, template, rect, size, zoom)
+	tileart.DrawGuides(area, s.theme, template, tileart.Placed{Rect: rect, Size: size, Zoom: zoom, Within: s.preview})
 	ui.StrokeRect(area, rect, ui.Hairline, ui.ColorRule())
 	caption := strconv.Itoa(size) + " × " + strconv.Itoa(size) + " pixels · where rules overlap, the strictest wins"
 	s.theme.DrawText(screen, caption, s.preview.Min.X, s.preview.Max.Y+ui.Gap, ui.ColorMuted())
