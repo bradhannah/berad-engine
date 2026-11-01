@@ -7,6 +7,7 @@
 | [Vocabulary](VOCABULARY.md) | One term per concept: spatial, art and editor terms |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
+| [Workflow design](WORKFLOW_DESIGN.md) | Where workflows are heading: container exits, kinds of workflow, values, calls and conversations (draft) |
 
 ## Increments
 
@@ -34,3 +35,4 @@ accepted it.
 | [11. Drawing tiles](increments/0011-drawing-tiles.md) | The first pixel editor: the tile size, the shared palette's named ramps, drawing a tile and seeing its sprite on the map | Judged |
 | [12. Palettes](increments/0012-palettes.md) | Palettes: Default built in, palettes of a game's own, the Palette Editor and a pick-only Pixel editor | Built |
 | [13. Single window](increments/0013-single-window.md) | Single window: the editor as one window in one process, its views as tabs, the multi-window option removed | Built |
+| [15. Values and sensing](increments/0015-values-and-sensing.md) | Values and sensing: declared values in four scopes, Set and Check value, and finding an NPC nearby | Planned |
