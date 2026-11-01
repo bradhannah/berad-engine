@@ -855,3 +855,45 @@ func (s *State) npcIDs(docs frame.Docs) []ids.ULID {
 
 	return found
 }
+
+// valueTitle names a value node on the canvas as a short sentence, so what
+// it sets or asks shows in its width: "Set npc.mood to cross", "Add 1 to
+// local.tally", "Is npc.count at least 3?" or "Find NPC within 2 tiles".
+func (s *State) valueTitle(node flow.Node, docs frame.Docs) string {
+	kind, _ := flow.KindOf(node.Kind)
+	path, operand := "", ""
+	if ref, err := node.Ref(flow.ParamValue); err == nil && !ref.IsZero() {
+		_, path, _ = s.resolve(docs, ref)
+		if path == "" {
+			path = "?"
+		}
+		if declared, found := s.operandDeclaration(docs, node, operandOfValue(node.Kind, flow.ParamValue)); found {
+			saved, savedErr := node.Operand(operandOfValue(node.Kind, flow.ParamValue))
+			if value, parseErr := declared.Parse(saved); savedErr == nil && parseErr == nil {
+				operand = declared.Label(value)
+			}
+		}
+	}
+	if operand == "" {
+		operand = "?"
+	}
+	switch {
+	case node.Kind == flow.KindFindNPC:
+		tiles, err := node.Number("within")
+		if err != nil {
+			return kind.Label
+		}
+
+		return "Find NPC within " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
+	case path == "":
+		return kind.Label + " · no value"
+	case node.Kind == flow.KindCheckValue && choiceOf(node, "compare") == flow.CompareIs:
+		return "Is " + path + " " + operand + "?"
+	case node.Kind == flow.KindCheckValue:
+		return "Is " + path + " " + strings.ReplaceAll(choiceOf(node, "compare"), "-", " ") + " " + operand + "?"
+	case choiceOf(node, "how") == flow.HowAdd:
+		return "Add " + operand + " to " + path
+	}
+
+	return "Set " + path + " to " + operand
+}

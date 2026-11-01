@@ -1,6 +1,6 @@
 # Increment 15: Values and sensing
 
-**Status:** Planned
+**Status:** Built
 
 The first world state, and the first way for NPCs to be aware of each other.
 An author declares typed values in the World state window, or on a workflow
@@ -96,20 +96,103 @@ Chosen while planning, for its author to check:
 - **The Watch window shows the watched NPC's values,** its local values, and
   the zone's and the world's.
 
+Chosen while building, for its author to check:
+
+- **A chooser declares a value from what is typed into it.** Typing a name
+  no value has offers to declare it in each scope the node may use; it
+  starts as a number, or as an NPC for where Find NPC nearby keeps what it
+  finds, and its type is changed in the World state window or Local values.
+- **Add value and Add local make a number named value,** then value_2 and
+  so on, to be named in the inspector; a new list starts with two choices,
+  first and second.
+- **Where a value is used shows in its inspector,** in the World state
+  window, rather than as a count beside every value in the list.
+- **Find NPC nearby looks for an NPC's own value,** such as npc.waiting of
+  the NPC it is looking at, and clears the local it keeps NPCs in when it
+  finds none.
+- **A value node that cannot do its work carries on,** as other nodes do:
+  Set value goes on to the next node, and Check value and Find NPC nearby
+  take "otherwise" and "none found". The Watch window says why.
+- **NPCs act on the others as each tick began:** Find NPC nearby sees where
+  the zone's NPCs stood at the start of the tick, and their values as they
+  are, set by NPCs earlier in placement order.
+- **Two NPCs given one path name are not refused,** as an edit changes one
+  NPC at a time; the project browser warns about both. An NPC upgraded from
+  version 1 has no path name until it is given one, with a suggestion shown.
+- **A zone that already places an NPC twice** is marked on each such
+  placement in the Map window's inspector, rather than in a list of the
+  zone's problems, which the editor does not have yet.
+- **Value nodes are titled as sentences on the canvas,** such as "Set
+  npc.waiting to 0" and "Is npc.mood calm?", so what they set or ask fits
+  the node; Check value and Find NPC nearby list their outputs as rows.
+- **The Watch window lists the watched NPC's values** beside its workflow:
+  its workflow's locals, a local holding an NPC by that NPC's name, then its
+  own values, its zone's and the world's.
+- **In the preview, values start at their defaults,** and a value's
+  declaration changed during a preview applies at once, keeping what was
+  set where it still fits.
+
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Declarations | The world-state document: each value's ID, name, scope, type, choices, default and description, with a format version; name rules; edits to add, remove, rename and change a value, passing the shared undo test; where-used for values | A project's values can be declared, changed and undone, and save and load unchanged | Planned |
-| 2. NPC names and placements | NPC format 2, upgraded from 1, with a unique path name suggested from the display name; the Map window refusing a second placement of an NPC in one zone, and a problem for a zone that already has one | Every NPC has a unique path name, and no zone gains a second placement of one NPC | Planned |
-| 3. The World state window | Scopes, each scope's values with their type, default and how many workflows use them, and an inspector for the selected value; each change saved as it is made and undone with Cmd+Z | An author can declare and change values without leaving the editor | Planned |
-| 4. Local values | Workflow logic format 4, upgraded from 3, with the workflow's local values; Local values in the inspector when no node is selected; their edits, passing the shared undo test | A workflow's locals can be declared, changed and undone | Planned |
-| 5. The nodes in the editor | Set value, Check value and Find NPC nearby; a value parameter whose picker groups values by scope, offers only those a workflow may use, including other NPCs' values to read, and can declare a new one; a parameter that follows the chosen value's type; problem marks for missing or mismatched values | Each node can be built and checked in the Workflow window, and a broken value is marked | Planned |
-| 6. Running them | The engine's world state: values for the world, each zone and each NPC, kept with the NPC wherever it is placed, and each running workflow's locals; the three nodes in the runner; locals cleared on restart and on a change of zone; values in the preview stream and the Watch window | A shopkeeper serves a waiting customer in the preview, the same way every run, judged by its author | Planned |
+| 1. Declarations | The world-state document: each value's ID, name, scope, type, choices, default and description, with a format version; name rules; edits to add, remove, rename and change a value, passing the shared undo test; where-used for values | A project's values can be declared, changed and undone, and save and load unchanged | Built |
+| 2. NPC names and placements | NPC format 2, upgraded from 1, with a unique path name suggested from the display name; the Map window refusing a second placement of an NPC in one zone, and a problem for a zone that already has one | Every NPC has a unique path name, and no zone gains a second placement of one NPC | Built |
+| 3. The World state window | Scopes, each scope's values with their type, default and how many workflows use them, and an inspector for the selected value; each change saved as it is made and undone with Cmd+Z | An author can declare and change values without leaving the editor | Built |
+| 4. Local values | Workflow logic format 4, upgraded from 3, with the workflow's local values; Local values in the inspector when no node is selected; their edits, passing the shared undo test | A workflow's locals can be declared, changed and undone | Built |
+| 5. The nodes in the editor | Set value, Check value and Find NPC nearby; a value parameter whose picker groups values by scope, offers only those a workflow may use, including other NPCs' values to read, and can declare a new one; a parameter that follows the chosen value's type; problem marks for missing or mismatched values | Each node can be built and checked in the Workflow window, and a broken value is marked | Built |
+| 6. Running them | The engine's world state: values for the world, each zone and each NPC, kept with the NPC wherever it is placed, and each running workflow's locals; the three nodes in the runner; locals cleared on restart and on a change of zone; values in the preview stream and the Watch window | A shopkeeper serves a waiting customer in the preview, the same way every run, judged by its author | Built |
 
 ## Step results
 
-None yet.
+All on the branch `feat/values-and-sensing`. Verified with `make check` (no
+lint findings, every package passing with the race detector) and every
+real-window test passing, the new tests' screenshots checked.
+
+- **Declarations:** `engine/worldstate` declares values: an ID, a name of
+  lower-case letters, digits and underscores, a scope, a type, a list's
+  choices with IDs of their own, a default and a description, format 1. The
+  world-state plug-in's add, change and remove edits pass the shared undo
+  test, and the add edit gives a new value its ID (D4). Every project holds
+  one world-state document with a fixed ID. Workflows refer to world-state
+  values and to the NPCs they name, so where-used finds them.
+- **NPC names and placements:** NPC format 2, upgraded from 1, adds a path
+  name. A new NPC's is suggested from its name, unique among the project's
+  NPCs; the project browser edits it, refuses punctuation and warns when
+  another NPC uses it. The Map window refuses a second placement of one NPC
+  in a zone, saying why.
+- **The World state window:** opened from the project browser's World state
+  row, it lists the world, zone and NPC scopes, each scope's values with
+  their type and what they start as, and edits the selected one: its name,
+  type, choices, starting value and description, with where it is used.
+  Each change is saved as it is made and undone with Cmd+Z; typed text waits
+  for Enter or Save. Its form is shared with Local values. A real-window test
+  declares npc.mood, names it and makes it a list.
+- **Local values:** workflow format 4, upgraded from 3, holds a workflow's
+  local values; a local can also be an NPC. Their edits pass the shared undo
+  test. With nothing selected, the Workflow window's inspector lists them,
+  adds one and edits it.
+- **The nodes in the editor:** Set value, Check value and Find NPC nearby
+  in a new Values group of the palette. A value parameter's chooser groups
+  the values a node may use: a Set value only its own, a Check value also
+  the values of the NPC a local holds and of each NPC with a path name. An
+  operand follows its value's type: a number to type, no and yes, or a
+  button for each choice. A missing value, a value of the wrong type for
+  what is compared or set, and setting another NPC's value are marked as
+  problems. A real-window test declares npc.served from a chooser, sets it,
+  checks it and adds a local value.
+- **Running them:** `worldstate.Store` holds the world's, each zone's and
+  each NPC's values, the NPC's by its ID, wherever it is placed; a value
+  never set is its default. The runner sets, checks and finds, reads another
+  NPC's values but never sets them, keeps locals through repeats and clears
+  them on a restart; a new runner, as in another zone, starts with none. The
+  Map window's preview gives every NPC the store, its zone and the others in
+  placement order, and the Watch window lists the watched NPC's values.
+  Runner tests cover setting and adding, the zone's value, the found and the
+  named NPC, a customer three tiles away never found, and the same values
+  every run. A real-window test builds a customer and a clerk from nodes
+  alone, places them side by side and previews them: the customer finds the
+  clerk serving and stops waiting.
 
 ## Changed after its author tried it
 

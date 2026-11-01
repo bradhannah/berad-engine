@@ -94,3 +94,89 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 	}
 	t.Logf("screenshots: %s %s %s", setShot, checkShot, localShot)
 }
+
+// TestShopkeeperServesACustomer builds a shop from nodes alone. The
+// customer's workflow looks for a clerk serving within two tiles: found, it
+// stops waiting; none, it waits. The clerk's looks for a waiting customer
+// within two tiles and serves it. Both declare their values from the
+// choosers. Placed side by side and previewed, the Watch window shows the
+// customer no longer waiting, keeping the clerk it found: it stops only on
+// finding a clerk serving, which the clerk is only once it has found the
+// customer waiting.
+func TestShopkeeperServesACustomer(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	customerShot := shotPath(t, "shop-customer.png")
+	mapShot, flowShot := shotPath(t, "shop-map.png"), shotPath(t, "shop-workflow.png")
+	retype := func(field, text string) []step {
+		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
+	}
+	choose := func(param, name, row string) []step {
+		return script(click("ui:pick-"+param), wait(5), typed(name), must(row, 1800), click(row), wait(10))
+	}
+	pause := func() []step {
+		return script(click("palette:wait"), wait(10), retype("param-duration", "1"), click("ui:duration-seconds"), wait(10))
+	}
+	browserScript := script(
+		openZone(), wait(30), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
+		click("ui:use"), wait(30),
+		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 2"), wait(5),
+		click("ui:use"), wait(30), quitWhenAlone(),
+	)
+	customerScript := script(
+		must("state:loaded", 600), wait(5),
+		click("node:start:1"), wait(5), click("palette:find-npc"), must("state:selected:find-npc", 300),
+		choose("where", "serving", "declare:npc"), must("state:value:where=npc.serving", 300),
+		retype("operand-is", "1"), must("state:operand:is=1", 300),
+		choose("into", "clerk", "declare:local"), must("state:value:into=local.clerk", 300),
+		click("palette:set-value"), must("state:selected:set-value", 300),
+		choose("value", "waiting", "declare:npc"), must("state:operand:to=0", 300), pause(),
+		click("node:find-npc:1"), wait(5), click("palette:set-value"), must("state:selected:set-value", 300),
+		choose("value", "waiting", "valuerow:npc.waiting"), retype("operand-to", "1"), must("state:operand:to=1", 300),
+		pause(), click("ui:arrange"), wait(20), shoot(flowShot), wait(10), quit(),
+	)
+	clerkScript := script(
+		must("state:loaded", 600), wait(5),
+		click("node:start:1"), wait(5), click("palette:find-npc"), must("state:selected:find-npc", 300),
+		choose("where", "waiting", "valuerow:npc.waiting"), retype("operand-is", "1"), must("state:operand:is=1", 300),
+		choose("into", "customer", "declare:local"), must("state:value:into=local.customer", 300),
+		click("palette:set-value"), must("state:selected:set-value", 300),
+		choose("value", "serving", "valuerow:npc.serving"), retype("operand-to", "1"), must("state:operand:to=1", 300),
+		pause(), click("node:find-npc:1"), wait(5), pause(), wait(10), quit(),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(5), keys("N"), must("npc:NPC 2", 3600), click("npc:NPC 1"), wait(5),
+		click("cell:1,1"), must("state:placement:1,1=NPC 1", 300), click("npc:NPC 2"), wait(5),
+		click("cell:2,1"), must("state:placement:2,1=NPC 2", 300), wait(900),
+		keys("P"), click("cell:2,-2"), must("state:previewing", 300), wait(30),
+		click("live-npc:NPC 1"), wait(5), click("live-npc:NPC 1"), must("state:watching", 300), wait(10),
+		click("ui:watch"), wait(400), shoot(mapShot), keys("P"), wait(30), quit(),
+	)
+	watchScript := script(
+		must("state:previewing", 1800), must("state:watching:NPC 1", 600),
+		must("state:value:npc.waiting=0", 600), must("state:value:local.clerk=NPC 2", 300), wait(30),
+		shoot(customerShot), wait(10), quit(),
+	)
+	clockScript := script(must("state:running", 3600), wait(30), quit())
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "workflow": {customerScript, clerkScript}, "map": {mapScript},
+		"watch": {watchScript}, "clock": {clockScript},
+	})
+	noCrashes(t, project)
+	state := readEnvelope(t, project, "world-states/*.json")
+	decoded, err := stateplugin.Decode(state.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{}
+	for _, value := range decoded.(*stateplugin.Document).State.Values.Values() {
+		paths = append(paths, value.Path())
+	}
+	if len(paths) != 2 || paths[0] != "npc.serving" || paths[1] != "npc.waiting" {
+		t.Fatalf("the world state holds %v", paths)
+	}
+	t.Logf("screenshots: %s %s %s", flowShot, mapShot, customerShot)
+}

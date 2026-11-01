@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 const (
@@ -57,6 +58,11 @@ type previewRun struct {
 	step     []protocol.PreviewChange
 	// heard counts the times each cue has played in this preview.
 	heard map[string]int
+	// values are the world's, the zones' and the NPCs' values while the
+	// preview runs, each starting at its default; declared is the
+	// world-state revision they were last given.
+	values   *worldstate.Store
+	declared uint64
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -147,8 +153,10 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
-			heard: map[string]int{},
+			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewDeclarations(worldstate.Scopes()...)),
+			declared: 0,
 		}
+		s.subscribe(worldstate.ID(), ctx)
 		s.remote = nil
 		s.subscribeFloors(ctx)
 		ctx.Frame.Status("Preview running from " + clock.Format(s.preview.clock.Seconds()) +

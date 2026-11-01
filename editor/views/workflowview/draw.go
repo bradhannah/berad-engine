@@ -266,13 +266,15 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	case flow.KindCheckValue, flow.KindFindNPC:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
-		title := kind.Label + " · " + s.summary(drawn.node, docs)
-		s.theme.DrawText(area, s.clip(title, drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
-			rect.Min.Y+titleDrop, ui.ColorInk())
+		s.theme.DrawText(area, s.clip(s.valueTitle(drawn.node, docs), drawn.rect.Dx()-ui.Half*textPad),
+			rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		s.drawOutputRows(area, drawn)
 	default:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		title := kind.Label + " · " + s.summary(drawn.node, docs)
+		if drawn.node.Kind == flow.KindSetValue {
+			title = s.valueTitle(drawn.node, docs)
+		}
 		clipped := s.clip(title, drawn.rect.Dx()-ui.Half*textPad)
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}

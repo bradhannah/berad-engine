@@ -17,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -24,6 +25,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // Preview clock and NPCs.
@@ -191,6 +193,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 		s.refreshWorkflow(ctx, run)
 	}
 	zone := docsZone{floors: s.floors, docs: ctx.Docs}
+	s.declareValues(ctx.Docs)
 	ticks := 1
 	if s.preview.stepping {
 		ticks = stepBudget
@@ -199,8 +202,12 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	for range ticks {
 		passed := s.preview.clock.Advance()
 		asked = asked[:0]
+		others := othersOf(runners)
 		for _, run := range runners {
-			world := npcrun.World{Zone: zone, Workflow: run.workflow, Clock: s.preview.clock, Passed: passed}
+			world := npcrun.World{
+				Zone: zone, Workflow: run.workflow, Clock: s.preview.clock, Passed: passed, State: s.preview.values,
+				Here: s.zone, Others: others,
+			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
 		}
@@ -342,8 +349,70 @@ func (s *State) previewState() protocol.PreviewState {
 	return protocol.PreviewState{
 		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
 		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
-		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step),
+		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step), Values: s.watchedValues(),
 	}
+}
+
+// othersOf lists the NPCs as a tick begins, in placement order, for each to
+// find the others.
+func othersOf(runners []*npcRun) []npcrun.Other {
+	others := make([]npcrun.Other, 0, len(runners))
+	for _, run := range runners {
+		others = append(others, npcrun.Other{
+			Placement: run.npc.Placement, NPC: run.npc.NPC, Floor: run.npc.Floor, Cell: run.npc.Cell,
+		})
+	}
+
+	return others
+}
+
+// declareValues gives the preview's values the project's declarations as
+// they are now, keeping what has been set.
+func (s *State) declareValues(docs frame.Docs) {
+	docs.View(worldstate.ID(), func(document client.Document) {
+		stateDoc, ok := document.Model.(*stateplugin.Document)
+		if !ok || (document.Revision == s.preview.declared && s.preview.declared != 0) {
+			return
+		}
+		s.preview.values.Declare(stateDoc.State.Values)
+		s.preview.declared = document.Revision
+	})
+}
+
+// watchedValues lists the watched NPC's values: its workflow's locals and
+// its own, then its zone's and the world's. A local holding an NPC shows
+// that NPC's name.
+func (s *State) watchedValues() []protocol.PreviewValue {
+	run, ok := s.preview.npcs[s.preview.watched]
+	if !ok {
+		return nil
+	}
+	var shown []protocol.PreviewValue
+	if run.workflow != nil {
+		locals := run.npc.Locals()
+		for _, declared := range run.workflow.Locals().Values() {
+			value, set := locals[declared.ID]
+			if !set || !declared.Fits(value) {
+				value = declared.Zero()
+			}
+			label := declared.Label(value)
+			if declared.Type == worldstate.TypeNPC && !value.NPC.IsZero() {
+				label = s.names.Name(value.NPC, label)
+			}
+			shown = append(shown, protocol.PreviewValue{Path: declared.Path(), Value: label})
+		}
+	}
+	values := s.preview.values
+	for _, part := range [][]worldstate.Shown{
+		values.Show(worldstate.ScopeNPC, run.npc.NPC), values.Show(worldstate.ScopeZone, s.zone),
+		values.Show(worldstate.ScopeWorld, ids.ULID{}),
+	} {
+		for _, each := range part {
+			shown = append(shown, protocol.PreviewValue{Path: each.Path, Value: each.Value})
+		}
+	}
+
+	return shown
 }
 
 // liveNPCs lists the NPCs of the preview this window shows, its own or

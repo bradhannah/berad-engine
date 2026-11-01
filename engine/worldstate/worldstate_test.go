@@ -147,3 +147,43 @@ func TestDeclarations(t *testing.T) {
 		t.Fatalf("an empty world state: %v", err)
 	}
 }
+
+func TestStore(t *testing.T) {
+	t.Parallel()
+	declared := worldstate.NewDeclarations(worldstate.Scopes()...)
+	mood := worldstate.New(id(1), "mood", worldstate.ScopeNPC, worldstate.TypeChoice)
+	mood.Choices = []worldstate.Choice{{ID: "c1", Name: "calm"}, {ID: "c2", Name: "cross"}}
+	crowded := worldstate.New(id(2), "crowded", worldstate.ScopeZone, worldstate.TypeYesNo)
+	for _, value := range []worldstate.Declaration{mood, crowded} {
+		if err := declared.Insert(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := worldstate.NewStore(declared)
+	george, market := id(10), id(20)
+	if got := store.Get(mood, george); mood.Label(got) != "calm" {
+		t.Fatalf("a value never set is its default: %+v", got)
+	}
+	cross := worldstate.Value{Type: worldstate.TypeChoice, Number: 0, Yes: false, Choice: "c2", NPC: ids.ULID{}}
+	if err := store.Set(mood, george, cross); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get(mood, george); !got.Equal(cross) || mood.Label(store.Get(mood, id(11))) != "calm" {
+		t.Fatal("each NPC has its own mood")
+	}
+	if err := store.Set(crowded, market, cross); !errors.Is(err, worldstate.ErrValue) {
+		t.Fatalf("a value of the wrong type is refused: %v", err)
+	}
+	shown := store.Show(worldstate.ScopeNPC, george)
+	if len(shown) != 1 || shown[0].Path != "npc.mood" || shown[0].Value != "cross" {
+		t.Fatalf("shown %+v", shown)
+	}
+	calmOnly := mood.Clone()
+	calmOnly.Choices = calmOnly.Choices[:1]
+	if err := declared.Values()[0].Check(worldstate.ScopeNPC); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get(calmOnly, george); calmOnly.Label(got) != "calm" {
+		t.Fatalf("a value its declaration no longer fits is its default: %+v", got)
+	}
+}
