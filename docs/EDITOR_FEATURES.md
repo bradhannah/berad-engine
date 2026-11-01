@@ -86,6 +86,8 @@ under consideration), **open** (undecided).
   used. The family is a property that can be changed for a whole selection: a
   connected run, a room, or every wall in an area, plus a replace-everywhere
   command. Floors and roads can follow the same pattern.
+- **Agreed (2026-10-30):** until wall families exist, a wall stand-in can show
+  **one sprite**, the same in every cell, with no corner or edge pieces.
 - **Agreed:** walls **occupy whole cells** (a wall is one cell thick and a
   doorway is a cell), not cell edges.
 - **Agreed:** a cell has its **ground** and at most **one thing on top** (a
@@ -472,6 +474,15 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 
 - **Agreed:** the editor plays a map: walking around, NPCs running their
   routines, interactions, and talking to NPCs (D15 covers preview behaviour).
+- **Agreed (2026-10-30):** **Launch** plays the project as a game would, in
+  a **Play tab** with nothing of the editor around it, beside the Map's
+  Preview, which stays for quick checks. It starts at the **player start**,
+  placed once per project, and plays the project as it was when launched;
+  relaunching picks up edits. The screen shows a fixed number of cells set
+  per game, filling the tab while keeping its shape (2026-10-31), with the
+  player always centred. NPC cues, ambient sounds placed on the map and a
+  zone's own sounds are heard. The player and each NPC show one sprite. See
+  [increment 14](increments/0014-launch.md).
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
   new time immediately rather than simulating the gap: each restarts its
   workflow from the start and walks to wherever its new branch sends it.
@@ -515,6 +526,10 @@ What the engine provides to games, as far as decided:
   holding keeps walking, and the player slides smoothly between cells, in eight
   directions, never squeezing diagonally between two cells that block (the
   engine's `play` package; see [increment 2](increments/0002-walk-the-map.md)).
+  A step is taken the moment its key goes down and only drawn sliding, as
+  Ultima V Redux does; a held key steps every 10 ticks, the slide taking 8
+  ([increment 14](increments/0014-launch.md)). *Open:* whether a game chooses
+  these timings or the engine fixes them.
 - **Agreed:** uniform pixel scaling is guaranteed (no stretching), and layout
   supports several popular aspect ratios rather than one fixed layout. Text uses
   TTF fonts.

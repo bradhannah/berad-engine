@@ -19,9 +19,12 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/content"
+	"github.com/bradhannah/berad-engine/engine/game"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
 // The sample building's walls (see createSample), in cells from the zone
@@ -105,7 +108,7 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	}
 	ground, envelope := readFloor(t, project, "ground-floor")
 	if cellOf(t, ground, tilefloor.LayerTop, left, top) != "wall.a" || cellOf(t, ground, tilefloor.LayerGround, -16, -12) != "grass" ||
-		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 1 {
+		cellOf(t, ground, tilefloor.LayerTop, door, bottom) != "door" || len(ground.Anchors()) != 3 {
 		t.Fatal("sample ground floor not saved")
 	}
 	if ground.Bounds() != floor.Centered(32, 24) || envelope.Version != floor.FormatVersion {
@@ -160,6 +163,54 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	standIns, err := art.DecodeStandInSprites(readEnvelope(t, project, "standin-sprites/*.json").Data)
 	if shown, ok := standIns.Sprite("pickup.small"); err != nil || !ok || shown != lantern.ID {
 		t.Fatalf("the lantern shows the small pickup: %v %v %v", shown, ok, err)
+	}
+	checkSamplePlays(t, project, ground, zoneDoc.(*zoneplugin.Document).Zone, standIns)
+}
+
+// checkSamplePlays checks what Launch plays in the sample: a player start
+// inside the door, brick walls, figures for the player and the clerk by the
+// desk, the hum in the building and the tune throughout.
+func checkSamplePlays(t *testing.T, project string, ground *floor.Floor, sampleZone *zone.Zone, standIns *art.StandInSprites) {
+	t.Helper()
+	settings, err := game.DecodeSettings(readEnvelope(t, project, "game-settings/*.json").Data)
+	if err != nil || settings.Start.Col != 0 || settings.Start.Row != 2 || settings.Start.Floor != sampleZone.Floors()[0] {
+		t.Fatalf("the player starts inside the door: %+v %v", settings.Start, err)
+	}
+	if sounds := sampleZone.Sounds(); len(sounds) != 1 || sounds[0] != "sample/tune" {
+		t.Fatalf("the sample zone plays the tune throughout: %v", sounds)
+	}
+	if hum, found := ground.SoundAt(-3, 2); !found || hum.Cue != "sample/hum" {
+		t.Fatal("the hum is placed in the building")
+	}
+	brick := readEnvelope(t, project, "sprites/brick--*.json")
+	hero := readEnvelope(t, project, "sprites/hero--*.json")
+	if shown, _ := standIns.Sprite("wall.a"); shown != brick.ID {
+		t.Fatal("brick shows the walls of family A")
+	}
+	if shown, _ := standIns.Sprite(art.Player); shown != hero.ID {
+		t.Fatal("the hero shows the player")
+	}
+	clerk, err := npc.Decode(readEnvelope(t, project, "npcs/clerk--*.json").Data)
+	figure := readEnvelope(t, project, "sprites/clerk--*.json")
+	if err != nil || clerk.Sprite != figure.ID {
+		t.Fatalf("the clerk shows their figure: %v", err)
+	}
+	day := readEnvelope(t, project, "workflows/clerk-s-day--????????.json")
+	routine, err := flow.Decode(day.Data)
+	if err != nil || clerk.Behaviour != day.ID || len(routine.Nodes()) != 14 {
+		t.Fatalf("the clerk follows the clerk's day, a node of every kind: %v", err)
+	}
+	kinds := map[string]bool{}
+	for _, node := range routine.Nodes() {
+		kinds[node.Kind] = true
+	}
+	for _, kind := range flow.Kinds() {
+		if !kinds[kind.Name] {
+			t.Fatalf("the clerk's day has no %s", kind.Name)
+		}
+	}
+	if placed, found := ground.PlacementAt(-4, -1); !found || placed.NPC.IsZero() {
+		t.Fatal("the clerk stands by the desk")
 	}
 }
 
@@ -758,7 +809,7 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		must("state:shows:pickup.small", 120),
 		click("swatch:gloomy / glass 1"), must("state:color:gloomy / glass 1", 60), click("ui:edit-palette"),
 		must("swatch:gloomy / ink 1", 1200), click("swatch:gloomy / ink 1"),
-		drag("pixel:0,4", "pixel:31,4"), must("state:pixel:31,4:gloomy / ink 1", 120),
+		drag("pixel:0,4", "pixel:23,4"), must("state:pixel:23,4:gloomy / ink 1", 120),
 		must("swatch:gloomy / pane 1", 1200), click("swatch:gloomy / pane 1"),
 		keys("G"), click("pixel:0,0"), must("state:pixel:0,0:gloomy / pane 1", 120), wait(900), quit(),
 	)
@@ -766,8 +817,8 @@ func TestSpriteShowsOnTheMap(t *testing.T) {
 		expect("state:loaded", 600), wait(5),
 		click("ui:zoom-fit"), click("ui:zoom-reset"), click("ui:zoom-in"), must("state:zoom:200", 60),
 		must("state:sprite:pickup.small", 1800), front(), shoot(lanternShot),
-		mustInFront("state:art:pickup.small:16,4:#FF00FF", 1200), shoot(stroke),
-		mustInFront("state:art:pickup.small:16,4:#00FFFF", 1200), shoot(recoloured),
+		mustInFront("state:art:pickup.small:12,4:#FF00FF", 1200), shoot(stroke),
+		mustInFront("state:art:pickup.small:12,4:#00FFFF", 1200), shoot(recoloured),
 		mustInFront("state:art:pickup.small:0,0:#3060C0", 1200), shoot(glassShot),
 		quit(),
 	)
@@ -1228,7 +1279,8 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "palette-editor-made.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300), quitWhenAlone(),
+		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300),
+		must("state:tabs:2", 600), quitWhenAlone(),
 	)
 	paletteScript := script(
 		must("state:loaded", 600), wait(5),

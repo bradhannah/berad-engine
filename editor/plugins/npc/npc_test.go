@@ -31,12 +31,15 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	}
 	var routine ids.ULID
 	routine[15] = 7
+	var look ids.ULID
+	look[15] = 8
 	document := npcplugin.NewDocument()
 	for _, check := range []struct {
 		kind model.EditKind
 		args json.RawMessage
 	}{
 		{npcplugin.SetBehaviour{}, encode(t, npcplugin.SetBehaviourArgs{Behaviour: routine})},
+		{npcplugin.SetSprite{}, encode(t, npcplugin.SetSpriteArgs{Sprite: look})},
 		{npcplugin.SetNotes{}, encode(t, npcplugin.SetNotesArgs{Notes: "Grumpy before coffee."})},
 	} {
 		if err := model.VerifyUndo(document, check.kind, check.args, registry.Edit); err != nil {
@@ -47,8 +50,8 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		}
 	}
 	references := document.References()
-	if len(references) != 1 || references[0].Document != routine {
-		t.Fatalf("an NPC refers to its behaviour: %+v", references)
+	if len(references) != 2 || references[0].Document != routine || references[1].Document != look {
+		t.Fatalf("an NPC refers to its behaviour and its sprite: %+v", references)
 	}
 	tooLong := encode(t, npcplugin.SetNotesArgs{Notes: strings.Repeat("a", npc.MaxNotes+1)})
 	if _, err := (npcplugin.SetNotes{}).Apply(document, tooLong); !errors.Is(err, model.ErrArgs) {

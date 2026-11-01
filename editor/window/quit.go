@@ -9,6 +9,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/playview"
+	"github.com/bradhannah/berad-engine/engine/game"
 )
 
 // Quit dialog button IDs, for input scripts.
@@ -19,8 +21,8 @@ const (
 )
 
 // windowKeys handles what every window does the same way, before its view
-// sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, the close
-// button asks to close the window.
+// sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, Cmd+R launches
+// the game in the Play tab, and the close button asks to close the window.
 func (h *host) windowKeys(input *ui.Input) {
 	switch h.surface.Closing() {
 	case closeQuit:
@@ -34,7 +36,14 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.askQuit()
 	case input.Consume(ui.KeyS, ui.Cmd()):
 		h.save()
+	case input.Consume(ui.KeyR, ui.Cmd()):
+		h.launch()
 	}
+}
+
+// launch opens the Play tab, or launches the open one again (increment 14).
+func (h *host) launch() {
+	h.OpenItem(playview.ViewName, game.SettingsID(), playview.LaunchItem)
 }
 
 // askQuit asks the orchestrator what quitting would close, then asks the

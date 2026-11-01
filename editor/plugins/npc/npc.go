@@ -19,12 +19,14 @@ const PluginName = "npc"
 // Edit kind names.
 const (
 	SetBehaviourEdit = "npc.behaviour.set"
+	SetSpriteEdit    = "npc.sprite.set"
 	SetNotesEdit     = "npc.notes.set"
 )
 
 // Undo-clash items.
 const (
 	behaviourItem = "behaviour"
+	spriteItem    = "sprite"
 	notesItem     = "notes"
 )
 
@@ -38,7 +40,7 @@ type Document struct {
 
 // NewDocument returns an NPC with no behaviour and no notes.
 func NewDocument() *Document {
-	return &Document{NPC: npc.NPC{Behaviour: ids.ULID{}, Notes: ""}}
+	return &Document{NPC: npc.NPC{Behaviour: ids.ULID{}, Sprite: ids.ULID{}, Notes: ""}}
 }
 
 // Format names the document format.
@@ -61,14 +63,18 @@ func (d *Document) Clone() model.Document {
 	return &Document{NPC: d.NPC}
 }
 
-// References lists the NPC's behaviour workflow, so deleting a workflow
-// shows which NPCs follow it.
+// References lists the NPC's behaviour workflow and its sprite, so deleting
+// either shows which NPCs use it.
 func (d *Document) References() []model.Reference {
-	if d.NPC.Behaviour.IsZero() {
-		return nil
+	var references []model.Reference
+	if !d.NPC.Behaviour.IsZero() {
+		references = append(references, model.Reference{Document: d.NPC.Behaviour, Item: "", Label: "behaviour"})
+	}
+	if !d.NPC.Sprite.IsZero() {
+		references = append(references, model.Reference{Document: d.NPC.Sprite, Item: "", Label: "sprite"})
 	}
 
-	return []model.Reference{{Document: d.NPC.Behaviour, Item: "", Label: "behaviour"}}
+	return references
 }
 
 // Decode reads a saved NPC.
@@ -86,6 +92,11 @@ func Decode(data json.RawMessage) (model.Document, error) {
 // SetBehaviourArgs chooses the NPC's behaviour workflow; zero clears it.
 type SetBehaviourArgs struct {
 	Behaviour ids.ULID `json:"behaviour"`
+}
+
+// SetSpriteArgs chooses the sprite the NPC shows; zero goes back to its token.
+type SetSpriteArgs struct {
+	Sprite ids.ULID `json:"sprite"`
 }
 
 // SetNotesArgs replaces the NPC's notes.
@@ -109,6 +120,27 @@ func (SetBehaviour) Apply(document model.Document, args json.RawMessage) (model.
 	return change(document, args, &set, behaviourItem, func(changed *npc.NPC) (any, error) {
 		previous := SetBehaviourArgs{Behaviour: changed.Behaviour}
 		changed.Behaviour = set.Behaviour
+
+		return previous, nil
+	})
+}
+
+// SetSprite is the edit kind that chooses the sprite an NPC shows.
+type SetSprite struct{}
+
+// Name identifies the edit kind.
+func (SetSprite) Name() string { return SetSpriteEdit }
+
+// Format names the document format the edit applies to.
+func (SetSprite) Format() string { return npc.FormatName }
+
+// Apply sets the sprite; its inverse restores the previous one.
+func (SetSprite) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetSpriteArgs
+
+	return change(document, args, &set, spriteItem, func(changed *npc.NPC) (any, error) {
+		previous := SetSpriteArgs{Sprite: changed.Sprite}
+		changed.Sprite = set.Sprite
 
 		return previous, nil
 	})
@@ -165,7 +197,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: npc.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{SetBehaviour{}, SetNotes{}},
+		Edits:     []model.EditKind{SetBehaviour{}, SetSprite{}, SetNotes{}},
 		Required:  nil,
 	}
 }

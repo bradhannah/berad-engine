@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultTileSize is the tile size a project starts with.
-const DefaultTileSize = 32
+const DefaultTileSize = 24
 
 // Sprite is what a definition shows. For now a sprite is one frame of one
 // tile, one cell in size; bigger and animated sprites come later.
@@ -82,17 +82,22 @@ func DecodeSettings(data json.RawMessage) (Settings, error) {
 	return settings, nil
 }
 
-// CanShowSprite reports whether a stand-in can be shown by a sprite: any
-// built-in stand-in but a wall, whose family needs a sprite for each
-// neighbour arrangement.
-func CanShowSprite(standIn string) bool {
-	definition, ok := tiles.Lookup(standIn)
+// Player is what the stand-in sprites record the player's sprite under, beside
+// the stand-ins; no stand-in has this ID.
+const Player = "player"
 
-	return ok && !definition.IsWall()
+// CanShowSprite reports whether a stand-in can be shown by a sprite: any
+// built-in stand-in, or the player. A wall shows one sprite in every cell,
+// with no corner or edge pieces, until wall families supply a sprite for each
+// neighbour arrangement (increment 14).
+func CanShowSprite(standIn string) bool {
+	_, ok := tiles.Lookup(standIn)
+
+	return ok || standIn == Player
 }
 
-// StandInSprites records which sprite shows each stand-in, until definitions
-// can be edited and carry their own sprites.
+// StandInSprites records which sprite shows each stand-in, and the player,
+// until definitions can be edited and carry their own sprites.
 type StandInSprites struct {
 	sprites map[string]ids.ULID
 }

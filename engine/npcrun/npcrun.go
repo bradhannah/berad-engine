@@ -12,7 +12,7 @@
 // time-bound container, back to the container's first step; when the
 // container's time is up the NPC leaves by its exit at once, even partway
 // through a node. When the clock jumps the NPC starts its workflow again from
-// where it stands. NPCs walk one cell in play.StepTicks, as the player does,
+// where it stands. NPCs walk one cell in play.StepTicks, the player's pace,
 // whatever the clock's rate, and pass through each other and the player.
 package npcrun
 

@@ -1,6 +1,7 @@
 // Package tilefloor is a tile floor: a rectangular grid with a ground tile and
 // at most one tile on top in each cell, plus the anchors that mark named points
-// on it and the placements that put NPCs on it.
+// on it, the placements that put NPCs on it and the ambient sounds placed on
+// its cells.
 //
 // A floor is one level of a zone. Every floor of a zone is positioned from the
 // same zone origin, cell 0,0: columns count to the right and rows downwards,
@@ -29,8 +30,8 @@ const FormatName = "tilefloor"
 // FormatVersion is the tile floor format version this package writes.
 // Version 2 split cells into ground and top layers and added anchors; version
 // 3 placed the floor relative to the zone origin; version 4 added NPC
-// placements.
-const FormatVersion = 4
+// placements; version 5 added ambient sounds, and reads version 4 unchanged.
+const FormatVersion = 5
 
 // MaxSide bounds a floor's width and height.
 const MaxSide = 1024
@@ -81,6 +82,7 @@ type Floor struct {
 	top        []string
 	anchors    []Anchor
 	placements []Placement
+	sounds     []Sound
 }
 
 // wireFloor is the saved form. MinCol and MinRow are the floor's top-left
@@ -94,6 +96,7 @@ type wireFloor struct {
 	Top        []string    `json:"top"`
 	Anchors    []Anchor    `json:"anchors"`
 	Placements []Placement `json:"placements"`
+	Sounds     []Sound     `json:"sounds,omitempty"`
 }
 
 // New returns a floor of the given size whose top-left cell is the zone
@@ -115,6 +118,7 @@ func NewAt(bounds image.Rectangle, ground string) (*Floor, error) {
 
 	return &Floor{
 		bounds: bounds, ground: cells, top: make([]string, len(cells)), anchors: []Anchor{}, placements: []Placement{},
+		sounds: []Sound{},
 	}, nil
 }
 
@@ -285,16 +289,18 @@ func (f *Floor) checkAnchor(anchor Anchor, self ids.ULID) error {
 	return nil
 }
 
-// Removed is what a resize took off a floor: anchors and placements outside
-// its new bounds, in their stored order.
+// Removed is what a resize took off a floor: anchors, placements and sounds
+// outside its new bounds, in their stored order.
 type Removed struct {
 	Anchors    []Anchor
 	Placements []Placement
+	Sounds     []Sound
 }
 
 // Resize changes the floor's bounds. Cells inside both the old and the new
 // bounds keep their tiles; new cells get the ground tile and nothing on top.
-// Anchors and placements outside the new bounds are removed and returned.
+// Anchors, placements and sounds outside the new bounds are removed and
+// returned.
 func (f *Floor) Resize(bounds image.Rectangle, ground string) (Removed, error) {
 	var removed Removed
 	resized, err := NewAt(bounds, ground)
@@ -322,6 +328,13 @@ func (f *Floor) Resize(bounds image.Rectangle, ground string) (Removed, error) {
 			removed.Placements = append(removed.Placements, placement)
 		}
 	}
+	for _, sound := range f.sounds {
+		if resized.In(sound.Col, sound.Row) {
+			resized.sounds = append(resized.sounds, sound)
+		} else {
+			removed.Sounds = append(removed.Sounds, sound)
+		}
+	}
 	*f = *resized
 
 	return removed, nil
@@ -331,23 +344,24 @@ func (f *Floor) Resize(bounds image.Rectangle, ground string) (Removed, error) {
 func (f *Floor) Clone() *Floor {
 	return &Floor{
 		bounds: f.bounds, ground: slices.Clone(f.ground), top: slices.Clone(f.top), anchors: slices.Clone(f.anchors),
-		placements: slices.Clone(f.placements),
+		placements: slices.Clone(f.placements), sounds: slices.Clone(f.sounds),
 	}
 }
 
-// Equal reports whether two floors hold the same bounds, tiles, anchors and
-// placements.
+// Equal reports whether two floors hold the same bounds, tiles, anchors,
+// placements and sounds.
 func (f *Floor) Equal(other *Floor) bool {
 	return f.bounds == other.bounds &&
 		slices.Equal(f.ground, other.ground) && slices.Equal(f.top, other.top) &&
-		slices.Equal(f.anchors, other.anchors) && slices.Equal(f.placements, other.placements)
+		slices.Equal(f.anchors, other.anchors) && slices.Equal(f.placements, other.placements) &&
+		slices.Equal(f.sounds, other.sounds)
 }
 
 // Encode returns the floor's saved data.
 func (f *Floor) Encode() (json.RawMessage, error) {
 	data, err := json.Marshal(wireFloor{
 		MinCol: f.bounds.Min.X, MinRow: f.bounds.Min.Y, Width: f.Width(), Height: f.Height(),
-		Ground: f.ground, Top: f.top, Anchors: f.anchors, Placements: f.placements,
+		Ground: f.ground, Top: f.top, Anchors: f.anchors, Placements: f.placements, Sounds: f.sounds,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode floor: %w", err)
@@ -383,6 +397,11 @@ func Decode(data json.RawMessage) (*Floor, error) {
 			return nil, fmt.Errorf("%w: %w", ErrData, err)
 		}
 	}
+	for _, sound := range wire.Sounds {
+		if err := floor.InsertSound(len(floor.sounds), sound); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrData, err)
+		}
+	}
 
 	return floor, nil
 }
@@ -390,9 +409,12 @@ func Decode(data json.RawMessage) (*Floor, error) {
 // Format returns the tile floor format registration.
 func Format() content.Format {
 	return content.Format{
-		Name:       FormatName,
-		Current:    FormatVersion,
-		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3},
+		Name:    FormatName,
+		Current: FormatVersion,
+		Migrations: map[int]content.Migration{
+			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3,
+			4: func(data json.RawMessage) (json.RawMessage, error) { return data, nil },
+		},
 	}
 }
 
@@ -476,7 +498,7 @@ func upgradeFrom3(data json.RawMessage) (json.RawMessage, error) {
 	}
 	encoded, err := json.Marshal(wireFloor{
 		MinCol: old.MinCol, MinRow: old.MinRow, Width: old.Width, Height: old.Height,
-		Ground: old.Ground, Top: old.Top, Anchors: old.Anchors, Placements: []Placement{},
+		Ground: old.Ground, Top: old.Top, Anchors: old.Anchors, Placements: []Placement{}, Sounds: nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("upgrade floor: %w", err)

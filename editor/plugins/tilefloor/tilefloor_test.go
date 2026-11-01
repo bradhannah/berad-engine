@@ -121,7 +121,7 @@ func TestResizeMeetsUndoContract(t *testing.T) {
 		}
 		args := encode(t, tilefloor.ResizeArgs{
 			Bounds: tilefloor.BoundsOf(next), Ground: grounds[random.IntN(len(grounds))], Cells: nil, Anchors: nil,
-			Placements: nil,
+			Placements: nil, Sounds: nil,
 		})
 		if err := model.VerifyUndo(document, tilefloor.Resize{}, args, lookup); err != nil {
 			t.Fatal(err)
@@ -150,6 +150,9 @@ func TestResizeRestoresWhatItRemoved(t *testing.T) {
 	if err := document.Floor.InsertAnchor(0, floor.Anchor{ID: anchorID(1), Name: "Edge", Col: 3, Row: 2}); err != nil {
 		t.Fatal(err)
 	}
+	if err := document.Floor.InsertSound(0, floor.Sound{ID: anchorID(2), Cue: "brook", Col: 3, Row: 0}); err != nil {
+		t.Fatal(err)
+	}
 	shrink := tilefloor.ResizeArgs{Bounds: tilefloor.Bounds{Col: -1, Row: 0, Width: 4, Height: 3}, Ground: "road"}
 	applied, err := (tilefloor.Resize{}).Apply(document, encode(t, shrink))
 	if err != nil {
@@ -174,6 +177,9 @@ func TestResizeRestoresWhatItRemoved(t *testing.T) {
 	}
 	if _, found := document.Floor.AnchorAt(3, 2); !found || document.Floor.In(-1, 0) {
 		t.Fatal("undo should restore the anchor and remove the added column")
+	}
+	if _, found := document.Floor.SoundAt(3, 0); !found {
+		t.Fatal("undo should restore the ambient sound")
 	}
 }
 
@@ -396,5 +402,49 @@ func TestRegistryRejectsDuplicates(t *testing.T) {
 	renamed.Documents = nil
 	if _, err := plugin.NewRegistry(tilefloor.Plugin(), renamed); !errors.Is(err, plugin.ErrDuplicate) {
 		t.Fatalf("duplicate edit: %v", err)
+	}
+}
+
+// TestSoundEditsMeetUndoContract places, moves and removes an ambient sound,
+// checking each edit restores the floor exactly when undone, and that the
+// floor lists its sounds' cues for where-used.
+func TestSoundEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	lookup := registry(t).Edit
+	document, err := tilefloor.NewDocumentAt(floor.Centered(6, 6), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fountain := floor.Sound{ID: anchorID(1), Cue: "town/fountain", Col: 0, Row: 0}
+	add := encode(t, tilefloor.AddSoundArgs{Sound: fountain, Index: 0})
+	if err := model.VerifyUndo(document, tilefloor.AddSound{}, add, lookup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (tilefloor.AddSound{}).Apply(document, add); err != nil {
+		t.Fatal(err)
+	}
+	moved := fountain
+	moved.Col = 2
+	for _, check := range []struct {
+		kind model.EditKind
+		args json.RawMessage
+	}{
+		{tilefloor.UpdateSound{}, encode(t, tilefloor.UpdateSoundArgs{Sound: moved})},
+		{tilefloor.RemoveSound{}, encode(t, tilefloor.RemoveSoundArgs{ID: fountain.ID})},
+	} {
+		if err := model.VerifyUndo(document, check.kind, check.args, lookup); err != nil {
+			t.Fatalf("%s: %v", check.kind.Name(), err)
+		}
+	}
+	references := document.References()
+	if len(references) != 1 || references[0].Document != model.AudioLibraryID() ||
+		references[0].Item != "town/fountain" {
+		t.Fatalf("references %+v", references)
+	}
+	prepared, err := (tilefloor.AddSound{}).Prepare(document, encode(t, tilefloor.AddSoundArgs{
+		Sound: floor.Sound{ID: anchorID(0), Cue: "brook", Col: 1, Row: 1}, Index: 1,
+	}), func() (ids.ULID, error) { return anchorID(30), nil })
+	if err != nil || !strings.Contains(string(prepared), anchorID(30).String()) {
+		t.Fatalf("a new sound gets its ID when prepared: %s %v", prepared, err)
 	}
 }

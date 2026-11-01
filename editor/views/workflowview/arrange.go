@@ -38,6 +38,13 @@ type level struct {
 	outOf map[ids.ULID][]edge
 }
 
+// Arrange lays a workflow out as Auto-arrange does, for a workflow made
+// outside the Workflow window, such as the sample's; noteHeight is how tall
+// a note is at a width.
+func Arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[ids.ULID]flow.Box {
+	return arrange(workflow, noteHeight)
+}
+
 // arrange lays a workflow out as columns from the start, the way layered
 // graph layouts do: loops are left out so they do not stretch the columns; a
 // node's column is its longest distance from the start, so every other line

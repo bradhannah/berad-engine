@@ -12,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -24,17 +25,22 @@ const (
 	notesLeast  = 60
 	panelGap    = 18
 	noBehaviour = "none"
+	noSprite    = "none"
 )
 
-// npcPanel is the inspector's part for a selected NPC: its behaviour and its
-// private notes.
+// npcPanel is the inspector's part for a selected NPC: its behaviour, the
+// sprite it shows and its private notes.
 type npcPanel struct {
-	npc       ids.ULID
-	notes     *ui.TextField
-	choose    *ui.Button
-	open      *ui.Button
-	behaviour image.Rectangle
-	top       int
+	npc          ids.ULID
+	notes        *ui.TextField
+	choose       *ui.Button
+	open         *ui.Button
+	chooseSprite *ui.Button
+	openSprite   *ui.Button
+	behaviour    image.Rectangle
+	sprite       image.Rectangle
+	top          int
+	spriteTop    int
 }
 
 func newNPCPanel(theme *ui.Theme) *npcPanel {
@@ -43,7 +49,9 @@ func newNPCPanel(theme *ui.Theme) *npcPanel {
 
 	return &npcPanel{
 		npc: ids.ULID{}, notes: notes, choose: ui.NewButton("choose-behaviour", "Choose…"),
-		open: ui.NewButton("open-behaviour", "Open"), behaviour: ui.Zero(), top: 0,
+		open: ui.NewButton("open-behaviour", "Open"), chooseSprite: ui.NewButton("choose-sprite", "Choose…"),
+		openSprite: ui.NewButton("open-sprite", "Open"), behaviour: ui.Zero(), sprite: ui.Zero(), top: 0,
+		spriteTop: 0,
 	}
 }
 
@@ -86,6 +94,7 @@ func (s *State) syncNPC(ctx *frame.Context) {
 	if found, loaded := s.npcOf(ctx.Docs, npcID); loaded {
 		s.npc.notes.Field.SetSaved(found.Notes)
 		s.npc.open.Disabled = found.Behaviour.IsZero()
+		s.npc.openSprite.Disabled = found.Sprite.IsZero()
 	}
 }
 
@@ -93,18 +102,28 @@ func (s *State) syncNPC(ctx *frame.Context) {
 func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel := s.npc
 	panel.behaviour, panel.notes.Rect, panel.choose.Rect, panel.open.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
+	panel.sprite, panel.chooseSprite.Rect, panel.openSprite.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	if _, ok := s.selectedNPC(docs); !ok {
 		return
 	}
 	panel.top = top
-	rowY := panel.top + ui.LineHeight
-	panel.behaviour = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
+	rowY := layoutChoice(panel.top, left, width, &panel.behaviour, panel.choose, panel.open)
+	panel.spriteTop = rowY
+	rowY = layoutChoice(rowY, left, width, &panel.sprite, panel.chooseSprite, panel.openSprite)
+	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
+}
+
+// layoutChoice places a heading at top, the box naming what is chosen, and
+// Choose… and Open below it, returning where the next heading goes.
+func layoutChoice(top, left, width int, box *image.Rectangle, choose, open *ui.Button) int {
+	rowY := top + ui.LineHeight
+	*box = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
 	rowY += ui.ButtonH + ui.Gap*ui.Half
 	half := (width - buttonGap) / ui.Half
-	panel.choose.Rect = image.Rect(left, rowY, left+half, rowY+ui.ButtonH)
-	panel.open.Rect = image.Rect(left+half+buttonGap, rowY, left+width, rowY+ui.ButtonH)
-	rowY += ui.ButtonH + panelGap + ui.LineHeight
-	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
+	choose.Rect = image.Rect(left, rowY, left+half, rowY+ui.ButtonH)
+	open.Rect = image.Rect(left+half+buttonGap, rowY, left+width, rowY+ui.ButtonH)
+
+	return rowY + ui.ButtonH + panelGap
 }
 
 // updateNPC handles the NPC panel's buttons.
@@ -113,33 +132,76 @@ func (s *State) updateNPC(input *ui.Input, ctx *frame.Context) {
 	if !ok {
 		return
 	}
+	found, loaded := s.npcOf(ctx.Docs, npcID)
 	switch {
 	case s.npc.choose.Update(input):
 		s.chooseBehaviour(ctx)
 	case s.npc.open.Update(input):
-		if found, loaded := s.npcOf(ctx.Docs, npcID); loaded && !found.Behaviour.IsZero() {
+		if loaded && !found.Behaviour.IsZero() {
 			ctx.Requests.Open(workflowView, found.Behaviour, false)
+		}
+	case s.npc.chooseSprite.Update(input):
+		s.chooseSprite(ctx)
+	case s.npc.openSprite.Update(input):
+		if loaded && !found.Sprite.IsZero() {
+			ctx.Requests.Open(spriteView, found.Sprite, false)
 		}
 	}
 }
 
-// chooseBehaviour asks which workflow the NPC follows.
-func (s *State) chooseBehaviour(ctx *frame.Context) {
-	current := noBehaviour
-	if found, loaded := s.npcOf(ctx.Docs, s.npc.npc); loaded && !found.Behaviour.IsZero() {
-		current = found.Behaviour.String()
+// chooseSprite asks which sprite the NPC shows.
+func (s *State) chooseSprite(ctx *frame.Context) {
+	found, _ := s.npcOf(ctx.Docs, s.npc.npc)
+	s.choose(ctx, npcChoice{
+		title: "Which sprite does this NPC show?", list: "sprites", none: noSprite,
+		noneLabel: "No sprite", format: art.SpriteFormatName, icon: ui.IconSprite, kind: dialogSprite,
+	}, found.Sprite)
+}
+
+// setSprite saves the sprite chosen in the dialog.
+func (s *State) setSprite(ctx *frame.Context, chosen string) {
+	sprite, err := ids.Parse(chosen)
+	if chosen == noSprite || err != nil {
+		sprite = ids.ULID{}
 	}
-	list := &ui.List{ID: "workflows", Rect: ui.Zero(), Rows: nil, Selected: current, CanDrop: nil}
-	list.Rows = append(list.Rows, ui.NewRow(noBehaviour, "No behaviour"))
-	for _, entry := range s.index(ctx.Docs).OfFormat(flow.FormatName) {
+	s.command(ctx, s.npc.npc, npcplugin.SetSpriteEdit, "", npcplugin.SetSpriteArgs{Sprite: sprite},
+		func(protocol.Result, error) { ctx.Frame.Status("Sprite set") }, nil)
+}
+
+// npcChoice is a dialog that chooses a document for the NPC: its title, the
+// list's ID, the row for none, and the documents offered.
+type npcChoice struct {
+	title, list, none, noneLabel, format string
+	icon                                 ui.Icon
+	kind                                 dialogKind
+}
+
+// choose asks which document the NPC uses, with current selected.
+func (s *State) choose(ctx *frame.Context, choice npcChoice, current ids.ULID) {
+	selected := choice.none
+	if !current.IsZero() {
+		selected = current.String()
+	}
+	list := &ui.List{ID: choice.list, Rect: ui.Zero(), Rows: nil, Selected: selected, CanDrop: nil}
+	list.Rows = append(list.Rows, ui.NewRow(choice.none, choice.noneLabel))
+	for _, entry := range s.index(ctx.Docs).OfFormat(choice.format) {
 		row := ui.NewRow(entry.ID.String(), entry.Name)
-		row.Icon = ui.IconWorkflow
+		row.Icon = choice.icon
 		list.Rows = append(list.Rows, row)
 	}
-	s.dialog = ui.NewDialog("Which workflow does this NPC follow?", nil,
+	s.dialog = ui.NewDialog(choice.title, nil,
 		ui.DialogButton("use", "Use"), ui.DialogButton(ui.DialogCancel, "Cancel"))
 	s.dialog.List = list
-	s.dialogKind = dialogBehaviour
+	s.dialogKind = choice.kind
+}
+
+// chooseBehaviour asks which workflow the NPC follows.
+func (s *State) chooseBehaviour(ctx *frame.Context) {
+	found, _ := s.npcOf(ctx.Docs, s.npc.npc)
+	s.choose(ctx, npcChoice{
+		title: "Which workflow does this NPC follow?", list: "workflows", none: noBehaviour,
+		noneLabel: "No behaviour", format: flow.FormatName, icon: ui.IconWorkflow, kind: dialogBehaviour,
+	}, found.Behaviour)
 }
 
 // setBehaviour saves the behaviour chosen in the dialog.
@@ -201,6 +263,15 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 	s.theme.DrawTextIn(screen, label, panel.behaviour, ink)
 	panel.choose.Draw(screen, s.theme)
 	panel.open.Draw(screen, s.theme)
+	s.theme.Heading(screen, "SPRITE", left, panel.spriteTop)
+	ui.Box(screen, panel.sprite, ui.ColorBackground())
+	label, ink = "Its token", ui.ColorMuted()
+	if found, loaded := s.npcOf(docs, npcID); loaded && !found.Sprite.IsZero() {
+		label, ink = s.index(docs).Name(found.Sprite, "Broken: its sprite was deleted"), ui.ColorInk()
+	}
+	s.theme.DrawTextIn(screen, label, panel.sprite, ink)
+	panel.chooseSprite.Draw(screen, s.theme)
+	panel.openSprite.Draw(screen, s.theme)
 	s.theme.Heading(screen, "NOTES", left, panel.notes.Rect.Min.Y-ui.LineHeight)
 	panel.notes.Draw(screen)
 	if panel.notes.Field.Conflict() {

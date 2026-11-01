@@ -1,11 +1,13 @@
-// Package zonepalettes is the list of palettes a zone uses, as the project
-// browser's inspector and the Map's both show it (increment 12): each palette
-// A to Z with a button that takes it off, and + Palette, which lists another.
-// The Pixel editor offers the palettes of the zones a sprite is placed in
-// first; it is a convenience, not a limit.
+// Package zonepalettes is what a zone lists, as the project browser's
+// inspector and the Map's both show it: the palettes it uses (increment 12)
+// and its sounds, the music and ambient cues it plays throughout (increment
+// 14). Each listed thing is a chip with a button that takes it off, and
+// + Palette or + Sound lists another. The Pixel editor offers the palettes of
+// the zones a sprite is placed in first; it is a convenience, not a limit.
 package zonepalettes
 
 import (
+	"cmp"
 	"encoding/json"
 	"image"
 	"slices"
@@ -25,45 +27,79 @@ import (
 
 // Geometry, in screen pixels.
 const (
-	chipPad   = 8
-	removeBox = 18
-	addWidth  = 104
+	chipPad      = 8
+	removeBox    = 18
+	addWidth     = 104
+	sectionSpace = 12
 )
 
 // Script names: "ui:<AddID>" is + Palette, and "ui:<RemovePrefix><name>"
-// takes a palette off.
+// takes a palette off; "ui:<AddSoundID>" is + Sound, and
+// "ui:<RemoveSoundPrefix><name>" takes a sound off.
 const (
-	AddID        = "add-zone-palette"
-	RemovePrefix = "remove-zone-palette:"
+	AddID             = "add-zone-palette"
+	RemovePrefix      = "remove-zone-palette:"
+	AddSoundID        = "add-zone-sound"
+	RemoveSoundPrefix = "remove-zone-sound:"
 )
 
-// chip is one palette the zone lists: its name and the button that takes it
-// off.
-type chip struct {
-	palette ids.ULID
-	name    string
-	rect    image.Rectangle
-	remove  *ui.Button
+// soundMenuPrefix tells a sound's menu item from a palette's.
+const soundMenuPrefix = "sound:"
+
+// item is one thing a zone lists or could list: its key, a palette's ID or a
+// cue's, and its name.
+type item struct {
+	key  string
+	name string
 }
 
-// List is a zone's palettes.
+// chip is one thing the zone lists: its name and the button that takes it
+// off.
+type chip struct {
+	item
+
+	rect   image.Rectangle
+	remove *ui.Button
+}
+
+// section is one kind of thing a zone lists.
+type section struct {
+	heading, removePrefix string
+	chips                 []chip
+	add                   *ui.Button
+	top                   int
+}
+
+// List is what a zone lists: its palettes, then its sounds.
 type List struct {
-	theme   *ui.Theme
-	zone    ids.ULID
-	chips   []chip
-	add     *ui.Button
-	menu    ui.Menu
-	heading int
-	window  image.Point
+	theme    *ui.Theme
+	zone     ids.ULID
+	palettes section
+	sounds   section
+	menu     ui.Menu
+	window   image.Point
+	// library is the audio library as last listed, for the cues' names and
+	// for + Sound; asked says it has been asked for, once a zone that plays
+	// sounds is shown.
+	library *protocol.AudioLibrary
+	asked   bool
 }
 
 // New returns an empty list.
 func New(theme *ui.Theme) *List {
 	list := &List{
-		theme: theme, zone: ids.ULID{}, chips: nil, add: ui.NewButton(AddID, "+ Palette"),
-		menu: ui.Menu{Items: nil, Width: 0}, heading: 0, window: image.Pt(0, 0),
+		theme: theme, zone: ids.ULID{},
+		palettes: section{
+			heading: "PALETTES · OFFERED FIRST", removePrefix: RemovePrefix, chips: nil,
+			add: ui.NewButton(AddID, "+ Palette"), top: 0,
+		},
+		sounds: section{
+			heading: "SOUNDS · PLAYED THROUGHOUT", removePrefix: RemoveSoundPrefix, chips: nil,
+			add: ui.NewButton(AddSoundID, "+ Sound"), top: 0,
+		},
+		menu: ui.Menu{Items: nil, Width: 0}, window: image.Pt(0, 0), library: nil, asked: false,
 	}
-	list.add.Caret = true
+	list.palettes.add.Caret, list.sounds.add.Caret = true, true
 
 	return list
 }
@@ -101,32 +137,76 @@ func palettes(docs frame.Docs) []project.Entry {
 	return entries
 }
 
+// listedSounds returns the cues a zone plays throughout, in the order they
+// were added.
+func (l *List) listedSounds(docs frame.Docs) []item {
+	var cues []string
+	docs.View(l.zone, func(document client.Document) {
+		if zoneDoc, ok := document.Model.(*zoneplugin.Document); ok {
+			cues = zoneDoc.Zone.Sounds()
+		}
+	})
+	items := make([]item, 0, len(cues))
+	for _, cue := range cues {
+		items = append(items, item{key: cue, name: l.cueName(cue)})
+	}
+
+	return items
+}
+
+// cueName names a cue by its name in the library, or its ID.
+func (l *List) cueName(cueID string) string {
+	if l.library != nil {
+		for _, cue := range l.library.Cues {
+			if cue.ID == cueID && cue.Name != "" {
+				return cue.Name
+			}
+		}
+	}
+
+	return cueID
+}
+
 // Layout places the list for a zone, from a top, in a width, and returns
 // its foot. A zero zone hides it.
 func (l *List) Layout(docs frame.Docs, zoneID ids.ULID, left, top, width int, window image.Point) int {
-	l.zone, l.window, l.chips = zoneID, window, nil
-	l.add.Rect = ui.Zero()
+	l.zone, l.window = zoneID, window
+	l.palettes.chips, l.sounds.chips = nil, nil
+	l.palettes.add.Rect, l.sounds.add.Rect = ui.Zero(), ui.Zero()
 	if zoneID.IsZero() {
 		return top
 	}
-	l.heading = top
+	listed := Listed(docs, zoneID)
+	paletteItems := make([]item, 0, len(listed))
+	for _, entry := range listed {
+		paletteItems = append(paletteItems, item{key: entry.ID.String(), name: entry.Name})
+	}
+	top = l.palettes.layout(l.theme, paletteItems, left, top, width) + sectionSpace
+
+	return l.sounds.layout(l.theme, l.listedSounds(docs), left, top, width)
+}
+
+// layout places a section's heading, chips and add button from a top, and
+// returns its foot.
+func (s *section) layout(theme *ui.Theme, items []item, left, top, width int) int {
+	s.top = top
 	top += ui.LineHeight
 	across := left
-	for _, entry := range Listed(docs, zoneID) {
-		chipWidth := l.theme.TextWidth(entry.Name) + ui.Half*chipPad + removeBox
+	for _, each := range items {
+		chipWidth := theme.TextWidth(each.name) + ui.Half*chipPad + removeBox
 		if across > left && across+chipWidth > left+width {
 			across, top = left, top+ui.ButtonH+ui.Gap
 		}
 		rect := image.Rect(across, top, across+chipWidth, top+ui.ButtonH)
-		remove := ui.NewButton(RemovePrefix+entry.Name, "×")
+		remove := ui.NewButton(s.removePrefix+each.name, "×")
 		remove.Rect = image.Rect(rect.Max.X-removeBox-ui.Gap, rect.Min.Y+ui.Gap, rect.Max.X-ui.Gap, rect.Max.Y-ui.Gap)
-		l.chips = append(l.chips, chip{palette: entry.ID, name: entry.Name, rect: rect, remove: remove})
+		s.chips = append(s.chips, chip{item: each, rect: rect, remove: remove})
 		across = rect.Max.X + ui.Gap
 	}
 	if across > left && across+addWidth > left+width {
 		across, top = left, top+ui.ButtonH+ui.Gap
 	}
-	l.add.Rect = image.Rect(across, top, across+addWidth, top+ui.ButtonH)
+	s.add.Rect = image.Rect(across, top, across+addWidth, top+ui.ButtonH)
 
 	return top + ui.ButtonH
 }
@@ -135,44 +215,90 @@ func (l *List) Layout(docs frame.Docs, zoneID ids.ULID, left, top, width int, wi
 // input.
 func (l *List) Active() bool { return l.menu.IsOpen() }
 
-// Update handles the list: a chip's × takes its palette off, and + Palette
-// offers the palettes the zone does not list, Default aside, which is always
-// offered after them. It reports whether it handled the input.
+// Update handles the list: a chip's × takes it off, + Palette offers the
+// palettes the zone does not list, Default aside, and + Sound the music and
+// ambient cues it does not play. It reports whether it handled the input.
 func (l *List) Update(input *ui.Input, ctx *frame.Context) bool {
+	if !l.asked && len(l.sounds.chips) > 0 {
+		l.askAudio(ctx, false)
+	}
 	if l.menu.IsOpen() {
 		if chosen := l.menu.Update(input); chosen != "" {
-			if palette, err := ids.Parse(chosen); err == nil {
-				l.insert(ctx, palette)
-			}
+			l.insert(ctx, chosen)
 		}
 
 		return true
 	}
-	for _, each := range l.chips {
+	if l.removeClicked(input, ctx) {
+		return true
+	}
+	switch {
+	case l.palettes.add.Update(input):
+		l.openPalettes(ctx.Docs)
+	case l.sounds.add.Update(input):
+		l.askAudio(ctx, true)
+	default:
+		return false
+	}
+
+	return true
+}
+
+// askAudio lists the audio library, and opens + Sound's menu once it is
+// listed when open is set.
+func (l *List) askAudio(ctx *frame.Context, open bool) {
+	l.asked = true
+	ctx.Requests.AudioLibrary(func(library protocol.AudioLibrary, err error) {
+		if err != nil {
+			ctx.Frame.Status("The audio library could not be listed: " + err.Error())
+
+			return
+		}
+		l.library = &library
+		if open {
+			l.openSounds(ctx.Docs)
+		}
+	})
+}
+
+// removeClicked takes a palette or a sound off when its × is clicked.
+func (l *List) removeClicked(input *ui.Input, ctx *frame.Context) bool {
+	for _, each := range l.palettes.chips {
 		if each.remove.Update(input) {
-			args := zoneplugin.PaletteArgs{Palette: each.palette, Index: 0}
-			zoneName := l.zone.String()
-			ctx.Docs.View(project.IndexID(), func(document client.Document) {
-				if index, ok := document.Model.(*project.Index); ok {
-					zoneName = index.Name(l.zone, zoneName)
-				}
-			})
-			command(ctx, l.zone, zoneplugin.RemovePaletteEdit, args, zoneName+" no longer lists "+each.name)
+			if palette, err := ids.Parse(each.key); err == nil {
+				args := zoneplugin.PaletteArgs{Palette: palette, Index: 0}
+				command(ctx, l.zone, zoneplugin.RemovePaletteEdit, args, l.zoneName(ctx.Docs)+" no longer lists "+each.name)
+			}
 
 			return true
 		}
 	}
-	if l.add.Update(input) {
-		l.open(ctx.Docs)
+	for _, each := range l.sounds.chips {
+		if each.remove.Update(input) {
+			args := zoneplugin.SoundArgs{Cue: each.key, Index: 0}
+			command(ctx, l.zone, zoneplugin.RemoveSoundEdit, args, l.zoneName(ctx.Docs)+" no longer plays "+each.name)
 
-		return true
+			return true
+		}
 	}
 
 	return false
 }
 
-// open offers the palettes the zone does not list yet.
-func (l *List) open(docs frame.Docs) {
+// zoneName names the zone from the project index.
+func (l *List) zoneName(docs frame.Docs) string {
+	name := l.zone.String()
+	docs.View(project.IndexID(), func(document client.Document) {
+		if index, ok := document.Model.(*project.Index); ok {
+			name = index.Name(l.zone, name)
+		}
+	})
+
+	return name
+}
+
+// openPalettes offers the palettes the zone does not list yet.
+func (l *List) openPalettes(docs frame.Docs) {
 	listed := Listed(docs, l.zone)
 	var items []ui.MenuItem
 	for _, entry := range palettes(docs) {
@@ -181,30 +307,66 @@ func (l *List) open(docs frame.Docs) {
 		}) {
 			continue
 		}
-		items = append(items, ui.MenuItem{
-			ID: entry.ID.String(), Label: entry.Name, Icon: ui.IconPalette, Disabled: false, Danger: false, Rule: false,
-		})
+		items = append(items, menuItem(entry.ID.String(), entry.Name, ui.IconPalette, false))
 	}
 	if len(items) == 0 {
-		items = append(items, ui.MenuItem{
-			ID: "", Label: "Every palette is listed", Icon: ui.IconNone, Disabled: true, Danger: false, Rule: false,
-		})
+		items = append(items, menuItem("", "Every palette is listed", ui.IconNone, true))
 	}
+	l.openMenu(items, l.palettes.add.Rect)
+}
+
+// openSounds offers the music and ambient cues the zone does not play yet,
+// by name.
+func (l *List) openSounds(docs frame.Docs) {
+	listed := l.listedSounds(docs)
+	var cues []protocol.AudioCue
+	if l.library != nil {
+		for _, cue := range l.library.Cues {
+			throughout := cue.Category == protocol.CategoryMusic || cue.Category == protocol.CategoryAmbient
+			if throughout && !slices.ContainsFunc(listed, func(other item) bool { return other.key == cue.ID }) {
+				cues = append(cues, cue)
+			}
+		}
+	}
+	slices.SortFunc(cues, func(a, b protocol.AudioCue) int { return cmp.Compare(a.Name, b.Name) })
+	items := make([]ui.MenuItem, 0, len(cues))
+	for _, cue := range cues {
+		items = append(items, menuItem(soundMenuPrefix+cue.ID, cue.Name, ui.IconSound, false))
+	}
+	if len(items) == 0 {
+		items = append(items, menuItem("", "No music or ambient cues to add", ui.IconNone, true))
+	}
+	l.openMenu(items, l.sounds.add.Rect)
+}
+
+func menuItem(id, label string, icon ui.Icon, disabled bool) ui.MenuItem {
+	return ui.MenuItem{ID: id, Label: label, Icon: icon, Disabled: disabled, Danger: false, Rule: false}
+}
+
+// openMenu opens the list's menu under a button.
+func (l *List) openMenu(items []ui.MenuItem, under image.Rectangle) {
 	window := image.Rectangle{Min: image.Pt(0, 0), Max: l.window}
 	l.menu.Items = items
 	l.menu.Width = min(ui.MenuWidth(items, l.theme), window.Dx()-ui.Half*ui.Inset)
-	l.menu.Open(l.add.Rect, window)
+	l.menu.Open(under, window)
 }
 
-// insert lists a palette for the zone, at the end.
-func (l *List) insert(ctx *frame.Context, palette ids.ULID) {
-	count := len(l.chips)
-	args := zoneplugin.PaletteArgs{Palette: palette, Index: count}
-	command(ctx, l.zone, zoneplugin.InsertPaletteEdit, args, "")
+// insert lists a palette or a sound for the zone, at the end.
+func (l *List) insert(ctx *frame.Context, chosen string) {
+	if cue, isSound := strings.CutPrefix(chosen, soundMenuPrefix); isSound {
+		args := zoneplugin.SoundArgs{Cue: cue, Index: len(l.sounds.chips)}
+		command(ctx, l.zone, zoneplugin.InsertSoundEdit, args, l.zoneName(ctx.Docs)+" plays "+l.cueName(cue)+" throughout")
+
+		return
+	}
+	if palette, err := ids.Parse(chosen); err == nil {
+		args := zoneplugin.PaletteArgs{Palette: palette, Index: len(l.palettes.chips)}
+		command(ctx, l.zone, zoneplugin.InsertPaletteEdit, args, "")
+	}
 }
 
 // command sends a zone edit, reporting a refusal in the status bar.
-func command(ctx *frame.Context, zoneID ids.ULID, edit string, args zoneplugin.PaletteArgs, done string) {
+func command(ctx *frame.Context, zoneID ids.ULID, edit string, args any, done string) {
 	data, err := json.Marshal(args)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
@@ -224,7 +386,7 @@ func command(ctx *frame.Context, zoneID ids.ULID, edit string, args zoneplugin.P
 		})
 }
 
-// Locate finds + Palette, a chip's × or an item of the open menu.
+// Locate finds + Palette, + Sound, a chip's × or an item of the open menu.
 func (l *List) Locate(name string) (image.Point, bool) {
 	kind, value, _ := strings.Cut(name, ":")
 	if kind == "menu" {
@@ -233,35 +395,42 @@ func (l *List) Locate(name string) (image.Point, bool) {
 	if kind != "ui" {
 		return image.Pt(0, 0), false
 	}
-	if value == AddID && !l.add.Rect.Empty() {
-		return ui.Center(l.add.Rect), true
-	}
-	for _, each := range l.chips {
-		if each.remove.ID == value {
-			return ui.Center(each.remove.Rect), true
+	for _, each := range []*section{&l.palettes, &l.sounds} {
+		if value == each.add.ID && !each.add.Rect.Empty() {
+			return ui.Center(each.add.Rect), true
+		}
+		for _, listed := range each.chips {
+			if listed.remove.ID == value {
+				return ui.Center(listed.remove.Rect), true
+			}
 		}
 	}
 
 	return image.Pt(0, 0), false
 }
 
-// Draw draws the list's heading, its chips and + Palette.
+// Draw draws each section's heading, its chips and its add button.
 func (l *List) Draw(screen *ebiten.Image) {
 	if l.zone.IsZero() {
 		return
 	}
-	left := l.add.Rect.Min.X
-	if len(l.chips) > 0 {
-		left = l.chips[0].rect.Min.X
+	l.palettes.draw(screen, l.theme)
+	l.sounds.draw(screen, l.theme)
+}
+
+func (s *section) draw(screen *ebiten.Image, theme *ui.Theme) {
+	left := s.add.Rect.Min.X
+	if len(s.chips) > 0 {
+		left = s.chips[0].rect.Min.X
 	}
-	l.theme.Heading(screen, "PALETTES · OFFERED FIRST", left, l.heading)
-	for _, each := range l.chips {
+	theme.Heading(screen, s.heading, left, s.top)
+	for _, each := range s.chips {
 		ui.StrokeRound(screen, each.rect, ui.Radius, ui.Hairline, ui.ColorRule())
-		l.theme.DrawText(screen, each.name, each.rect.Min.X+chipPad, each.rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1,
+		theme.DrawText(screen, each.name, each.rect.Min.X+chipPad, each.rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1,
 			ui.ColorInk())
-		each.remove.Draw(screen, l.theme)
+		each.remove.Draw(screen, theme)
 	}
-	l.add.Draw(screen, l.theme)
+	s.add.Draw(screen, theme)
 }
 
 // DrawMenu draws the open menu, over everything else.
