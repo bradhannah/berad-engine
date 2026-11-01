@@ -61,7 +61,11 @@ for a grid position (use cell).
 | **Loose colour** | A pixel's colour that names no palette, left when a palette is removed from a tile; flagged until repainted |
 | **Shadow record** | A palette's note of a colour's old place after the colour moves to another ramp, so tiles painted with it still find it |
 | **Opacity** | How see-through a palette colour is, such as glass at 40%; one colour is fully clear |
-| **Template** | Guides to draw a tile to, and parts of it kept clear, shown while drawing and never part of the tile |
+| **Template** | Rules about where a sprite may be painted, and guides to draw to, shown while drawing and never part of the art; a sprite is drawn to at most one |
+| **Rule** | A template's mark for the pixels within a width of a tile's border, sides, top or bottom: discouraged or not allowed; where rules overlap, the strictest wins |
+| **Not allowed** | Pixels a template keeps clear: the tools never paint them (formerly "kept clear") |
+| **Discouraged** | Pixels a template warns about: they can be painted, and are shown and counted |
+| **Guide** | A named line of a template, across or down, at a distance from a tile's edge or middle, to draw to |
 | **Drawing layer** | One layer of a tile while it is painted, such as shading; the game receives the layers flattened into one tile |
 
 Retired synonyms: "cel" and "raw tile" (use tile). The engine's `tiles` package
@@ -112,7 +116,7 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Window bar** | The top of the editor window: a tab for each kind of view open, a second row for the documents of the kind in front when there are several, and the pinned clock |
 | **Tab** | One place on the window bar, showing one pane, or two side by side (a split) |
 | **Pane** | One view running in a tab, such as a Map or Watch, with its own connection to the orchestrator and its own status bar; the code and the protocol call its ID a window ID |
-| **View** | What a pane shows: the project browser, Map, Text, Workflow, Watch, Audio, Pixel editor or Palette Editor |
+| **View** | What a pane shows: the project browser, Map, Text, Workflow, Watch, Audio, Pixel editor, Palette Editor or Template editor |
 | **Split** | A tab showing two panes side by side, such as a Map with Watch beside it |
 | **Pinned clock** | The preview's clock: its readout at the right end of the window bar on every tab, and its controls in a panel under it; before a preview it sets the time the next one starts at |
 | **Command** / **Event** | A request to change project data / the notice that it changed |

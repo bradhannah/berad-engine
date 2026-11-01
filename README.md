@@ -3,8 +3,9 @@
 A Go/Ebitengine engine and shared editor for top-down tile RPGs.
 
 **Experimental and early.** The editor is one window with a tab for each view
-open: a project browser, Map, Text, Workflow, Audio, a Pixel editor and a
-Palette Editor, and a preview that walks a player through a zone. The
+open: a project browser, Map, Text, Workflow, Audio, a Pixel editor, a
+Palette Editor and a Template editor, and a preview that walks a player
+through a zone. The
 engine has floors, zones, stand-in tiles and walking. There are no game
 features beyond that, and no stable API yet.
 
@@ -85,6 +86,14 @@ game's project is.
   berad-audio measures. An ambient cue is heard from a distance, drawn on the
   curve the game uses. The soundscape plays cues together at monitor levels,
   and is never saved.
+- **Templates:** the project browser's Templates section makes a template
+  and opens it in the Template editor, whose buttons add rules, marking the
+  pixels near a tile's border, sides, top or bottom discouraged or not
+  allowed, and guides to draw to, with a preview over any sprite. In the
+  Pixel editor, Template chooses a sprite's template, and New ▾ offers a
+  sprite drawn to each. The pencil and the fill skip what a template does
+  not allow; discouraged pixels are shaded and counted. The sample's lantern
+  is drawn to Pickup, and its figures to Character.
 
 `Cmd+Z` / `Cmd+Shift+Z` undo and redo (a whole stroke is one step); `Cmd+N`
 opens another view of the same zone, and the views update live and share undo;
