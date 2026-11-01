@@ -12,7 +12,7 @@ import (
 // The legend is a card over the canvas's bottom-right corner, above the
 // zoom control, saying what each look of a line means.
 const (
-	legendCard   = 236
+	legendCard   = 276
 	legendSample = 36
 	legendPad    = 10
 	legendGap    = 10

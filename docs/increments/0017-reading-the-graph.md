@@ -1,6 +1,6 @@
 # Increment 17: Reading the graph
 
-**Status:** Planned
+**Status:** Built
 
 The seventeenth increment makes a workflow easier to read and to tidy on
 the canvas, ahead of the containers work in [the workflow
@@ -108,7 +108,7 @@ Chosen while building, for its author to check:
 | 2. Naming and the legend | The status bar's line description on hover; the Legend toggle and its panel | View tests of the text for a forward line, a loop and a moved line, and of the toggle | Built |
 | 3. Colours | Tints in the layout; Colour rows in the inspector for a node, a container, each outcome of a node with several, and a line, with the three line states; the drawing of tinted faces, ports, rows and lines | The colour edit passes the shared apply-then-undo test; view tests of inherit, set and none, and of lit and live winning | Built |
 | 4. The outcome's name at the arrowhead | The label on long lines, in the line's ink | A view test of a long and a short line | Built |
-| 5. Checks | `make check` and the real-window suite; a real-window test drags a back line's end leg and colours an outcome, and both are saved | The checks pass with no lint findings | Planned |
+| 5. Checks | `make check` and the real-window suite; a real-window test drags a back line's end leg and colours an outcome, and both are saved | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -150,6 +150,12 @@ Chosen while building, for its author to check:
   muted without one and blue when lit. Verified: a view test sees no label
   on the short line from a random choice, moves the node it goes to 200
   pixels away and sees one, and none on the start's line.
+- **Checks:** a real-window test builds start → random choice → Wait with a
+  loop back, drags the loop's end leg to the left, colours the first
+  outcome amber and the Wait green, shows the legend, takes a screenshot
+  and quits; the saved layout holds the end leg's offset and both tints.
+  `make check` passes with no lint findings, and so does the real-window
+  suite.
 
 ## Changed after its author tried it
 
