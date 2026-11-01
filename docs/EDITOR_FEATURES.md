@@ -398,7 +398,7 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   forward line's upright part, as today, and a back line's drop, level run
   and end legs. Each is one offset saved with the layout, measured from the
   line's own node, so the line keeps its shape when its nodes move; Reset
-  route puts it back where the editor would run it. No free waypoints: lines
+  line puts it back where the editor would run it. No free waypoints: lines
   stay level and upright. *Candidate:* an Add bend menu item that splits a
   leg in three, if a real workflow ever needs a line to go round something.
 - **Agreed (2026-11-01):** the status bar names the line under the pointer:

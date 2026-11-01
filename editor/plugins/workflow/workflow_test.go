@@ -134,7 +134,7 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	}
 	key, depth := flow.LineKey(id(1), flow.OutputNext), -60
 	bend := encode(t, workflow.MoveArgs{
-		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: id(3), Lane: nil, Depth: &depth}},
+		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: id(3), Lane: nil, Depth: &depth, End: &depth}},
 	})
 	if err := model.VerifyUndo(document, workflow.Move{}, bend, registry.Edit); err != nil {
 		t.Fatalf("moving a line: %v", err)
@@ -145,7 +145,7 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		args json.RawMessage
 	}{
 		{workflow.Move{}, encode(t, workflow.MoveArgs{
-			Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: ids.ULID{}, Lane: nil, Depth: nil}},
+			Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}},
 		})},
 		{workflow.Remove{}, encode(t, workflow.RemoveArgs{Nodes: []ids.ULID{id(3)}})},
 	} {

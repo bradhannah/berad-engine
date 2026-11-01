@@ -574,7 +574,7 @@ func (s *State) drawLineInspector(screen *ebiten.Image, docs frame.Docs, left, t
 	s.deleteLine.Draw(screen, s.theme)
 	s.resetLine.Draw(screen, s.theme)
 	panel := frame.Inspector(s.size)
-	text := "Drag the middle of the line to move it. Delete or Backspace removes it. Undo puts it back."
+	text := "Drag a handle on the line to move that part of it. Delete or Backspace removes it. Undo puts it back."
 	hint := s.wrap(text, panel.Dx()-ui.Half*ui.Inset)
 	bottom := s.deleteLine.Rect.Min.Y - ui.Gap
 	if !s.resetLine.Rect.Empty() {
@@ -778,7 +778,8 @@ func mod(value, divisor int) int {
 
 // Locate finds a named part of the window for input scripts: "palette:<kind>",
 // "node:<kind>:<n>" for the nth node of a kind, "port:<kind>:<n>:<output>",
-// "bend:<kind>:<n>:<output>" for the middle of a line that can be dragged,
+// "bend:<kind>:<n>:<output>" for the middle of a line's upright part or
+// run, or with ":drop" or ":end" a back line's drop or end leg,
 // "entry:<kind>:<n>" for its spare entry dot or "entry:<kind>:<n>:<i>" for
 // its i-th filled one, "add-option:<kind>:<n>" for a
 // random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for

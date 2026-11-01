@@ -428,12 +428,12 @@ func TestBends(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := workflow.LineKey(id(1), workflow.OutputNext)
-	depth := -40
-	previous, err := flow.SetBends(map[string]workflow.Bend{key: {To: id(2), Lane: nil, Depth: &depth}})
+	depth, end := -40, -30
+	previous, err := flow.SetBends(map[string]workflow.Bend{key: {To: id(2), Lane: nil, Depth: &depth, End: &end}})
 	if err != nil || !previous[key].To.IsZero() {
 		t.Fatalf("set bends: %v %v", previous, err)
 	}
-	if bend, ok := flow.Bend(id(1), workflow.OutputNext); !ok || *bend.Depth != -40 {
+	if bend, ok := flow.Bend(id(1), workflow.OutputNext); !ok || *bend.Depth != -40 || *bend.End != -30 {
 		t.Fatalf("the bend applies: %+v %v", bend, ok)
 	}
 	layout, err := flow.EncodeLayout()
@@ -466,8 +466,41 @@ func TestBends(t *testing.T) {
 	if len(flow.Bends()) != 0 {
 		t.Fatal("setting the previous bends undoes them")
 	}
-	if _, err := flow.SetBends(map[string]workflow.Bend{"nonsense": {To: id(2), Lane: nil, Depth: nil}}); !errors.Is(err, workflow.ErrNode) {
+	if _, err := flow.SetBends(map[string]workflow.Bend{"nonsense": {To: id(2), Lane: nil, Depth: nil, End: nil}}); !errors.Is(err, workflow.ErrNode) {
 		t.Fatalf("a key that names no line is refused: %v", err)
+	}
+}
+
+// TestLayoutUpgradeFromVersion2 reads a layout from before a back line's
+// drop and end legs could be moved: its bends read as they were.
+func TestLayoutUpgradeFromVersion2(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.LayoutFormat()); err != nil {
+		t.Fatal(err)
+	}
+	key := workflow.LineKey(id(1), workflow.OutputNext)
+	old := `{"boxes":{},"lines":{"` + key + `":{"to":"` + id(2).String() + `","depth":-40}}}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.LayoutFormatName, Version: 2, ID: id(9), Name: "Old", Revision: 0, Data: json.RawMessage(old),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.LayoutFormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	flow, err := workflow.New(id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.Insert([]workflow.Node{node(t, 2, workflow.KindWait, ids.ULID{})}, nil,
+		[]workflow.Link{{From: id(1), Output: workflow.OutputNext, To: id(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.DecodeLayout(upgraded.Data); err != nil {
+		t.Fatal(err)
+	}
+	bend, ok := flow.Bend(id(1), workflow.OutputNext)
+	if !ok || bend.Depth == nil || *bend.Depth != -40 || bend.Lane != nil || bend.End != nil {
+		t.Fatalf("the bend reads as it was: %+v %v", bend, ok)
 	}
 }
 

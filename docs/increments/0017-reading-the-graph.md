@@ -20,7 +20,7 @@ checks as [increment 1](0001-foundation.md).
 1. **Every leg of a line moves:** a back line has a handle on its drop leg,
    its level run and its end leg, and a forward line on its upright part.
    Each drag saves one offset, measured from the line's own node, so the
-   line keeps its shape when its nodes move; Reset route clears them. There
+   line keeps its shape when its nodes move; Reset line clears them. There
    are no free waypoints: lines stay level and upright.
 2. **The canvas says what a line is:** hovering a line names it in the
    status bar, with where it leaves, by which outcome, where it enters,
@@ -49,7 +49,7 @@ the canvas "Workflow canvas wireframes":
 
 - **Every interior leg moves, and nothing else:** no right-click to add a
   point and no free waypoints, so lines stay level and upright, each offset
-  stays one saved number, and auto-arrange and Reset route still apply. An
+  stays one saved number, and auto-arrange and Reset line still apply. An
   Add bend menu item that splits a leg in three stays a candidate until a
   real workflow needs it.
 - **Seven fixed tints, declared nowhere in the project.** A project-wide
@@ -94,7 +94,7 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Handles on every leg | Grips on a back line's drop, level run and end legs; the end-leg offset in `Bend`; layout format version 3; dragging each, and Reset route clearing them | Route tests for each handle and for a line whose nodes then move; the bend edit passes the shared apply-then-undo test; version 2 layouts load | Planned |
+| 1. Handles on every leg | Grips on a back line's drop, level run and end legs; the end-leg offset in `Bend`; layout format version 3; dragging each, and Reset line clearing them | Route tests for each handle and for a line whose nodes then move; the bend edit passes the shared apply-then-undo test; version 2 layouts load | Built |
 | 2. Naming and the legend | The status bar's line description on hover; the Legend toggle and its panel | View tests of the text for a forward line, a loop and a moved line, and of the toggle | Planned |
 | 3. Colours | Tints in the layout; Colour rows in the inspector for a node, a container, each outcome of a node with several, and a line, with the three line states; the drawing of tinted faces, ports, rows and lines | The colour edit passes the shared apply-then-undo test; view tests of inherit, set and none, and of lit and live winning | Planned |
 | 4. The outcome's name at the arrowhead | The label on long lines, in the line's ink | A view test of a long and a short line | Planned |
@@ -102,7 +102,17 @@ Chosen while planning, for its author to check:
 
 ## Step results
 
-None yet.
+- **Handles on every leg:** `Bend` gains `End`, the end leg's offset from
+  the entry it goes into, as layout format version 3, which reads version 2
+  unchanged. A back line's drop leg takes the `Lane` a bend already had,
+  its run `Depth` and its end leg `End`; each leg of a hovered or selected
+  line draws a grip, and dragging one sets its offset alone, keeping the
+  others. Reset line and auto-arrange clear all three. Verified: route
+  tests move each leg by its own offset and keep the offsets when a node
+  moves; the move edit with an end leg passes the shared apply-then-undo
+  test; a version 2 layout upgrades and its bend reads as it was; view
+  tests drag the drop and end legs, see the run span them, and reset them.
+  `make check` passes with no lint findings.
 
 ## Changed after its author tried it
 

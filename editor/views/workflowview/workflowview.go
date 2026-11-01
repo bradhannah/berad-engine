@@ -74,9 +74,11 @@ type containerResize struct {
 	gesture string
 }
 
-// lineDrag moves the middle of a line by hand.
+// lineDrag moves one leg of a line by hand; part is the part of the line's
+// bend it sets.
 type lineDrag struct {
 	key     routeKey
+	part    string
 	start   image.Point
 	gesture string
 	moved   bool
@@ -397,7 +399,7 @@ func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
 		s.removeLine(ctx)
 	}
 	if !s.resetLine.Rect.Empty() && s.resetLine.Update(input) {
-		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, "")
+		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}, "")
 		ctx.Frame.Status("Line reset. Undo puts it back where you moved it.")
 	}
 }
@@ -566,8 +568,8 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	}
 	if key, onLine := s.linkAt(point); onLine {
 		s.selected, s.selectedLink = ids.ULID{}, key
-		if s.onMiddle(key, point) {
-			s.bending = &lineDrag{key: key, start: point, gesture: s.gesture(), moved: false}
+		if part, onLeg := s.legAt(key, point); onLeg {
+			s.bending = &lineDrag{key: key, part: part, start: point, gesture: s.gesture(), moved: false}
 		}
 
 		return
@@ -660,9 +662,10 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, point image.Po
 		workflowplugin.MoveArgs{Boxes: map[ids.ULID]flow.Box{s.resize.id: box}, Lines: nil}, nil)
 }
 
-// updateBend moves the middle of a line as it is dragged: a forward line's
-// upright part sideways, or a back line's run up or down, above the nodes if
-// wanted. Each change is a move edit in the drag's gesture.
+// updateBend moves one leg of a line as it is dragged: a forward line's
+// upright part or a back line's drop and end legs sideways, a back line's
+// run up or down, above the nodes if wanted. The line's other legs keep
+// their offsets. Each change is a move edit in the drag's gesture.
 func (s *State) updateBend(input *ui.Input, ctx *frame.Context, point image.Point) {
 	drag := s.bending
 	if !input.Down {
@@ -682,16 +685,22 @@ func (s *State) updateBend(input *ui.Input, ctx *frame.Context, point image.Poin
 
 		return
 	}
-	output := corners[0]
-	bend := flow.Bend{To: target, Lane: nil, Depth: nil}
-	if len(corners) == backCorners {
+	output, entry := corners[0], corners[len(corners)-1]
+	current, bent := s.workflow.Bend(drag.key.from, drag.key.output)
+	bend := current
+	bend.To = target
+	switch drag.part {
+	case partDepth:
 		depth := point.Y - output.Y
 		bend.Depth = &depth
-	} else {
+	case partEnd:
+		end := point.X - entry.X
+		bend.End = &end
+	default:
 		lane := point.X - output.X
 		bend.Lane = &lane
 	}
-	if current, bent := s.workflow.Bend(drag.key.from, drag.key.output); bent && sameBend(current, bend) {
+	if bent && sameBend(current, bend) {
 		return
 	}
 	s.bend(ctx, drag.key, bend, drag.gesture)
@@ -709,7 +718,7 @@ func (s *State) bend(ctx *frame.Context, key routeKey, bend flow.Bend, gesture s
 func sameBend(a, b flow.Bend) bool {
 	same := func(x, y *int) bool { return (x == nil && y == nil) || (x != nil && y != nil && *x == *y) }
 
-	return a.To == b.To && same(a.Lane, b.Lane) && same(a.Depth, b.Depth)
+	return a.To == b.To && same(a.Lane, b.Lane) && same(a.Depth, b.Depth) && same(a.End, b.End)
 }
 
 // updateLink follows a connection being drawn from a port, or a line picked
@@ -949,7 +958,7 @@ func (s *State) autoArrange(ctx *frame.Context) {
 		if args.Lines == nil {
 			args.Lines = map[string]flow.Bend{}
 		}
-		args.Lines[key] = flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}
+		args.Lines[key] = flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}
 	}
 	s.command(ctx, workflowplugin.MoveEdit, "", args, func(protocol.Result) {
 		ctx.Frame.Status("Arranged. Undo puts the nodes back where they were.")

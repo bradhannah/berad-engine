@@ -79,21 +79,19 @@ func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 	}
 }
 
-// drawGrip draws a small handle across the middle of a line's draggable
-// part, showing it can be moved.
+// drawGrip draws a small handle across the middle of each part of a line
+// that can be dragged, showing it can be moved.
 func (s *State) drawGrip(area *ebiten.Image, corners []image.Point) {
-	start, end, ok := middleOf(corners)
-	if !ok {
-		return
+	for _, moved := range legsOf(corners) {
+		centre := s.toScreen(image.Pt((moved.from.X+moved.to.X)/ui.Half, (moved.from.Y+moved.to.Y)/ui.Half))
+		half := image.Pt(gripLength, gripWidth)
+		if moved.from.Y == moved.to.Y {
+			half = image.Pt(gripWidth, gripLength)
+		}
+		grip := image.Rectangle{Min: centre.Sub(half), Max: centre.Add(half)}
+		ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
+		ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
 	}
-	centre := s.toScreen(image.Pt((start.X+end.X)/ui.Half, (start.Y+end.Y)/ui.Half))
-	half := image.Pt(gripLength, gripWidth)
-	if start.Y == end.Y {
-		half = image.Pt(gripWidth, gripLength)
-	}
-	grip := image.Rectangle{Min: centre.Sub(half), Max: centre.Add(half)}
-	ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
-	ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
 }
 
 // lineInk is a line's colour: blue when lit, grey for a time switch's

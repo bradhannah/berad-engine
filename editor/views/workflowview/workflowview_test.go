@@ -694,6 +694,39 @@ func TestMovingAForwardLineSideways(t *testing.T) {
 	}
 }
 
+// TestMovingABackLinesLegs drags the loop's drop leg and then its end leg
+// sideways: each sets its own offset and keeps the other's, and Reset line
+// clears them both.
+func TestMovingABackLinesLegs(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	key := flow.LineKey(f.nth(flow.KindWait, 1).ID, flow.OutputNext)
+	drop := f.at("bend:wait:1:next:drop")
+	f.drag(drop, drop.Add(image.Pt(14, 0)))
+	if bend := f.lastLines()[key]; bend.Lane == nil || bend.Depth != nil || bend.End != nil {
+		t.Fatalf("dragging the drop leg sets its lane alone: %+v", bend)
+	}
+	if moved := f.at("bend:wait:1:next:drop"); moved.X != drop.X+14 {
+		t.Fatalf("the drop leg follows the pointer: %d, was %d", moved.X, drop.X)
+	}
+	end := f.at("bend:wait:1:next:end")
+	f.drag(end, end.Add(image.Pt(-10, 0)))
+	if bend := f.lastLines()[key]; bend.Lane == nil || bend.End == nil || *bend.End >= 0 {
+		t.Fatalf("dragging the end leg keeps the lane and sets the end: %+v", bend)
+	}
+	if moved := f.at("bend:wait:1:next:end"); moved.X != end.X-10 {
+		t.Fatalf("the end leg follows the pointer: %d, was %d", moved.X, end.X)
+	}
+	if run := f.at("bend:wait:1:next"); run.X != (drop.X+14+end.X-10)/2 {
+		t.Fatalf("the run spans the moved legs: %d", run.X)
+	}
+	f.click("bend:wait:1:next")
+	f.click("ui:reset-line")
+	if f.has("bent:wait:1:next") {
+		t.Fatal("Reset line clears every leg")
+	}
+}
+
 // TestLinesRunOverNotes puts a note on top of a line: clicking the line
 // there selects the line, not the note.
 func TestLinesRunOverNotes(t *testing.T) {

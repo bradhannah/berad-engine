@@ -29,12 +29,13 @@ import (
 // choices any number of options and waits a unit and a clock; version 3 gave
 // Play sound how loud to play its cue this time; version 4 gave workflows
 // local values; version 5 renamed local types to integer and bool, and named
-// a value reference's NPC or zone its owner.
+// a value reference's NPC or zone its owner. Layout version 2 added lines
+// moved by hand; version 3 let a back line's drop and end legs be moved too.
 const (
 	FormatName          = "workflow"
 	FormatVersion       = 5
 	LayoutFormatName    = "workflow-layout"
-	LayoutFormatVersion = 2
+	LayoutFormatVersion = 3
 )
 
 // MaxNodes bounds the nodes in one workflow.
@@ -517,13 +518,20 @@ func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
 // LayoutFormat returns the workflow layout's content format.
 func LayoutFormat() content.Format {
 	return content.Format{
-		Name: LayoutFormatName, Current: LayoutFormatVersion, Migrations: map[int]content.Migration{1: layoutFrom1},
+		Name: LayoutFormatName, Current: LayoutFormatVersion,
+		Migrations: map[int]content.Migration{1: layoutFrom1, 2: layoutFrom2},
 	}
 }
 
 // layoutFrom1 reads a version 1 layout, which held only boxes, unchanged:
 // version 2 added lines moved by hand.
 func layoutFrom1(data json.RawMessage) (json.RawMessage, error) {
+	return data, nil
+}
+
+// layoutFrom2 reads a version 2 layout unchanged: version 3 added a back
+// line's drop and end legs to its bend, both optional.
+func layoutFrom2(data json.RawMessage) (json.RawMessage, error) {
 	return data, nil
 }
 
