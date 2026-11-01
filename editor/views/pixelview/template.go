@@ -41,7 +41,8 @@ const (
 	templateWidth = 74
 )
 
-// templateID returns the template the sprite is drawn to.
+// templateID returns the template the sprite is drawn to. A template since
+// deleted counts as none.
 func (s *State) templateID(docs frame.Docs) (ids.ULID, bool) {
 	var template ids.ULID
 	docs.View(s.sprite, func(document client.Document) {
@@ -49,8 +50,14 @@ func (s *State) templateID(docs frame.Docs) (ids.ULID, bool) {
 			template = sprite.Sprite.Template
 		}
 	})
+	listed := false
+	docs.View(project.IndexID(), func(document client.Document) {
+		if index, ok := document.Model.(*project.Index); ok {
+			_, listed = index.Entry(template)
+		}
+	})
 
-	return template, !template.IsZero()
+	return template, !template.IsZero() && listed
 }
 
 // template returns the template the sprite is drawn to, once it is loaded.

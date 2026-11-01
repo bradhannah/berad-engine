@@ -164,3 +164,16 @@ func TestEditTemplateOpensTheTemplateEditor(t *testing.T) {
 		t.Fatalf("opened %+v", f.requests.Opened)
 	}
 }
+
+func TestADeletedTemplateCountsAsNone(t *testing.T) {
+	t.Parallel()
+	f := withTemplates(t, frametest.ID(42))
+	if !f.has("template:") {
+		t.Fatal("a sprite drawn to a template the project no longer lists is drawn to none")
+	}
+	f.click("swatch:gloomy / grey 3")
+	f.drag("pixel:0,0")
+	if f.pixel(0, 0) != grey(3) {
+		t.Fatal("the pencil paints anywhere")
+	}
+}
