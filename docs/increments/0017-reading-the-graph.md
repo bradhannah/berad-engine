@@ -64,19 +64,29 @@ the canvas "Workflow canvas wireframes":
 - **The outcome's name again at the arrowhead** of a long line, in the
   line's colour, small and muted like the free-output labels.
 
-Chosen while planning, for its author to check:
+Chosen while building, for its author to check:
 
 - **The offsets:** a back line's drop leg uses the `Lane` a bend already
-  has, which only forward lines used; its end leg gets a new field,
+  has, which only forward lines used; its end leg gets a new field, `End`,
   measured from the entry it goes into, so the line keeps its shape when
   either node moves. Layout format version 3 adds it and the colours, and
   reads version 2 unchanged, as version 2 read version 1.
 - **Where colours live:** in the layout, as a tint's name, never a colour
-  value, so the editor's palette can change later: one per node or
-  container by ID, one per outcome by the line key bends use, `node/output`,
-  and one per line by the same key. A line with no entry takes its
+  value, so the editor's palette can change later: `tints` holds nodes and
+  containers by ID, outcomes by the line key bends use, `node/output`, and
+  lines by the same key, kept apart. A line with no entry takes its
   outcome's; a line may say "none" to override an outcome's tint with no
-  colour.
+  colour. A line's tint is keyed by the output it leaves, so relinking the
+  line to another node keeps it. Removing a node drops its tints, and undo
+  brings them back with it.
+- **The tint edit** is a layout edit of its own, `workflow.layout.tint`,
+  undone like a move, so colouring never touches logic.
+- **Where the colour rows sit:** under a node's fields, and under a line's
+  From and To. A node gets one row per outcome only when it has two or
+  more outputs besides a container's inside. Notes cannot be coloured; the
+  start node can. A line's row shows inherit, as a dot of its outcome's
+  ink, then none, then the tints, and says beside its title where its
+  colour comes from.
 - **The tints:** green, amber, teal, purple, pink, brown and slate, the
   editor's existing family hues (zones, art, workflows, sounds, texts and
   NPCs) plus amber, each a wash for a node's face and a darker ink for a
@@ -96,7 +106,7 @@ Chosen while planning, for its author to check:
 | --- | --- | --- | --- |
 | 1. Handles on every leg | Grips on a back line's drop, level run and end legs; the end-leg offset in `Bend`; layout format version 3; dragging each, and Reset line clearing them | Route tests for each handle and for a line whose nodes then move; the bend edit passes the shared apply-then-undo test; version 2 layouts load | Built |
 | 2. Naming and the legend | The status bar's line description on hover; the Legend toggle and its panel | View tests of the text for a forward line, a loop and a moved line, and of the toggle | Built |
-| 3. Colours | Tints in the layout; Colour rows in the inspector for a node, a container, each outcome of a node with several, and a line, with the three line states; the drawing of tinted faces, ports, rows and lines | The colour edit passes the shared apply-then-undo test; view tests of inherit, set and none, and of lit and live winning | Planned |
+| 3. Colours | Tints in the layout; Colour rows in the inspector for a node, a container, each outcome of a node with several, and a line, with the three line states; the drawing of tinted faces, ports, rows and lines | The colour edit passes the shared apply-then-undo test; view tests of inherit, set and none, and of lit and live winning | Built |
 | 4. The outcome's name at the arrowhead | The label on long lines, in the line's ink | A view test of a long and a short line | Planned |
 | 5. Checks | `make check` and the real-window suite; a real-window test drags a back line's end leg and colours an outcome, and both are saved | The checks pass with no lint findings | Planned |
 
@@ -121,6 +131,19 @@ Chosen while planning, for its author to check:
   look beside what it means; clicks on the card never reach the canvas.
   Verified: view tests hover the loop, the start's line and a moved line
   and read the status bar, and toggle the legend and draw it.
+- **Colours:** the engine's layout gains `Tints`, names for nodes,
+  outcomes and lines, with `SetTints` returning what they were; the
+  workflow plug-in gains the tint edit. The view offers seven tints as
+  swatches: a node's face takes its tint's wash and a container's heading
+  too; an outcome's row, its port and its lines take its ink; a line takes
+  its own tint over its outcome's, or none; lit blue and live orange still
+  win, and a tint beats the grey of a time switch's otherwise. The legend
+  gains a row for a coloured line. Verified: engine tests set, save,
+  reread, undo and drop tints with their node; the tint edit and removing
+  a coloured node pass the shared apply-then-undo test; a view test
+  colours a node, an outcome and its line, overrides the line, takes the
+  colour away, gives the outcome's back and draws it all. Lit and live
+  winning is by the order `lineInk` applies them, not a test of its own.
 
 ## Changed after its author tried it
 

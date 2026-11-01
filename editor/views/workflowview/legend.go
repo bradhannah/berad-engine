@@ -32,6 +32,7 @@ func legendRows() []legendRow {
 		{text: "Goes forward", dashed: false, width: lineWidth, ink: ui.ColorInk},
 		{text: "Loops back", dashed: true, width: lineWidth, ink: ui.ColorInk},
 		{text: "A time switch's otherwise", dashed: false, width: lineWidth, ink: ui.ColorMuted},
+		{text: "Coloured by its author", dashed: false, width: lineWidth, ink: func() color.RGBA { return tints()[0].ink }},
 		{text: "Selected, or of the selected node", dashed: false, width: selectedLine, ink: ui.ColorSelect},
 		{text: "Live: an NPC just took it", dashed: false, width: selectedLine, ink: ui.ColorLive},
 	}

@@ -504,6 +504,65 @@ func TestLayoutUpgradeFromVersion2(t *testing.T) {
 	}
 }
 
+// TestTints colours a node, an outcome and a line: the tints are saved with
+// the layout and round-trip, go when their node goes, are taken away by an
+// empty name, and setting the previous tints undoes a change.
+func TestTints(t *testing.T) {
+	t.Parallel()
+	flow, err := workflow.New(id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.Insert([]workflow.Node{node(t, 2, workflow.KindWait, ids.ULID{})}, nil,
+		[]workflow.Link{{From: id(1), Output: workflow.OutputNext, To: id(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	if layout, _ := flow.EncodeLayout(); strings.Contains(string(layout), `"tints"`) {
+		t.Fatalf("no tints are saved until one is set: %s", layout)
+	}
+	key := workflow.LineKey(id(1), workflow.OutputNext)
+	previous, err := flow.SetTints(workflow.Tints{
+		Nodes: map[ids.ULID]string{id(2): "green"}, Outcomes: map[string]string{key: "amber"},
+		Lines: map[string]string{key: workflow.TintNone},
+	})
+	if err != nil || previous.Nodes[id(2)] != "" || previous.Outcomes[key] != "" || previous.Lines[key] != "" {
+		t.Fatalf("set tints: %+v %v", previous, err)
+	}
+	tints := flow.Tints()
+	if tints.Nodes[id(2)] != "green" || tints.Outcomes[key] != "amber" || tints.Lines[key] != workflow.TintNone {
+		t.Fatalf("the tints apply: %+v", tints)
+	}
+	layout, err := flow.EncodeLayout()
+	if err != nil || !strings.Contains(string(layout), `"tints"`) {
+		t.Fatalf("the layout holds the tints: %s %v", layout, err)
+	}
+	reread := flow.Clone()
+	if err := reread.DecodeLayout(layout); err != nil || !reread.Equal(flow) {
+		t.Fatalf("the tints round-trip: %v", err)
+	}
+	if _, err := flow.SetTints(workflow.Tints{Nodes: map[ids.ULID]string{id(9): "green"}, Outcomes: nil, Lines: nil}); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("a node that does not exist is refused: %v", err)
+	}
+	if _, err := flow.SetTints(workflow.Tints{Nodes: nil, Outcomes: nil, Lines: map[string]string{"nonsense": "green"}}); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("a key that names no line is refused: %v", err)
+	}
+	if _, err := flow.SetTints(previous); err != nil {
+		t.Fatal(err)
+	}
+	if !flow.Tints().Empty() {
+		t.Fatalf("setting the previous tints undoes them: %+v", flow.Tints())
+	}
+	if _, err := flow.SetTints(workflow.Tints{Nodes: map[ids.ULID]string{id(2): "teal"}, Outcomes: nil, Lines: nil}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := flow.Remove([]ids.ULID{id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if !flow.Tints().Empty() {
+		t.Fatalf("a removed node's tint goes with it: %+v", flow.Tints())
+	}
+}
+
 // TestLayoutUpgradeFromVersion1 reads a layout from before lines could be
 // moved by hand.
 func TestLayoutUpgradeFromVersion1(t *testing.T) {

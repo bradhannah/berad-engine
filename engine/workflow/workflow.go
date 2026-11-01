@@ -30,7 +30,8 @@ import (
 // Play sound how loud to play its cue this time; version 4 gave workflows
 // local values; version 5 renamed local types to integer and bool, and named
 // a value reference's NPC or zone its owner. Layout version 2 added lines
-// moved by hand; version 3 let a back line's drop and end legs be moved too.
+// moved by hand; version 3 let a back line's drop and end legs be moved too,
+// and added the tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
 	FormatVersion       = 5
@@ -91,13 +92,15 @@ type Link struct {
 }
 
 // Workflow is a graph of nodes with a start node, and their layout: where
-// each node sits, and the bends of lines moved by hand.
+// each node sits, the bends of lines moved by hand, and the tints an author
+// gave nodes, outcomes and lines.
 type Workflow struct {
 	start  ids.ULID
 	nodes  []Node
 	locals *worldstate.Declarations
 	boxes  map[ids.ULID]Box
 	bends  map[string]Bend
+	tints  Tints
 }
 
 type wireWorkflow struct {
@@ -109,6 +112,7 @@ type wireWorkflow struct {
 type wireLayout struct {
 	Boxes map[ids.ULID]Box `json:"boxes"`
 	Lines map[string]Bend  `json:"lines,omitempty"`
+	Tints *Tints           `json:"tints,omitempty"`
 }
 
 // New returns a workflow holding only its start node.
@@ -120,7 +124,7 @@ func New(start ids.ULID) (*Workflow, error) {
 
 	return &Workflow{
 		start: start, nodes: []Node{node}, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
-		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
+		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}, tints: newTints(),
 	}, nil
 }
 
@@ -302,14 +306,15 @@ const Unplaced = -1
 func (w *Workflow) Clone() *Workflow {
 	return &Workflow{
 		start: w.start, nodes: w.Nodes(), locals: w.locals.Clone(), boxes: maps.Clone(w.boxes),
-		bends: maps.Clone(w.bends),
+		bends: maps.Clone(w.bends), tints: w.tints.clone(),
 	}
 }
 
 // Equal reports whether two workflows hold the same logic and layout.
 func (w *Workflow) Equal(other *Workflow) bool {
 	return w.start == other.start && slices.EqualFunc(w.nodes, other.nodes, Node.Equal) &&
-		w.locals.Equal(other.locals) && maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends())
+		w.locals.Equal(other.locals) && maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends()) &&
+		tintsEqual(w.Tints(), other.Tints())
 }
 
 // Encode returns the workflow's logic.
@@ -332,7 +337,11 @@ func (w *Workflow) Encode() (json.RawMessage, error) {
 
 // EncodeLayout returns the workflow's layout.
 func (w *Workflow) EncodeLayout() (json.RawMessage, error) {
-	data, err := json.Marshal(wireLayout{Boxes: w.boxes, Lines: w.Bends()})
+	wire := wireLayout{Boxes: w.boxes, Lines: w.Bends(), Tints: nil}
+	if tints := w.Tints(); !tints.Empty() {
+		wire.Tints = &tints
+	}
+	data, err := json.Marshal(wire)
 	if err != nil {
 		return nil, fmt.Errorf("encode workflow layout: %w", err)
 	}
@@ -349,7 +358,7 @@ func Decode(data json.RawMessage) (*Workflow, error) {
 	}
 	decoded := &Workflow{
 		start: wire.Start, nodes: wire.Nodes, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
-		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
+		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}, tints: newTints(),
 	}
 	if len(wire.Locals) > 0 {
 		if err := decoded.locals.Read(wire.Locals); err != nil {
@@ -385,6 +394,11 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 		if from, _, ok := SplitLineKey(key); ok && w.index(from) >= 0 && !bend.To.IsZero() {
 			w.bends[key] = bend
 		}
+	}
+	w.tints = newTints()
+	if wire.Tints != nil {
+		w.tints = wire.Tints.clone()
+		w.tints = w.Tints()
 	}
 
 	return nil
@@ -530,7 +544,7 @@ func layoutFrom1(data json.RawMessage) (json.RawMessage, error) {
 }
 
 // layoutFrom2 reads a version 2 layout unchanged: version 3 added a back
-// line's drop and end legs to its bend, both optional.
+// line's drop and end legs to its bend and the tints, all optional.
 func layoutFrom2(data json.RawMessage) (json.RawMessage, error) {
 	return data, nil
 }

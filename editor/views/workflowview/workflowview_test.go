@@ -749,6 +749,48 @@ func TestHoveringALineNamesIt(t *testing.T) {
 	}
 }
 
+// TestColours colours the random choice, its first outcome and the line
+// that leaves it: the line takes its outcome's colour, a colour of its own
+// overrides it, none takes it away and inherit gives it back; none takes a
+// node's colour away too.
+func TestColours(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	f.click("node:random:1")
+	f.click("ui:swatch:node:green")
+	if !f.has("tint:random:1=green") {
+		t.Fatalf("a swatch colours the node: %d tint edits sent, status %q, tints %+v",
+			len(f.requests.Of(workflowplugin.TintEdit)), f.status(), f.workflow().Tints())
+	}
+	f.click("ui:swatch:outcome:o1:amber")
+	if !f.has("outcome-tint:random:1:o1=amber") || !f.has("line-tint:random:1:o1=amber") {
+		t.Fatal("an outcome's colour colours its line")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("line:random:1:o1")
+	if !f.has("line-selected") {
+		t.Fatal("clicking the line selects it")
+	}
+	f.click("ui:swatch:line:purple")
+	if !f.has("line-tint:random:1:o1=purple") || !f.has("outcome-tint:random:1:o1=amber") {
+		t.Fatal("a line's own colour overrides its outcome's, which keeps it")
+	}
+	f.click("ui:swatch:line:none")
+	if !f.has("line-tint:random:1:o1=") {
+		t.Fatal("none takes the line's colour away over its outcome's")
+	}
+	f.click("ui:swatch:line:inherit")
+	if !f.has("line-tint:random:1:o1=amber") {
+		t.Fatal("inherit gives the line its outcome's colour again")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("node:random:1")
+	f.click("ui:swatch:node:none")
+	if !f.has("tint:random:1=") {
+		t.Fatal("none takes a node's colour away")
+	}
+}
+
 // TestLegendToggles shows the legend from the toolbar, draws it, and hides
 // it again.
 func TestLegendToggles(t *testing.T) {

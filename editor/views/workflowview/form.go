@@ -101,6 +101,8 @@ type form struct {
 	shape    string
 	controls []control
 	remove   *ui.Button
+	// bottom is where the last control ends, where the colour rows go.
+	bottom int
 }
 
 // syncForm keeps the inspector built for the selected node and showing its
@@ -262,7 +264,7 @@ func rowCount(node flow.Node) int {
 // buildForm makes a control for each of a node's parameters.
 func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
-	built := &form{node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, remove: nil}
+	built := &form{node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, remove: nil, bottom: 0}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
@@ -452,6 +454,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 			top = s.layoutReference(docs, made, node, image.Rect(left, top, left+width, footer))
 		}
 	}
+	s.form.bottom = top
 	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
 }
 

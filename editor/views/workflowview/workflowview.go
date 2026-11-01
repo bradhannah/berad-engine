@@ -150,11 +150,15 @@ type State struct {
 	// card sits over the canvas while it is on.
 	legend    *ui.Button
 	legendBox image.Rectangle
-	form      *form
-	save      *ui.SaveBar
-	guard     frame.Guard
-	focus     ui.Focus
-	picker    *picker.Picker
+	// tints are the workflow's tints as laid out; colours the inspector's
+	// colour rows for the selection.
+	tints   flow.Tints
+	colours []colourRow
+	form    *form
+	save    *ui.SaveBar
+	guard   frame.Guard
+	focus   ui.Focus
+	picker  *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -187,6 +191,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
+		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil,
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
@@ -266,13 +271,14 @@ func (s *State) load(docs frame.Docs) {
 	if !found {
 		s.workflow, s.hasLayout = nil, false
 		s.shapes, s.routes, s.loops = map[ids.ULID]shape{}, map[routeKey][]image.Point{}, map[routeKey]bool{}
-		s.problems = map[ids.ULID]string{}
+		s.problems, s.tints = map[ids.ULID]string{}, flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}
 
 		return
 	}
 	if !s.hasLayout || revision != s.laidOut {
 		s.shapes = shapes(s.workflow, s.noteHeight)
 		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
+		s.tints = s.workflow.Tints()
 		s.laidOut, s.hasLayout, s.watchFloors = revision, true, true
 		s.layouts++
 	}
@@ -331,14 +337,20 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.layoutForm(docs)
 	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
+	panel := frame.Inspector(s.size)
+	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
+	s.colours = nil
 	if s.lineSelected() {
-		panel := frame.Inspector(s.size)
 		bottom := panel.Max.Y - ui.Inset
-		s.deleteLine.Rect = image.Rect(panel.Min.X+ui.Inset, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
+		s.deleteLine.Rect = image.Rect(left, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
 		if _, bent := s.workflow.Bend(s.selectedLink.from, s.selectedLink.output); bent {
 			above := bottom - ui.ButtonH - rowSpace
-			s.resetLine.Rect = image.Rect(panel.Min.X+ui.Inset, above-ui.ButtonH, panel.Max.X-ui.Inset, above)
+			s.resetLine.Rect = image.Rect(left, above-ui.ButtonH, panel.Max.X-ui.Inset, above)
 		}
+		top := panelTextTop(panel.Min.Y+ui.Inset) + (forwardCorners+1)*ui.LineHeight + fieldSpace
+		s.colours = s.layoutColours(s.colourRows(), left, width, top)
+	} else if s.form != nil {
+		s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
 	}
 }
 
@@ -383,6 +395,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 	}
 	s.updateLineButtons(input, ctx)
+	s.updateColours(input, ctx)
 	s.updateForm(input, ctx)
 	s.updateLocals(input, ctx)
 	s.updateToolbar(input, ctx)

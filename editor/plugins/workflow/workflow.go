@@ -27,6 +27,9 @@ const (
 	RemoveEdit  = "workflow.nodes.remove"
 	ReplaceEdit = "workflow.node.replace"
 	MoveEdit    = "workflow.layout.move"
+	// TintEdit colours nodes, containers, outcomes and lines: layout, like
+	// a move.
+	TintEdit = "workflow.layout.tint"
 	// ChangeLocalsEdit declares, changes and removes a workflow's local
 	// values, as the world state's change edit does the project's.
 	ChangeLocalsEdit = "workflow.locals.change"
@@ -352,6 +355,48 @@ func (Move) Apply(document model.Document, args json.RawMessage) (model.Applied,
 	})
 }
 
+// TintArgs colours nodes, containers, outcomes and lines by the name of a
+// tint; an empty name takes a colour away.
+type TintArgs struct {
+	Tints flow.Tints `json:"tints"`
+}
+
+// Tint is the edit kind that colours parts of a workflow.
+type Tint struct{}
+
+// Name identifies the edit kind.
+func (Tint) Name() string { return TintEdit }
+
+// Format names the document format the edit applies to.
+func (Tint) Format() string { return flow.FormatName }
+
+// Apply sets the tints, all or nothing; its inverse sets what they were.
+func (Tint) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var tint TintArgs
+
+	return change(document, args, &tint, func(workflow *flow.Workflow) (string, any, []string, error) {
+		previous, err := workflow.SetTints(tint.Tints)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("tint: %w", err)
+		}
+		var items []string
+		for _, id := range slices.SortedFunc(maps.Keys(previous.Nodes), ids.ULID.Compare) {
+			items = append(items, TintItem("node:"+id.String()))
+		}
+		for _, key := range slices.Sorted(maps.Keys(previous.Outcomes)) {
+			items = append(items, TintItem("outcome:"+key))
+		}
+		for _, key := range slices.Sorted(maps.Keys(previous.Lines)) {
+			items = append(items, TintItem("line:"+key))
+		}
+
+		return "", TintArgs{Tints: previous}, items, nil
+	})
+}
+
+// TintItem names a part's tint for undo-clash detection.
+func TintItem(key string) string { return "tint:" + key }
+
 // LineItem names a line's bend for undo-clash detection.
 func LineItem(key string) string { return "line:" + key }
 
@@ -457,7 +502,7 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{
 			Format: flow.Format(), Decode: Decode, Layout: &layout, Prepare: Prepare,
 		}},
-		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}},
+		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}, Tint{}},
 			stateplugin.Change{Kind: ChangeLocalsEdit, On: flow.FormatName, List: localValues}),
 		Required: nil,
 	}

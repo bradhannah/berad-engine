@@ -139,6 +139,18 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	if err := model.VerifyUndo(document, workflow.Move{}, bend, registry.Edit); err != nil {
 		t.Fatalf("moving a line: %v", err)
 	}
+	tint := encode(t, workflow.TintArgs{Tints: flow.Tints{
+		Nodes: map[ids.ULID]string{id(3): "green"}, Outcomes: map[string]string{key: "amber"},
+		Lines: map[string]string{key: flow.TintNone},
+	}})
+	if err := model.VerifyUndo(document, workflow.Tint{}, tint, registry.Edit); err != nil {
+		t.Fatalf("colouring: %v", err)
+	}
+	apply(t, document, workflow.Tint{}, tint)
+	if err := model.VerifyUndo(document, workflow.Remove{}, encode(t, workflow.RemoveArgs{Nodes: []ids.ULID{id(3)}}),
+		registry.Edit); err != nil {
+		t.Fatalf("removing a coloured node: %v", err)
+	}
 	apply(t, document, workflow.Move{}, bend)
 	for _, check := range []struct {
 		kind model.EditKind

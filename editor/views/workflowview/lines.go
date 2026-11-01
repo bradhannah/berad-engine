@@ -132,13 +132,17 @@ func outputLabel(outputs []flow.Output, name string) string {
 	return name
 }
 
-// lineInk is a line's colour: blue when lit, grey for a time switch's
-// "otherwise", ink otherwise; faint where it was while it is being moved.
+// lineInk is a line's colour: blue when lit, its tint's ink when it or its
+// outcome has one, grey for a time switch's "otherwise", ink otherwise;
+// faint where it was while it is being moved.
 func (s *State) lineInk(link line, lit bool) color.Color {
 	base := ui.ColorInk()
 	if from, ok := s.workflow.Node(link.key.from); ok && from.Kind == flow.KindTimeSwitch &&
 		link.key.output == flow.OutputOtherwise {
 		base = ui.ColorMuted()
+	}
+	if coloured, ok := s.lineTint(link.key); ok {
+		base = coloured.ink
 	}
 	if lit {
 		base = ui.ColorSelect()
