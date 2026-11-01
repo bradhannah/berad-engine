@@ -17,14 +17,15 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// The sample shop: a clerk by the desk and a customer who walks up to it,
-// waits to be served, leaves by the door and comes back a while later. It
-// shows values and sensing: a shop template giving both NPCs the same
-// values, a world count in a group, local values and Find NPC nearby. Cells are from the zone origin; boxes are canvas
-// columns and rows.
+// The sample shop: a customer who walks up to the counter, waits for the
+// clerk at the desk to serve them, leaves by the door and comes back a while
+// later. It shows values and sensing: a shop template giving the clerk and
+// the customer the same values, a world count in a group, local values and
+// Find NPC nearby. Cells are from the zone origin; boxes are canvas columns
+// and rows.
 const (
-	clerkCol     = deskCol
-	clerkRow     = deskRow - 2
+	customerCol  = doorCol
+	customerRow  = buildingBottom - 1
 	shopWithin   = 2
 	shopPause    = 1
 	shopAway     = 10
@@ -47,52 +48,28 @@ type shopValues struct {
 	template, waiting, serving, served, group, count ids.ULID
 }
 
-// shopPlaces are the ground floor and its desk and door anchors.
-type shopPlaces struct {
-	floor, desk, door ids.ULID
-}
-
-// sampleShop adds the shop: its values, the clerk's and customer's
-// workflows, the two NPCs and their placements on the ground floor.
-func sampleShop(orch *orchestrator.Orchestrator, places shopPlaces) error {
-	values, err := declareShop(orch)
+// sampleCustomer adds the customer: their workflow, the NPC with the shop
+// template applied, and their placement inside the door.
+func sampleCustomer(orch *orchestrator.Orchestrator, anchors sampleAnchors, values shopValues) error {
+	behaviour, err := customerWorkflow(orch, values, anchors)
 	if err != nil {
 		return err
 	}
-	clerkFlow, err := clerkWorkflow(orch, values)
-	if err != nil {
-		return err
+	customer := npc.New()
+	customer.Behaviour, customer.Path = behaviour, "customer"
+	if err := customer.Owned.Apply(values.template); err != nil {
+		return fmt.Errorf("sample shop: %w", err)
 	}
-	customerFlow, err := customerWorkflow(orch, values, places)
+	npcID, err := orch.CreateDocument("Customer", &npcplugin.Document{NPC: customer})
 	if err != nil {
-		return err
+		return fmt.Errorf("sample shop: %w", err)
 	}
-	var placements []floor.Placement
-	for _, made := range []struct {
-		name, path string
-		behaviour  ids.ULID
-		col, row   int
-	}{
-		{"Clerk", "clerk", clerkFlow, clerkCol, clerkRow},
-		{"Customer", "customer", customerFlow, doorCol, buildingBottom - 1},
-	} {
-		shopper := npc.New()
-		shopper.Behaviour, shopper.Path = made.behaviour, made.path
-		if err := shopper.Owned.Apply(values.template); err != nil {
-			return fmt.Errorf("sample shop: %w", err)
-		}
-		npcID, err := orch.CreateDocument(made.name, &npcplugin.Document{NPC: shopper})
-		if err != nil {
-			return fmt.Errorf("sample shop: %w", err)
-		}
-		placementID, err := orch.NewID()
-		if err != nil {
-			return fmt.Errorf("sample shop: %w", err)
-		}
-		placements = append(placements, floor.Placement{ID: placementID, NPC: npcID, Col: made.col, Row: made.row})
+	placementID, err := orch.NewID()
+	if err != nil {
+		return fmt.Errorf("sample shop: %w", err)
 	}
 
-	return placeShop(orch, places.floor, placements)
+	return placeShop(orch, anchors.floor, floor.Placement{ID: placementID, NPC: npcID, Col: customerCol, Row: customerRow})
 }
 
 // declareShop declares the shop's template and group in the world state.
@@ -150,18 +127,16 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 	return values, nil
 }
 
-// placeShop places the shop's NPCs on the ground floor.
-func placeShop(orch *orchestrator.Orchestrator, floorID ids.ULID, placements []floor.Placement) error {
+// placeShop places the customer on the ground floor, after the clerk.
+func placeShop(orch *orchestrator.Orchestrator, floorID ids.ULID, placement floor.Placement) error {
 	err := orch.ChangeDocument(floorID, func(document model.Document) error {
 		floorDocument, ok := document.(*tilefloor.Document)
 		if !ok {
 			return fmt.Errorf("%w: the ground floor", errSample)
 		}
 		changed := floorDocument.Floor.Clone()
-		for index, placement := range placements {
-			if err := changed.InsertPlacement(index, placement); err != nil {
-				return fmt.Errorf("place %s: %w", placement.NPC, err)
-			}
+		if err := changed.InsertPlacement(len(changed.Placements()), placement); err != nil {
+			return fmt.Errorf("place %s: %w", placement.NPC, err)
 		}
 		floorDocument.Floor = changed
 
@@ -174,34 +149,10 @@ func placeShop(orch *orchestrator.Orchestrator, floorID ids.ULID, placements []f
 	return nil
 }
 
-// clerkWorkflow looks for a waiting customer within two tiles each second,
-// and serves while it finds one.
-func clerkWorkflow(orch *orchestrator.Orchestrator, values shopValues) (ids.ULID, error) {
-	build, err := newShopFlow(orch)
-	if err != nil {
-		return ids.ULID{}, err
-	}
-	customer := build.local("customer", worldstate.TypeNPC)
-	find := build.add(flow.KindFindNPC, build.workflow.Start(), waitRow, map[string]any{
-		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes),
-		"into": localValue(customer),
-	})
-	serve := build.add(flow.KindSetValue, find, servedRow, setTo(npcValue(values.serving), shopYes))
-	idle := build.add(flow.KindSetValue, find, nobodyRow, setTo(npcValue(values.serving), shopNo))
-	pause := build.add(flow.KindWait, serve, waitRow, map[string]any{shopDuration: realSeconds(shopPause)})
-	build.link(build.workflow.Start(), flow.OutputNext, find)
-	build.link(find, flow.OutputFound, serve)
-	build.link(find, flow.OutputNone, idle)
-	build.link(serve, flow.OutputNext, pause)
-	build.link(idle, flow.OutputNext, pause)
-
-	return build.create("Clerk serves")
-}
-
-// customerWorkflow walks to the desk and waits there until it finds a clerk
-// serving within two tiles; then it is served, counts itself, leaves by
-// the door, and some seconds later wants serving again.
-func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, places shopPlaces) (ids.ULID, error) {
+// customerWorkflow walks to the counter and waits there until it finds a
+// clerk serving within two tiles; then it is served, counts itself, leaves
+// by the door, and some seconds later wants serving again.
+func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, anchors sampleAnchors) (ids.ULID, error) {
 	build, err := newShopFlow(orch)
 	if err != nil {
 		return ids.ULID{}, err
@@ -213,7 +164,7 @@ func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, places
 	away := build.add(flow.KindWait, check, servedRow, map[string]any{shopDuration: realSeconds(shopAway)})
 	back := build.add(flow.KindSetValue, away, servedRow, setTo(npcValue(values.served), shopNo))
 	walk := build.add(flow.KindGoTo, check, waitRow, map[string]any{
-		"destination": floor.AnchorRef{Floor: places.floor, Anchor: places.desk},
+		paramDestination: floor.AnchorRef{Floor: anchors.floor, Anchor: anchors.counter},
 	})
 	wait := build.add(flow.KindSetValue, walk, waitRow, setTo(npcValue(values.waiting), shopYes))
 	find := build.add(flow.KindFindNPC, wait, waitRow, map[string]any{
@@ -227,7 +178,7 @@ func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, places
 		flow.ParamValue: worldValue(values.count), "how": flow.HowAdd, "to": json.RawMessage("1"),
 	})
 	leave := build.add(flow.KindGoTo, count, waitRow, map[string]any{
-		"destination": floor.AnchorRef{Floor: places.floor, Anchor: places.door},
+		paramDestination: floor.AnchorRef{Floor: anchors.floor, Anchor: anchors.door},
 	})
 	build.chain(build.workflow.Start(), check)
 	build.link(check, flow.OutputYes, away)

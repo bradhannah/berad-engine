@@ -225,15 +225,16 @@ func BoundsOf(rect image.Rectangle) Bounds {
 }
 
 // ResizeArgs changes a floor's bounds, adding or removing rows and columns on
-// any side. Added cells get Ground and nothing on top; then Cells, Anchors and
-// Placements, which must lie in added cells, are put back. Undo uses them to
-// restore what a resize removed.
+// any side. Added cells get Ground and nothing on top; then Cells, Anchors,
+// Placements and Sounds, which must lie in added cells, are put back. Undo
+// uses them to restore what a resize removed.
 type ResizeArgs struct {
 	Bounds     Bounds             `json:"bounds"`
 	Ground     string             `json:"ground"`
 	Cells      []Cell             `json:"cells,omitempty"`
 	Anchors    []AddAnchorArgs    `json:"anchors,omitempty"`
 	Placements []AddPlacementArgs `json:"placements,omitempty"`
+	Sounds     []AddSoundArgs     `json:"sounds,omitempty"`
 }
 
 // Resize is the edit kind that changes a floor's bounds.
@@ -284,6 +285,11 @@ func (Resize) Apply(document model.Document, args json.RawMessage) (model.Applie
 			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 		}
 	}
+	for _, restored := range resize.Sounds {
+		if err := working.InsertSound(restored.Index, restored.Sound); err != nil {
+			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+		}
+	}
 	inverseArgs, err := encodeArgs(inverse)
 	if err != nil {
 		return model.Applied{}, err
@@ -321,6 +327,13 @@ func checkResize(old, next image.Rectangle, resize ResizeArgs) error {
 			return fmt.Errorf("%w: restored cell %+v is not a new cell", model.ErrArgs, cell)
 		}
 	}
+
+	return checkRestored(resize, added)
+}
+
+// checkRestored reports a restored anchor, placement or sound that is not on
+// a cell the resize adds.
+func checkRestored(resize ResizeArgs, added func(col, row int) bool) error {
 	for _, restored := range resize.Anchors {
 		if !added(restored.Anchor.Col, restored.Anchor.Row) {
 			return fmt.Errorf("%w: restored anchor %q is not on a new cell", model.ErrArgs, restored.Anchor.Name)
@@ -329,6 +342,11 @@ func checkResize(old, next image.Rectangle, resize ResizeArgs) error {
 	for _, restored := range resize.Placements {
 		if !added(restored.Placement.Col, restored.Placement.Row) {
 			return fmt.Errorf("%w: restored placement %s is not on a new cell", model.ErrArgs, restored.Placement.ID)
+		}
+	}
+	for _, restored := range resize.Sounds {
+		if !added(restored.Sound.Col, restored.Sound.Row) {
+			return fmt.Errorf("%w: restored sound %s is not on a new cell", model.ErrArgs, restored.Sound.ID)
 		}
 	}
 
@@ -391,9 +409,16 @@ func resizeInverse(current *floor.Floor, next image.Rectangle) ResizeArgs {
 			placements = append(placements, AddPlacementArgs{Placement: placement, Index: index})
 		}
 	}
+	var sounds []AddSoundArgs
+	for index, sound := range current.Sounds() {
+		if !image.Pt(sound.Col, sound.Row).In(next) {
+			sounds = append(sounds, AddSoundArgs{Sound: sound, Index: index})
+		}
+	}
 
 	return ResizeArgs{
 		Bounds: BoundsOf(current.Bounds()), Ground: fill, Cells: cells, Anchors: anchors, Placements: placements,
+		Sounds: sounds,
 	}
 }
 
@@ -414,6 +439,11 @@ func resizeTouched(old, next image.Rectangle, inverse, resize ResizeArgs) []stri
 	for _, placements := range [][]AddPlacementArgs{inverse.Placements, resize.Placements} {
 		for _, placement := range placements {
 			touched = append(touched, PlacementKey(placement.Placement.ID))
+		}
+	}
+	for _, sounds := range [][]AddSoundArgs{inverse.Sounds, resize.Sounds} {
+		for _, sound := range sounds {
+			touched = append(touched, SoundKey(sound.Sound.ID))
 		}
 	}
 
@@ -569,7 +599,7 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{Format: floor.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits: []model.EditKind{
 			Paint{}, Resize{}, AddAnchor{}, RemoveAnchor{}, UpdateAnchor{},
-			AddPlacement{}, RemovePlacement{}, UpdatePlacement{},
+			AddPlacement{}, RemovePlacement{}, UpdatePlacement{}, AddSound{}, RemoveSound{}, UpdateSound{},
 		},
 		Required: nil,
 	}

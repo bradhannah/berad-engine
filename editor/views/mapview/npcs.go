@@ -263,9 +263,10 @@ func (s *State) openBehaviour(ctx *frame.Context) {
 	ctx.Requests.Open(workflowView, s.behaviour, false)
 }
 
-// drawPlacements draws each placed NPC as a dark token with its initials,
-// and its name beside it when there is room. The selected NPC has a blue
-// ring; an NPC whose definition was deleted is grey with a question mark.
+// drawPlacements draws each placed NPC as its sprite, or as a dark token with
+// its initials, and its name beside it when there is room. The selected NPC
+// has a blue ring; an NPC whose definition was deleted is grey with a
+// question mark.
 func (s *State) drawPlacements(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle) {
 	size := s.camera.cellSize()
 	for _, placement := range floorData.Placements() {
@@ -273,27 +274,46 @@ func (s *State) drawPlacements(area *ebiten.Image, floorData *floor.Floor, grid 
 		if !rect.Overlaps(grid) {
 			continue
 		}
-		centreX, centreY := float32(rect.Min.X)+float32(size)/ui.Half, float32(rect.Min.Y)+float32(size)/ui.Half
-		radius := max(float32(size)*tokenRadius, minTokenRadius)
 		name := s.names.Name(placement.NPC, "")
-		label, fill := initials(name), ui.Hex(hexToken)
 		if name == "" {
-			name, label, fill = "Deleted NPC", "?", ui.Hex(hexBroken)
+			name = "Deleted NPC"
 		}
-		vector.FillCircle(area, centreX, centreY, radius, fill, true)
-		if placement.ID == s.placement {
-			vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorSelect(), true)
-		}
+		s.drawNPC(area, rect, placement.NPC, placement.ID == s.placement)
 		if size < minLabel {
 			continue
 		}
-		width := s.theme.SmallWidth(label)
-		s.theme.DrawSmall(area, label, int(centreX)-width/ui.Half, int(centreY)-ui.LabelSize/ui.Half-ui.Half,
-			ui.ColorBackground())
 		labelX, labelY := rect.Max.X+ui.Half, rect.Min.Y+(size-ui.LabelSize)/ui.Half-ui.Half
 		backing := image.Rect(labelX-1, labelY, labelX+s.theme.SmallWidth(name)+ui.Half, labelY+ui.LabelSize+ui.Gap+ui.Half)
 		ui.FillRect(area, backing, ui.HexAlpha(hexWhite, labelBacking))
 		s.theme.DrawSmall(area, name, labelX, labelY, ui.ColorInk())
+	}
+}
+
+// drawNPC draws an NPC filling a cell: its sprite, or a dark token with its
+// initials, grey with a question mark once its definition is deleted. A
+// selected or watched NPC has a blue ring.
+func (s *State) drawNPC(area *ebiten.Image, rect image.Rectangle, npcID ids.ULID, ringed bool) {
+	size := rect.Dx()
+	centreX, centreY := float32(rect.Min.X)+float32(size)/ui.Half, float32(rect.Min.Y)+float32(size)/ui.Half
+	radius := max(float32(size)*tokenRadius, minTokenRadius)
+	if picture, shown := s.sprites.image(npcKey(npcID)); shown {
+		drawSprite(area, picture, rect, fullAlpha)
+		radius = float32(size) / ui.Half
+	} else {
+		name := s.names.Name(npcID, "")
+		label, fill := initials(name), ui.Hex(hexToken)
+		if name == "" {
+			label, fill = "?", ui.Hex(hexBroken)
+		}
+		vector.FillCircle(area, centreX, centreY, radius, fill, true)
+		if size >= minLabel {
+			width := s.theme.SmallWidth(label)
+			s.theme.DrawSmall(area, label, int(centreX)-width/ui.Half, int(centreY)-ui.LabelSize/ui.Half-ui.Half,
+				ui.ColorBackground())
+		}
+	}
+	if ringed {
+		vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorSelect(), true)
 	}
 }
 

@@ -1,9 +1,9 @@
 // Package npc is the NPC document: one NPC's definition, placed once in the
-// whole project. It names the workflow that is the NPC's behaviour, gives
-// the NPC a path name that workflows read its values by, such as george in
-// npc.george.secret, holds the values the NPC owns and the templates applied
-// to it, and the author's private notes about the NPC, which players never
-// see.
+// whole project. It names the workflow that is the NPC's behaviour and the
+// sprite it shows, gives the NPC a path name that workflows read its values
+// by, such as george in npc.george.secret, holds the values the NPC owns and
+// the templates applied to it, and the author's private notes about the NPC,
+// which players never see.
 package npc
 
 import (
@@ -21,8 +21,10 @@ import (
 const FormatName = "npc"
 
 // FormatVersion is the NPC format version this package writes. Version 2
-// gave NPCs a path name, and version 3 their own values and templates.
-const FormatVersion = 3
+// added the sprite an NPC shows, version 3 a path name, and version 4 the
+// NPC's own values and templates; each reads the version before it
+// unchanged.
+const FormatVersion = 4
 
 // MaxNotes bounds an NPC's notes, in characters.
 const MaxNotes = 20000
@@ -40,6 +42,8 @@ var ErrPath = errors.New("invalid NPC path name")
 type NPC struct {
 	// Behaviour is the workflow the NPC follows; zero when none is chosen.
 	Behaviour ids.ULID `json:"behaviour,omitzero"`
+	// Sprite is the sprite the NPC shows; zero for its token.
+	Sprite ids.ULID `json:"sprite,omitzero"`
 	// Path is the name workflows read the NPC's values by, such as george;
 	// "" until one is given. It follows the rules for value names and is
 	// unique in the project.
@@ -53,7 +57,9 @@ type NPC struct {
 
 // New returns an NPC with nothing set.
 func New() NPC {
-	return NPC{Behaviour: ids.ULID{}, Path: "", Notes: "", Owned: worldstate.NewOwned(worldstate.ScopeNPC)}
+	return NPC{
+		Behaviour: ids.ULID{}, Sprite: ids.ULID{}, Path: "", Notes: "", Owned: worldstate.NewOwned(worldstate.ScopeNPC),
+	}
 }
 
 // Clone returns an independent copy.
@@ -65,12 +71,13 @@ func (n NPC) Clone() NPC {
 
 // Equal reports whether two NPCs are the same.
 func (n NPC) Equal(other NPC) bool {
-	return n.Behaviour == other.Behaviour && n.Path == other.Path && n.Notes == other.Notes &&
-		n.Owned.Equal(other.Owned)
+	return n.Behaviour == other.Behaviour && n.Sprite == other.Sprite && n.Path == other.Path &&
+		n.Notes == other.Notes && n.Owned.Equal(other.Owned)
 }
 
 type wireNPC struct {
 	Behaviour ids.ULID `json:"behaviour,omitzero"`
+	Sprite    ids.ULID `json:"sprite,omitzero"`
 	Path      string   `json:"path,omitempty"`
 	Notes     string   `json:"notes,omitempty"`
 	worldstate.WireOwned
@@ -114,7 +121,9 @@ func (n NPC) Encode() (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode NPC: %w", err)
 	}
-	data, err := json.Marshal(wireNPC{Behaviour: n.Behaviour, Path: n.Path, Notes: n.Notes, WireOwned: owned})
+	data, err := json.Marshal(wireNPC{
+		Behaviour: n.Behaviour, Sprite: n.Sprite, Path: n.Path, Notes: n.Notes, WireOwned: owned,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode NPC: %w", err)
 	}
@@ -139,17 +148,17 @@ func Decode(data json.RawMessage) (NPC, error) {
 		return New(), fmt.Errorf("%w: %w", ErrData, err)
 	}
 
-	return NPC{Behaviour: wire.Behaviour, Path: wire.Path, Notes: wire.Notes, Owned: owned}, nil
+	return NPC{Behaviour: wire.Behaviour, Sprite: wire.Sprite, Path: wire.Path, Notes: wire.Notes, Owned: owned}, nil
 }
 
 // Format returns the NPC format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: unchanged, 2: unchanged,
+		1: unchanged, 2: unchanged, 3: unchanged,
 	}}
 }
 
-// unchanged reads an older NPC as it is: one from version 1 has no path
-// name until its author gives it one, and one from version 2 owns no values
-// yet.
+// unchanged reads an older NPC as it is: one from version 1 shows its token,
+// one from version 2 has no path name until its author gives it one, and one
+// from version 3 owns no values yet.
 func unchanged(data json.RawMessage) (json.RawMessage, error) { return data, nil }

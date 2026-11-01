@@ -27,8 +27,8 @@ func TestSprite(t *testing.T) {
 
 func TestSettings(t *testing.T) {
 	t.Parallel()
-	if art.DefaultSettings().TileSize != 32 {
-		t.Fatal("projects start with 32-pixel tiles")
+	if art.DefaultSettings().TileSize != 24 {
+		t.Fatal("projects start with 24-pixel tiles")
 	}
 	data, err := art.Settings{TileSize: 24}.Encode()
 	if err != nil || string(data) != `{"tileSize":24}` {
@@ -48,13 +48,14 @@ func TestSettings(t *testing.T) {
 func TestStandInSprites(t *testing.T) {
 	t.Parallel()
 	record := art.NewStandInSprites()
-	for _, standIn := range []string{tiles.UnassignedWall, "wall.a", "no-such-stand-in", ""} {
+	for _, standIn := range []string{"no-such-stand-in", ""} {
 		if _, err := record.Set(standIn, id(1)); !errors.Is(err, art.ErrStandIn) {
 			t.Fatalf("stand-in %q: %v", standIn, err)
 		}
 	}
-	if !art.CanShowSprite("door") || !art.CanShowSprite("grass") || art.CanShowSprite("wall.b") {
-		t.Fatal("every stand-in but a wall can show a sprite")
+	if !art.CanShowSprite("door") || !art.CanShowSprite("grass") || !art.CanShowSprite("wall.b") ||
+		!art.CanShowSprite(tiles.UnassignedWall) || !art.CanShowSprite(art.Player) {
+		t.Fatal("every stand-in, walls included, and the player can show a sprite")
 	}
 	if previous, err := record.Set("pickup.small", id(1)); err != nil || !previous.IsZero() {
 		t.Fatalf("first sprite: %v %v", previous, err)
@@ -83,7 +84,7 @@ func TestStandInSprites(t *testing.T) {
 	if _, shown := record.Sprite("door"); shown || len(record.StandIns()) != 1 {
 		t.Fatal("a zero sprite puts the stand-in back to its flat colour")
 	}
-	if _, err := art.DecodeStandInSprites([]byte(`{"sprites":{"wall.a":"01J00000000000000000000002"}}`)); err == nil {
-		t.Fatal("decoded a wall shown by a sprite")
+	if _, err := art.DecodeStandInSprites([]byte(`{"sprites":{"no-such":"01J00000000000000000000002"}}`)); err == nil {
+		t.Fatal("decoded a sprite showing a stand-in there is no such")
 	}
 }

@@ -15,8 +15,11 @@ func TestNPCRoundTrips(t *testing.T) {
 	t.Parallel()
 	var routine ids.ULID
 	routine[15] = 9
+	var look ids.ULID
+	look[15] = 10
 	clerk := npc.New()
-	clerk.Behaviour, clerk.Path, clerk.Notes = routine, "clerk", "Works the front desk.\nNever shown to players."
+	clerk.Behaviour, clerk.Sprite, clerk.Path = routine, look, "clerk"
+	clerk.Notes = "Works the front desk.\nNever shown to players."
 	var secret, guards ids.ULID
 	secret[0], secret[15], guards[0], guards[15] = 1, 1, 1, 2
 	if err := clerk.Owned.Values.Insert(worldstate.New(secret, "secret", worldstate.ScopeNPC, worldstate.TypeBool)); err != nil {
@@ -36,6 +39,10 @@ func TestNPCRoundTrips(t *testing.T) {
 	copied := clerk.Clone()
 	if _, err := copied.Owned.Values.Remove(secret); err != nil || copied.Equal(clerk) {
 		t.Fatalf("a copy's values are its own: %v", err)
+	}
+	copied = clerk.Clone()
+	if copied.Sprite = routine; copied.Equal(clerk) {
+		t.Fatal("NPCs with different sprites differ")
 	}
 	empty, err := npc.New().Encode()
 	if err != nil || string(empty) != "{}" {
@@ -81,5 +88,27 @@ func TestPathNames(t *testing.T) {
 	}
 	if err := npc.CheckPath(""); err != nil {
 		t.Fatalf("no path name yet is allowed: %v", err)
+	}
+}
+
+// TestOlderVersionsReadUnchanged upgrades an NPC saved before NPCs had
+// sprites, path names or values of their own.
+func TestOlderVersionsReadUnchanged(t *testing.T) {
+	t.Parallel()
+	format := npc.Format()
+	if format.Current != npc.FormatVersion || npc.FormatVersion != 4 {
+		t.Fatalf("version %d", format.Current)
+	}
+	upgraded := json.RawMessage(`{"notes":"Saved before sprites."}`)
+	for version := 1; version < format.Current; version++ {
+		var err error
+		if upgraded, err = format.Migrations[version](upgraded); err != nil {
+			t.Fatal(err)
+		}
+	}
+	decoded, err := npc.Decode(upgraded)
+	if err != nil || decoded.Notes != "Saved before sprites." || !decoded.Sprite.IsZero() || decoded.Path != "" ||
+		decoded.Owned.Len() != 0 {
+		t.Fatalf("upgraded %+v %v", decoded, err)
 	}
 }

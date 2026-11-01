@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
+	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
@@ -343,11 +344,16 @@ func (s *State) shownPlayer() (protocol.PreviewEntity, bool) {
 	return protocol.PreviewEntity{}, false //nolint:exhaustruct_v5 // No player.
 }
 
-// drawPlayer draws the player on the shown floor: a disc with a dot towards
-// where they face.
+// drawPlayer draws the player on the shown floor: their sprite, or a disc
+// with a dot towards where they face.
 func (s *State) drawPlayer(area *ebiten.Image, grid image.Rectangle) {
 	player, ok := s.shownPlayer()
 	if !ok || player.Floor != s.floor {
+		return
+	}
+	if picture, shown := s.sprites.image(art.Player); shown {
+		drawSprite(area, picture, s.entityRect(grid, player.X, player.Y), fullAlpha)
+
 		return
 	}
 	s.drawDisc(area, grid, player.X, player.Y, player.Face, fullAlpha)

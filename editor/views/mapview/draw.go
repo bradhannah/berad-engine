@@ -60,7 +60,7 @@ const (
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layoutWidgets(docs)
-	s.sprites.refresh(docs, s.camera.tile)
+	s.sprites.refresh(docs, s.camera.tile, s.shownSprites(docs))
 	screen.Fill(ui.ColorBackground())
 	grid := s.Grid()
 	area, ok := screen.SubImage(grid).(*ebiten.Image)
@@ -113,6 +113,8 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawFloorEdges(area, floorDoc.Floor, grid)
 		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
+		s.drawSounds(area, floorDoc.Floor, grid)
+		s.drawStart(area, grid)
 		if s.preview != nil || s.remote != nil {
 			s.drawLiveNPCs(area, grid)
 		} else {

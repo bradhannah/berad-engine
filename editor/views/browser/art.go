@@ -140,17 +140,22 @@ func (s *State) addSprite(ctx *frame.Context, sprite newArt, tileID ids.ULID) {
 	}, removeTile)
 }
 
-// syncSettings keeps the tile size field showing the saved tile size.
+// syncSettings keeps the tile size and screen fields showing what is saved.
 func (s *State) syncSettings(docs frame.Docs) {
 	if size, ok := s.projectTileSize(docs); ok {
 		s.tileSize.Field.SetSaved(strconv.Itoa(size))
 	}
+	if settings, ok := s.gameSettings(docs); ok {
+		s.screenCols.Field.SetSaved(strconv.Itoa(settings.Columns))
+		s.screenRows.Field.SetSaved(strconv.Itoa(settings.Rows))
+	}
 }
 
-// layoutSettings places the settings' inspector: the tile size field, and
-// the save bar at the foot.
+// layoutSettings places the settings' inspector: the tile size field, the
+// screen's fields, and the save bar at the foot.
 func (s *State) layoutSettings(docs frame.Docs, left, width int) {
 	s.tileSize.Rect = image.Rect(left, nameFieldTop, left+tileSizeWidth, nameFieldTop+ui.ButtonH)
+	s.layoutScreen(left)
 	bottom := frame.Inspector(s.size).Max.Y - ui.Inset
 	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
 	s.save.Unsaved = s.Unsaved(docs)
@@ -183,7 +188,7 @@ func (s *State) commitTileSize(ctx *frame.Context) {
 
 // drawSettings draws the settings' inspector: the tile size and what it
 // decides.
-func (s *State) drawSettings(screen *ebiten.Image, left int) {
+func (s *State) drawSettings(screen *ebiten.Image, docs frame.Docs, left int) {
 	s.drawHeader(screen, ui.IconSettings, "Settings", art.SettingsName, left)
 	s.theme.Heading(screen, "TILE SIZE", left, nameFieldTop-ui.LineHeight)
 	s.tileSize.Draw(screen)
@@ -197,5 +202,6 @@ func (s *State) drawSettings(screen *ebiten.Image, left int) {
 		s.theme.DrawText(screen, line, left, top, ui.ColorSubdued())
 		top += ui.LineHeight
 	}
+	s.drawScreen(screen, docs, left)
 	s.save.Draw(screen, s.theme)
 }

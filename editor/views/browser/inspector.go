@@ -76,6 +76,7 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	s.spritePalettes = nil
 	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
 	s.name.Rect, s.tags.Rect, s.save.Rect, s.tileSize.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
+	s.screenCols.Rect, s.screenRows.Rect = ui.Zero(), ui.Zero()
 	if s.layoutRow(docs, left, width) {
 		s.layoutNPC(docs, left, width, 0, 0)
 
@@ -206,6 +207,8 @@ func (s *State) syncName(docs frame.Docs) {
 		s.name.Field.Revert()
 		s.tags.Field.Revert()
 		s.tileSize.Field.Revert()
+		s.screenCols.Field.Revert()
+		s.screenRows.Field.Revert()
 		s.named = s.list.Selected
 	}
 	if folder, ok := s.selectedFolder(); ok {
@@ -241,9 +244,10 @@ func (s *State) guardSelection(ctx *frame.Context) {
 }
 
 // Unsaved counts the inspector's typed changes not saved yet: the name, a
-// document's tags, a selected NPC's path name and notes, and the tile size.
+// document's tags, a selected NPC's path name and notes, the tile size and
+// the screen.
 func (s *State) Unsaved(frame.Docs) int {
-	count := frame.UnsavedFields(s.name, s.tags, s.tileSize)
+	count := frame.UnsavedFields(s.name, s.tags, s.tileSize, s.screenCols, s.screenRows)
 	if !s.npc.npc.IsZero() {
 		count += frame.UnsavedFields(s.npc.path, s.npc.notes)
 	}
@@ -251,12 +255,15 @@ func (s *State) Unsaved(frame.Docs) int {
 	return count
 }
 
-// Save saves the name, the tags, an NPC's path name and notes, and the tile
-// size. They are
-// separate changes, so saving several is several undo steps.
+// Save saves the name, the tags, an NPC's path name and notes, the tile
+// size and the screen. They are separate changes, so saving several is
+// several undo steps.
 func (s *State) Save(ctx *frame.Context) bool {
 	if s.tileSize.Field.Unsaved() {
 		s.commitTileSize(ctx)
+	}
+	if s.screenCols.Field.Unsaved() || s.screenRows.Field.Unsaved() {
+		s.commitScreen(ctx)
 	}
 	if s.name.Field.Unsaved() {
 		s.commitName(ctx)
@@ -278,7 +285,7 @@ func (s *State) Save(ctx *frame.Context) bool {
 // unsaved.
 func (s *State) UnsavedName(frame.Docs) string {
 	if s.named == settingsRow {
-		return art.SettingsName
+		return "Settings"
 	}
 	if name := s.name.Field.Saved(); name != "" {
 		return name
@@ -300,6 +307,8 @@ func (s *State) discard() {
 	s.npc.path.Field.Revert()
 	s.npc.notes.Field.Revert()
 	s.tileSize.Field.Revert()
+	s.screenCols.Field.Revert()
+	s.screenRows.Field.Revert()
 }
 
 // commitName renames the selected document or folder.
@@ -331,10 +340,10 @@ func (s *State) commitName(ctx *frame.Context) {
 
 // drawRow draws the Settings or World state row's inspector, and reports
 // whether one was selected.
-func (s *State) drawRow(screen *ebiten.Image, left int) bool {
+func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
 	switch s.list.Selected {
 	case settingsRow:
-		s.drawSettings(screen, left)
+		s.drawSettings(screen, docs, left)
 	case worldStateRow:
 		s.drawWorldState(screen, left)
 	default:
@@ -351,7 +360,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	panel := frame.Inspector(s.size)
 	left := panel.Min.X + ui.Inset
-	if s.drawRow(screen, left) {
+	if s.drawRow(screen, docs, left) {
 		return
 	}
 	if folder, ok := s.selectedFolder(); ok {

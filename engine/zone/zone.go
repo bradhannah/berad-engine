@@ -2,9 +2,11 @@
 // floors in order from the bottom up. Each floor is its own document; the zone
 // refers to them by ID and the floors do not refer back. A zone also lists the
 // palettes its art uses, which the pixel editor offers first; it is a
-// convenience, not a limit. A zone has a path name that workflows read its
-// values by, such as market in zone.market.crowded, and holds the values it
-// owns and the templates applied to it.
+// convenience, not a limit. It lists its sounds: the cues, such as music or a
+// bed, that play the whole time the player is in it. And a zone has a path
+// name that workflows read its values by, such as market in
+// zone.market.crowded, and holds the values it owns and the templates
+// applied to it.
 package zone
 
 import (
@@ -22,15 +24,25 @@ import (
 const FormatName = "zone"
 
 // FormatVersion is the zone format version this package writes. Version 2
-// added the palettes a zone uses, and version 3 a path name and the zone's
-// own values and templates; older versions are read unchanged.
-const FormatVersion = 3
+// added the palettes a zone uses, version 3 its sounds, and version 4 a
+// path name and the zone's own values and templates; each reads the version
+// before it unchanged.
+const FormatVersion = 4
 
 // MaxFloors bounds the floors in one zone.
 const MaxFloors = 256
 
 // MaxPalettes bounds the palettes one zone lists.
 const MaxPalettes = 256
+
+// MaxSounds bounds the sounds one zone lists, and MaxCueLength a cue's ID.
+const (
+	MaxSounds    = 16
+	MaxCueLength = 256
+)
+
+// ErrSound reports an invalid change to the sounds a zone lists.
+var ErrSound = errors.New("invalid zone sound change")
 
 // ErrFloor reports an invalid change to a zone's floors.
 var ErrFloor = errors.New("invalid zone floor change")
@@ -41,10 +53,12 @@ var ErrData = errors.New("invalid zone data")
 // ErrPalette reports an invalid change to the palettes a zone lists.
 var ErrPalette = errors.New("invalid zone palette change")
 
-// Zone lists its floors from the bottom up, and the palettes it uses.
+// Zone lists its floors from the bottom up, the palettes it uses and its
+// sounds.
 type Zone struct {
 	floors   []ids.ULID
 	palettes []ids.ULID
+	sounds   []string
 	// Path is the name workflows read the zone's values by, such as market;
 	// "" until one is given. It follows the rules for value names and is
 	// unique in the project.
@@ -56,13 +70,47 @@ type Zone struct {
 type wireZone struct {
 	Floors   []ids.ULID `json:"floors"`
 	Palettes []ids.ULID `json:"palettes,omitempty"`
+	Sounds   []string   `json:"sounds,omitempty"`
 	Path     string     `json:"path,omitempty"`
 	worldstate.WireOwned
 }
 
 // New returns a zone with no floors.
 func New() *Zone {
-	return &Zone{floors: []ids.ULID{}, palettes: nil, Path: "", Owned: worldstate.NewOwned(worldstate.ScopeZone)}
+	return &Zone{
+		floors: []ids.ULID{}, palettes: nil, sounds: nil, Path: "", Owned: worldstate.NewOwned(worldstate.ScopeZone),
+	}
+}
+
+// Sounds returns the cues the zone plays throughout, in the order they were
+// added.
+func (z *Zone) Sounds() []string {
+	return slices.Clone(z.sounds)
+}
+
+// InsertSound lists a cue at a position; an index past the end appends.
+func (z *Zone) InsertSound(index int, cue string) error {
+	if cue == "" || len(cue) > MaxCueLength || slices.Contains(z.sounds, cue) {
+		return fmt.Errorf("%w: %q is missing, too long or already listed", ErrSound, cue)
+	}
+	if len(z.sounds) >= MaxSounds {
+		return fmt.Errorf("%w: a zone lists at most %d sounds", ErrSound, MaxSounds)
+	}
+	index = min(max(index, 0), len(z.sounds))
+	z.sounds = slices.Insert(slices.Clone(z.sounds), index, cue)
+
+	return nil
+}
+
+// RemoveSound takes a cue off the zone's list and returns where it was.
+func (z *Zone) RemoveSound(cue string) (int, error) {
+	index := slices.Index(z.sounds, cue)
+	if index < 0 {
+		return -1, fmt.Errorf("%w: %q is not listed", ErrSound, cue)
+	}
+	z.sounds = slices.Delete(slices.Clone(z.sounds), index, index+1)
+
+	return index, nil
 }
 
 // Palettes returns the palettes the zone lists, in the order they were added.
@@ -156,15 +204,16 @@ func (z *Zone) Move(floor ids.ULID, index int) (int, error) {
 // Clone returns an independent copy.
 func (z *Zone) Clone() *Zone {
 	return &Zone{
-		floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes), Path: z.Path, Owned: z.Owned.Clone(),
+		floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes), sounds: slices.Clone(z.sounds),
+		Path: z.Path, Owned: z.Owned.Clone(),
 	}
 }
 
-// Equal reports whether two zones list the same floors and palettes in the
-// same order, with the same path name and values.
+// Equal reports whether two zones list the same floors, palettes and sounds
+// in the same order, with the same path name and values.
 func (z *Zone) Equal(other *Zone) bool {
 	return slices.Equal(z.floors, other.floors) && slices.Equal(z.palettes, other.palettes) &&
-		z.Path == other.Path && z.Owned.Equal(other.Owned)
+		slices.Equal(z.sounds, other.sounds) && z.Path == other.Path && z.Owned.Equal(other.Owned)
 }
 
 // CheckPath reports a path name that is not fit for a path; "" is none yet.
@@ -190,7 +239,9 @@ func (z *Zone) Encode() (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode zone: %w", err)
 	}
-	data, err := json.Marshal(wireZone{Floors: z.floors, Palettes: z.palettes, Path: z.Path, WireOwned: owned})
+	data, err := json.Marshal(wireZone{
+		Floors: z.floors, Palettes: z.palettes, Sounds: z.sounds, Path: z.Path, WireOwned: owned,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode zone: %w", err)
 	}
@@ -215,6 +266,11 @@ func Decode(data json.RawMessage) (*Zone, error) {
 			return nil, fmt.Errorf("%w: %w", ErrData, err)
 		}
 	}
+	for _, cue := range wire.Sounds {
+		if err := decoded.InsertSound(len(decoded.sounds), cue); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrData, err)
+		}
+	}
 	if err := CheckPath(wire.Path); err != nil {
 		return nil, err
 	}
@@ -229,9 +285,10 @@ func Decode(data json.RawMessage) (*Zone, error) {
 
 // Format returns the zone format registration.
 func Format() content.Format {
-	unchanged := func(data json.RawMessage) (json.RawMessage, error) { return data, nil }
-
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: unchanged, 2: unchanged,
+		1: unchanged, 2: unchanged, 3: unchanged,
 	}}
 }
+
+// unchanged upgrades a version that the next reads as it is.
+func unchanged(data json.RawMessage) (json.RawMessage, error) { return data, nil }

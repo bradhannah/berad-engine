@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
@@ -472,30 +471,27 @@ func (s *State) liveNPCAt(cell Cell) (ids.ULID, bool) {
 }
 
 // drawLiveNPCs draws the preview's NPCs where they are now, on the shown
-// floor, as dark tokens with their initials; the watched one has a blue ring.
+// floor, as their sprites or dark tokens with their initials; the watched one
+// has a blue ring.
 func (s *State) drawLiveNPCs(area *ebiten.Image, grid image.Rectangle) {
-	size := float64(s.camera.cellSize())
-	origin := grid.Min.Add(s.camera.offset)
 	watched := s.watched()
 	for _, entity := range s.liveNPCs() {
 		if entity.Floor != s.floor {
 			continue
 		}
-		centreX := float32(float64(origin.X) + (entity.X+cellCentre)*size)
-		centreY := float32(float64(origin.Y) + (entity.Y+cellCentre)*size)
-		radius := max(float32(size)*tokenRadius, minTokenRadius)
-		name := s.names.Name(entity.NPC, "Deleted NPC")
-		vector.FillCircle(area, centreX, centreY, radius, ui.Hex(hexToken), true)
-		if entity.ID == watched.String() {
-			vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorSelect(), true)
-		}
-		if int(size) >= minLabel {
-			label := initials(name)
-			width := s.theme.SmallWidth(label)
-			s.theme.DrawSmall(area, label, int(centreX)-width/ui.Half, int(centreY)-ui.LabelSize/ui.Half-ui.Half,
-				ui.ColorBackground())
-		}
+		s.drawNPC(area, s.entityRect(grid, entity.X, entity.Y), entity.NPC, entity.ID == watched.String())
 	}
+}
+
+// entityRect is the cell-sized square an entity between cells fills, at a
+// position in cells.
+func (s *State) entityRect(grid image.Rectangle, x, y float64) image.Rectangle {
+	size := float64(s.camera.cellSize())
+	origin := grid.Min.Add(s.camera.offset)
+	left := int(math.Round(float64(origin.X) + x*size))
+	top := int(math.Round(float64(origin.Y) + y*size))
+
+	return image.Rect(left, top, left+int(size), top+int(size))
 }
 
 // layoutPreview places the Clock button, and Watch while a preview runs, at

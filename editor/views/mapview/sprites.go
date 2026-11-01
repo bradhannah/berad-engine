@@ -11,23 +11,62 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// spriteArt is what the Map draws in place of a stand-in's flat colour: the
-// tile of the sprite that shows it, chosen under Shows in the Pixel editor.
-// Each picture is kept until its tile or a palette changes, so a stroke shows
-// as it is drawn.
+// spriteArt is what the Map draws in place of a stand-in's flat colour, the
+// player's disc or an NPC's token: the tile of its sprite, chosen under Shows
+// in the Pixel editor or in the NPC's inspector. Art is kept by what it shows:
+// a stand-in's ID, art.Player, or an NPC's key. Each picture is kept until
+// its tile or a palette changes, so a stroke shows as it is drawn.
 type spriteArt struct {
 	pictures map[string]*tileart.Picture
-	// shown is this frame's art by stand-in: only tiles of the project's
-	// tile size, which every zoom level scales uniformly. A stand-in whose
-	// tile is another size keeps its flat colour.
+	// shown is this frame's art by what it shows: only tiles of the project's
+	// tile size, which every zoom level scales uniformly. Art whose tile is
+	// another size is not shown.
 	shown map[string]*ebiten.Image
+}
+
+// npcKey is what an NPC's art is kept under.
+func npcKey(npcID ids.ULID) string { return "npc:" + npcID.String() }
+
+// shownSprites returns the sprite that shows each stand-in, the player and
+// every NPC placed on the zone's floors that has one.
+func (s *State) shownSprites(docs frame.Docs) map[string]ids.ULID {
+	record := standInSprites(docs)
+	for _, npcID := range s.placedNPCs(docs) {
+		docs.View(npcID, func(document client.Document) {
+			if npcDoc, ok := document.Model.(*npcplugin.Document); ok && !npcDoc.NPC.Sprite.IsZero() {
+				record[npcKey(npcID)] = npcDoc.NPC.Sprite
+			}
+		})
+	}
+
+	return record
+}
+
+// placedNPCs returns the NPCs placed on the zone's floors, each once.
+func (s *State) placedNPCs(docs frame.Docs) []ids.ULID {
+	var placed []ids.ULID
+	for _, floorID := range s.floors {
+		docs.View(floorID, func(document client.Document) {
+			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+				for _, placement := range floorDoc.Floor.Placements() {
+					if !slices.Contains(placed, placement.NPC) {
+						placed = append(placed, placement.NPC)
+					}
+				}
+			}
+		})
+	}
+
+	return placed
 }
 
 func newSpriteArt() *spriteArt {
@@ -73,11 +112,11 @@ func projectTileSize(docs frame.Docs) int {
 	return size
 }
 
-// refresh redraws the art of any stand-in whose tile or palette changed. It
-// runs before the floors are drawn, since a document is viewed one at a time.
-func (a *spriteArt) refresh(docs frame.Docs, tileSize int) {
+// refresh redraws the art whose tile or palette changed, for the sprites
+// shownSprites returns. It runs before the floors are drawn, since a document
+// is viewed one at a time.
+func (a *spriteArt) refresh(docs frame.Docs, tileSize int, sprites map[string]ids.ULID) {
 	clear(a.shown)
-	sprites := standInSprites(docs)
 	for standIn, sprite := range sprites {
 		tileID, ok := spriteTile(docs, sprite)
 		if !ok {
@@ -139,8 +178,9 @@ func (a *spriteArt) hasPixel(value string) bool {
 }
 
 // syncArt subscribes to the art the Map draws: the art settings for the tile
-// size, the record of which sprite shows each stand-in, and each of those
-// sprites with its tile and palettes. A sprite deleted since it was chosen is
+// size, the record of which sprite shows each stand-in and the player, the
+// NPCs placed on the zone's floors, and each of those sprites with its tile
+// and palettes. A sprite deleted since it was chosen is
 // left alone, and its stand-in keeps its flat colour.
 func (s *State) syncArt(ctx *frame.Context) {
 	s.subscribe(art.SettingsID(), ctx)
@@ -159,7 +199,12 @@ func (s *State) syncArt(ctx *frame.Context) {
 
 		return found
 	}
-	for _, sprite := range standInSprites(ctx.Docs) {
+	for _, npcID := range s.placedNPCs(ctx.Docs) {
+		if exists(npcID) {
+			s.subscribe(npcID, ctx)
+		}
+	}
+	for _, sprite := range s.shownSprites(ctx.Docs) {
 		if !exists(sprite) {
 			continue
 		}

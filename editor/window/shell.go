@@ -175,6 +175,7 @@ func (s *shell) Update() error {
 	s.layout()
 	focused := s.focused()
 	s.route(input, s.target(focused), focused)
+	s.tellShown()
 	for _, shown := range s.panes() {
 		s.run(shown)
 	}

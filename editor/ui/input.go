@@ -45,6 +45,7 @@ const (
 	KeyO         Key = "O"
 	KeyP         Key = "P"
 	KeyQ         Key = "Q"
+	KeyR         Key = "R"
 	KeyS         Key = "S"
 	KeyV         Key = "V"
 	KeyW         Key = "W"

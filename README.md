@@ -31,7 +31,9 @@ in its own repository.
 ## Try it
 
 ```sh
-make demo     # build the editor and open a sample project in .cache/demo-project
+make blank    # build the editor and open a new, empty project, fresh every time
+make demo     # open the sample project, kept between runs in .cache/demo
+make game     # open your game's project: put GAME_PROJECT = <path> in local.mk
 ```
 
 The editor window opens with the project browser's tab; double-click the
@@ -42,8 +44,10 @@ several, the clock pinned at its right end, and Watch opens beside its Map
 ([increment 13](docs/increments/0013-single-window.md)). To start a project
 of your own, open a folder that has none: `.cache/bin/berad-editor open
 --project DIR` makes one there, holding only what every project holds.
-To try an increment in a fresh project, as the sample is made only in an
-empty one: `make demo DEMO_PROJECT=.cache/demo-<name>`.
+To try an increment in a fresh sample, as the sample is made only in an
+empty folder: `make demo DEMO_PROJECT=.cache/demo-<name>`. `local.mk` is
+never committed; it holds what belongs to one computer, such as where its
+game's project is.
 
 - **Project browser:** create zones, floors and text documents; rename in the
   inspector (Enter or the Rename button saves); delete with a where-used check;

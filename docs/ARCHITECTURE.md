@@ -413,6 +413,10 @@ back with a short reason the pane shows.
   (D7). See [increment 2](increments/0002-walk-the-map.md) for the movement rules.
 - *Not built yet:* keeping state until Reset (there is none to keep yet), test
   profiles, the clock, conversations and the world-state view.
+- *As built (increment 14):* **Launch** plays the project in a Play tab, as
+  a game would, through the engine's game runtime (package `game`), which a
+  game's own program can run too. It plays a snapshot taken at launch, so
+  edits apply only when it launches again; Preview stays for live checks.
 
 ## D16 — Code layout
 

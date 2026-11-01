@@ -31,6 +31,8 @@ const (
 	IconSprite
 	IconPalette
 	IconSettings
+	// IconPlay marks the Play tab and Launch.
+	IconPlay
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -81,7 +83,7 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorSound()
 	case IconFolder:
 		return ColorMuted()
-	case IconWatch:
+	case IconWatch, IconPlay:
 		return ColorLive()
 	case IconSprite, IconPalette:
 		return ColorArt()
@@ -137,8 +139,20 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 		drawWindowIcon(screen, icon, left, top, ink)
 	case IconSprite, IconPalette, IconSettings:
 		drawArtIcon(screen, icon, left, top, ink)
+	case IconPlay:
+		drawPlay(screen, left, top, ink)
 	case IconNone:
 	}
+}
+
+// drawPlay draws Play: a triangle pointing right.
+func drawPlay(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	var triangle vector.Path
+	triangle.MoveTo(left+iconPageGap, top+1)
+	triangle.LineTo(left+IconSize-1, top+IconSize/Half)
+	triangle.LineTo(left+iconPageGap, top+IconSize-1)
+	triangle.Close()
+	fillPath(screen, &triangle, ink)
 }
 
 // drawPage draws a text document: a page with lines of writing.
@@ -163,7 +177,7 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 	case IconWatch:
 		drawEye(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings:
+		IconPalette, IconSettings, IconPlay:
 	}
 }
 
@@ -177,7 +191,7 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 	case IconSettings:
 		drawSliders(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch:
+		IconClock, IconWatch, IconPlay:
 	}
 }
 

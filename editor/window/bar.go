@@ -52,7 +52,7 @@ func (s *shell) barHeight() int {
 func (s *shell) barTabs() []barTab {
 	groups := s.kinds()
 	tabs := make([]barTab, 0, len(groups))
-	width := min(tabWidth, (s.size.X-readoutWidth)/max(len(groups), 1))
+	width := min(tabWidth, (s.size.X-readoutWidth-launchWidth)/max(len(groups), 1))
 	for at, group := range groups {
 		index := s.chooseKind(group)
 		shown := barTab{
@@ -127,7 +127,7 @@ func (s *shell) updateBar(input *ui.Input) {
 	if !input.Cursor.In(image.Rect(0, 0, s.size.X, s.barHeight())) {
 		return
 	}
-	if input.Pressed {
+	if input.Pressed && !s.pressLaunch(input.Cursor) {
 		s.pressBar(input.Cursor)
 		s.pressReadout(input.Cursor)
 	}
@@ -159,7 +159,7 @@ func quietMouse(input *ui.Input) {
 }
 
 // drawBar draws the window bar: the kinds, the documents of the kind in front
-// when it has several, and the clock's readout.
+// when it has several, Launch and the clock's readout.
 func (s *shell) drawBar(screen *ebiten.Image) {
 	height := s.barHeight()
 	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorPanel())
@@ -170,6 +170,7 @@ func (s *shell) drawBar(screen *ebiten.Image) {
 	for _, shown := range s.barTabs() {
 		s.drawBarTab(screen, shown)
 	}
+	s.drawLaunch(screen)
 	s.drawReadout(screen)
 	ui.Divider(screen, image.Pt(0, height-ui.Hairline), image.Pt(s.size.X, height-ui.Hairline))
 }

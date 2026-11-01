@@ -207,8 +207,9 @@ real-window test passing, the new tests' screenshots checked.
   count a customer served.
 - **Types, groups and templates:** world-state format 2, upgraded from 1,
   holds groups, templates and the integer, bool and text types; NPC and zone
-  format 3 hold each one's own values and applied templates, and zones a
-  path name. `worldstate.Catalog` finds a value for the world, an NPC or a
+  format 4 hold each one's own values and applied templates, and zones a
+  path name. (Launch, merged first, took version 2 of NPCs for sprites and
+  version 3 of zones for sounds, so an NPC's path name is version 3.) `worldstate.Catalog` finds a value for the world, an NPC or a
   zone: its own, an NPC's name, or a template's applied to it.
 - **Editing them:** one change edit for any list of declarations, and edits
   that apply templates and set a zone's path name, all passing the shared
@@ -311,6 +312,25 @@ Chosen while building these changes, for its author to check:
   see the NPCs and zones.
 - **Placing an NPC asks where it is placed already,** and is refused,
   naming the floor, if any floor in the project places it.
+
+## Joined with Launch
+
+Increment 14, Launch, was merged before this one, and the two were joined
+on 2026-11-01:
+
+- **Launch's clerk is the shop's clerk.** The sample's clerk's day shows a
+  node of every kind, so it now uses the value nodes too: at the desk in
+  shop hours the clerk looks for a customer waiting at the counter, sets
+  serving while serving them and clears it after, and at night first
+  checks whether closing came mid-serve. The clerk has the path name clerk
+  and the shop template. The sample's own clerk and its workflow are gone;
+  the customer keeps theirs, waiting at a new Counter anchor in front of
+  the desk.
+- **The Play tab keeps values,** as the preview does: the game builds the
+  catalog from the world state and every NPC's and zone's document, each
+  value its default when the game starts, and each NPC sees the others
+  where they were as the tick began. The start's zone is the zone values
+  are read in.
 
 ## Not in this increment
 

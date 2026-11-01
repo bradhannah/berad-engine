@@ -30,7 +30,7 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.rightClick("cell:4,4")
-	if got := f.menu(); got != "rename-anchor, delete-anchor, add-anchor (disabled), place-npc (disabled), preview-here" {
+	if got := f.menu(); got != "rename-anchor, delete-anchor, add-anchor (disabled), place-npc (disabled), place-sound (disabled), preview-here, set-start" {
 		t.Fatalf("anchor menu: %s", got)
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
@@ -39,7 +39,7 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 		t.Fatal("Escape keeps the menu open")
 	}
 	f.rightClick("cell:2,2")
-	want := "select-walls, add-anchor, place-npc (disabled), clear-top, preview-here (disabled)"
+	want := "select-walls, add-anchor, place-npc (disabled), clear-top, place-sound (disabled), preview-here (disabled), set-start (disabled)"
 	if got := f.menu(); got != want {
 		t.Fatalf("wall menu: %s", got)
 	}
@@ -122,7 +122,7 @@ func TestRightClickOnAnNPC(t *testing.T) {
 	}
 	f.docs.Put(groundID, "Ground", ground)
 	f.rightClick("cell:9,8")
-	want := "select-npc, open-behaviour, remove-npc, add-anchor, place-npc (disabled), preview-here"
+	want := "select-npc, open-behaviour, remove-npc, add-anchor, place-npc (disabled), place-sound (disabled), preview-here, set-start"
 	if got := f.menu(); got != want {
 		t.Fatalf("NPC menu: %s", got)
 	}

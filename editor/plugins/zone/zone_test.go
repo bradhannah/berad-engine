@@ -150,3 +150,38 @@ func TestPathAndValueEditsMeetUndoContract(t *testing.T) {
 		t.Fatalf("a path name follows the rules for value names: %v", err)
 	}
 }
+
+func TestSoundEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	registry, err := plugin.NewRegistry(zone.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := zone.NewDocument()
+	listed := func(cue string, index int) json.RawMessage {
+		data, err := json.Marshal(zone.SoundArgs{Cue: cue, Index: index})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return data
+	}
+	for index, cue := range []string{"music/town", "bed/wind"} {
+		if err := model.VerifyUndo(document, zone.InsertSound{}, listed(cue, index), registry.Edit); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (zone.InsertSound{}).Apply(document, listed(cue, index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := model.VerifyUndo(document, zone.RemoveSound{}, listed("music/town", 0), registry.Edit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (zone.InsertSound{}).Apply(document, listed("bed/wind", 0)); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("a sound listed twice: %v", err)
+	}
+	references := document.References()
+	if len(references) != 2 || references[0].Document != model.AudioLibraryID() || references[0].Item != "music/town" {
+		t.Fatalf("a zone's sounds are references to their cues: %+v", references)
+	}
+}

@@ -221,7 +221,7 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 	for _, each := range []struct {
 		name, path, workflow string
 		nodes                int
-	}{{"clerk", "clerk", "clerk-serves", 5}, {"customer", "customer", "customer-shops", 12}} {
+	}{{"clerk", "clerk", "clerk-s-day", 19}, {"customer", "customer", "customer-shops", 12}} {
 		envelope := readEnvelope(t, project, "npcs/"+each.name+"--*.json")
 		document, err := npcplugin.Decode(envelope.Data)
 		if err != nil {
@@ -242,8 +242,8 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 }
 
 // TestSampleShopRuns previews the sample zone and watches its customer: it
-// walks to the desk, the clerk finds it waiting there and serves it, and the
-// world counts one customer served.
+// walks to the counter, the clerk at the desk finds it waiting there and
+// serves it, and the world counts one customer served.
 func TestSampleShopRuns(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)

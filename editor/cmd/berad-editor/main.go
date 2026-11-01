@@ -18,6 +18,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
+	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
@@ -54,6 +55,10 @@ const (
 	mediumOffset   = 4
 	stairsCol      = 4
 	stairsRow      = -2
+	// sampleIDs is how many IDs the sample makes before its documents: the
+	// desk's anchor, the clerk's placement, the hum's, and the anchors at the
+	// shelf, the door and the counter.
+	sampleIDs = 6
 )
 
 func main() {
@@ -102,7 +107,7 @@ func usage(stderr io.Writer) {
 func plugins() (*plugin.Registry, error) {
 	registry, err := plugin.NewRegistry(
 		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
-		npcplugin.Plugin(), artplugin.Plugin(), stateplugin.Plugin(),
+		npcplugin.Plugin(), artplugin.Plugin(), gameplugin.Plugin(), stateplugin.Plugin(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)
@@ -265,53 +270,35 @@ func ensureDocuments(
 }
 
 // createSample creates placeholder content: a zone with a walled building on
-// the ground floor and its upper floor, anchors at a desk and the door, a
-// lantern shown as the small pickup, a shop of two NPCs and a text document.
-// It holds no game content.
+// the ground floor and its upper floor, an anchor at a desk, a lantern shown
+// as the small pickup, and a text document; so Launch plays it, a player
+// start, brick walls, figures for the player and a clerk, the hum in the
+// building and the tune throughout; and a shop, where a customer comes to
+// the desk to be served by the clerk. It holds no game content.
 func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
-	var anchors sampleAnchors
-	for _, made := range []*ids.ULID{&anchors.desk, &anchors.door} {
-		id, err := orch.NewID()
-		if err != nil {
-			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-		}
-		*made = id
-	}
-	ground, err := sampleFloor("grass", "wall.a", true, anchors)
+	sample, err := sampleLantern(orch)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	upper, err := sampleFloor("", "wall.b", false, sampleAnchors{desk: ids.ULID{}, door: ids.ULID{}})
+	floors, clerk, anchors, err := sampleFloors(orch, sample)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	groundID, err := orch.CreateDocument("Ground floor", ground)
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	upperID, err := orch.CreateDocument("Upper floor", upper)
-	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	paletteID, err := sampleLantern(orch)
+	values, err := declareShop(orch)
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	sampleZone := zoneplugin.NewDocument()
-	sampleZone.Zone.Path = "sample_zone"
-	for index, floorID := range []ids.ULID{groundID, upperID} {
-		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
-			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-		}
+	if err := sampleRoutine(orch, clerk, anchors, values); err != nil {
+		return ids.ULID{}, err
 	}
-	if err := sampleZone.Zone.InsertPalette(0, paletteID); err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	if err := sampleCustomer(orch, anchors, values); err != nil {
+		return ids.ULID{}, err
 	}
-	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
+	zoneID, err := sampleZone(orch, sample, floors)
 	if err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+		return ids.ULID{}, err
 	}
-	if err := sampleShop(orch, shopPlaces{floor: groundID, desk: anchors.desk, door: anchors.door}); err != nil {
+	if err := sampleStart(orch, zoneID, floors[0]); err != nil {
 		return ids.ULID{}, err
 	}
 	notes := textdoc.NewDocument()
@@ -323,17 +310,77 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	return zoneID, nil
 }
 
-// sampleAnchors are the ground floor's anchors: at the desk and inside the
-// door.
-type sampleAnchors struct {
-	desk, door ids.ULID
+// sampleFloors makes the building's two floors, the ground floor's with the
+// clerk by the desk, the hum and the anchors the clerk goes to, and returns
+// their IDs from the bottom up, the clerk's and the anchors'.
+func sampleFloors(orch *orchestrator.Orchestrator, sample sampleArt) ([]ids.ULID, ids.ULID, sampleAnchors, error) {
+	var none sampleAnchors
+	made := make([]ids.ULID, 0, sampleIDs)
+	for range sampleIDs {
+		madeID, err := orch.NewID()
+		if err != nil {
+			return nil, ids.ULID{}, none, fmt.Errorf("create sample: %w", err)
+		}
+		made = append(made, madeID)
+	}
+	anchors := sampleAnchors{floor: ids.ULID{}, desk: made[0], shelf: made[3], door: made[4], counter: made[5]}
+	clerk, err := samplePlayers(orch, sample)
+	if err != nil {
+		return nil, ids.ULID{}, none, err
+	}
+	ground, err := sampleFloor("grass", "wall.a", true, anchors.desk)
+	if err != nil {
+		return nil, ids.ULID{}, none, err
+	}
+	if err := samplePlace(ground.Floor, clerk, made[1], made[2], anchors); err != nil {
+		return nil, ids.ULID{}, none, err
+	}
+	upper, err := sampleFloor("", "wall.b", false, ids.ULID{})
+	if err != nil {
+		return nil, ids.ULID{}, none, err
+	}
+	groundID, err := orch.CreateDocument("Ground floor", ground)
+	if err != nil {
+		return nil, ids.ULID{}, none, fmt.Errorf("create sample: %w", err)
+	}
+	upperID, err := orch.CreateDocument("Upper floor", upper)
+	if err != nil {
+		return nil, ids.ULID{}, none, fmt.Errorf("create sample: %w", err)
+	}
+	anchors.floor = groundID
+
+	return []ids.ULID{groundID, upperID}, clerk, anchors, nil
+}
+
+// sampleZone makes the sample zone of the floors, listing gloomy and playing
+// the tune throughout.
+func sampleZone(orch *orchestrator.Orchestrator, sample sampleArt, floors []ids.ULID) (ids.ULID, error) {
+	sampleZone := zoneplugin.NewDocument()
+	sampleZone.Zone.Path = "sample_zone"
+	for index, floorID := range floors {
+		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
+			return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+		}
+	}
+	if err := sampleZone.Zone.InsertPalette(0, sample.palette); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	if err := sampleZone.Zone.InsertSound(0, tuneCue); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+	zoneID, err := orch.CreateDocument("Sample zone", sampleZone)
+	if err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
+	}
+
+	return zoneID, nil
 }
 
 // sampleFloor is one floor of the sample building: ground everywhere, walls of
 // one family around the building, plain floor inside and stairs joining the
-// two floors. The ground floor has a door, two pickups and anchors at the
-// desk and the door.
-func sampleFloor(outside, family string, groundFloor bool, anchors sampleAnchors) (*tilefloor.Document, error) {
+// two floors. The ground floor has a door, two pickups and an anchor at the
+// desk.
+func sampleFloor(outside, family string, groundFloor bool, desk ids.ULID) (*tilefloor.Document, error) {
 	document, err := tilefloor.NewDocumentAt(floor.Centered(sampleWidth, sampleTall), outside)
 	if err != nil {
 		return nil, fmt.Errorf("sample floor: %w", err)
@@ -344,7 +391,7 @@ func sampleFloor(outside, family string, groundFloor bool, anchors sampleAnchors
 	if !groundFloor {
 		return document, nil
 	}
-	if err := sampleFurnishing(document.Floor, anchors); err != nil {
+	if err := sampleFurnishing(document.Floor, desk); err != nil {
 		return nil, err
 	}
 
@@ -384,9 +431,8 @@ func sampleBuilding(floorData *floor.Floor, family string, groundFloor bool) err
 	return nil
 }
 
-// sampleFurnishing adds two pickups and anchors at the desk and inside the
-// door.
-func sampleFurnishing(floorData *floor.Floor, anchors sampleAnchors) error {
+// sampleFurnishing adds two pickups and an anchor at the desk.
+func sampleFurnishing(floorData *floor.Floor, desk ids.ULID) error {
 	for _, item := range []struct {
 		col, row int
 		tile     string
@@ -395,13 +441,8 @@ func sampleFurnishing(floorData *floor.Floor, anchors sampleAnchors) error {
 			return fmt.Errorf("sample floor: %w", err)
 		}
 	}
-	for index, anchor := range []floor.Anchor{
-		{ID: anchors.desk, Name: "Desk", Col: deskCol, Row: deskRow},
-		{ID: anchors.door, Name: "Door", Col: doorCol, Row: buildingBottom - 1},
-	} {
-		if err := floorData.InsertAnchor(index, anchor); err != nil {
-			return fmt.Errorf("sample floor: %w", err)
-		}
+	if err := floorData.InsertAnchor(0, floor.Anchor{ID: desk, Name: "Desk", Col: deskCol, Row: deskRow}); err != nil {
+		return fmt.Errorf("sample floor: %w", err)
 	}
 
 	return nil

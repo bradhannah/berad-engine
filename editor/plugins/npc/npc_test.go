@@ -31,8 +31,9 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var routine, secret, guards, armed ids.ULID
+	var routine, secret, guards, armed, look ids.ULID
 	routine[15], secret[0], secret[15], guards[0], guards[15], armed[0], armed[15] = 7, 1, 8, 1, 9, 1, 10
+	look[0], look[15] = 2, 8
 	edit := func(name string) model.EditKind {
 		kind, ok := registry.Edit(name)
 		if !ok {
@@ -47,6 +48,7 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		args json.RawMessage
 	}{
 		{npcplugin.SetBehaviour{}, encode(t, npcplugin.SetBehaviourArgs{Behaviour: routine})},
+		{npcplugin.SetSprite{}, encode(t, npcplugin.SetSpriteArgs{Sprite: look})},
 		{npcplugin.SetNotes{}, encode(t, npcplugin.SetNotesArgs{Notes: "Grumpy before coffee."})},
 		{npcplugin.SetPath{}, encode(t, npcplugin.SetPathArgs{Path: "george"})},
 		{edit(npcplugin.ChangeValuesEdit), encode(t, stateplugin.ChangeArgs{
@@ -65,8 +67,9 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		}
 	}
 	references := document.References()
-	if len(references) != 2 || references[0].Item != armed.String() || references[1].Document != routine {
-		t.Fatalf("an NPC refers to its templates and its behaviour: %+v", references)
+	if len(references) != 3 || references[0].Item != armed.String() || references[1].Document != routine ||
+		references[2].Document != look {
+		t.Fatalf("an NPC refers to its templates, its behaviour and its sprite: %+v", references)
 	}
 	if document.NPC.Owned.Values.Len() != 1 {
 		t.Fatal("the NPC owns its secret")
