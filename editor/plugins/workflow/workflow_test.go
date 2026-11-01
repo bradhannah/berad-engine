@@ -8,9 +8,11 @@ import (
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 func id(seed byte) ids.ULID {
@@ -242,5 +244,64 @@ func TestLayoutTravelsWithTheDocument(t *testing.T) {
 	}
 	if _, ok := registry.Formats().Lookup(flow.LayoutFormatName); !ok {
 		t.Fatal("the layout format is registered so old layouts can be upgraded")
+	}
+}
+
+func TestLocalValueEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	registry, err := plugin.NewRegistry(workflow.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := newDocument(t)
+	customer := worldstate.New(id(9), "customer", worldstate.ScopeLocal, worldstate.TypeNPC)
+	renamed := customer.Clone()
+	renamed.Name = "shopper"
+	edit := func(name string) model.EditKind {
+		kind, ok := registry.Edit(name)
+		if !ok {
+			t.Fatalf("no edit %s", name)
+		}
+
+		return kind
+	}
+	change := edit(workflow.ChangeLocalsEdit)
+	for _, args := range []stateplugin.ChangeArgs{
+		{Add: []worldstate.Declaration{customer}, Set: nil, Remove: nil},
+		{Add: nil, Set: []worldstate.Declaration{renamed}, Remove: nil},
+		{Add: nil, Set: nil, Remove: []ids.ULID{id(9)}},
+	} {
+		if err := model.VerifyUndo(document, change, encode(t, args), registry.Edit); err != nil {
+			t.Fatalf("%+v: %v", args, err)
+		}
+		apply(t, document, change, encode(t, args))
+	}
+	world := worldstate.New(id(10), "robbed", worldstate.ScopeWorld, worldstate.TypeBool)
+	if _, err := change.Apply(document, encode(t, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{world}, Set: nil, Remove: nil,
+	})); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("a workflow declares only local values: %v", err)
+	}
+}
+
+func TestReferencesListValuesAndNPCs(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	check := newNode(t, flow.KindCheckValue, 3, ids.ULID{})
+	ref := flow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(20), Owner: id(21), Found: ids.ULID{}}
+	check, err := check.WithParam(flow.ParamValue, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := newNode(t, flow.KindSetValue, 4, ids.ULID{})
+	local := flow.ValueRef{Scope: worldstate.ScopeLocal, Value: id(22), Owner: ids.ULID{}, Found: ids.ULID{}}
+	if set, err = set.WithParam(flow.ParamValue, local); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{check, set}, Boxes: nil, Links: nil}))
+	references := document.References()
+	if len(references) != 2 || references[0].Document != worldstate.ID() || references[0].Item != id(20).String() ||
+		references[1].Document != id(21) {
+		t.Fatalf("a value node refers to its world-state value and the NPC it names, not its locals: %+v", references)
 	}
 }

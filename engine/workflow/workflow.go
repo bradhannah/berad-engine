@@ -8,6 +8,8 @@
 // The workflow's logic and its layout, where each node sits on the canvas
 // and any lines moved by hand, are saved apart (D17), so moving a node or a
 // line never shows up as a change to the logic.
+//
+// A workflow declares its own local values, which only it reads and sets.
 package workflow
 
 import (
@@ -19,15 +21,18 @@ import (
 
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // FormatName and FormatVersion identify workflow logic inside saved
 // envelopes; the Layout names identify its layout. Version 2 gave random
 // choices any number of options and waits a unit and a clock; version 3 gave
-// Play sound how loud to play its cue this time.
+// Play sound how loud to play its cue this time; version 4 gave workflows
+// local values; version 5 renamed local types to integer and bool, and named
+// a value reference's NPC or zone its owner.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 3
+	FormatVersion       = 5
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 2
 )
@@ -87,15 +92,17 @@ type Link struct {
 // Workflow is a graph of nodes with a start node, and their layout: where
 // each node sits, and the bends of lines moved by hand.
 type Workflow struct {
-	start ids.ULID
-	nodes []Node
-	boxes map[ids.ULID]Box
-	bends map[string]Bend
+	start  ids.ULID
+	nodes  []Node
+	locals *worldstate.Declarations
+	boxes  map[ids.ULID]Box
+	bends  map[string]Bend
 }
 
 type wireWorkflow struct {
-	Start ids.ULID `json:"start"`
-	Nodes []Node   `json:"nodes"`
+	Start  ids.ULID        `json:"start"`
+	Nodes  []Node          `json:"nodes"`
+	Locals json.RawMessage `json:"locals,omitempty"`
 }
 
 type wireLayout struct {
@@ -110,8 +117,15 @@ func New(start ids.ULID) (*Workflow, error) {
 	}
 	node := Node{ID: start, Kind: KindStart, Parent: ids.ULID{}, Params: map[string]json.RawMessage{}, Next: nil}
 
-	return &Workflow{start: start, nodes: []Node{node}, boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}}, nil
+	return &Workflow{
+		start: start, nodes: []Node{node}, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
+		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
+	}, nil
 }
+
+// Locals returns the workflow's local values, which only it reads and sets.
+// Changing the list changes the workflow; it is for the editor's edits.
+func (w *Workflow) Locals() *worldstate.Declarations { return w.locals }
 
 // Start returns the start node's ID.
 func (w *Workflow) Start() ids.ULID { return w.start }
@@ -285,18 +299,29 @@ const Unplaced = -1
 
 // Clone returns an independent copy.
 func (w *Workflow) Clone() *Workflow {
-	return &Workflow{start: w.start, nodes: w.Nodes(), boxes: maps.Clone(w.boxes), bends: maps.Clone(w.bends)}
+	return &Workflow{
+		start: w.start, nodes: w.Nodes(), locals: w.locals.Clone(), boxes: maps.Clone(w.boxes),
+		bends: maps.Clone(w.bends),
+	}
 }
 
 // Equal reports whether two workflows hold the same logic and layout.
 func (w *Workflow) Equal(other *Workflow) bool {
 	return w.start == other.start && slices.EqualFunc(w.nodes, other.nodes, Node.Equal) &&
-		maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends())
+		w.locals.Equal(other.locals) && maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends())
 }
 
 // Encode returns the workflow's logic.
 func (w *Workflow) Encode() (json.RawMessage, error) {
-	data, err := json.Marshal(wireWorkflow{Start: w.start, Nodes: w.nodes})
+	var locals json.RawMessage
+	if w.locals.Len() > 0 {
+		encoded, err := w.locals.MarshalJSON()
+		if err != nil {
+			return nil, fmt.Errorf("encode workflow: %w", err)
+		}
+		locals = encoded
+	}
+	data, err := json.Marshal(wireWorkflow{Start: w.start, Nodes: w.nodes, Locals: locals})
 	if err != nil {
 		return nil, fmt.Errorf("encode workflow: %w", err)
 	}
@@ -321,7 +346,15 @@ func Decode(data json.RawMessage) (*Workflow, error) {
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrData, err)
 	}
-	decoded := &Workflow{start: wire.Start, nodes: wire.Nodes, boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}}
+	decoded := &Workflow{
+		start: wire.Start, nodes: wire.Nodes, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
+		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
+	}
+	if len(wire.Locals) > 0 {
+		if err := decoded.locals.Read(wire.Locals); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrData, err)
+		}
+	}
 	for index := range decoded.nodes {
 		decoded.nodes[index] = decoded.nodes[index].Clone()
 	}
@@ -360,9 +393,61 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 func Format() content.Format {
 	return content.Format{
 		Name: FormatName, Current: FormatVersion,
-		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2},
+		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4},
 	}
 }
+
+// upgradeFrom4 renames local values' types, number to integer and yes-no to
+// bool, as the world state did, and the NPC a value reference names to its
+// owner, which can now be a zone.
+func upgradeFrom4(data json.RawMessage) (json.RawMessage, error) {
+	var wire map[string]any
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrNode, err)
+	}
+	if locals, listed := wire["locals"].([]any); listed {
+		for _, local := range locals {
+			if declared, ok := local.(map[string]any); ok {
+				if kind, named := declared["type"].(string); named {
+					declared["type"] = worldstate.UpgradeType(kind)
+				}
+			}
+		}
+	}
+	if nodes, listed := wire["nodes"].([]any); listed {
+		for _, node := range nodes {
+			if read, ok := node.(map[string]any); ok {
+				renameOwners(read)
+			}
+		}
+	}
+	upgraded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade workflow: %w", err)
+	}
+
+	return upgraded, nil
+}
+
+// renameOwners renames the NPC a version 4 node's value references name to
+// their owner.
+func renameOwners(node map[string]any) {
+	params, ok := node["params"].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, param := range params {
+		ref, isRef := param.(map[string]any)
+		if npc, named := ref["npc"]; isRef && named {
+			ref["owner"] = npc
+			delete(ref, "npc")
+		}
+	}
+}
+
+// upgradeFrom3 reads a version 3 workflow unchanged: it has no local values
+// yet.
+func upgradeFrom3(data json.RawMessage) (json.RawMessage, error) { return data, nil }
 
 // upgradeFrom2 gives every Play sound the loudness of its cue, as it played
 // before version 3.

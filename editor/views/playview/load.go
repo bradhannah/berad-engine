@@ -11,17 +11,20 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
+	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // A launch reads, one document at a time: the game settings, the start's
-// zone and its floors, the NPCs placed on them and their behaviours, and the
-// art they show. It subscribes to each as it finds it, and launches once all
+// zone and its floors, the NPCs placed on them and their behaviours, the
+// documents the project's values are declared in, and the art they show. It
+// subscribes to each as it finds it, and launches once all
 // have loaded. A document deleted since something named it is skipped.
 
 // loader gathers a launch's documents.
@@ -38,7 +41,7 @@ func (s *State) prepare(ctx *frame.Context) (game.Project, int, bool) {
 	s.subscribe(project.IndexID(), ctx)
 	snapshot := game.Project{
 		Settings: game.DefaultSettings(), Zone: nil, Floors: map[ids.ULID]*floor.Floor{},
-		NPCs: map[ids.ULID]npc.NPC{}, Workflows: map[ids.ULID]*flow.Workflow{}, Seconds: 0, Seed: 0,
+		NPCs: map[ids.ULID]npc.NPC{}, Workflows: map[ids.ULID]*flow.Workflow{}, Values: nil, Seconds: 0, Seed: 0,
 	}
 	load := &loader{state: s, ctx: ctx, index: nil, ready: true}
 	ctx.Docs.View(project.IndexID(), func(document client.Document) {
@@ -52,6 +55,7 @@ func (s *State) prepare(ctx *frame.Context) (game.Project, int, bool) {
 	load.settings(&snapshot)
 	load.zone(&snapshot)
 	load.npcs(&snapshot)
+	load.values(&snapshot)
 	tile := load.art()
 	s.art.want = load.sprites()
 
@@ -150,6 +154,22 @@ func (l *loader) npcs(project *game.Project) {
 		if !definition.Sprite.IsZero() {
 			l.state.npcSprites[npcID] = definition.Sprite
 		}
+	}
+}
+
+// values reads the declared values: the world state's, and every NPC's and
+// zone's own and the templates applied to it.
+func (l *loader) values(project *game.Project) {
+	l.state.subscribe(worldstate.ID(), l.ctx)
+	for _, document := range valuetree.Documents(l.ctx.Docs) {
+		if document != worldstate.ID() {
+			l.need(document)
+		}
+	}
+	if catalog, ready := valuetree.Catalog(l.ctx.Docs); ready {
+		project.Values = catalog
+	} else {
+		l.ready = false
 	}
 }
 

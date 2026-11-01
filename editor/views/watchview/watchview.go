@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -34,6 +35,7 @@ const ViewName = "watch"
 const (
 	headerHeight = 44
 	footerHeight = 92 + ui.LineHeight
+	valuesWidth  = 260
 	buttonWidth  = 170
 	buttonGap    = 8
 	shortID      = 6
@@ -147,8 +149,45 @@ func (s *State) watched() (protocol.PreviewEntity, bool) {
 // canvas is where the workflow is drawn, between the header and the footer.
 func (s *State) canvas() image.Rectangle {
 	content := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	right := content.Max.X
+	if !s.valuesColumn().Empty() {
+		right -= valuesWidth
+	}
 
-	return image.Rect(0, headerHeight, content.Max.X, content.Max.Y-frame.StatusHeight-footerHeight)
+	return image.Rect(0, headerHeight, right, content.Max.Y-frame.StatusHeight-footerHeight)
+}
+
+// valuesColumn is where the watched NPC's values are listed, beside its
+// workflow, while it has any.
+func (s *State) valuesColumn() image.Rectangle {
+	if s.state == nil || len(s.state.Values) == 0 {
+		return ui.Zero()
+	}
+
+	return image.Rect(s.size.X-valuesWidth, headerHeight, s.size.X, s.size.Y-frame.StatusHeight-footerHeight)
+}
+
+// drawValues lists the watched NPC's values: its workflow's locals and its
+// own, its zone's and the world's.
+func (s *State) drawValues(screen *ebiten.Image) {
+	column := s.valuesColumn()
+	if column.Empty() {
+		return
+	}
+	ui.Divider(screen, column.Min, image.Pt(column.Min.X, column.Max.Y))
+	left := column.Min.X + ui.Inset
+	s.theme.DrawLabel(screen, "VALUES", left, column.Min.Y+ui.Inset, ui.ColorMuted())
+	top := column.Min.Y + ui.Inset + ui.LineHeight
+	for _, value := range s.state.Values {
+		if top+ui.LineHeight > column.Max.Y {
+			break
+		}
+		width := s.theme.TextWidth(value.Value)
+		room := column.Max.X - ui.Inset - left - width - ui.Inset
+		s.theme.DrawMono(screen, s.fit([]string{value.Path}, room), left, top, ui.ColorInk())
+		s.theme.DrawText(screen, value.Value, column.Max.X-ui.Inset-width, top, ui.ColorLive())
+		top += ui.LineHeight
+	}
 }
 
 // layout places the buttons in the footer.
@@ -230,6 +269,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		canvas := s.canvas()
 		s.theme.DrawText(screen, message, canvas.Min.X+ui.Inset, canvas.Min.Y+ui.Inset, ui.ColorMuted())
 	}
+	s.drawValues(screen)
 	s.drawHeader(screen, docs, entity, watching)
 	s.drawFooter(screen, docs, entity, watching)
 }
@@ -349,7 +389,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // hasState answers input scripts: "previewing" while a preview runs,
 // "watching:<name>" while the named NPC is watched, "live:<kind>" while it is
 // on a node of that kind, "paused" while its NPCs are paused, and "stepped"
-// while they are paused after a step that changed node.
+// while they are paused after a step that changed node, and
+// "value:<path>=<value>" while the watched NPC's value is that.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	entity, watching := s.watched()
 	switch {
@@ -363,6 +404,10 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):
 		return watching && s.nodeKind(docs, entity) == strings.TrimPrefix(state, "live:")
+	case strings.HasPrefix(state, "value:"):
+		return s.state != nil && slices.ContainsFunc(s.state.Values, func(value protocol.PreviewValue) bool {
+			return value.Path+"="+value.Value == strings.TrimPrefix(state, "value:")
+		})
 	}
 
 	return false

@@ -34,6 +34,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -166,7 +167,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
-	view.focus.Register(view.search, view.name, view.tags, view.npc.notes, view.tileSize, view.screenCols, view.screenRows)
+	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.tileSize,
+		view.screenCols, view.screenRows)
 
 	return view
 }
@@ -203,12 +205,13 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
-// Start subscribes to the project index and the art and game settings, and
-// lists the audio library.
+// Start subscribes to the project index, the art and game settings and the
+// world state, and lists the audio library.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
 	s.subscribe(art.SettingsID(), ctx)
 	s.subscribe(game.SettingsID(), ctx)
+	s.subscribe(worldstate.ID(), ctx)
 	s.askAudio(ctx)
 }
 
@@ -399,7 +402,7 @@ func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 		s.rightClicked(result.ContextRow, input.Cursor)
 	}
 	if result.Activated {
-		s.openSelected(ctx)
+		s.openRow(ctx)
 	}
 	if result.Toggled != "" {
 		s.closed[result.Toggled] = !s.closed[result.Toggled]
@@ -499,7 +502,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 	}
 	switch {
 	case s.open.Update(input):
-		s.openSelected(ctx)
+		s.openRow(ctx)
 	case s.floorButton.Update(input):
 		s.createFloor(ctx)
 	case s.up.Update(input):
@@ -661,7 +664,9 @@ func (a documentArgs) withID(id ids.ULID) project.DocumentArgs {
 // createZone creates a zone with one floor, as one undo step.
 func (s *State) createZone(ctx *frame.Context) {
 	name := uniqueName("Zone", names(s.entries(ctx.Docs, zone.FormatName)))
-	data, err := zoneplugin.NewDocument().Encode()
+	made := zoneplugin.NewDocument()
+	made.Zone.Path = worldstate.UniqueName(zone.SuggestPath(name), s.zonePaths(ctx.Docs))
+	data, err := made.Encode()
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
@@ -676,6 +681,20 @@ func (s *State) createZone(ctx *frame.Context) {
 		s.addFloor(ctx, result.Created, "Floor 1", floor.Centered(defaultWidth, defaultHeight), "grass", 0, gesture)
 		ctx.Frame.Status("Created “" + name + "” with one floor")
 	}, nil)
+}
+
+// zonePaths lists the path names the window's zones use.
+func (s *State) zonePaths(docs frame.Docs) map[string]bool {
+	taken := map[string]bool{}
+	for _, entry := range s.entries(docs, zone.FormatName) {
+		docs.View(entry.ID, func(document client.Document) {
+			if zoneDoc, ok := document.Model.(*zoneplugin.Document); ok && zoneDoc.Zone.Path != "" {
+				taken[zoneDoc.Zone.Path] = true
+			}
+		})
+	}
+
+	return taken
 }
 
 // createFloor adds a floor on top of the selected zone (or the zone of the
@@ -766,6 +785,17 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 	}, nil)
+}
+
+// openRow opens what the selected row shows: the World state window for
+// the World state row, or what openSelected opens.
+func (s *State) openRow(ctx *frame.Context) {
+	if s.list.Selected == worldStateRow {
+		ctx.Requests.Open(worldStateView, worldstate.ID(), false)
+
+		return
+	}
+	s.openSelected(ctx)
 }
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
@@ -1046,7 +1076,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	for _, field := range []*ui.TextField{s.search, s.name, s.tags, s.npc.notes, s.tileSize, s.screenCols, s.screenRows} {
+	fields := []*ui.TextField{s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.tileSize, s.screenCols, s.screenRows}
+	for _, field := range fields {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}

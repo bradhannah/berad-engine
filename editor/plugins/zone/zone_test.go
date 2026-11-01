@@ -7,8 +7,10 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 func floorID(seed byte) ids.ULID {
@@ -98,6 +100,54 @@ func TestPaletteEditsMeetUndoContract(t *testing.T) {
 	references := document.References()
 	if len(references) != 2 || references[0].Document != floorID(7) || references[0].Label != "listed by the zone" {
 		t.Fatalf("listed palettes are references: %+v", references)
+	}
+}
+
+// TestPathAndValueEditsMeetUndoContract names a zone, declares a value of
+// its own and applies a template, each undoing exactly.
+func TestPathAndValueEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	registry, err := plugin.NewRegistry(zone.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit := func(name string) model.EditKind {
+		kind, ok := registry.Edit(name)
+		if !ok {
+			t.Fatalf("no edit %s", name)
+		}
+		return kind
+	}
+	encode := func(value any) json.RawMessage {
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	crowded := worldstate.New(floorID(9), "crowded", worldstate.ScopeZone, worldstate.TypeBool)
+	crowded.ID[0] = 1
+	document := zone.NewDocument()
+	for _, check := range []struct {
+		kind model.EditKind
+		args json.RawMessage
+	}{
+		{zone.SetPath{}, encode(zone.SetPathArgs{Path: "market"})},
+		{edit(zone.ChangeValuesEdit), encode(stateplugin.ChangeArgs{Add: []worldstate.Declaration{crowded}, Set: nil, Remove: nil})},
+		{edit(zone.ApplyTemplateEdit), encode(stateplugin.TemplateArgs{Template: floorID(10), Index: 0})},
+	} {
+		if err := model.VerifyUndo(document, check.kind, check.args, registry.Edit); err != nil {
+			t.Fatalf("%s: %v", check.kind.Name(), err)
+		}
+		if _, err := check.kind.Apply(document, check.args); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if document.Zone.Path != "market" || document.Zone.Owned.Values.Len() != 1 || len(document.References()) != 1 {
+		t.Fatalf("named, with a value and a template: %+v", document.Zone)
+	}
+	if _, err := (zone.SetPath{}).Apply(document, encode(zone.SetPathArgs{Path: "Market Square"})); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("a path name follows the rules for value names: %v", err)
 	}
 }
 

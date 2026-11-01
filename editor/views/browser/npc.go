@@ -2,6 +2,7 @@ package browser
 
 import (
 	"image"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // NPC inspector layout, in screen pixels: the notes are at most notesHeight
@@ -29,9 +31,10 @@ const (
 )
 
 // npcPanel is the inspector's part for a selected NPC: its behaviour, the
-// sprite it shows and its private notes.
+// sprite it shows, its path name and its private notes.
 type npcPanel struct {
 	npc          ids.ULID
+	path         *ui.TextField
 	notes        *ui.TextField
 	choose       *ui.Button
 	open         *ui.Button
@@ -46,9 +49,11 @@ type npcPanel struct {
 func newNPCPanel(theme *ui.Theme) *npcPanel {
 	notes := ui.NewTextField("notes", textedit.NewField("", true, npc.MaxNotes), true, theme)
 	notes.Placeholder = "Private notes about this NPC. Players never see them."
+	path := ui.NewTextField("npc-path", textedit.NewField("", false, worldstate.MaxName), false, theme)
+	path.Placeholder = "such as george"
 
 	return &npcPanel{
-		npc: ids.ULID{}, notes: notes, choose: ui.NewButton("choose-behaviour", "Choose…"),
+		npc: ids.ULID{}, path: path, notes: notes, choose: ui.NewButton("choose-behaviour", "Choose…"),
 		open: ui.NewButton("open-behaviour", "Open"), chooseSprite: ui.NewButton("choose-sprite", "Choose…"),
 		openSprite: ui.NewButton("open-sprite", "Open"), behaviour: ui.Zero(), sprite: ui.Zero(), top: 0,
 		spriteTop: 0,
@@ -80,6 +85,7 @@ func (s *State) syncNPC(ctx *frame.Context) {
 	npcID, ok := s.selectedNPC(ctx.Docs)
 	if !ok {
 		if !s.npc.npc.IsZero() {
+			s.npc.path.Field.Revert()
 			s.npc.notes.Field.Revert()
 			s.npc.npc = ids.ULID{}
 		}
@@ -87,11 +93,13 @@ func (s *State) syncNPC(ctx *frame.Context) {
 		return
 	}
 	if npcID != s.npc.npc {
+		s.npc.path.Field.Revert()
 		s.npc.notes.Field.Revert()
 		s.npc.npc = npcID
 	}
 	s.subscribe(npcID, ctx)
 	if found, loaded := s.npcOf(ctx.Docs, npcID); loaded {
+		s.npc.path.Field.SetSaved(found.Path)
 		s.npc.notes.Field.SetSaved(found.Notes)
 		s.npc.open.Disabled = found.Behaviour.IsZero()
 		s.npc.openSprite.Disabled = found.Sprite.IsZero()
@@ -103,13 +111,16 @@ func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel := s.npc
 	panel.behaviour, panel.notes.Rect, panel.choose.Rect, panel.open.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	panel.sprite, panel.chooseSprite.Rect, panel.openSprite.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	panel.path.Rect = ui.Zero()
 	if _, ok := s.selectedNPC(docs); !ok {
 		return
 	}
 	panel.top = top
 	rowY := layoutChoice(panel.top, left, width, &panel.behaviour, panel.choose, panel.open)
 	panel.spriteTop = rowY
-	rowY = layoutChoice(rowY, left, width, &panel.sprite, panel.chooseSprite, panel.openSprite)
+	rowY = layoutChoice(rowY, left, width, &panel.sprite, panel.chooseSprite, panel.openSprite) + ui.LineHeight
+	panel.path.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
+	rowY += ui.ButtonH + ui.Gap*ui.Half + ui.LineHeight + panelGap + ui.LineHeight
 	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
 }
 
@@ -231,10 +242,79 @@ func (s *State) commitNotes(ctx *frame.Context) {
 		func() { s.npc.notes.Field.Failed() })
 }
 
-// createNPC creates an NPC with no behaviour yet.
+// commitPath saves the NPC's path name, from Save or Cmd+S, or says what is
+// wrong with it.
+func (s *State) commitPath(ctx *frame.Context) {
+	if err := npc.CheckPath(strings.TrimSpace(s.npc.path.Field.Value())); err != nil {
+		s.focus.Set(s.npc.path)
+		ctx.Frame.Status("A path name is lower-case letters, digits and underscores, starting with a letter")
+
+		return
+	}
+	path, changed := s.npc.path.Field.Commit()
+	if !changed {
+		s.focus.Set(nil)
+
+		return
+	}
+	s.command(ctx, s.npc.npc, npcplugin.SetPathEdit, "", npcplugin.SetPathArgs{Path: strings.TrimSpace(path)},
+		func(protocol.Result, error) {
+			s.focus.Set(nil)
+			ctx.Frame.Status("Path name saved")
+		},
+		func() { s.npc.path.Field.Failed() })
+}
+
+// paths maps each NPC's path name to the NPCs that use it, as far as the
+// window has them.
+func (s *State) paths(docs frame.Docs) map[string][]ids.ULID {
+	used := map[string][]ids.ULID{}
+	for _, entry := range s.entries(docs, npc.FormatName) {
+		if found, loaded := s.npcOf(docs, entry.ID); loaded && found.Path != "" {
+			used[found.Path] = append(used[found.Path], entry.ID)
+		}
+	}
+
+	return used
+}
+
+// pathNote says what is worth knowing about the NPC's path name: that
+// another NPC uses it too, or a suggestion when it has none.
+func (s *State) pathNote(docs frame.Docs, npcID ids.ULID) (string, bool) {
+	found, loaded := s.npcOf(docs, npcID)
+	if !loaded {
+		return "", false
+	}
+	if found.Path == "" {
+		return "None yet, so workflows cannot name it. Suggested: " +
+			npc.UniquePath(npc.SuggestPath(s.index(docs).Name(npcID, "")), s.takenPaths(docs)), false
+	}
+	for _, other := range s.paths(docs)[found.Path] {
+		if other != npcID {
+			return "Also the path name of " + s.index(docs).Name(other, "another NPC") + ". Give each its own.", true
+		}
+	}
+
+	return "Workflows read its values as npc." + found.Path + ".…", false
+}
+
+// takenPaths lists the path names the window's NPCs use.
+func (s *State) takenPaths(docs frame.Docs) map[string]bool {
+	taken := map[string]bool{}
+	for path := range s.paths(docs) {
+		taken[path] = true
+	}
+
+	return taken
+}
+
+// createNPC creates an NPC with no behaviour yet, and a path name suggested
+// from its name that no other NPC uses.
 func (s *State) createNPC(ctx *frame.Context) {
 	name := uniqueName("NPC", names(s.entries(ctx.Docs, npc.FormatName)))
-	data, err := npcplugin.NewDocument().Encode()
+	document := npcplugin.NewDocument()
+	document.NPC.Path = npc.UniquePath(npc.SuggestPath(name), s.takenPaths(ctx.Docs))
+	data, err := document.Encode()
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
@@ -272,6 +352,16 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 	s.theme.DrawTextIn(screen, label, panel.sprite, ink)
 	panel.chooseSprite.Draw(screen, s.theme)
 	panel.openSprite.Draw(screen, s.theme)
+	s.theme.Heading(screen, "PATH NAME", left, panel.path.Rect.Min.Y-ui.LineHeight)
+	panel.path.Draw(screen)
+	if note, warn := s.pathNote(docs, npcID); note != "" {
+		noteInk := ui.ColorMuted()
+		if warn {
+			noteInk = ui.ColorWarn()
+		}
+		s.theme.DrawText(screen, s.theme.FitText(note, panel.path.Rect.Dx()), left,
+			panel.path.Rect.Max.Y+ui.Gap*ui.Half, noteInk)
+	}
 	s.theme.Heading(screen, "NOTES", left, panel.notes.Rect.Min.Y-ui.LineHeight)
 	panel.notes.Draw(screen)
 	if panel.notes.Field.Conflict() {

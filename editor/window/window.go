@@ -28,6 +28,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/editor/views/pixelview"
 	"github.com/bradhannah/berad-engine/editor/views/playview"
+	"github.com/bradhannah/berad-engine/editor/views/stateview"
 	"github.com/bradhannah/berad-engine/editor/views/textview"
 	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
@@ -101,7 +102,8 @@ func Run(args Args, registry *plugin.Registry) error {
 func connect(ctx context.Context, args Args, registry *plugin.Registry, hosts bool) (*client.Client, error) {
 	switch args.View {
 	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
-		clockview.ViewName, audioview.ViewName, pixelview.ViewName, paletteview.ViewName, playview.ViewName:
+		clockview.ViewName, audioview.ViewName, pixelview.ViewName, paletteview.ViewName, stateview.ViewName,
+		playview.ViewName:
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
@@ -134,6 +136,8 @@ func undoGroup(args Args) string {
 		return "sprite:" + args.Target.String()
 	case paletteview.ViewName:
 		return paletteview.UndoGroup(args.Target)
+	case stateview.ViewName:
+		return stateview.ViewName
 	}
 
 	return ""
@@ -158,6 +162,8 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return pixelview.New(window, args.Target, theme)
 	case paletteview.ViewName:
 		return paletteview.New(window, args.Target, theme)
+	case stateview.ViewName:
+		return stateview.New(window, args.Target, theme)
 	case playview.ViewName:
 		return playview.New(window, theme)
 	default:

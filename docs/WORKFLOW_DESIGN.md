@@ -87,7 +87,7 @@ drawn back to either only repeats what the rule already does.
 
 - **Agreed: one type system** for node parameters, module inputs and
   outputs, a character's values and world state. Today's parameter types
-  (place, duration, time range, sound cue) join number, yes or no, text, NPC,
+  (place, duration, time range, sound cue) join integer, bool, text, NPC,
   item and quest as they are needed.
 - **Agreed: start loose and signal intent.** Any workflow may read any value
   at first; what a workflow is meant for is shown by what it requires, not
@@ -99,18 +99,31 @@ drawn back to either only repeats what the rule already does.
   15](increments/0015-values-and-sensing.md) builds the first of them.
 - **Agreed: four scopes.** `local.` belongs to one workflow, `npc.` to the
   NPC it runs for, `zone.` to the zone it is in, and `world.` to the whole
-  game. A declaration covers its whole scope, so declaring `mood` for NPCs
-  gives every NPC its own. Pairs of NPCs, places and objects may become
-  scopes later.
+  game. Pairs of NPCs, places and objects may become scopes later.
+- **Agreed (2026-11-01): values are organised in declared groups,** shown
+  as a tree, such as `world.quests.dragon_slain`; typing a dotted name
+  declares the groups it needs. Local values stay flat.
+- **Agreed (2026-11-01): each NPC and each zone owns its values,** and a
+  **template**, a named set of values, gives the same set to every NPC or
+  zone it is applied to, as `npc.guard1.guards.how_many_arrested`. A
+  workflow names its own NPC's values without the NPC's name, so one
+  behaviour serves every NPC with the template. Every NPC has a `name`
+  value, text that starts as its display name.
+- **Agreed (2026-11-01): the types are integer, with an optional minimum
+  and maximum that a change is held at, bool, choice and text,** with NPC
+  for local values only.
 - **Agreed: a workflow sets only its own values,** its NPC's, its zone's,
   the world's and its locals. It can read the values of an NPC it found, but
   never set them, whether it found the NPC nearby or names it, as in
-  `npc.george.mood`.
-- **Agreed: an NPC's values belong to the NPC,** shared wherever it is
-  placed, so it carries them from zone to zone. An NPC is placed at most
-  once in a zone, one zone runs at a time, and a character that repeats,
-  such as a guard, is several NPCs sharing one behaviour. Each NPC has a
-  unique path name, such as `george`.
+  `npc.george.mood`; a zone it names, as `zone.market.crowded`, the same
+  way.
+- **Agreed: an NPC's values belong to the NPC.** Each NPC has a unique path
+  name, such as `george`, and so does each zone. A character that repeats,
+  such as a guard, is several NPCs sharing one behaviour.
+- **Agreed (2026-11-01): an NPC is placed once in the whole project.** An
+  NPC that seems to travel is several NPCs, shown or hidden by values.
+- **Agreed (2026-11-01): what a workflow uses cannot be deleted;** the
+  editor says where it is used.
 - **Candidate: three sources of values.**
 
   | Source | Supplied by | Examples |

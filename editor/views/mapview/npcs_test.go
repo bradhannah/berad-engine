@@ -1,6 +1,7 @@
 package mapview_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -8,6 +9,7 @@ import (
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -51,6 +53,7 @@ func TestPlacingAnNPC(t *testing.T) {
 	}
 	f.click("npc:Ada Clerk")
 	f.click("cell:9,8")
+	f.answerUses(nil)
 	added := f.requests.Of(tilefloor.AddPlacementEdit)
 	if len(added) != 1 {
 		t.Fatalf("add placement commands %d", len(added))
@@ -104,5 +107,57 @@ func TestInitials(t *testing.T) {
 		if got := mapview.Initials(name); got != want {
 			t.Errorf("initials of %q: %q, want %q", name, got, want)
 		}
+	}
+}
+
+// answerUses answers every where-used question still waiting with the
+// uses given.
+func (f *fixture) answerUses(uses []protocol.Use) {
+	for index, done := range f.requests.Uses {
+		if done != nil {
+			done(uses, nil)
+			f.requests.Uses[index] = nil
+		}
+	}
+}
+
+// TestOnePlacementInTheProject refuses to place an NPC that another zone's
+// floor already places, naming the floor.
+func TestOnePlacementInTheProject(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withClerk(f)
+	f.keys("N")
+	f.click("npc:Ada Clerk")
+	f.click("cell:3,3")
+	f.answerUses([]protocol.Use{{Document: frametest.ID(80), Name: "Harbour ground", Format: floor.FormatName,
+		Label: "placement"}})
+	if added := f.requests.Of(tilefloor.AddPlacementEdit); len(added) != 0 {
+		t.Fatalf("an NPC placed elsewhere is refused: %d sent", len(added))
+	}
+	if !strings.Contains(f.status(), "already placed on Harbour ground") {
+		t.Fatalf("status %q", f.status())
+	}
+}
+
+// TestOnePlacementPerZone refuses to place an NPC a second time in a zone,
+// saying why.
+func TestOnePlacementPerZone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withClerk(f)
+	ground := groundFloor(t)
+	if err := ground.Floor.InsertPlacement(0, floor.Placement{ID: placedID, NPC: clerkID, Col: 9, Row: 8}); err != nil {
+		t.Fatal(err)
+	}
+	f.docs.Put(groundID, "Ground", ground)
+	f.keys("N")
+	f.click("npc:Ada Clerk")
+	f.click("cell:3,3")
+	if added := f.requests.Of(tilefloor.AddPlacementEdit); len(added) != 0 {
+		t.Fatalf("a second placement in one zone is refused: %d sent", len(added))
+	}
+	if !strings.Contains(f.status(), "already placed in this zone") {
+		t.Fatalf("status %q", f.status())
 	}
 }

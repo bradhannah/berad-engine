@@ -359,6 +359,16 @@ type PreviewState struct {
 	// another step starts.
 	Stepping bool            `json:"stepping,omitempty"`
 	Step     []PreviewChange `json:"step,omitempty"`
+	// Values are the watched NPC's values as they are now: its workflow's
+	// local values and its own, then its zone's and the world's.
+	Values []PreviewValue `json:"values,omitempty"`
+}
+
+// PreviewValue is one value as the Watch window shows it: its path, such
+// as npc.mood, and what it is now.
+type PreviewValue struct {
+	Path  string `json:"path"`
+	Value string `json:"value"`
 }
 
 // Preview controls.

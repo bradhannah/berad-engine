@@ -24,6 +24,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
 	"github.com/bradhannah/berad-engine/editor/window"
@@ -56,8 +57,8 @@ const (
 	stairsRow      = -2
 	// sampleIDs is how many IDs the sample makes before its documents: the
 	// desk's anchor, the clerk's placement, the hum's, and the anchors at the
-	// shelf and the door.
-	sampleIDs = 5
+	// shelf, the door and the counter.
+	sampleIDs = 6
 )
 
 func main() {
@@ -106,7 +107,7 @@ func usage(stderr io.Writer) {
 func plugins() (*plugin.Registry, error) {
 	registry, err := plugin.NewRegistry(
 		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
-		npcplugin.Plugin(), artplugin.Plugin(), gameplugin.Plugin(),
+		npcplugin.Plugin(), artplugin.Plugin(), gameplugin.Plugin(), stateplugin.Plugin(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)
@@ -270,9 +271,10 @@ func ensureDocuments(
 
 // createSample creates placeholder content: a zone with a walled building on
 // the ground floor and its upper floor, an anchor at a desk, a lantern shown
-// as the small pickup, and a text document; and, so Launch plays it, a player
+// as the small pickup, and a text document; so Launch plays it, a player
 // start, brick walls, figures for the player and a clerk, the hum in the
-// building and the tune throughout. It holds no game content.
+// building and the tune throughout; and a shop, where a customer comes to
+// the desk to be served by the clerk. It holds no game content.
 func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	sample, err := sampleLantern(orch)
 	if err != nil {
@@ -282,7 +284,14 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	if err != nil {
 		return ids.ULID{}, err
 	}
-	if err := sampleRoutine(orch, clerk, anchors); err != nil {
+	values, err := declareShop(orch)
+	if err != nil {
+		return ids.ULID{}, err
+	}
+	if err := sampleRoutine(orch, clerk, anchors, values); err != nil {
+		return ids.ULID{}, err
+	}
+	if err := sampleCustomer(orch, anchors, values); err != nil {
 		return ids.ULID{}, err
 	}
 	zoneID, err := sampleZone(orch, sample, floors)
@@ -314,7 +323,7 @@ func sampleFloors(orch *orchestrator.Orchestrator, sample sampleArt) ([]ids.ULID
 		}
 		made = append(made, madeID)
 	}
-	anchors := sampleAnchors{floor: ids.ULID{}, desk: made[0], shelf: made[3], door: made[4]}
+	anchors := sampleAnchors{floor: ids.ULID{}, desk: made[0], shelf: made[3], door: made[4], counter: made[5]}
 	clerk, err := samplePlayers(orch, sample)
 	if err != nil {
 		return nil, ids.ULID{}, none, err
@@ -347,6 +356,7 @@ func sampleFloors(orch *orchestrator.Orchestrator, sample sampleArt) ([]ids.ULID
 // the tune throughout.
 func sampleZone(orch *orchestrator.Orchestrator, sample sampleArt, floors []ids.ULID) (ids.ULID, error) {
 	sampleZone := zoneplugin.NewDocument()
+	sampleZone.Zone.Path = "sample_zone"
 	for index, floorID := range floors {
 		if err := sampleZone.Zone.Insert(index, floorID); err != nil {
 			return ids.ULID{}, fmt.Errorf("create sample: %w", err)

@@ -15,11 +15,13 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 const (
@@ -58,6 +60,11 @@ type previewRun struct {
 	step     []protocol.PreviewChange
 	// heard counts the times each cue has played in this preview.
 	heard map[string]int
+	// values are the world's, the zones' and the NPCs' values while the
+	// preview runs, each starting at its default; declared is the revisions
+	// of the world state, the NPCs and the zones they were last given.
+	values   *worldstate.Store
+	declared string
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -148,7 +155,12 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
-			heard: map[string]int{},
+			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
+				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
+			declared: "",
+		}
+		for _, document := range valuetree.Documents(ctx.Docs) {
+			s.subscribe(document, ctx)
 		}
 		s.remote = nil
 		s.subscribeFloors(ctx)

@@ -169,8 +169,8 @@ type Output struct {
 type Kind struct {
 	Name  string
 	Label string
-	// Group places the kind in the palette: Flow, Movement, Action, Audio or
-	// Annotate. Kinds with no group are not offered.
+	// Group places the kind in the palette: Flow, Movement, Action, Audio,
+	// Values or Annotate. Kinds with no group are not offered.
 	Group   string
 	Params  []Param
 	Outputs []Output
@@ -197,8 +197,7 @@ func (r TimeRange) Contains(minute int) bool {
 // Kinds returns the built-in node kinds in palette order.
 func Kinds() []Kind {
 	next := []Output{{Name: OutputNext, Label: "then"}}
-
-	return []Kind{
+	kinds := []Kind{
 		{Name: KindStart, Label: "Start", Group: "", Params: nil, Outputs: next},
 		{
 			Name: KindTimeSwitch, Label: "Time switch", Group: GroupFlow,
@@ -238,12 +237,14 @@ func Kinds() []Kind {
 			Outputs: next,
 		},
 		playSoundKind(next),
-		{
-			Name: KindNote, Label: "Note", Group: GroupAnnotate,
-			Params:  []Param{{Name: "text", Label: "Note", Type: TypeText, Default: mustJSON(""), Choices: nil}},
-			Outputs: nil,
-		},
 	}
+	kinds = append(kinds, valueKinds(next)...)
+
+	return append(kinds, Kind{
+		Name: KindNote, Label: "Note", Group: GroupAnnotate,
+		Params:  []Param{{Name: "text", Label: "Note", Type: TypeText, Default: mustJSON(""), Choices: nil}},
+		Outputs: nil,
+	})
 }
 
 // randomKind declares Random choice: two even options to start with, and an
@@ -422,13 +423,24 @@ func checkValue(param Param, value json.RawMessage) error {
 		return checkRange(span)
 	case TypeTimeRanges:
 		return checkRanges(value)
-	case TypeText:
-		return checkText(value, MaxText)
-	case TypeCue:
-		return checkText(value, MaxCue)
+	case TypeText, TypeCue:
+		return checkText(value, textLimit(param.Type))
+	case TypeValue:
+		return checkRef(value)
+	case TypeOperand:
+		return checkOperand(value)
 	default:
 		return fmt.Errorf("%w: unknown parameter type %q", ErrNode, param.Type)
 	}
+}
+
+// textLimit is how long a text or a cue's ID can be.
+func textLimit(kind ParamType) int {
+	if kind == TypeCue {
+		return MaxCue
+	}
+
+	return MaxText
 }
 
 // checkText reads a string of at most limit characters.

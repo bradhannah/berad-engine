@@ -5,6 +5,7 @@
 // selected one, or drag it onto the canvas; drag from an output's port to a
 // node to connect them, or pick a line up by its arrow end to move it to
 // another node; drag a node to move it; click a line to select it.
+// Right-click a node or a line for a menu that deletes it.
 //
 // The view turns input into requests in Update without needing a screen; Draw
 // renders it.
@@ -157,6 +158,13 @@ type State struct {
 	audioRevision int
 	audioAsking   bool
 	sounds        frame.Sounds
+	// locals is the inspector's part for the workflow's local values, shown
+	// while no node or line is selected.
+	locals *localsPanel
+	// contextMenu is the canvas's right-click menu, opened once the
+	// right-click waiting in context has settled the selection.
+	contextMenu ui.Menu
+	context     contextClick
 }
 
 // New returns the Workflow window for a workflow.
@@ -172,7 +180,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
-		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil,
+		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
+		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
 	for _, kind := range flow.Kinds() {
 		if kind.Group != "" {
@@ -309,6 +318,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		top += paletteItem + paletteGap
 	}
 	s.layoutForm(docs)
+	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
 	if s.lineSelected() {
 		panel := frame.Inspector(s.size)
@@ -340,10 +350,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.syncForm(ctx)
+	s.syncLocals()
 	s.layoutWidgets(ctx.Docs)
-	if dialog := s.picker.Dialog(); dialog != nil {
-		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
-
+	if s.updateOverlay(input, ctx) {
 		return
 	}
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
@@ -364,6 +373,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateLineButtons(input, ctx)
 	s.updateForm(input, ctx)
+	s.updateLocals(input, ctx)
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
 	}
@@ -374,6 +384,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
 	s.guardSelection(ctx)
+	s.openContextMenu()
 }
 
 // updateLineButtons handles Delete line and Reset line for the selected
@@ -392,11 +403,13 @@ func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
 }
 
 // listAudio asks for the audio library once a workflow with a Play sound
-// is shown, for its cues' names and problems.
+// is shown, for its cues' names and problems, and keeps the world state and
+// the NPCs loaded, for its values' paths and problems.
 func (s *State) listAudio(ctx *frame.Context) {
 	if s.workflow != nil && s.audio == nil && s.playsSounds() {
 		s.askAudio(ctx)
 	}
+	s.watchValues(ctx)
 }
 
 // keys handles the window's own keys while no text field has focus. Escape
@@ -498,6 +511,8 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
 		s.updateResize(input, ctx, point)
+	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
+		s.rightClick(point, input.Cursor)
 	case input.Pressed && input.Cursor.In(canvas):
 		s.press(ctx, point)
 	}

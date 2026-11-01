@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/play"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -64,10 +66,18 @@ func town(t *testing.T) game.Project {
 	return game.Project{
 		Settings: settings, Zone: zoned,
 		Floors:    map[ids.ULID]*tilefloor.Floor{id(groundID): ground, id(upperID): upper},
-		NPCs:      map[ids.ULID]npc.NPC{id(clerkID): {Behaviour: id(dayID), Sprite: ids.ULID{}, Notes: ""}},
+		NPCs:      map[ids.ULID]npc.NPC{id(clerkID): follows(id(dayID))},
 		Workflows: map[ids.ULID]*flow.Workflow{id(dayID): clerkDay(t)},
-		Seconds:   eight, Seed: 1,
+		Values:    nil, Seconds: eight, Seed: 1,
 	}
+}
+
+// follows returns an NPC that follows a workflow.
+func follows(behaviour ids.ULID) npc.NPC {
+	made := npc.New()
+	made.Behaviour = behaviour
+
+	return made
 }
 
 // clerkDay rings a bell, then waits an hour.
@@ -207,5 +217,76 @@ func TestAGameRepeats(t *testing.T) {
 	walk(second, play.South, 2*play.StepTicks)
 	if first.Player() != second.Player() || first.Characters()[0] != second.Characters()[0] {
 		t.Fatal("the same input plays the same game")
+	}
+}
+
+// node returns a node of a kind with parameters set.
+func node(t *testing.T, kind string, nodeID byte, params map[string]any) flow.Node {
+	t.Helper()
+	made, err := flow.NewNode(kind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	made.ID = id(nodeID)
+	for name, value := range params {
+		if made, err = made.WithParam(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return made
+}
+
+// TestAGameKeepsValuesAndSeesOtherNPCs gives Ada Clerk a workflow that looks
+// for another NPC within two tiles and, finding Bea beside her, counts a
+// greeting in a world value, then waits an hour.
+func TestAGameKeepsValuesAndSeesOtherNPCs(t *testing.T) {
+	t.Parallel()
+	project := town(t)
+	greetings := worldstate.New(id(40), "greetings", worldstate.ScopeWorld, worldstate.TypeInteger)
+	world := worldstate.NewDeclarations(worldstate.HoldsWorldState)
+	if err := world.Insert(greetings); err != nil {
+		t.Fatal(err)
+	}
+	project.Values = worldstate.NewCatalog(world, nil)
+	greet, err := flow.New(id(50))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := worldstate.New(id(41), "seen", worldstate.ScopeLocal, worldstate.TypeNPC)
+	if err := greet.Locals().Insert(seen); err != nil {
+		t.Fatal(err)
+	}
+	local := flow.ValueRef{Scope: worldstate.ScopeLocal, Value: seen.ID, Owner: ids.ULID{}, Found: ids.ULID{}}
+	count := flow.ValueRef{Scope: worldstate.ScopeWorld, Value: greetings.ID, Owner: ids.ULID{}, Found: ids.ULID{}}
+	find := node(t, flow.KindFindNPC, 51, map[string]any{"within": 2, "into": local})
+	add := node(t, flow.KindSetValue, 52, map[string]any{
+		flow.ParamValue: count, "how": flow.HowAdd, "to": json.RawMessage("1"),
+	})
+	rest := node(t, flow.KindWait, 53, map[string]any{
+		"duration": flow.Duration{Amount: 1, Unit: flow.UnitHours, Clock: flow.ClockGame},
+	})
+	if err := greet.Insert([]flow.Node{find, add, rest}, nil, []flow.Link{
+		{From: id(50), Output: flow.OutputNext, To: find.ID}, {From: find.ID, Output: flow.OutputFound, To: add.ID},
+		{From: add.ID, Output: flow.OutputNext, To: rest.ID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	project.Workflows[id(dayID)] = greet
+	bea := tilefloor.Placement{ID: id(22), NPC: id(6), Col: 10, Row: 8}
+	if err := project.Floors[id(groundID)].InsertPlacement(1, bea); err != nil {
+		t.Fatal(err)
+	}
+	project.NPCs[id(6)] = npc.New()
+	played, err := game.New(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	walk(played, 0, 10)
+	if got := played.Values().Get(greetings, ids.ULID{}); got.Integer != 1 {
+		t.Fatalf("Ada counts one greeting: %+v", got)
+	}
+	if played, err = game.New(town(t)); err != nil || played.Values() != nil {
+		t.Fatalf("a project that declares no values keeps none: %v", err)
 	}
 }

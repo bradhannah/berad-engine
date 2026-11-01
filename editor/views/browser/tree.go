@@ -100,6 +100,7 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 		return false
 	}
 	rows := s.settingsRows(docs, match)
+	rows = append(rows, s.worldStateRows(docs, match)...)
 	rows = append(rows, s.typeRows(sectionZones, "Zones", index, zoneMatch, func(entry project.Entry, depth int) []ui.Row {
 		return s.zoneRows(index, entry, floors[entry.ID], depth, match.active())
 	})...)

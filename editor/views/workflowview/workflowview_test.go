@@ -13,17 +13,21 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 var (
@@ -31,6 +35,7 @@ var (
 	startID    = frametest.ID(2)
 	floorID    = frametest.ID(3)
 	deskID     = frametest.ID(4)
+	adaID      = frametest.ID(5)
 )
 
 type fixture struct {
@@ -51,7 +56,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(theme.Close)
-	registry, err := plugin.NewRegistry(workflowplugin.Plugin())
+	registry, err := plugin.NewRegistry(workflowplugin.Plugin(), stateplugin.Plugin(), npcplugin.Plugin())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,9 +78,14 @@ func newFixture(t *testing.T) *fixture {
 	docs := frametest.NewDocs()
 	docs.Put(workflowID, "Daily routine", document)
 	docs.Put(floorID, "Office", office)
+	docs.Put(worldstate.ID(), worldstate.Name, stateplugin.NewDocument())
+	ada := npcplugin.NewDocument()
+	ada.NPC.Path, ada.NPC.Behaviour = "ada", workflowID
+	docs.Put(adaID, "Ada Clerk", ada)
 	docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
 		{ID: workflowID, Name: "Daily routine", Format: flow.FormatName},
 		{ID: floorID, Name: "Office", Format: floor.FormatName},
+		{ID: adaID, Name: "Ada Clerk", Format: npc.FormatName},
 	}))
 	requests := &frametest.Requests{}
 	ctx := frametest.Context(docs, requests, image.Pt(1200, 800))
@@ -117,7 +127,7 @@ func (f *fixture) carryOut(command frametest.Command) {
 	}
 	args := command.Command.Args
 	var created ids.ULID
-	f.docs.View(workflowID, func(document client.Document) {
+	f.docs.View(command.Command.Document, func(document client.Document) {
 		if preparer, prepares := kind.(model.Preparer); prepares {
 			prepared, err := preparer.Prepare(document.Model, args, func() (ids.ULID, error) {
 				created = frametest.ID(f.nextID)
@@ -135,7 +145,7 @@ func (f *fixture) carryOut(command frametest.Command) {
 			created = ids.ULID{1}
 		}
 	})
-	f.docs.Touch(workflowID)
+	f.docs.Touch(command.Command.Document)
 	if created != (ids.ULID{1}) {
 		command.Succeed(created)
 	}
