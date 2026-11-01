@@ -33,6 +33,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -197,11 +198,12 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
-// Start subscribes to the project index and the art settings, and lists
-// the audio library.
+// Start subscribes to the project index, the art settings and the world
+// state, and lists the audio library.
 func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(project.IndexID(), ctx)
 	s.subscribe(art.SettingsID(), ctx)
+	s.subscribe(worldstate.ID(), ctx)
 	s.askAudio(ctx)
 }
 
@@ -390,7 +392,7 @@ func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 		s.rightClicked(result.ContextRow, input.Cursor)
 	}
 	if result.Activated {
-		s.openSelected(ctx)
+		s.openRow(ctx)
 	}
 	if result.Toggled != "" {
 		s.closed[result.Toggled] = !s.closed[result.Toggled]
@@ -490,7 +492,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 	}
 	switch {
 	case s.open.Update(input):
-		s.openSelected(ctx)
+		s.openRow(ctx)
 	case s.floorButton.Update(input):
 		s.createFloor(ctx)
 	case s.up.Update(input):
@@ -757,6 +759,17 @@ func (s *State) createWorkflow(ctx *frame.Context) {
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
 	}, nil)
+}
+
+// openRow opens what the selected row shows: the World state window for
+// the World state row, or what openSelected opens.
+func (s *State) openRow(ctx *frame.Context) {
+	if s.list.Selected == worldStateRow {
+		ctx.Requests.Open(worldStateView, worldstate.ID(), false)
+
+		return
+	}
+	s.openSelected(ctx)
 }
 
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text

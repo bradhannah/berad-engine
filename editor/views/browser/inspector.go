@@ -76,14 +76,7 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	s.spritePalettes = nil
 	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
 	s.name.Rect, s.tags.Rect, s.save.Rect, s.tileSize.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
-	if s.list.Selected == settingsRow {
-		s.layoutSettings(docs, left, width)
-		s.layoutNPC(docs, left, width, 0, 0)
-
-		return
-	}
-	if _, isCue := s.selectedCue(); isCue {
-		s.layoutCue(left, width)
+	if s.layoutRow(docs, left, width) {
 		s.layoutNPC(docs, left, width, 0, 0)
 
 		return
@@ -114,6 +107,24 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	top = s.layoutActions(docs, entry, left, width, top)
 	top = s.layoutArt(docs, entry, left, width, top)
 	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
+}
+
+// layoutRow places the inspector for a row that is not a document or a
+// folder: Settings, World state or a cue. It reports whether one was.
+func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
+	switch s.list.Selected {
+	case settingsRow:
+		s.layoutSettings(docs, left, width)
+	case worldStateRow:
+		s.layoutWorldState(left, width)
+	default:
+		if _, isCue := s.selectedCue(); !isCue {
+			return false
+		}
+		s.layoutCue(left, width)
+	}
+
+	return true
 }
 
 // inspectorButtons are the inspector's buttons outside the NPC panel.
@@ -318,6 +329,21 @@ func (s *State) commitName(ctx *frame.Context) {
 		func() { s.name.Field.Failed() })
 }
 
+// drawRow draws the Settings or World state row's inspector, and reports
+// whether one was selected.
+func (s *State) drawRow(screen *ebiten.Image, left int) bool {
+	switch s.list.Selected {
+	case settingsRow:
+		s.drawSettings(screen, left)
+	case worldStateRow:
+		s.drawWorldState(screen, left)
+	default:
+		return false
+	}
+
+	return true
+}
+
 // drawInspector draws what is selected: a document's type and name, its
 // name field and ID, its tags and folder, its actions, its NPC panel, the
 // save bar and Delete; or a folder's, a cue's or the settings'.
@@ -325,9 +351,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	panel := frame.Inspector(s.size)
 	left := panel.Min.X + ui.Inset
-	if s.list.Selected == settingsRow {
-		s.drawSettings(screen, left)
-
+	if s.drawRow(screen, left) {
 		return
 	}
 	if folder, ok := s.selectedFolder(); ok {
