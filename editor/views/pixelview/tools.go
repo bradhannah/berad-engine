@@ -79,7 +79,7 @@ func (s *State) updateStroke(input *ui.Input, ctx *frame.Context, pixel image.Po
 		if !s.paintable(ctx) {
 			return
 		}
-		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: pixel}
+		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: pixel, skipped: 0}
 		s.paint(ctx, []image.Point{pixel})
 	case s.stroke.active && input.Down && pixel != s.stroke.last:
 		s.paint(ctx, linePixels(s.stroke.last, pixel)[1:])
@@ -88,25 +88,34 @@ func (s *State) updateStroke(input *ui.Input, ctx *frame.Context, pixel image.Po
 }
 
 // paint sends one command for the pixels on the tile whose colour would
-// change.
+// change, skipping those the sprite's template does not allow.
 func (s *State) paint(ctx *frame.Context, pixels []image.Point) {
 	tileID, ok := s.tileID(ctx.Docs)
-	if !ok {
+	size, sized := s.tileSize(ctx.Docs)
+	if !ok || !sized {
 		return
 	}
 	color := s.paintColor()
+	limits := s.barrier(ctx.Docs, size)
 	changed := make([]artplugin.Pixel, 0, len(pixels))
+	skipped := 0
 	ctx.Docs.View(tileID, func(document client.Document) {
 		tileDoc, isTile := document.Model.(*artplugin.TileDocument)
 		if !isTile {
 			return
 		}
 		for _, pixel := range pixels {
-			if current, err := tileDoc.Tile.At(pixel.X, pixel.Y); err == nil && current != color {
+			current, err := tileDoc.Tile.At(pixel.X, pixel.Y)
+			switch {
+			case err != nil || current == color:
+			case limits.blocks(pixel):
+				skipped++
+			default:
 				changed = append(changed, artplugin.Pixel{Col: pixel.X, Row: pixel.Y, Color: color})
 			}
 		}
 	})
+	s.skipped(ctx, skipped)
 	if len(changed) == 0 {
 		return
 	}
@@ -114,17 +123,25 @@ func (s *State) paint(ctx *frame.Context, pixels []image.Point) {
 }
 
 // fill paints a pixel and every pixel joined to it, side by side, in its
-// colour, as one command and one undo step.
+// colour, as one command and one undo step. It never enters a pixel the
+// sprite's template does not allow.
 func (s *State) fill(ctx *frame.Context, start image.Point) {
 	tileID, ok := s.tileID(ctx.Docs)
-	if !ok || !s.paintable(ctx) {
+	size, sized := s.tileSize(ctx.Docs)
+	if !ok || !sized || !s.paintable(ctx) {
 		return
 	}
 	color := s.paintColor()
+	limits := s.barrier(ctx.Docs, size)
+	if limits.blocks(start) {
+		ctx.Frame.Status(s.templateName(ctx.Docs) + " does not allow painting there")
+
+		return
+	}
 	var region []image.Point
 	ctx.Docs.View(tileID, func(document client.Document) {
 		if tileDoc, isTile := document.Model.(*artplugin.TileDocument); isTile {
-			region = fillRegion(tileDoc.Tile, start, color)
+			region = fillRegion(tileDoc.Tile, start, color, limits.blocks)
 		}
 	})
 	if len(region) == 0 {
@@ -139,9 +156,9 @@ func (s *State) fill(ctx *frame.Context, start image.Point) {
 }
 
 // fillRegion returns the pixels a fill from start paints: start, and every
-// pixel of its colour joined to it side by side, within the tile. It returns
-// none when start is already the fill's colour.
-func fillRegion(tile *art.Tile, start image.Point, color art.ColorRef) []image.Point {
+// pixel of its colour joined to it side by side, within the tile and not
+// blocked. It returns none when start is already the fill's colour.
+func fillRegion(tile *art.Tile, start image.Point, color art.ColorRef, blocked func(image.Point) bool) []image.Point {
 	target, err := tile.At(start.X, start.Y)
 	if err != nil || target == color {
 		return nil
@@ -157,7 +174,8 @@ func fillRegion(tile *art.Tile, start image.Point, color art.ColorRef) []image.P
 		region = append(region, pixel)
 		for _, side := range []image.Point{image.Pt(1, 0), image.Pt(-1, 0), image.Pt(0, 1), image.Pt(0, -1)} {
 			next := pixel.Add(side)
-			if next.X < 0 || next.Y < 0 || next.X >= size || next.Y >= size || seen[next.Y*size+next.X] {
+			if next.X < 0 || next.Y < 0 || next.X >= size || next.Y >= size || seen[next.Y*size+next.X] ||
+				blocked(next) {
 				continue
 			}
 			if ref, atErr := tile.At(next.X, next.Y); atErr == nil && ref == target {

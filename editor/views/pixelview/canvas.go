@@ -48,8 +48,9 @@ func zoomSteps() []int { return []int{1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 32, 
 func toolbarTop() int { return ui.Inset }
 
 // layoutToolbar places the tool buttons at the left of the toolbar, and the
-// zoom and the grid toggle at its right.
-func (s *State) layoutToolbar() {
+// zoom, the template toggle, while the sprite has a template, and the grid
+// toggle at its right.
+func (s *State) layoutToolbar(docs frame.Docs) {
 	top := toolbarTop()
 	left := ui.Inset
 	for index, button := range s.tools {
@@ -60,6 +61,11 @@ func (s *State) layoutToolbar() {
 	right := frame.Content(s.size).Max.X - ui.Inset
 	s.grid.Rect = image.Rect(right-gridWidth, top, right, top+ui.ButtonH)
 	right = s.grid.Rect.Min.X - ui.Inset
+	s.overlay.Rect = ui.Zero()
+	if _, drawn := s.templateID(docs); drawn {
+		s.overlay.Rect = image.Rect(right-templateWidth, top, right, top+ui.ButtonH)
+		right = s.overlay.Rect.Min.X - ui.Gap
+	}
 	s.zoomFit.Rect = image.Rect(right-zoomFitW, top, right, top+ui.ButtonH)
 	right = s.zoomFit.Rect.Min.X - ui.Gap
 	s.zoomIn.Rect = image.Rect(right-zoomStep, top, right, top+ui.ButtonH)
@@ -288,8 +294,10 @@ func (s *State) drawCanvas(screen *ebiten.Image, docs frame.Docs) {
 		}
 	}
 	ui.StrokeRect(area, rect, ui.Hairline, ui.ColorRule())
+	s.drawTemplate(area, docs, size)
 	if s.marks.On {
 		s.drawMarks(area, docs, size)
+		s.drawTemplateMarks(area, docs, size)
 	}
 	if s.hovering {
 		ui.StrokeRect(area, s.pixelRect(s.hover, size), hoverWidth, ui.ColorSelect())
@@ -333,6 +341,9 @@ func (s *State) drawToolbar(screen *ebiten.Image) {
 	s.theme.DrawMono(screen, label, between.Min.X+(between.Dx()-s.theme.MonoWidth(label))/ui.Half,
 		between.Min.Y+(between.Dy()-ui.MonoSize)/ui.Half-1, ui.ColorInk())
 	s.grid.Draw(screen, s.theme)
+	if !s.overlay.Rect.Empty() {
+		s.overlay.Draw(screen, s.theme)
+	}
 }
 
 // drawReadout draws the two lines below the canvas: the pixel under the
@@ -357,12 +368,19 @@ func (s *State) drawReadout(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawText(screen, line, ui.Inset, top, ui.ColorInk())
 	measure := fmt.Sprintf("%d × %d pixels", size, size)
 	s.theme.DrawText(screen, measure, canvas.Max.X-ui.Inset-s.theme.TextWidth(measure), top, ui.ColorMuted())
-	if problem := s.problem(docs, size); problem != "" {
-		room := canvas.Dx() - ui.Half*ui.Inset
-		if !s.marks.Rect.Empty() {
-			room = s.marks.Rect.Min.X - ui.Gap - ui.Inset
+	room := canvas.Dx() - ui.Half*ui.Inset
+	for _, widget := range []image.Rectangle{s.clearThem.Rect, s.marks.Rect} {
+		if !widget.Empty() {
+			room = min(room, widget.Min.X-ui.Gap-ui.Inset)
 		}
+	}
+	if problem := s.problem(docs, size); problem != "" {
 		s.theme.DrawText(screen, s.theme.FitText(problem, room), ui.Inset, top+ui.LineHeight, ui.ColorWarn())
+	} else if note := s.templateNote(docs); note != "" {
+		s.theme.DrawText(screen, s.theme.FitText(note, room), ui.Inset, top+ui.LineHeight, ui.ColorMuted())
+	}
+	if !s.clearThem.Rect.Empty() {
+		s.clearThem.Draw(screen, s.theme)
 	}
 	if !s.marks.Rect.Empty() {
 		s.marks.Draw(screen, s.theme)
@@ -370,14 +388,22 @@ func (s *State) drawReadout(screen *ebiten.Image, docs frame.Docs) {
 }
 
 // layoutReadout places Show them at the right of the readout's second line,
-// while there are pixels to mark.
+// while there are pixels to mark, and Clear them before it while pixels are
+// painted where the sprite's template does not allow them.
 func (s *State) layoutReadout(docs frame.Docs) {
-	s.marks.Rect = ui.Zero()
-	if moved, loose := s.warned(docs); moved+loose > 0 {
-		canvas := s.canvas()
-		top := canvas.Max.Y + ui.Gap + ui.LineHeight - ui.Gap
-		right := canvas.Max.X - ui.Inset
-		s.marks.Rect = image.Rect(right-marksWidth, top, right, top+ui.ButtonH)
+	s.marks.Rect, s.clearThem.Rect = ui.Zero(), ui.Zero()
+	moved, loose := s.warned(docs)
+	discouraged, notAllowed := s.templatePixels(docs)
+	if moved+loose+len(discouraged)+len(notAllowed) == 0 {
+		return
+	}
+	canvas := s.canvas()
+	top := canvas.Max.Y + ui.Gap + ui.LineHeight - ui.Gap
+	right := canvas.Max.X - ui.Inset
+	s.marks.Rect = image.Rect(right-marksWidth, top, right, top+ui.ButtonH)
+	if len(notAllowed) > 0 {
+		right = s.marks.Rect.Min.X - ui.Gap
+		s.clearThem.Rect = image.Rect(right-clearWidth, top, right, top+ui.ButtonH)
 	}
 }
 
@@ -400,8 +426,9 @@ func (s *State) warned(docs frame.Docs) (int, int) {
 
 // problem says what is wrong with the tile, if anything: a size other than
 // the project's tile size, pixels whose colour cannot be found, pixels
-// painted with a colour that has moved, or loose colours. The last two stay
-// until the pixels are repainted.
+// painted with a colour that has moved, loose colours, or pixels painted
+// where the sprite's template does not allow them. The last three stay until
+// the pixels are repainted or cleared.
 func (s *State) problem(docs frame.Docs, size int) string {
 	if project, ok := projectTileSize(docs); ok && project != size {
 		return fmt.Sprintf("This tile is %d × %d, but the project's tiles are %d × %d.", size, size, project, project)
@@ -420,7 +447,7 @@ func (s *State) problem(docs frame.Docs, size int) string {
 		return pixels(loose) + " are loose colours, outside every palette. Repaint them to clear this."
 	}
 
-	return ""
+	return s.templateProblem(docs)
 }
 
 // pixels counts pixels in words.

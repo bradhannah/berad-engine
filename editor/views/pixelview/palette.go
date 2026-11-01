@@ -69,20 +69,22 @@ type paletteHeader struct {
 
 // panelLayout is where the palette panel's parts are this frame: the
 // swatches, ramp names and palette headings, the area they scroll in and how
-// tall they are, and the tops of the chosen colour and Shows.
+// tall they are, and the tops of the chosen colour, Template and Shows.
 type panelLayout struct {
-	swatches  []swatch
-	ramps     []rampLabel
-	headers   []paletteHeader
-	area      image.Rectangle
-	content   int
-	chosenTop int
-	showsTop  int
+	swatches    []swatch
+	ramps       []rampLabel
+	headers     []paletteHeader
+	area        image.Rectangle
+	content     int
+	chosenTop   int
+	templateTop int
+	showsTop    int
 }
 
 func newPanelLayout() panelLayout {
 	return panelLayout{
-		swatches: nil, ramps: nil, headers: nil, area: ui.Zero(), content: 0, chosenTop: 0, showsTop: 0,
+		swatches: nil, ramps: nil, headers: nil, area: ui.Zero(), content: 0, chosenTop: 0, templateTop: 0,
+		showsTop: 0,
 	}
 }
 
@@ -154,7 +156,8 @@ func (s *State) layoutPanel(docs frame.Docs) {
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
 	s.panel = newPanelLayout()
 	s.layoutShows(docs, left, width, inspector.Max.Y-ui.Inset)
-	editTop := s.panel.showsTop - ui.Inset - ui.ButtonH
+	s.layoutTemplateChoice(docs, left, width, s.panel.showsTop-ui.Inset)
+	editTop := s.panel.templateTop - ui.Inset - ui.ButtonH
 	s.edit.Rect = image.Rect(left, editTop, left+editWidth, editTop+ui.ButtonH)
 	s.edit.Disabled = s.color.IsClear() || s.color.IsLoose()
 	s.panel.chosenTop = editTop - ui.Gap - max(chosenSwatch, chosenLines*ui.LineHeight) - ui.LineHeight
@@ -235,12 +238,14 @@ func (s *State) reveal(rect image.Rectangle) image.Rectangle {
 	return rect.Sub(image.Pt(0, s.scroll-before))
 }
 
-// updatePanel handles Edit palette…, Shows, the wheel over the swatches,
-// and a click on a swatch, a ramp's name or a palette's heading.
+// updatePanel handles Edit palette…, Template, Shows, the wheel over the
+// swatches, and a click on a swatch, a ramp's name or a palette's heading.
 func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case s.edit.Update(input):
 		s.editPalette(ctx)
+	case s.templateChoice.Update(input):
+		s.openTemplates(ctx.Docs)
 	case s.shows.Update(input):
 		s.openShows(ctx.Docs)
 	case input.Cursor.In(s.panel.area) && input.WheelY != 0:
@@ -314,6 +319,7 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	s.drawSwatches(screen, docs)
 	s.drawChosen(screen, docs, left, inspector.Dx()-ui.Half*ui.Inset)
 	s.edit.Draw(screen, s.theme)
+	s.drawTemplateChoice(screen, left)
 	s.drawShows(screen, left)
 }
 

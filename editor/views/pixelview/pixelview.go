@@ -36,11 +36,13 @@ const shortID = 6
 const PaletteEditorView = paletteview.ViewName
 
 // stroke is the pencil or eraser drag in progress; count numbers the
-// window's strokes and fills, for their gestures.
+// window's strokes and fills, for their gestures, and skipped counts the
+// pixels the stroke's template did not allow.
 type stroke struct {
-	active bool
-	count  int
-	last   image.Point
+	active  bool
+	count   int
+	last    image.Point
+	skipped int
 }
 
 // State is one Pixel editor window.
@@ -86,8 +88,15 @@ type State struct {
 	// shows opens showsMenu, which chooses the stand-in the sprite shows.
 	shows     *ui.Button
 	showsMenu ui.Menu
-	cursor    image.Point
-	picture   picture
+	// templateChoice opens templateMenu, which chooses the template the
+	// sprite is drawn to; overlay shows its marks and guides, and clearThem
+	// clears what is painted where it does not allow it.
+	templateChoice *ui.Button
+	templateMenu   ui.Menu
+	overlay        *ui.Toggle
+	clearThem      *ui.Button
+	cursor         image.Point
+	picture        picture
 }
 
 // New returns the Pixel editor for a sprite.
@@ -96,17 +105,22 @@ func New(window, sprite ids.ULID, theme *ui.Theme) *State {
 		window: window, sprite: sprite, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		palettes: []ids.ULID{art.DefaultPaletteID()}, first: nil, folds: map[ids.ULID]bool{},
 		tool: ToolPencil, color: clearColor(),
-		zoom: 0, pan: image.Pt(0, 0), wheel: 0, stroke: stroke{active: false, count: 0, last: image.Pt(0, 0)},
-		hover: image.Pt(0, 0), hovering: false,
+		zoom: 0, pan: image.Pt(0, 0), wheel: 0,
+		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0), skipped: 0},
+		hover:  image.Pt(0, 0), hovering: false,
 		tools: nil, zoomOut: ui.NewButton("zoom-out", "−"), zoomIn: ui.NewButton("zoom-in", "+"),
 		zoomFit: ui.NewButton("zoom-fit", "Fit"),
 		grid:    &ui.Toggle{ID: "grid", Label: "Grid", Rect: ui.Zero(), On: true},
 		marks:   &ui.Toggle{ID: "show-them", Label: "Show them", Rect: ui.Zero(), On: false},
 		panel:   newPanelLayout(), scroll: 0, edit: ui.NewButton("edit-palette", "Edit palette…"),
 		shows: ui.NewButton("shows", "Nothing"), showsMenu: ui.Menu{Items: nil, Width: 0},
-		cursor: image.Pt(0, 0), picture: newPicture(),
+		templateChoice: ui.NewButton("template-choice", "None"), templateMenu: ui.Menu{Items: nil, Width: 0},
+		overlay:   &ui.Toggle{ID: "template", Label: "Template", Rect: ui.Zero(), On: true},
+		clearThem: ui.NewButton("clear-them", "Clear them"),
+		cursor:    image.Pt(0, 0), picture: newPicture(),
 	}
 	view.shows.Caret = true
+	view.templateChoice.Caret = true
 	for _, info := range tools() {
 		view.tools = append(view.tools, ui.NewButton("tool-"+string(info.tool), info.label))
 	}
@@ -176,9 +190,9 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	}
 }
 
-// syncSubscriptions subscribes to the sprite's tile, every palette of the
-// project and every palette the tile is painted from, and the zones and their
-// floors.
+// syncSubscriptions subscribes to the sprite's tile and its template, every
+// palette of the project and every palette the tile is painted from, and the
+// zones and their floors.
 func (s *State) syncSubscriptions(ctx *frame.Context) {
 	tileID, ok := s.tileID(ctx.Docs)
 	if ok {
@@ -192,6 +206,9 @@ func (s *State) syncSubscriptions(ctx *frame.Context) {
 				}
 			}
 		})
+	}
+	if templateID, drawn := s.templateID(ctx.Docs); drawn {
+		s.subscribe(templateID, ctx)
 	}
 	s.syncPalettes(ctx.Docs)
 	for _, palette := range s.palettes {
@@ -337,10 +354,18 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if s.templateMenu.IsOpen() {
+		s.updateTemplates(input, ctx)
+
+		return
+	}
 	s.keys(input, ctx)
 	frame.CommonKeys(input, ctx)
 	s.updateToolbar(input, ctx)
 	s.marks.Update(input)
+	if s.clearThem.Update(input) {
+		s.clearNotAllowed(ctx)
+	}
 	s.updatePanel(input, ctx)
 	s.updateCanvas(input, ctx)
 }
@@ -379,6 +404,7 @@ func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 		s.fit(ctx.Docs)
 	}
 	s.grid.Update(input)
+	s.overlay.Update(input)
 }
 
 func (s *State) setTool(tool Tool) {
@@ -397,12 +423,13 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.drawPanel(screen, docs)
 	s.drawTip(screen, docs, s.cursor)
 	s.showsMenu.Draw(screen, s.theme)
+	s.templateMenu.Draw(screen, s.theme)
 }
 
 // layout places everything for the window's size: the toolbar, the canvas,
 // the readout's toggle and the palette panel.
 func (s *State) layout(docs frame.Docs) {
-	s.layoutToolbar()
+	s.layoutToolbar(docs)
 	s.layoutReadout(docs)
 	s.layoutPanel(docs)
 }
