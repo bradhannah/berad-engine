@@ -1,6 +1,6 @@
 # Increment 18: Comparisons by type
 
-**Status:** Planned
+**Status:** Built
 
 The eighteenth increment makes Check value compare by its value's type.
 Today it offers the same five comparisons whatever the type and flags the
@@ -94,7 +94,7 @@ Chosen while planning, for its author to check:
 | 1. Comparisons in the engine | The new comparison names, `to` and `among`, operands that refer to a value, format 6 reading 5, and `compares` by type; what a Check value may not ask of each type | Unit tests of every comparison on every type, of references read live, and of a version 5 workflow upgraded; the replace edit passes the shared apply-then-undo test with the new parameters | Built |
 | 2. The inspector by type | Compare filtered by the value's type, the symbol row and its words line, no row for a bool, choice toggles, text, the number or value switch, two fields for between | View tests of each type's rows, of ticking choices and of choosing another value | Built |
 | 3. Summaries and problems | The node's summary and the status bar's words; problems for none ticked, a reference of the wrong type and a comparison the type cannot make | View tests of the summaries and of each problem | Built |
-| 4. Checks | `make check` and the real-window suite; a real-window test checks an integer against another value and a choice against a list, and the saved logic holds both | The checks pass with no lint findings | Planned |
+| 4. Checks | `make check` and the real-window suite; a real-window test checks an integer against another value and a choice against a list, and the saved logic holds both | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -143,6 +143,13 @@ Chosen while planning, for its author to check:
   a reference, a bool and a list, and sees no choice ticked as a problem.
   The status bar does not name a hovered node; the node carries its
   summary.
+- **Checks:** a real-window test adds a Check value, declares
+  `world.stock` from its chooser, compares with ≥ and picks another value
+  on the right, takes a screenshot and quits; the saved logic holds the
+  comparison and the reference. The choice list is checked in the view
+  test rather than a real window, since turning a value into a choice
+  there means scripting the World state window too. `make check` passes
+  with no lint findings, and so does the real-window suite.
 
 ## Changed after its author tried it
 
