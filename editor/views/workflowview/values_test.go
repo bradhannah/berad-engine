@@ -403,3 +403,30 @@ func (f *fixture) carryOutOn(document ids.ULID, edit string, args any) {
 		Command: protocol.Command{Document: document, Edit: edit, Gesture: "", Args: data}, Done: nil,
 	})
 }
+
+// TestTextOnANode shows text on a node once, in curly quotes, as typed,
+// cut when long, and empty text as empty.
+func TestTextOnANode(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindCheckValue)
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{Add: []worldstate.Declaration{
+		worldstate.New(frametest.ID(60), "motto", worldstate.ScopeWorld, worldstate.TypeText),
+	}, Set: nil, Remove: nil})
+	f.click("ui:pick-value")
+	f.click("valuerow:world.motto")
+	for typed, title := range map[string]string{
+		`""`:                              "Is world.motto empty?",
+		`"Ada"`:                           "Is world.motto “Ada”?",
+		`"Say \"hi\" to the clerk today"`: "Is world.motto “Say \"hi\" to the clerk t…”?",
+	} {
+		node, err := f.nth(flow.KindCheckValue, 1).WithParam(flow.ParamAgainst, json.RawMessage(typed))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.carryOutOn(workflowID, workflowplugin.ReplaceEdit, workflowplugin.ReplaceArgs{Node: node})
+		f.frame(noInput())
+		if !f.has("title:check-value:1=" + title) {
+			t.Errorf("%s reads %s", typed, title)
+		}
+	}
+}

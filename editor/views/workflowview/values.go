@@ -42,6 +42,8 @@ const (
 	// valueBoxPrefix names a value parameter's box, "ui:pick-<param>".
 	valueBoxPrefix = "pick-"
 	operandPrefix  = "operand-"
+	// textShown bounds text shown on a node, in characters.
+	textShown = 24
 )
 
 // Problems the value nodes can have.
@@ -1103,7 +1105,7 @@ func (s *State) operandLabel(docs frame.Docs, node flow.Node, param string) stri
 		}
 		label := declared.Label(value)
 		if declared.Type == worldstate.TypeText {
-			label = strconv.Quote(label)
+			label = textLabel(value.Text)
 		}
 		labels = append(labels, label)
 	}
@@ -1112,6 +1114,19 @@ func (s *State) operandLabel(docs frame.Docs, node flow.Node, param string) stri
 	}
 
 	return strings.Join(labels, ", ")
+}
+
+// textLabel shows text on a node as it was typed, in curly quotes, cut
+// with an ellipsis when long; empty text reads as empty.
+func textLabel(text string) string {
+	if text == "" {
+		return "empty"
+	}
+	if runes := []rune(text); len(runes) > textShown {
+		text = string(runes[:textShown-1]) + "…"
+	}
+
+	return "“" + text + "”"
 }
 
 func (s *State) findSummary(node flow.Node, path, operand func(string) string) string {

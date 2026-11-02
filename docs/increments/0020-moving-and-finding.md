@@ -108,7 +108,7 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Text on a node | Text operands in curly quotes once, nothing escaped, cut with … when long; empty text as empty; the same for Set value | View tests of the labels of empty text, plain text, text with quote marks and long text | Planned |
+| 1. Text on a node | Text operands in curly quotes once, nothing escaped, cut with … when long; empty text as empty; the same for Set value | View tests of the labels of empty text, plain text, text with quote marks and long text | Built |
 | 2. Move into | The right-click menu on a value or group with Move into and its submenu, Rename and Delete; a move as one change, refused where the name is taken; the line under the Name box | View tests move a value into a group, to the top level and into a new group, refuse a taken name, and undo | Planned |
 | 3. Moving what is used | The dialog listing each use as it will read, Move and Cancel; a value nothing uses moves at once | View tests move a used value through the dialog, cancel it, and move an unused one without it | Planned |
 | 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Planned |
@@ -119,7 +119,12 @@ Chosen while planning, for its author to check:
 
 ## Step results
 
-None yet.
+- **Text on a node:** a text operand was quoted twice, once as the value
+  writes itself and again by the node, so empty text read "\"\"". Now a
+  node shows text as it was typed, in curly quotes, cut at 24 characters
+  with an ellipsis; empty text reads empty, as Is npc.name empty?. Set
+  value shows its text the same way. Verified: a view test reads a Check
+  value's title for empty text, Ada, and long text with quote marks in it.
 
 ## Changed after its author tried it
 
