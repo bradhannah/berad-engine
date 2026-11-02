@@ -29,12 +29,14 @@ import (
 // choices any number of options and waits a unit and a clock; version 3 gave
 // Play sound how loud to play its cue this time; version 4 gave workflows
 // local values; version 5 renamed local types to integer and bool, and named
-// a value reference's NPC or zone its owner. Layout version 2 added lines
-// moved by hand; version 3 let a back line's drop and end legs be moved too,
-// and added the tints of nodes, outcomes and lines.
+// a value reference's NPC or zone its owner; version 6 gave Check value
+// comparisons by type, a range's top and a list as operands, and operands
+// that refer to another value. Layout version 2 added lines moved by hand;
+// version 3 let a back line's drop and end legs be moved too, and added the
+// tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 5
+	FormatVersion       = 6
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 3
 )
@@ -408,8 +410,18 @@ func (w *Workflow) DecodeLayout(data json.RawMessage) error {
 func Format() content.Format {
 	return content.Format{
 		Name: FormatName, Current: FormatVersion,
-		Migrations: map[int]content.Migration{1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4},
+		Migrations: map[int]content.Migration{
+			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5,
+		},
 	}
+}
+
+// upgradeFrom5 reads a version 5 workflow unchanged: version 6 added
+// comparisons, Check value's "to" and "among" operands and operands that
+// refer to another value, every old comparison and operand keeping its
+// meaning.
+func upgradeFrom5(data json.RawMessage) (json.RawMessage, error) {
+	return data, nil
 }
 
 // upgradeFrom4 renames local values' types, number to integer and yes-no to

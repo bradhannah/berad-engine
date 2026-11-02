@@ -90,14 +90,31 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Comparisons in the engine | The new comparison names, `to` and `among`, operands that refer to a value, format 6 reading 5, and `compares` by type; what a Check value may not ask of each type | Unit tests of every comparison on every type, of references read live, and of a version 5 workflow upgraded; the replace edit passes the shared apply-then-undo test with the new parameters | Planned |
+| 1. Comparisons in the engine | The new comparison names, `to` and `among`, operands that refer to a value, format 6 reading 5, and `compares` by type; what a Check value may not ask of each type | Unit tests of every comparison on every type, of references read live, and of a version 5 workflow upgraded; the replace edit passes the shared apply-then-undo test with the new parameters | Built |
 | 2. The inspector by type | Compare filtered by the value's type, the symbol row and its words line, no row for a bool, choice toggles, text, the number or value switch, two fields for between | View tests of each type's rows, of ticking choices and of choosing another value | Planned |
 | 3. Summaries and problems | The node's summary and the status bar's words; problems for none ticked, a reference of the wrong type and a comparison the type cannot make | View tests of the summaries and of each problem | Planned |
 | 4. Checks | `make check` and the real-window suite; a real-window test checks an integer against another value and a choice against a list, and the saved logic holds both | The checks pass with no lint findings | Planned |
 
 ## Step results
 
-None yet.
+- **Comparisons in the engine:** `is-not`, `at-most`, `above`, `between`,
+  `any-of` and `none-of` join the comparison names; `Comparisons` lists
+  what each type takes, in the inspector's order, and `CanCompare` keeps
+  `is` for every type with a value. Check value gains two operands, `to`
+  for between's top and `among` for a list; an operand may now hold a list
+  of values or a reference to another value, with `Operands`,
+  `OperandList`, `OperandRef` and `RefOperand` reading and writing them, and
+  a list within a list or an object that is no reference is refused. The
+  runner reads a referenced value live and takes it only when its type
+  matches, checks between with both ends included, checks any of and none
+  of against the list, and takes otherwise, saying no operand, for a
+  comparison its type cannot make. Workflow format 6 reads version 5
+  unchanged. Verified: engine tests of the lists, the operand checks and
+  the upgrade; runner tests of every integer comparison on a value from 0
+  to 3, against a number and against another value, of a reference of the
+  wrong type, of a bool, of a choice against lists, an empty list and a
+  legacy is, and of text. The replace edit's apply-then-undo test covers
+  the new parameters through the existing Check value cases.
 
 ## Changed after its author tried it
 
