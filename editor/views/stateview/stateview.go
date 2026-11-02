@@ -94,6 +94,10 @@ type State struct {
 	// what it would delete.
 	dialog   *ui.Dialog
 	deleting *deletion
+	// menu is the right-click menu on a row; renaming is the path of a
+	// group a move is making, to select for its name once it shows.
+	menu     ui.Menu
+	renaming string
 }
 
 // New returns the World state window for the project's world state.
@@ -109,7 +113,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
-		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil,
+		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, menu: ui.Menu{Items: nil, Width: 0},
+		renaming: "",
 		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
@@ -196,6 +201,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if s.menu.IsOpen() {
+		s.chooseFromMenu(ctx, s.menu.Update(input))
+
+		return
+	}
 	if s.guard.Active() {
 		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.form.Revert)
 
@@ -220,6 +230,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if !loaded {
 		return
 	}
+	s.renameNewGroup()
 	s.updateTree(input, ctx)
 	s.updateAdds(input, ctx)
 	s.updateInspector(input, ctx)
@@ -232,6 +243,9 @@ func (s *State) updateTree(input *ui.Input, ctx *frame.Context) {
 	result := s.list.Update(input)
 	if result.Toggled != "" {
 		s.toggled[result.Toggled] = !s.toggled[result.Toggled]
+	}
+	if result.Context {
+		s.rightClick(input, ctx, result.ContextRow)
 	}
 	if s.list.Selected == selected {
 		return
@@ -335,7 +349,7 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 // Add value, Add group, Add template, the inspector's fields and buttons
 // and "ui:template-<name>" for a template to apply; "row:<path>" for a row,
 // "toggle:<path>" for its triangle and "section:<scope>" for a scope;
-// "dialog:<button>"; and "state:loaded", "state:selected=<path>",
+// "dialog:<button>"; "menu:<id>" for the right-click menu; and "state:loaded", "state:selected=<path>",
 // "state:value=<path>:<type>:<default>" or "state:applied=<owner path>:<template>".
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	loaded := s.refresh(docs)
@@ -344,6 +358,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	switch {
 	case s.dialog != nil:
 		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	case kind == menuLocate:
+		return s.menu.Locate(value)
 	case s.guard.Active():
 		return s.guard.Locate(value, s.size)
 	case kind+":" == statePrefix:
@@ -444,6 +460,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.list.Draw(screen, s.theme)
 	}
 	s.drawInspector(screen)
+	s.menu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)

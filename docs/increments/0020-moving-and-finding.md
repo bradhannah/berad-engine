@@ -109,7 +109,7 @@ Chosen while planning, for its author to check:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Text on a node | Text operands in curly quotes once, nothing escaped, cut with … when long; empty text as empty; the same for Set value | View tests of the labels of empty text, plain text, text with quote marks and long text | Built |
-| 2. Move into | The right-click menu on a value or group with Move into and its submenu, Rename and Delete; a move as one change, refused where the name is taken; the line under the Name box | View tests move a value into a group, to the top level and into a new group, refuse a taken name, and undo | Planned |
+| 2. Move into | The right-click menu on a value or group with Move into and its submenu, Rename and Delete; a move as one change, refused where the name is taken; the line under the Name box | View tests move a value into a group, to the top level and into a new group, refuse a taken name, and undo | Built |
 | 3. Moving what is used | The dialog listing each use as it will read, Move and Cancel; a value nothing uses moves at once | View tests move a used value through the dialog, cancel it, and move an unused one without it | Planned |
 | 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Planned |
 | 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Planned |
@@ -125,6 +125,28 @@ Chosen while planning, for its author to check:
   with an ellipsis; empty text reads empty, as Is npc.name empty?. Set
   value shows its text the same way. Verified: a view test reads a Check
   value's title for empty text, Ada, and long text with quote marks in it.
+- **Move into:** a right-click on a value, group or template selects it,
+  asking first about typed changes to the one being left, and opens a menu:
+  Move into, Rename and Delete. Move into opens a submenu beside it, headed
+  Inside World, Inside the guards template or Inside George's own: Top
+  level, each group of that section indented under the group holding it,
+  leaving out the row itself and what it holds, with where it already is
+  shown but not offered; and New group…. A move keeps the name and is one
+  change, the groups it needs declared with it, so Cmd+Z puts it back; the
+  status says "Moved to world.quests.mood. Cmd+Z undoes it.", or why not,
+  as "mood is already declared there". New group… makes a group named
+  group, or group_2 and on when taken, at the section's top level, moves
+  the row into it, and selects the group with its name ready to type. A
+  template's Move into is greyed. Rename puts the Name box to type, and a
+  line under the box says a dotted name moves it too. Menus gain
+  submenus: an item opens its own beside it when the pointer rests on it
+  or it is clicked. Verified: a view test moves world.mood into quests as
+  one command and back to the top level, is refused where quests has a
+  mood, moves it into a new group selected with its name to type, moves
+  George's secret into a group of his own, finds no move for the guards
+  template, and renames by the menu.
+- **Submenus by the keyboard, short of the plan:** the editor's menus take
+  no arrow keys yet, so a submenu opens by the pointer only.
 
 ## Changed after its author tried it
 
