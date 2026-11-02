@@ -3,6 +3,7 @@ package workflowview
 import (
 	"encoding/json"
 	"image"
+	"image/color"
 	"slices"
 	"strconv"
 	"strings"
@@ -348,28 +349,15 @@ func decodeRef(row string) (flow.ValueRef, bool) {
 
 // newValueControl makes a value parameter's widgets; the search box takes
 // part in focus only while the chooser shows it.
-func (s *State) newValueControl(made *control) {
-	made.search = ui.NewTextField("value-search", textedit.NewField("", false, maxValueSearch), false, s.theme)
-	made.search.Placeholder, made.search.Unmarked = "Find a value, or type a new name", true
-	made.list = &ui.List{ID: "values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
-	s.focus.Register(made.search)
-}
+func (s *State) newValueControl(*control) {}
 
-// layoutValue places the chosen value and, when open, the chooser down to
-// bottom. It returns where the next control goes.
-func (s *State) layoutValue(docs frame.Docs, made *control, node flow.Node, left, width, top, bottom int) int {
+// layoutValue places the chosen value's box, which opens the picker, with
+// a line under it for the value's type, limits and description. It returns
+// where the next control goes.
+func layoutValue(made *control, left, width, top int) int {
 	made.cueBox = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.search.Rect, made.list.Rect = ui.Zero(), ui.Zero()
-	if !made.open {
-		return top + fieldSpace
-	}
-	made.search.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.list.Rows = s.valueRows(docs, roleOf(node.Kind, made.param.Name), made.search.Field.Value())
-	made.list.Rect = image.Rect(left, top, left+width, max(top+ui.RowHeight, bottom-ui.Gap))
 
-	return made.list.Rect.Max.Y + fieldSpace
+	return top + ui.ButtonH + ui.LineHeight + fieldSpace
 }
 
 // valueRows lists the values a search matches under their headings, and
@@ -516,41 +504,11 @@ func declareScopes(role valueRole) []worldstate.Scope {
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
 }
 
-// updateValue opens and closes the chooser and chooses or declares the
-// value clicked.
-func (s *State) updateValue(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
+// updateValue opens the picker when the value's box is clicked.
+func (s *State) updateValue(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		if made.open {
-			s.closeChooser(made)
-
-			return
-		}
-		made.open = true
-		if ref, err := node.Ref(made.param.Name); err == nil {
-			made.list.Selected = encodeRef(ref)
-		}
-		s.focus.Set(made.search)
-
-		return
-	}
-	if !made.open {
-		return
-	}
-	row, _ := rowAt(made.list, input.Cursor)
-	pressed := input.Pressed
-	made.list.Update(input)
-	if !pressed || row == "" {
-		return
-	}
-	s.closeChooser(made)
-	if target, declaring := decodeTarget(row); declaring {
-		s.declareValue(ctx, node.ID, made.param.Name, target)
-
-		return
-	}
-	if ref, ok := decodeRef(row); ok {
-		s.chooseValue(ctx, ctx.Docs, node, made.param.Name, ref)
+		s.openValuePicker(node, made.param.Name, pickerTitle(made.param, ""), "", false)
 	}
 }
 
@@ -763,13 +721,13 @@ func setSavedOperand(made *control, node flow.Node) {
 // Another value over an integer's and the chooser when it refers to a
 // value, or leaves room for a note while its value is not chosen. It
 // returns where the next control goes.
-func (s *State) layoutOperand(docs frame.Docs, made *control, left, width, top, bottom int) int {
+func (s *State) layoutOperand(made *control, left, width, top int) int {
 	made.clearRects()
 	if len(made.sources) > 0 {
 		top = s.layoutButtonRows(made.sources, left, width, top)
 	}
 	if made.picksValue() {
-		return s.layoutOperandChooser(docs, made, left, width, top, bottom)
+		return layoutValue(made, left, width, top)
 	}
 	if made.field != nil {
 		made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
@@ -840,41 +798,58 @@ func parseOperand(made *control, field *ui.TextField, value string) (any, bool, 
 // and the chooser when open.
 func (s *State) drawValue(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node) {
 	ref, err := node.Ref(made.param.Name)
-	label, ink := "?", ui.ColorWarn()
+	label, ink, detail := "?", ui.ColorWarn(), ""
 	if err == nil {
-		_, path, problem := s.resolve(docs, ref)
+		declared, path, problem := s.resolve(docs, ref)
 		switch {
 		case ref.IsZero() && roleOf(node.Kind, made.param.Name) == roleWhere:
 			label, ink = "Any NPC", ui.ColorInk()
 		case ref.IsZero():
-			label, ink = "Choose a value", ui.ColorMuted()
+			label, ink = chooseValueLabel, ui.ColorMuted()
 		case problem != "" && path == "":
 			label = "Broken: " + strings.ToLower(strings.TrimSuffix(problem, "."))
 		default:
-			label, ink = path, ui.ColorInk()
+			label, ink, detail = path, ui.ColorInk(), valueDetail(declared)
 		}
 	}
-	ui.Box(screen, made.cueBox, ui.ColorBackground())
-	if made.open {
-		ui.StrokeRound(screen, made.cueBox, ui.Radius, ui.Border, ui.ColorSelect())
+	open := s.values != nil && !s.values.operand && s.values.param == made.param.Name
+	s.drawPickBox(screen, made.cueBox, label, ink, open)
+	if detail != "" {
+		s.theme.DrawText(screen, s.clip(detail, made.cueBox.Dx()), made.cueBox.Min.X, made.cueBox.Max.Y+ui.Gap,
+			ui.ColorMuted())
 	}
-	textTop := made.cueBox.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
-	caret := image.Rect(made.cueBox.Max.X-textPad-caretWidth, made.cueBox.Min.Y, made.cueBox.Max.X-textPad,
-		made.cueBox.Max.Y)
-	ui.DrawTriangle(screen, caret, true, ui.ColorMuted())
-	s.theme.DrawMono(screen, s.clip(label, caret.Min.X-made.cueBox.Min.X-ui.Half*textPad), made.cueBox.Min.X+textPad,
-		textTop, ink)
-	if !made.open {
-		return
-	}
-	made.search.Draw(screen)
-	if len(made.list.Rows) == 0 {
-		s.theme.DrawText(screen, "No value matches. Type a name to declare one.", made.list.Rect.Min.X,
-			made.list.Rect.Min.Y, ui.ColorMuted())
+}
 
-		return
+// drawPickBox draws a box that opens the picker: its label, a caret, and a
+// blue outline while the picker it opens is open.
+func (s *State) drawPickBox(screen *ebiten.Image, box image.Rectangle, label string, ink color.Color, open bool) {
+	ui.Box(screen, box, ui.ColorBackground())
+	if open {
+		ui.StrokeRound(screen, box, ui.Radius, ui.Border, ui.ColorSelect())
 	}
-	made.list.Draw(screen, s.theme)
+	textTop := box.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
+	caret := image.Rect(box.Max.X-textPad-caretWidth, box.Min.Y, box.Max.X-textPad, box.Max.Y)
+	ui.DrawTriangle(screen, caret, true, ui.ColorMuted())
+	s.theme.DrawMono(screen, s.clip(label, caret.Min.X-box.Min.X-ui.Half*textPad), box.Min.X+textPad, textTop, ink)
+}
+
+// valueDetail is the one line shown under a chosen value: its type, an
+// integer's limits, and its description.
+func valueDetail(declared worldstate.Declaration) string {
+	parts := []string{declared.Type.Label()}
+	switch {
+	case declared.Min != nil && declared.Max != nil:
+		parts = append(parts, strconv.Itoa(*declared.Min)+" to "+strconv.Itoa(*declared.Max))
+	case declared.Min != nil:
+		parts = append(parts, "at least "+strconv.Itoa(*declared.Min))
+	case declared.Max != nil:
+		parts = append(parts, "at most "+strconv.Itoa(*declared.Max))
+	}
+	if declared.Description != "" {
+		parts = append(parts, declared.Description)
+	}
+
+	return strings.Join(parts, " · ")
 }
 
 // drawOperand draws an operand's field or buttons, or says why it has none.
@@ -1115,28 +1090,6 @@ func (s *State) findSummary(node flow.Node, path, operand func(string) string) s
 	}
 
 	return written
-}
-
-// locateValueRow finds an open value chooser's row, "valuerow:<path>", or
-// a row that declares a value, "declare:<path>" or, for one NPC's own,
-// "declare:<path> for <its path name>", for input scripts.
-func (s *State) locateValueRow(kind, value string) (image.Point, bool) {
-	made, open := s.openChooser()
-	if !open || (made.param.Type != flow.TypeValue && made.param.Type != flow.TypeOperand) {
-		return image.Pt(0, 0), false
-	}
-	for index, row := range made.list.Rows {
-		rect := made.list.RowRect(index)
-		if row.Heading || !rect.In(made.list.Rect) {
-			continue
-		}
-		target, declaring := decodeTarget(row.ID)
-		if (kind == locateValue && row.Label == value) || (kind == locateDeclare && declaring && target.located() == value) {
-			return image.Pt(rect.Min.X+textPad, ui.Center(rect).Y), true
-		}
-	}
-
-	return image.Pt(0, 0), false
 }
 
 // hasValueState answers "value:<param>=<path>" for the selected node's

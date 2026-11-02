@@ -154,11 +154,13 @@ type State struct {
 	// colour rows for the selection.
 	tints   flow.Tints
 	colours []colourRow
-	form    *form
-	save    *ui.SaveBar
-	guard   frame.Guard
-	focus   ui.Focus
-	picker  *picker.Picker
+	// values is the value picker while it is open.
+	values *valuePicker
+	form   *form
+	save   *ui.SaveBar
+	guard  frame.Guard
+	focus  ui.Focus
+	picker *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -191,7 +193,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
-		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil,
+		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil,
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),

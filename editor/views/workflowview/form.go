@@ -435,11 +435,10 @@ func (s *State) notesTop(panel image.Rectangle, width int) int {
 }
 
 // layoutForm places the inspector's fields and buttons.
-func (s *State) layoutForm(docs frame.Docs) {
+func (s *State) layoutForm(_ frame.Docs) {
 	if s.form == nil {
 		return
 	}
-	node, _ := s.selectedNode()
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	top := panel.Min.Y + formTop
@@ -475,7 +474,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 			made.addRange.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 			top += ui.ButtonH + fieldSpace
 		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
-			top = s.layoutReference(docs, made, node, image.Rect(left, top, left+width, footer))
+			top = s.layoutReference(made, image.Rect(left, top, left+width, footer))
 		}
 	}
 	s.form.bottom = top
@@ -485,7 +484,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 // layoutReference places a parameter that refers to something, from the
 // top of room down to no lower than its bottom, and returns where the next
 // control goes.
-func (s *State) layoutReference(docs frame.Docs, made *control, node flow.Node, room image.Rectangle) int {
+func (s *State) layoutReference(made *control, room image.Rectangle) int {
 	left, width, top := room.Min.X, room.Dx(), room.Min.Y
 	switch made.param.Type {
 	case flow.TypeAnchor:
@@ -499,9 +498,9 @@ func (s *State) layoutReference(docs frame.Docs, made *control, node flow.Node, 
 	case flow.TypeCue:
 		return s.layoutCue(made, left, width, top, room.Max.Y)
 	case flow.TypeValue:
-		return s.layoutValue(docs, made, node, left, width, top, room.Max.Y)
+		return layoutValue(made, left, width, top)
 	case flow.TypeOperand:
-		return s.layoutOperand(docs, made, left, width, top, room.Max.Y)
+		return s.layoutOperand(made, left, width, top)
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges:
 	}

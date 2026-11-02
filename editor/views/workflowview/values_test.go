@@ -196,6 +196,44 @@ func TestAtItsLimit(t *testing.T) {
 	}
 }
 
+// TestValuePicker opens the picker from the Value box, declares from it,
+// narrows by typing and picks the one match with Enter, and closes it with
+// Escape and with a click outside.
+func TestValuePicker(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSetValue)
+	f.click("ui:pick-value")
+	if !f.has("picker") {
+		t.Fatal("the Value box opens the picker")
+	}
+	f.typeText("world.gold")
+	f.click("declare:world.gold")
+	if f.has("picker") || !f.has("value:value=world.gold") {
+		t.Fatal("declaring from the picker chooses the value and closes it")
+	}
+	f.click("ui:pick-value")
+	f.typeText("world.silver")
+	f.click("declare:world.silver")
+	f.click("ui:pick-value")
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.typeText("gol")
+	f.keys("Enter")
+	if f.has("picker") || !f.has("value:value=world.gold") {
+		t.Fatal("Enter picks the one value that matches")
+	}
+	f.click("ui:pick-value")
+	f.keys("Escape")
+	if f.has("picker") {
+		t.Fatal("Escape closes the picker")
+	}
+	f.click("ui:pick-value")
+	f.press(image.Pt(10, 300))
+	f.release(image.Pt(10, 300))
+	if f.has("picker") || !f.has("value:value=world.gold") {
+		t.Fatal("a click outside closes the picker and keeps the value")
+	}
+}
+
 // TestComparisonsFollowTheType declares an integer and sees its symbols,
 // between's second number and another value on the right; turns the value
 // into a bool, whose Compare row goes and whose click mends the comparison;

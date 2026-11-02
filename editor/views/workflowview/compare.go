@@ -2,14 +2,12 @@ package workflowview
 
 import (
 	"encoding/json"
-	"image"
 	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
-	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -308,10 +306,6 @@ func (s *State) shapeCheckOperand(node flow.Node, made *control, declared worlds
 func (s *State) newOperandSources(made *control, node flow.Node) {
 	made.sources = []*ui.Button{ui.NewButton("source-number", "A number"), ui.NewButton("source-value", "Another value")}
 	_, made.refers = flow.OperandRef(savedOperand(node, made.param.Name))
-	made.search = ui.NewTextField("operand-search", textedit.NewField("", false, maxValueSearch), false, s.theme)
-	made.search.Placeholder, made.search.Unmarked = "Find an integer value", true
-	made.list = &ui.List{ID: "operand-values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
-	s.focus.Register(made.search)
 }
 
 // operandRows lists the values an operand may refer to: every value a
@@ -335,23 +329,6 @@ func (s *State) operandRows(docs frame.Docs, kind worldstate.Type, query string)
 	}
 
 	return rows
-}
-
-// layoutOperandChooser places the value an operand refers to and, when
-// open, the chooser down to bottom. It returns where the next control goes.
-func (s *State) layoutOperandChooser(docs frame.Docs, made *control, left, width, top, bottom int) int {
-	made.cueBox = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.search.Rect, made.list.Rect = ui.Zero(), ui.Zero()
-	if !made.open {
-		return top + fieldSpace
-	}
-	made.search.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.list.Rows = s.operandRows(docs, made.operandType, made.search.Field.Value())
-	made.list.Rect = image.Rect(left, top, left+width, max(top+ui.RowHeight, bottom-ui.Gap))
-
-	return made.list.Rect.Max.Y + fieldSpace
 }
 
 // updateOperandSource handles A number and Another value: a number drops
@@ -379,75 +356,34 @@ func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *c
 	}
 }
 
-// updateOperandChooser opens and closes the chooser of an operand that
-// refers to a value, or is about to, and saves the value picked in it.
-func (s *State) updateOperandChooser(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
+// updateOperandChooser opens the picker, offering values of the operand's
+// type, when its box is clicked.
+func (s *State) updateOperandChooser(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		if made.open {
-			s.closeChooser(made)
-
-			return
-		}
-		made.open = true
-		if saved, err := node.Operand(made.param.Name); err == nil {
-			if ref, refers := flow.OperandRef(saved); refers {
-				made.list.Selected = encodeRef(ref)
-			}
-		}
-		s.focus.Set(made.search)
-
-		return
-	}
-	if !made.open {
-		return
-	}
-	row, _ := rowAt(made.list, input.Cursor)
-	pressed := input.Pressed
-	made.list.Update(input)
-	if !pressed || row == "" {
-		return
-	}
-	s.closeChooser(made)
-	if ref, ok := decodeRef(row); ok {
-		s.saveParam(ctx, node, made.param.Name, flow.RefOperand(ref))
+		s.openValuePicker(node, made.param.Name, pickerTitle(made.param, made.operandType), made.operandType, true)
 	}
 }
 
 // drawOperandChooser draws the value an operand refers to, or asks for one,
-// and the chooser when open.
+// as a box that opens the picker, with the value's detail under it.
 func (s *State) drawOperandChooser(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node) {
-	label, ink := "Choose a value", ui.ColorMuted()
+	label, ink, detail := chooseValueLabel, ui.ColorMuted(), ""
 	if saved, err := node.Operand(made.param.Name); err == nil {
 		if ref, refers := flow.OperandRef(saved); refers {
-			_, path, problem := s.resolve(docs, ref)
-			label, ink = path, ui.ColorInk()
+			declared, path, problem := s.resolve(docs, ref)
+			label, ink, detail = path, ui.ColorInk(), valueDetail(declared)
 			if problem != "" {
-				label, ink = "Broken: "+strings.ToLower(strings.TrimSuffix(problem, ".")), ui.ColorWarn()
+				label, ink, detail = "Broken: "+strings.ToLower(strings.TrimSuffix(problem, ".")), ui.ColorWarn(), ""
 			}
 		}
 	}
-	ui.Box(screen, made.cueBox, ui.ColorBackground())
-	if made.open {
-		ui.StrokeRound(screen, made.cueBox, ui.Radius, ui.Border, ui.ColorSelect())
+	open := s.values != nil && s.values.operand && s.values.param == made.param.Name
+	s.drawPickBox(screen, made.cueBox, label, ink, open)
+	if detail != "" {
+		s.theme.DrawText(screen, s.clip(detail, made.cueBox.Dx()), made.cueBox.Min.X, made.cueBox.Max.Y+ui.Gap,
+			ui.ColorMuted())
 	}
-	textTop := made.cueBox.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
-	caret := image.Rect(made.cueBox.Max.X-textPad-caretWidth, made.cueBox.Min.Y, made.cueBox.Max.X-textPad,
-		made.cueBox.Max.Y)
-	ui.DrawTriangle(screen, caret, true, ui.ColorMuted())
-	s.theme.DrawMono(screen, s.clip(label, caret.Min.X-made.cueBox.Min.X-ui.Half*textPad), made.cueBox.Min.X+textPad,
-		textTop, ink)
-	if !made.open {
-		return
-	}
-	made.search.Draw(screen)
-	if len(made.list.Rows) == 0 {
-		s.theme.DrawText(screen, "No other "+made.operandType.Label()+" to compare with.", made.list.Rect.Min.X,
-			made.list.Rect.Min.Y, ui.ColorMuted())
-
-		return
-	}
-	made.list.Draw(screen, s.theme)
 }
 
 // saveAgainst saves what a Check value compares with; a comparison its

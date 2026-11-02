@@ -80,6 +80,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	}
 	s.contextMenu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
+	if s.values != nil {
+		s.drawValuePicker(screen, docs)
+	}
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -546,6 +549,12 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasTintState(state); handled {
 		return found, true
 	}
+	switch state {
+	case "legend":
+		return s.legend.On, true
+	case "picker":
+		return s.values != nil, true
+	}
 	if strings.HasPrefix(state, localState) {
 		return s.hasLocal(state), true
 	}
@@ -839,11 +848,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.load(docs)
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
-	if s.guard.Active() {
-		return s.guard.Locate(value, s.size)
-	}
-	if s.picker.Dialog() != nil {
-		return s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	if point, found, handled := s.locateInOverlay(docs, kind, value); handled {
+		return point, found
 	}
 	switch kind {
 	case "state":
@@ -853,7 +859,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return image.Pt(0, 0), s.hasState(value)
 	case locateValue, locateDeclare:
-		return s.locateValueRow(kind, value)
+		return image.Pt(0, 0), false
 	case locateCue, locatePlay:
 		return s.locateCueRow(kind, value)
 	case "palette":
@@ -958,6 +964,28 @@ func (s *State) nthNode(value string) (shape, bool) {
 	}
 
 	return noShape(), false
+}
+
+// locateInOverlay finds a part of whatever is over the window and takes its
+// input: the guard's dialog, the map picker's dialog or the value picker;
+// states are still the window's own. It reports whether one was open.
+func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Point, bool, bool) {
+	switch {
+	case s.guard.Active():
+		point, found := s.guard.Locate(value, s.size)
+
+		return point, found, true
+	case s.picker.Dialog() != nil:
+		point, found := s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+
+		return point, found, true
+	case s.values != nil && kind != "state":
+		point, found := s.locateInPicker(docs, kind, value)
+
+		return point, found, true
+	default:
+		return image.Pt(0, 0), false, false
+	}
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
@@ -1066,8 +1094,6 @@ func (s *State) hasState(state string) bool {
 		return ok && node.Kind == strings.TrimPrefix(state, "selected:")
 	case state == "picking":
 		return s.picker.Picking()
-	case state == "legend":
-		return s.legend.On
 	case state == "destination":
 		node, ok := s.selectedNode()
 		destination, err := node.Anchor("destination")

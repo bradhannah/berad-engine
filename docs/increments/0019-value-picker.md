@@ -78,7 +78,7 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. The picker dialog | A dialog with the search, the results under headings with type and description, picking and closing; the inspector's Value box opens it and the inline chooser goes | View tests open it from the box and by Enter, search, pick, and close with Esc; the chooser tests of increment 15 pass through it | Planned |
+| 1. The picker dialog | A dialog with the search, the results under headings with type and description, picking and closing; the inspector's Value box opens it and the inline chooser goes | View tests open it from the box and by Enter, search, pick, and close with Esc; the chooser tests of increment 15 pass through it | Built |
 | 2. Every chooser | Find NPC nearby's two choosers and Another value open the picker with their rules; the type lock and the count of hidden values | View tests of each chooser's offered values and of the lock | Planned |
 | 3. The rail and the tree | The scope rail with counts, groups folding when nothing is typed, arrows opening them, the last group remembered | View tests of the counts, of narrowing by scope, of folding and of the memory | Planned |
 | 4. Declaring from the picker | Where, type and starting value when nothing matches, then chosen | View tests of declaring in each scope, and of the locked type | Planned |
@@ -86,7 +86,21 @@ Chosen while planning, for its author to check:
 
 ## Step results
 
-None yet.
+- **The picker dialog:** `valuepicker.go` draws a dialog over the shaded
+  window, 760 by 540 pixels or smaller in a small window, with the title
+  and what it chooses for, a search focused on open, the values under
+  their headings with their type, the rows that would declare the name
+  typed, the keyboard's ways, and Cancel and Choose. Typing narrows,
+  arrows move, a click on a row or Enter picks, Enter with nothing
+  selected taking the top value that matches or else the top row that
+  would declare one; Escape, Cancel and a click outside close it. The
+  inspector's boxes, for a value and for an operand's Another value, open
+  it and keep only the box, with the value's type, limits and description
+  on a line under it; the inline search and list are gone. Verified: a
+  view test opens the picker from the Value box, declares from it, narrows
+  by typing and picks with Enter, and closes it with Escape and with a
+  click outside; the chooser tests of increments 15 and 18 pass through
+  it unchanged.
 
 ## Changed after its author tried it
 
