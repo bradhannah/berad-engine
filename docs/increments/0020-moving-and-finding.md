@@ -112,7 +112,7 @@ Chosen while planning, for its author to check:
 | 2. Move into | The right-click menu on a value or group with Move into and its submenu, Rename and Delete; a move as one change, refused where the name is taken; the line under the Name box | View tests move a value into a group, to the top level and into a new group, refuse a taken name, and undo | Built |
 | 3. Moving what is used | The dialog listing each use as it will read, Move and Cancel; a value nothing uses moves at once | View tests move a used value through the dialog, cancel it, and move an unused one without it | Built |
 | 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Built |
-| 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Planned |
+| 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Built |
 | 6. Find a value | The button and Cmd+F; the World state rail and every type; uses counted; Show opening the groups and selecting the row | View tests find a value inside a closed group and show it, narrow by scope, and count uses | Planned |
 | 7. Declare and show | The declare panel with the world, zones, NPCs and templates as where; the new value selected in the tree | View tests declare in the world, for an NPC and in a template, and find each selected | Planned |
 | 8. Checks | `make check` and the real-window suite; a real-window test moves a used value by the menu, drags another into a group, finds one and declares one | The checks pass with no lint findings | Planned |
@@ -172,6 +172,16 @@ Chosen while planning, for its author to check:
 - **"Drop to move into group" on the row, short of the wireframe:** the
   group is outlined and the pointer's label gives the new path, which says
   the same; the list writes nothing on the row.
+- **The shared picker:** the picker is now its own package, valuepicker,
+  with its search, chips, rail, folding groups and declare panel. A
+  window opens one with its words, as its title, what the button picks and
+  what declaring does, its rail and the type it is locked to, and gives it
+  a source: the values it lists, each with the heading, rail scope and root
+  it sits under; where a name typed can be declared; and what a pick and a
+  declare do. The Workflow window is one such source, its node's values,
+  declare targets and choosing unchanged. The group last opened is kept by
+  the window. Verified: the view tests of increments 15, 18 and 19 and the
+  picker's and comparisons' real-window tests pass unchanged.
 - **Each use as it will read, short of the plan:** where a value is used is
   answered as the workflow and the kind of node, as Workflow 1 · a Check
   value node, not the node's sentence, which only the Workflow window

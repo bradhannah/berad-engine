@@ -17,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -31,14 +32,10 @@ import (
 // type: an integer or text to type, false or true, or one of a list's
 // choices.
 const (
-	maxValueSearch = 200
-	// Row IDs: a value's row is its reference, encoded; a heading's starts
-	// with valueHeading.
-	valueHeading = "values:"
 	// locateValue names a picker's row for input scripts, "valuerow:<path>",
 	// and locateDeclare where a value can be declared, "declare:<path>".
-	locateValue   = "valuerow"
-	locateDeclare = "declare"
+	locateValue   = valuepicker.LocateValue
+	locateDeclare = valuepicker.LocateDeclare
 	// valueBoxPrefix names a value parameter's box, "ui:pick-<param>".
 	valueBoxPrefix = "pick-"
 	operandPrefix  = "operand-"
@@ -82,25 +79,13 @@ type place struct {
 // The picker's scopes beyond the scopes' own: every scope, other NPCs' and
 // zones' values.
 const (
-	railEverywhere = "everywhere"
-	railOthers     = "others"
-	railZones      = "zones"
+	railOthers = "others"
+	railZones  = "zones"
 )
 
 // scopePlace lists a value under a heading, in a scope of its own name.
 func scopePlace(heading string, scope worldstate.Scope) place {
 	return place{heading: heading, rail: string(scope), root: string(scope)}
-}
-
-// group is the group a value is in below its root, as world.quests, or ""
-// for one at the top.
-func (o valueOption) group() string {
-	cut := strings.LastIndex(o.path, ".")
-	if cut <= len(o.root) || !strings.HasPrefix(o.path, o.root+".") {
-		return ""
-	}
-
-	return o.path[:cut]
 }
 
 // declareTarget is where a chooser's row declares a value: a scope, the
@@ -878,19 +863,7 @@ func valueDetail(declared worldstate.Declaration) string {
 }
 
 // typeDetail is a value's type and an integer's limits.
-func typeDetail(declared worldstate.Declaration) string {
-	parts := []string{declared.Type.Label()}
-	switch {
-	case declared.Min != nil && declared.Max != nil:
-		parts = append(parts, strconv.Itoa(*declared.Min)+" to "+strconv.Itoa(*declared.Max))
-	case declared.Min != nil:
-		parts = append(parts, "at least "+strconv.Itoa(*declared.Min))
-	case declared.Max != nil:
-		parts = append(parts, "at most "+strconv.Itoa(*declared.Max))
-	}
-
-	return strings.Join(parts, " · ")
-}
+func typeDetail(declared worldstate.Declaration) string { return valuepicker.TypeDetail(declared) }
 
 // drawOperand draws an operand's field or buttons, or says why it has none.
 func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
