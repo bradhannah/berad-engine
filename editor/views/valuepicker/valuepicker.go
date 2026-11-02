@@ -215,6 +215,16 @@ func typeChips(only worldstate.Type) ([]*ui.Button, []worldstate.Type) {
 	return chips, kinds
 }
 
+// Focused returns the picker's focused field, the search or the declare
+// panel's start, for the editor to send it what is typed.
+func (p *Picker) Focused() *ui.TextField {
+	if p.focus.Current() == nil {
+		p.focus.Set(p.search)
+	}
+
+	return p.focus.Current()
+}
+
 // offers reports whether the picker lists a value: of its one type, or of
 // the chip chosen.
 func (p *Picker) offers(option Option) bool {

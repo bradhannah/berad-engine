@@ -39,6 +39,9 @@ func TestPickerTypes(t *testing.T) {
 	f := withNode(t, flow.KindCheckValue)
 	f.withCoins()
 	f.click("ui:pick-value")
+	if field := f.state.Focused(); field == nil || field.ID != "value-search" {
+		t.Fatal("the editor sends what is typed to the picker's search")
+	}
 	if !f.shown("world.gold") || !f.shown("world.open") || !f.has("picker-hidden=0") {
 		t.Fatal("every type is offered at first")
 	}

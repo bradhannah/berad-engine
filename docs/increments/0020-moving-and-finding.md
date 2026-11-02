@@ -235,7 +235,15 @@ Chosen while planning, for its author to check:
 
 ## Changed after its author tried it
 
-Not yet tried.
+Found by its author on 2026-11-02, trying it:
+
+- **Typing reached neither picker.** The editor sends what is typed only
+  to the text field a window says has focus, and neither the World state
+  window nor the Workflow window said the picker's search, or its declare
+  panel's start, had it; input scripts type straight into a window, so the
+  tests never saw it. Find and increment 19's picker in the Workflow
+  window now hand the editor the picker's focused field. Verified: view
+  tests find the search focused as each picker opens.
 
 ## Not in this increment
 

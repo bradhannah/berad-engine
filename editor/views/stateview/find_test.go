@@ -30,6 +30,9 @@ func TestFind(t *testing.T) {
 		{Document: guardID, Name: "Workflow 1", Format: "workflow", Label: "a Check value node", Item: moodID.String()},
 		{Document: guardID, Name: "Workflow 2", Format: "workflow", Label: "a Set value node", Item: moodID.String()},
 	}})
+	if field := f.state.Focused(); field == nil || field.ID != "value-search" {
+		t.Fatal("the editor sends what is typed to Find's search")
+	}
 	if !f.has("find") || !f.has("picker-detail:world.mood=choice · used 2 times") ||
 		!f.has("picker-detail:npc.guards.arrests=integer · unused") {
 		t.Fatal("Find opens, counting each value's uses")

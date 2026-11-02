@@ -226,7 +226,14 @@ func (s *State) name(docs frame.Docs) string {
 }
 
 // Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+// While the value picker is open, it is the picker's.
+func (s *State) Focused() *ui.TextField {
+	if s.values != nil {
+		return s.values.picker.Focused()
+	}
+
+	return s.focus.Current()
+}
 
 // Selected returns the selected node's ID.
 func (s *State) Selected() ids.ULID { return s.selected }

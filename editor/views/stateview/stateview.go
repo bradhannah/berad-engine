@@ -148,7 +148,14 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 func (s *State) Title(frame.Docs) string { return "World state" }
 
 // Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+// While Find is open, it is Find's.
+func (s *State) Focused() *ui.TextField {
+	if s.find != nil {
+		return s.find.Focused()
+	}
+
+	return s.focus.Current()
+}
 
 // Start keeps the project index loaded, for the NPCs and zones.
 func (s *State) Start(ctx *frame.Context) { s.subscribe(ctx, project.IndexID()) }
