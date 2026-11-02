@@ -61,6 +61,7 @@ const (
 	stateValue    = "value="
 	stateApplied  = "applied="
 	stateSays     = "says="
+	stateAdds     = "adds="
 )
 
 // State is the World state window.
@@ -104,8 +105,10 @@ type State struct {
 	// row to select once the tree shows it, for a move or for Find, and
 	// revealRename puts its name to type.
 	menu         ui.Menu
+	menuOf       string
 	revealPath   string
 	revealRename bool
+	nameAdded    bool
 	// find is Find a value while it is open, with findButton opening it;
 	// findUses counts each value's uses, once answered; lastGroup is the
 	// group last opened in it.
@@ -129,9 +132,10 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
-		menu:       ui.Menu{Items: nil, Width: 0},
-		revealPath: "", revealRename: false, find: nil, findButton: ui.NewButton(findID, "Find a value"),
-		findUses: nil, lastGroup: "",
+		menu:   ui.Menu{Items: nil, Width: 0},
+		menuOf: "", revealPath: "", revealRename: false, nameAdded: false, find: nil,
+		findButton: ui.NewButton(findID, "Find a value"),
+		findUses:   nil, lastGroup: "",
 		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
@@ -255,6 +259,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.revealRow()
+	s.nameNewRow()
 	if s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd()) {
 		s.openFind(ctx, "")
 
@@ -400,7 +405,8 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 // "toggle:<path>" for its triangle and "section:<scope>" for a scope;
 // "dialog:<button>"; "menu:<id>" for the right-click menu; and "state:loaded", "state:selected=<path>",
 // "state:value=<path>:<type>:<default>", "state:applied=<owner path>:<template>"
-// or "state:says=<the open dialog's title or one of its lines>".
+// "state:says=<the open dialog's title or one of its lines>" or
+// "state:adds=<where Add value adds>".
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	loaded := s.refresh(docs)
 	s.layout()
@@ -467,22 +473,29 @@ func (s *State) hasState(docs frame.Docs, state string) bool {
 
 		return found && meaning.path == strings.TrimPrefix(state, stateSelected)
 	case strings.HasPrefix(state, stateValue):
-		for _, meaning := range s.shown.items {
-			declared := meaning.declared
-			if !declared.Type.IsValue() || declared.ID.IsZero() {
-				continue
-			}
-			shown := meaning.path + ":" + string(declared.Type) + ":" + declared.Label(declared.Zero())
-			if shown == strings.TrimPrefix(state, stateValue) {
-				return true
-			}
-		}
+		return s.hasValue(strings.TrimPrefix(state, stateValue))
 	case strings.HasPrefix(state, stateApplied):
 		return s.applied(strings.TrimPrefix(state, stateApplied))
+	case strings.HasPrefix(state, stateAdds):
+		return s.addsNote(docs) == strings.TrimPrefix(state, stateAdds)
 	case strings.HasPrefix(state, stateSays) && s.dialog != nil:
 		return slices.ContainsFunc(append([]string{s.dialog.Title}, s.dialog.Lines...), func(line string) bool {
 			return strings.TrimSpace(line) == strings.TrimPrefix(state, stateSays)
 		})
+	}
+
+	return false
+}
+
+// hasValue answers "<path>:<type>:<default>": whether a value shown in the
+// tree is one.
+func (s *State) hasValue(asked string) bool {
+	for _, meaning := range s.shown.items {
+		declared := meaning.declared
+		if declared.Type.IsValue() && !declared.ID.IsZero() &&
+			meaning.path+":"+string(declared.Type)+":"+declared.Label(declared.Zero()) == asked {
+			return true
+		}
 	}
 
 	return false
@@ -518,6 +531,11 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		ui.Inset, ui.Inset+ui.LineHeight, ui.ColorMuted())
 	for _, button := range append([]*ui.Button{s.findButton}, s.adds...) {
 		button.Draw(screen, s.theme)
+	}
+	if where := s.addsNote(docs); loaded && where != "" {
+		room := s.findButton.Rect.Min.X - s.adds[2].Rect.Max.X - ui.Half*ui.Gap*ui.Half
+		s.theme.DrawText(screen, s.theme.FitText(where, room), s.adds[2].Rect.Max.X+ui.Half*ui.Gap,
+			s.adds[2].Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
 	}
 	if loaded {
 		s.list.Draw(screen, s.theme)

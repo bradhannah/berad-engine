@@ -1,7 +1,6 @@
 package stateview
 
 import (
-	"image"
 	"strconv"
 	"strings"
 
@@ -14,10 +13,11 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// The right-click menu on a value, group or template, located as
+// The right-click menu's moves on a value or group, located as
 // "menu:<id>": Move into, whose submenu lists the groups of the row's own
 // section as "into:<dotted group>", "into:" for its top level and
-// "into-new" for a new group; Rename; and Delete.
+// "into-new" for a new group; Rename; and Delete. Its adds are in
+// rowmenus.go.
 const (
 	menuLocate   = "menu"
 	menuMoveInto = "move-into"
@@ -30,15 +30,12 @@ const (
 )
 
 // rightClick selects the row a right-click lands on, as a click would, and
-// opens its menu when it is a value, group or template the window
-// changes. Typed changes to the row being left are asked about first, and
-// the menu waits for another right-click.
+// opens its menu: a section's heading opens its own without selecting.
+// Typed changes to the row being left are asked about first, and the menu
+// waits for another right-click.
 func (s *State) rightClick(input *ui.Input, ctx *frame.Context, row string) {
 	meaning, found := s.shown.items[row]
-	if !found || meaning.kind != itemDeclared {
-		return
-	}
-	if row != s.list.Selected {
+	if found && row != s.list.Selected {
 		if unsaved := s.Unsaved(ctx.Docs); unsaved > 0 {
 			s.focus.Set(nil)
 			s.guard.Ask(unsaved, s.UnsavedName(ctx.Docs), func() { s.list.Selected = row })
@@ -47,32 +44,7 @@ func (s *State) rightClick(input *ui.Input, ctx *frame.Context, row string) {
 		}
 		s.list.Selected = row
 	}
-	items := s.menuItems(meaning)
-	s.menu.ClearSubs()
-	s.menu.Items, s.menu.Width = items, ui.MenuWidth(items, s.theme)
-	if !items[0].Disabled {
-		into := s.intoItems(meaning)
-		s.menu.SetSub(menuMoveInto, into, ui.MenuWidth(into, s.theme))
-	}
-	s.menu.OpenAt(input.Cursor, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
-}
-
-// menuItems are a row's choices: Move into, which a template cannot do,
-// Rename and Delete.
-func (s *State) menuItems(meaning item) []ui.MenuItem {
-	kind := meaning.declared.Type
-
-	return []ui.MenuItem{
-		{
-			ID: menuMoveInto, Label: "Move into", Icon: ui.IconNone, Disabled: kind == worldstate.TypeTemplate,
-			Danger: false, Rule: false,
-		},
-		{ID: menuRename, Label: "Rename", Icon: ui.IconNone, Disabled: false, Danger: false, Rule: false},
-		{
-			ID: menuDelete, Label: "Delete " + kindName(kind), Icon: ui.IconNone, Disabled: false, Danger: true,
-			Rule: true,
-		},
-	}
+	s.openRowMenu(input, row, meaning, found)
 }
 
 // intoItems lists where a value or group can move inside its own section:
@@ -150,16 +122,19 @@ func containsID(within []ids.ULID, id ids.ULID) bool {
 	return false
 }
 
-// chooseFromMenu carries out a choice from the right-click menu on the
-// selected row.
+// chooseFromMenu carries out a choice from the right-click menu on its
+// row.
 func (s *State) chooseFromMenu(ctx *frame.Context, chosen string) {
+	if chosen == "" || s.chooseAdd(ctx, chosen) {
+		return
+	}
 	selected, found := s.selected()
-	if !found || chosen == "" {
+	if !found {
 		return
 	}
 	switch {
 	case chosen == menuRename:
-		s.focus.Set(s.form.Fields()[0])
+		s.nameToType()
 	case chosen == menuDelete:
 		s.startDelete(ctx, selected)
 	case chosen == menuNewGroup:

@@ -7,6 +7,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
@@ -67,10 +68,11 @@ func TestMoveInto(t *testing.T) {
 		t.Fatal("George's secret moved into a group of his own")
 	}
 	f.rightClick("row:npc.guards")
-	f.click("menu:move-into")
-	if _, found := f.state.Locate("menu:into:", f.ctx.Docs); found {
-		t.Fatal("a template does not move")
+	_, moves := f.state.Locate("menu:move-into", f.ctx.Docs)
+	if _, adds := f.state.Locate("menu:add-value", f.ctx.Docs); moves || !adds {
+		t.Fatal("a template does not move, and adds inside it")
 	}
+	f.keys("Escape")
 	f.rightClick("row:world.quests.mood")
 	f.click("menu:rename")
 	if f.state.Focused() == nil || !f.has("selected=world.quests.mood") {
@@ -202,5 +204,71 @@ func TestUsedValueKeepsItsType(t *testing.T) {
 	}
 	if _, offered := f.state.Locate("ui:value-declare-new", f.ctx.Docs); offered {
 		t.Fatal("and has no need to declare a new one")
+	}
+}
+
+// addBy adds through a row's right-click menu: a choice, and one from its
+// submenu when given.
+func (f *fixture) addBy(row, chosen, sub string) {
+	f.t.Helper()
+	f.rightClick(row)
+	f.click("menu:" + chosen)
+	if sub != "" {
+		f.click("menu:" + sub)
+	}
+	f.keys()
+}
+
+// TestAddFromARowsMenu adds a bool inside a group from its menu and names
+// it by typing, a group at the top of World from its heading, text in a
+// template, a value of George's own, a template for zones, and applies a
+// template to George.
+func TestAddFromARowsMenu(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	if !f.has("adds=adds at the top of World") {
+		t.Fatal("with nothing selected, the buttons add at the top of World")
+	}
+	f.click("row:world.quests.dragon_slain")
+	if !f.has("adds=adds in quests") {
+		t.Fatal("beside a value in quests, the buttons add in quests")
+	}
+	f.addBy("row:world.quests", "add-value", "add:bool")
+	if added, found := f.world().Find(worldstate.ScopeWorld, questsID, "value"); !found ||
+		added.Type != worldstate.TypeBool || !f.has("selected=world.quests.value") ||
+		f.status() != "Added value, a bool, in quests. Type its name." {
+		t.Fatalf("a bool added in quests, selected: %+v %q", added, f.status())
+	}
+	f.typed("ready")
+	f.keys("Enter")
+	if _, named := f.world().Find(worldstate.ScopeWorld, questsID, "ready"); !named {
+		t.Fatal("typing replaces its name")
+	}
+	f.addBy("section:world", "add-group", "")
+	if _, found := f.world().Find(worldstate.ScopeWorld, ids.ULID{}, "group"); !found ||
+		!f.has("selected=world.group") {
+		t.Fatal("World's heading adds a group at its top")
+	}
+	f.keys("Escape")
+	f.addBy("row:npc.guards", "add-value", "add:text")
+	if added, found := f.world().Find(worldstate.ScopeNPC, guardsID, "value"); !found ||
+		added.Type != worldstate.TypeText {
+		t.Fatalf("text added in the guards template: %+v", added)
+	}
+	f.keys("Escape")
+	f.addBy("row:npc.george", "add-value", "add:integer")
+	if _, found := f.npcDoc(georgeID).Owned.Values.Find(worldstate.ScopeNPC, ids.ULID{}, "value"); !found ||
+		!f.has("selected=npc.george.value") {
+		t.Fatal("an integer of George's own, shown")
+	}
+	f.keys("Escape")
+	f.addBy("row:npc.george", "apply-template", "apply:guards")
+	if !f.has("applied=npc.george:guards") {
+		t.Fatal("George has the guards template")
+	}
+	f.addBy("section:zone", "add-template", "")
+	if template, found := f.world().Find(worldstate.ScopeZone, ids.ULID{}, "template"); !found ||
+		template.Type != worldstate.TypeTemplate {
+		t.Fatal("Zone's heading adds a zone template")
 	}
 }

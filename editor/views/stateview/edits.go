@@ -117,7 +117,7 @@ func (s *State) updateAdds(input *ui.Input, ctx *frame.Context) {
 }
 
 // declare declares a value, group or template with a name nothing beside
-// it has, and selects it to be named in the inspector.
+// it has, and selects it with its name ready to type.
 func (s *State) declare(ctx *frame.Context, into target, base string, kind worldstate.Type) {
 	owned := into.list.Document != worldstate.ID() && into.parent.IsZero()
 	name := base
@@ -142,10 +142,11 @@ func (s *State) declare(ctx *frame.Context, into target, base string, kind world
 	default:
 		s.toggled[ownerPrefix+into.list.Document.String()] = true
 	}
+	added := "Added " + name + ", " + kindPhrase(kind) + ", " + s.addsWhere(into) + ". Type its name."
 	s.send(ctx, into.list.Document, into.list.Edit, change, func(result protocol.Result, err error) {
-		ctx.Frame.Report("Added "+name+". Name it in the inspector.")(result, err)
+		ctx.Frame.Report(added)(result, err)
 		if err == nil {
-			s.list.Selected = declaredPrefix + result.Created.String()
+			s.list.Selected, s.nameAdded = declaredPrefix+result.Created.String(), true
 		}
 	})
 }

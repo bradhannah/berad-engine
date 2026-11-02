@@ -356,12 +356,31 @@ func (s *State) revealRow() {
 		s.list.Reveal(row.ID)
 		s.inspect(meaning)
 		if s.revealRename {
-			s.focus.Set(s.form.Fields()[0])
+			s.nameToType()
 		}
 		s.revealRename = false
 
 		return
 	}
+}
+
+// nameNewRow puts the name of a row just added to type, once the tree shows
+// it selected.
+func (s *State) nameNewRow() {
+	if !s.nameAdded || s.named == "" || s.named != s.list.Selected {
+		return
+	}
+	s.nameAdded = false
+	s.nameToType()
+}
+
+// nameToType focuses the selected declaration's name with its own name
+// selected, after the groups its dotted name starts with, so typing
+// renames it where it is.
+func (s *State) nameToType() {
+	name := s.form.Fields()[0]
+	s.focus.Set(name)
+	name.Field.SelectFrom(strings.LastIndex(name.Field.Value(), ".") + 1)
 }
 
 // layoutFind places Find a value at the right of the add buttons.
