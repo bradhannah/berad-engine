@@ -308,29 +308,6 @@ func (s *State) newOperandSources(made *control, node flow.Node) {
 	_, made.refers = flow.OperandRef(savedOperand(node, made.param.Name))
 }
 
-// operandRows lists the values an operand may refer to: every value a
-// Check value can read that is of the same type, under the chooser's
-// headings, narrowed by a search.
-func (s *State) operandRows(docs frame.Docs, kind worldstate.Type, query string) []ui.Row {
-	query = strings.ToLower(strings.TrimSpace(query))
-	var rows []ui.Row
-	heading := ""
-	for _, option := range s.valueOptions(docs, roleCheck) {
-		if option.declared.Type != kind || (query != "" && !strings.Contains(option.path, query)) {
-			continue
-		}
-		if option.heading != heading {
-			heading = option.heading
-			rows = append(rows, ui.NewHeading(valueHeading+heading, heading))
-		}
-		row := ui.NewRow(encodeRef(option.ref), option.path)
-		row.Detail = option.declared.Type.Label()
-		rows = append(rows, row)
-	}
-
-	return rows
-}
-
 // updateOperandSource handles A number and Another value: a number drops
 // the reference for a zero to type over; another value puts up the box to
 // pick one from, which opens its chooser when clicked, as the Value box
@@ -361,7 +338,8 @@ func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *c
 func (s *State) updateOperandChooser(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		s.openValuePicker(node, made.param.Name, pickerTitle(made.param, made.operandType), made.operandType, true)
+		s.openValuePicker(node, made.param.Name, pickerTitle(made.param, made.operandType, true), made.operandType,
+			true)
 	}
 }
 

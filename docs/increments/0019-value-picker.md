@@ -79,7 +79,7 @@ Chosen while planning, for its author to check:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. The picker dialog | A dialog with the search, the results under headings with type and description, picking and closing; the inspector's Value box opens it and the inline chooser goes | View tests open it from the box and by Enter, search, pick, and close with Esc; the chooser tests of increment 15 pass through it | Built |
-| 2. Every chooser | Find NPC nearby's two choosers and Another value open the picker with their rules; the type lock and the count of hidden values | View tests of each chooser's offered values and of the lock | Planned |
+| 2. Every chooser | Find NPC nearby's two choosers and Another value open the picker with their rules; the type lock and the count of hidden values | View tests of each chooser's offered values and of the lock | Built |
 | 3. The rail and the tree | The scope rail with counts, groups folding when nothing is typed, arrows opening them, the last group remembered | View tests of the counts, of narrowing by scope, of folding and of the memory | Planned |
 | 4. Declaring from the picker | Where, type and starting value when nothing matches, then chosen | View tests of declaring in each scope, and of the locked type | Planned |
 | 5. Checks | `make check` and the real-window suite; a real-window test opens the picker, searches, picks and declares | The checks pass with no lint findings | Planned |
@@ -101,6 +101,19 @@ Chosen while planning, for its author to check:
   by typing and picks with Enter, and closes it with Escape and with a
   click outside; the chooser tests of increments 15 and 18 pass through
   it unchanged.
+- **Every chooser:** Find NPC nearby's two boxes and an integer's Another
+  value open the picker, as the Value box does, each offering what its
+  chooser did. Type chips sit under the search, All and each type, and
+  narrow the list; one chip is locked on for an operand, which must match
+  its value's type, and for Keep it in, which keeps an NPC. A line under
+  the list counts and names the values the search matches that the type
+  hides. Show them chooses All, or, where the type is locked, lists them
+  last under their headings, marked as another type, where a click says
+  why it cannot be picked instead of picking it. Verified: view tests
+  narrow a Value picker by a chip and show every type again; lock an
+  operand's picker to integers, count and list the bool it hides without
+  picking it, then pick an integer; and lock Keep it in to NPC values
+  while Only one whose offers the found NPC's values and no world value.
 
 ## Changed after its author tried it
 

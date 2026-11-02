@@ -360,40 +360,6 @@ func layoutValue(made *control, left, width, top int) int {
 	return top + ui.ButtonH + ui.LineHeight + fieldSpace
 }
 
-// valueRows lists the values a search matches under their headings, and
-// rows that declare a value named by the search where none has that name.
-func (s *State) valueRows(docs frame.Docs, role valueRole, query string) []ui.Row {
-	query = strings.ToLower(strings.TrimSpace(query))
-	var rows []ui.Row
-	heading := ""
-	taken := map[string]bool{}
-	for _, option := range s.valueOptions(docs, role) {
-		taken[option.path] = true
-		if query != "" && !strings.Contains(option.path, query) {
-			continue
-		}
-		if option.heading != heading {
-			heading = option.heading
-			rows = append(rows, ui.NewHeading(valueHeading+heading, heading))
-		}
-		row := ui.NewRow(encodeRef(option.ref), option.path)
-		row.Detail = option.declared.Type.Label()
-		rows = append(rows, row)
-	}
-	for _, target := range s.declareTargets(docs, role, query) {
-		if taken[target.Path] {
-			continue
-		}
-		label := "Declare " + target.Path
-		if target.For != "" {
-			label += " for " + s.ownerName(docs, target.Document)
-		}
-		rows = append(rows, ui.NewRow(declarePrefix+encodeTarget(target), label))
-	}
-
-	return rows
-}
-
 // ownerName is an NPC's display name.
 func (s *State) ownerName(docs frame.Docs, id ids.ULID) string {
 	owner, _ := s.catalog(docs).Owner(id)
@@ -504,12 +470,18 @@ func declareScopes(role valueRole) []worldstate.Scope {
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
 }
 
-// updateValue opens the picker when the value's box is clicked.
+// updateValue opens the picker when the value's box is clicked: locked to
+// NPC values for one to keep an NPC in.
 func (s *State) updateValue(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
-	if input.Pressed && input.Cursor.In(made.cueBox) {
-		input.ClearPointer()
-		s.openValuePicker(node, made.param.Name, pickerTitle(made.param, ""), "", false)
+	if !input.Pressed || !input.Cursor.In(made.cueBox) {
+		return
 	}
+	input.ClearPointer()
+	only := worldstate.Type("")
+	if roleOf(node.Kind, made.param.Name) == roleKeep {
+		only = worldstate.TypeNPC
+	}
+	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
 }
 
 // chooseValue sets a value parameter, starting its operand at the value's
@@ -1096,6 +1068,9 @@ func (s *State) findSummary(node flow.Node, path, operand func(string) string) s
 // value parameter, "operand:<param>=<saved>" for its operand and
 // "title:<kind>:<n>=<title>" for the nth value node of a kind's title.
 func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
+	if found, handled := s.hasPickerState(state, docs); handled {
+		return found, true
+	}
 	if found, handled := s.hasOperandState(state, docs); handled {
 		return found, true
 	}

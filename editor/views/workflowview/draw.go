@@ -549,11 +549,8 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasTintState(state); handled {
 		return found, true
 	}
-	switch state {
-	case "legend":
+	if state == "legend" {
 		return s.legend.On, true
-	case "picker":
-		return s.values != nil, true
 	}
 	if strings.HasPrefix(state, localState) {
 		return s.hasLocal(state), true
