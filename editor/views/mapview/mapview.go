@@ -1379,7 +1379,9 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 
 		return
 	}
-	ctx.Requests.PickAnswer(protocol.PickAnswer{Pick: s.pick.Pick, Floor: s.floor, Item: anchor.ID.String()})
+	ctx.Requests.PickAnswer(protocol.PickAnswer{
+		Pick: s.pick.Pick, Floor: s.floor, Item: anchor.ID.String(), Name: anchor.Name,
+	})
 	s.pick = nil
 	ctx.Frame.Status("Picked “" + anchor.Name + "”")
 }

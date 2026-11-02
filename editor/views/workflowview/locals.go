@@ -158,6 +158,9 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 	if _, ok := s.selectedLocal(); !ok {
 		return
 	}
+	if declared, ok := s.selectedLocal(); ok {
+		panel.form.PickPlace.Label = s.picker.Label(localOwner(declared.ID))
+	}
 	switch changed, change := panel.form.Update(input); change {
 	case valueform.ChangeValue:
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, changed, ids.ULID{}), nil)
@@ -186,27 +189,24 @@ func (s *State) placeName(ctx *frame.Context, declared worldstate.Declaration) s
 	return name
 }
 
-// pickPlace picks a place local's start on a map, or cancels the pick in
+// pickPlace picks a place local's start on a map, or cancels its pick in
 // progress.
 func (s *State) pickPlace(ctx *frame.Context, declared worldstate.Declaration) {
-	if s.picker.Picking() {
-		s.picker.Cancel(ctx, "cancelled in the workflow")
-
-		return
-	}
 	label := localPath(declared) + " in “" + s.name(ctx.Docs) + "”"
-	s.picker.Start(ctx, label, func(answer protocol.PickAnswer, ctx *frame.Context) {
-		anchor, err := ids.Parse(answer.Item)
+	s.picker.Toggle(ctx, localOwner(declared.ID), cancelledHere, label, func(answer protocol.PickAnswer,
+		ctx *frame.Context,
+	) {
 		current, ok := s.workflow.Locals().Value(declared.ID)
-		if err != nil || !ok {
-			ctx.Frame.Status("The map answered with something that is not an anchor")
-
+		if !ok {
+			return
+		}
+		ref, picked := s.picked(ctx, answer, localPath(current), s.placeName(ctx, current))
+		if !picked {
 			return
 		}
 		start := worldstate.NoValue()
-		start.Type, start.Place = worldstate.TypePlace, worldstate.Place{Floor: answer.Floor, Anchor: anchor}
+		start.Type, start.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
 		current.Default = start.Encode()
-		s.subscribe(answer.Floor, ctx)
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, current, ids.ULID{}), nil)
 	})
 }

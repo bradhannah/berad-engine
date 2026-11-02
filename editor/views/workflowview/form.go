@@ -680,32 +680,24 @@ func newPort(spans []flow.TimeRange) string {
 
 // updateAnchor picks the destination on a map, or clears it.
 func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
-	made.pick.Label = "Pick on map"
-	if s.picker.Picking() {
-		made.pick.Label = "Cancel pick"
-	}
+	owner := anchorOwner(node.ID, made.param.Name)
+	made.pick.Label = s.picker.Label(owner)
 	switch {
 	case made.pick.Update(input):
-		if s.picker.Picking() {
-			s.picker.Cancel(ctx, "cancelled in the workflow")
-
-			return
-		}
 		label := "a Go to in “" + s.name(ctx.Docs) + "”"
 		nodeID, param := node.ID, made.param.Name
-		s.picker.Start(ctx, label, func(answer protocol.PickAnswer, ctx *frame.Context) {
-			anchor, err := ids.Parse(answer.Item)
-			if err != nil {
-				ctx.Frame.Status("The map answered with something that is not an anchor")
-
-				return
-			}
+		s.picker.Toggle(ctx, owner, cancelledHere, label, func(answer protocol.PickAnswer, ctx *frame.Context) {
 			current, ok := s.currentNode(ctx.Docs, nodeID)
 			if !ok {
 				return
 			}
-			s.subscribe(answer.Floor, ctx)
-			s.saveParam(ctx, current, param, floor.AnchorRef{Floor: answer.Floor, Anchor: anchor})
+			before, err := current.Anchor(param)
+			if err != nil {
+				before = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
+			}
+			if ref, picked := s.picked(ctx, answer, "Go to", s.placeWas(ctx.Docs, before)); picked {
+				s.saveParam(ctx, current, param, ref)
+			}
 		})
 	case made.clear.Update(input):
 		s.saveParam(ctx, node, made.param.Name, floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}})

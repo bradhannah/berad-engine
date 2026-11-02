@@ -85,6 +85,7 @@ func TestPickThroughAnOpenMap(t *testing.T) {
 	if answer.PickAnswer.Floor != h.floor || answer.PickAnswer.Item != anchor.String() {
 		t.Fatalf("answer %+v", answer.PickAnswer)
 	}
+	nextUpdate(t, asker, "the asker back in front", func(u client.Update) bool { return u.Attention })
 }
 
 // D13: either side can cancel, a second pick replaces the first, and a Map

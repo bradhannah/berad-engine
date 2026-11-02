@@ -181,6 +181,7 @@ func (o *Orchestrator) pickAnswer(from *window, message protocol.Message) {
 	delete(o.picks.active, answer.Pick)
 	if asker, connected := o.windows[active.from]; connected {
 		o.send(asker, mustMessage(protocol.KindPickAnswer, 0, answer))
+		o.send(asker, mustMessage(protocol.KindAttention, 0, nil))
 	}
 }
 

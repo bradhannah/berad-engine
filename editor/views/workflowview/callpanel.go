@@ -17,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -340,7 +341,7 @@ func (s *State) updateInput(input *ui.Input, ctx *frame.Context, node flow.Node,
 		s.openCallPicker(node, pickInput, row.input)
 	case row.clear.Update(input):
 		s.giveInput(ctx, node, row.input.ID, nil)
-	case row.pick != nil && row.pick.Update(input):
+	case row.pick != nil && s.pickUpdate(row.pick, inputOwner(node.ID, row.input.ID), input):
 		s.pickInputPlace(ctx, node.ID, row.input)
 	}
 }
@@ -356,25 +357,27 @@ func (s *State) giveInput(ctx *frame.Context, node flow.Node, input ids.ULID, ra
 	s.saveParam(ctx, node, flow.ParamInputs, inputs)
 }
 
-// pickInputPlace picks the place an input is given on a map.
+// pickInputPlace picks the place an input is given on a map, or cancels its
+// pick in progress.
 func (s *State) pickInputPlace(ctx *frame.Context, nodeID ids.ULID, input worldstate.Declaration) {
-	if s.picker.Picking() {
-		s.picker.Cancel(ctx, "cancelled in the workflow")
-
-		return
-	}
 	label := "the input " + input.Name + " of a Call in “" + s.name(ctx.Docs) + "”"
-	s.picker.Start(ctx, label, func(answer protocol.PickAnswer, ctx *frame.Context) {
-		anchor, err := ids.Parse(answer.Item)
+	s.picker.Toggle(ctx, inputOwner(nodeID, input.ID), cancelledHere, label, func(answer protocol.PickAnswer,
+		ctx *frame.Context,
+	) {
 		current, ok := s.currentNode(ctx.Docs, nodeID)
-		if err != nil || !ok {
-			ctx.Frame.Status("The map answered with something that is not an anchor")
-
+		if !ok {
+			return
+		}
+		was := ""
+		if value, err := input.Parse(current.Inputs()[input.ID]); err == nil && !value.Place.IsZero() {
+			was = s.placeWas(ctx.Docs, floor.AnchorRef{Floor: value.Place.Floor, Anchor: value.Place.Anchor})
+		}
+		ref, picked := s.picked(ctx, answer, input.Name, was)
+		if !picked {
 			return
 		}
 		given := worldstate.NoValue()
-		given.Type, given.Place = worldstate.TypePlace, worldstate.Place{Floor: answer.Floor, Anchor: anchor}
-		s.subscribe(answer.Floor, ctx)
+		given.Type, given.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
 		s.giveInput(ctx, current, input.ID, given.Encode())
 	})
 }

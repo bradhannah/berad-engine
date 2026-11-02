@@ -280,12 +280,13 @@ type PickStart struct {
 	From   ids.ULID `json:"from,omitzero"`
 }
 
-// PickAnswer reports what was picked; the requesting window then makes an
-// ordinary edit.
+// PickAnswer reports what was picked, and its name; the requesting window
+// then makes an ordinary edit.
 type PickAnswer struct {
 	Pick  string   `json:"pick"`
 	Floor ids.ULID `json:"floor"`
 	Item  string   `json:"item"`
+	Name  string   `json:"name,omitempty"`
 }
 
 // PickCancel ends a pick without an answer, from either side.
