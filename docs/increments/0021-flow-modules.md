@@ -1,6 +1,6 @@
 # Increment 21: Flow modules
 
-**Status:** Built
+**Status:** Built; steps 10 to 14, from trying it, Planned
 
 The twenty-first increment lets one workflow call another and carry on
 when it returns. Today an NPC runs one workflow, its behaviour, and a flow
@@ -137,6 +137,11 @@ Chosen while planning, for its author to check:
 | 7. Calls in the game | Every workflow given to the game; a call stack per NPC; inputs read once, locals fresh, the Return's way out taken, outputs handed back, done by default, a Call with a problem carrying on by done | Runner tests call a module with a place input that goes there and returns by name, keep an output, and skip a broken call | Built |
 | 8. Watching calls | Time up leaving every call inside the container; Watch's path and the innermost call's locals, each part opening its tab | Runner tests time up inside a call; a view test reads Watch's path and opens a part | Built |
 | 9. Checks | `make check` and the real-window suite; a real-window test makes a module with a place input and two Returns, calls it from a behaviour and watches the NPC go there and come back | The checks pass with no lint findings | Built |
+| 10. Picks that say so | Pick on map turning into Cancel pick on the control that started it alone, a pick started elsewhere taking it over; the tab that asked back in front after a pick, the new place lit and the status naming it | View tests start, take over and cancel a pick from each control, and find the asking tab in front after an answer | Planned |
+| 11. One place control | The place box with the ring, the name and its zone and floor, Pick on map and Clear, for a local's default, a Call's input and Go to on a map; the box opening a searchable list of every place, by zone and floor, with Pick on map last | View tests read the box in each inspector, choose a place by name and find it saved | Planned |
+| 12. Picking on the map | A banner naming what the place is for and what it is now, with Cancel; tools and all but anchors faded and taking no click; anchors drawn over NPCs; the anchor under the cursor named; the current place marked now; the floor's places listed in the inspector, chosen by name | Map tests read the banner and the current place, pick an anchor under an NPC, and choose one from the list | Planned |
+| 13. The ring | The anchor's ring beside every place: the type's button, the locals list, the text on a node, the Anchors tool; the place type's line | View tests read the ring in each | Planned |
+| 14. Checks again | `make check` and the real-window suite; a real-window test picks a Call's place on the map and finds the workflow back in front with the place | The checks pass with no lint findings | Planned |
 
 ## Step results
 
@@ -276,6 +281,39 @@ Chosen while planning, for its author to check:
   other nodes read their kind.
 - **The input's row on the Call:** a place's name sits under Pick on map,
   as the inspector is too narrow for both on one line.
+
+## Changed after its author tried it
+
+Settled by its author on 2026-11-02, after trying it and from the
+wireframes of places, Pick on map having confused its author: a second
+click cancelled the pick without a word, the map stayed in front after a
+pick, an anchor under an NPC was picked by mistake, and nothing said that a
+place is an anchor.
+
+- **Pick on map says when it is picking:** only the control that started
+  a pick reads Cancel pick while it runs, and a Pick on map elsewhere takes
+  the pick over, as Go to's did.
+- **A pick comes back:** after an anchor is clicked, the tab that asked is
+  in front again, the new place lit for a moment, and the status names it
+  and says Undo puts the old one back.
+- **One place control:** a local's default, a Call's input and Go to on a
+  map show a box with the ring and the place's name in ink, its zone and
+  floor under it, then Pick on map and Clear, with Another value on a
+  Call's input. With no place, the box reads No place yet, grey and dashed.
+  A Call's input row names the input over a small type tag, not
+  place · place.
+- **A place can be chosen by name:** the box opens a list of every place
+  in the project, by zone and floor, with a search, and Pick on map last.
+- **Picking is a mode of the map:** a banner says what the place is for
+  and what it is now, with Cancel; the tools and all but the anchors fade
+  and take no click; anchors are drawn over NPCs; the anchor under the
+  cursor is named; the current place is filled and marked now; the
+  inspector lists the floor's places, which can be chosen by name.
+- **A place keeps its name, marked by the anchor's ring,** the ring the map
+  already draws: on the place type's button, in the locals list, on a
+  node's text and beside the Anchors tool, whose line says places NPCs go
+  to. The type's line says a place is an anchor on a map. Calling it an
+  anchor everywhere was the other choice, not taken.
 
 ## Not in this increment
 
