@@ -936,6 +936,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 	switch kind {
 	case locateState:
+		if found, handled := s.hasPlaceState(value, docs); handled {
+			return image.Pt(0, 0), found
+		}
 		if found, handled := s.hasValueState(value, docs); handled {
 			return image.Pt(0, 0), found
 		}

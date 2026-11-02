@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -178,4 +179,35 @@ func (s *State) placeWas(docs frame.Docs, ref floor.AnchorRef) string {
 	}
 
 	return name
+}
+
+// SetShown is told whether this view's tab is in front.
+func (s *State) SetShown(shown bool) { s.shown = shown }
+
+// hasPlaceState answers "shown" and "hidden", whether the tab is in front,
+// and "given:<input>=<place>", the place the selected Call gives an input.
+func (s *State) hasPlaceState(state string, docs frame.Docs) (bool, bool) {
+	switch state {
+	case "shown":
+		return s.shown, true
+	case "hidden":
+		return !s.shown, true
+	}
+	rest, ok := strings.CutPrefix(state, "given:")
+	if !ok {
+		return false, false
+	}
+	name, want, _ := strings.Cut(rest, "=")
+	node, selected := s.selectedNode()
+	called, loaded := s.moduleOf(node)
+	if !selected || !loaded {
+		return false, true
+	}
+	for _, input := range called.workflow.Inputs() {
+		if raw, given := node.Inputs()[input.ID]; given && input.Name == name {
+			return s.givenLabel(docs, input, raw) == want, true
+		}
+	}
+
+	return false, true
 }

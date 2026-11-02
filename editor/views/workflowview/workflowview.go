@@ -163,11 +163,13 @@ type State struct {
 	places  *placeList
 	lit     string
 	litLeft int
-	form    *form
-	save    *ui.SaveBar
-	guard   frame.Guard
-	focus   ui.Focus
-	picker  *picker.Picker
+	// shown is whether this view's tab is in front, as the window says.
+	shown  bool
+	form   *form
+	save   *ui.SaveBar
+	guard  frame.Guard
+	focus  ui.Focus
+	picker *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -210,7 +212,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
-		places: nil, lit: "", litLeft: 0,
+		places: nil, lit: "", litLeft: 0, shown: true,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},

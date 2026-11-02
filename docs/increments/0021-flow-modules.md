@@ -1,6 +1,6 @@
 # Increment 21: Flow modules
 
-**Status:** Built; steps 10 to 14, from trying it, Planned
+**Status:** Built
 
 The twenty-first increment lets one workflow call another and carry on
 when it returns. Today an NPC runs one workflow, its behaviour, and a flow
@@ -137,11 +137,11 @@ Chosen while planning, for its author to check:
 | 7. Calls in the game | Every workflow given to the game; a call stack per NPC; inputs read once, locals fresh, the Return's way out taken, outputs handed back, done by default, a Call with a problem carrying on by done | Runner tests call a module with a place input that goes there and returns by name, keep an output, and skip a broken call | Built |
 | 8. Watching calls | Time up leaving every call inside the container; Watch's path and the innermost call's locals, each part opening its tab | Runner tests time up inside a call; a view test reads Watch's path and opens a part | Built |
 | 9. Checks | `make check` and the real-window suite; a real-window test makes a module with a place input and two Returns, calls it from a behaviour and watches the NPC go there and come back | The checks pass with no lint findings | Built |
-| 10. Picks that say so | Pick on map turning into Cancel pick on the control that started it alone, a pick started elsewhere taking it over; the tab that asked back in front after a pick, the new place lit and the status naming it | View tests start, take over and cancel a pick from each control, and find the asking tab in front after an answer | Planned |
-| 11. One place control | The place box with the ring, the name and its zone and floor, Pick on map and Clear, for a local's default, a Call's input and Go to on a map; the box opening a searchable list of every place, by zone and floor, with Pick on map last | View tests read the box in each inspector, choose a place by name and find it saved | Planned |
-| 12. Picking on the map | A banner naming what the place is for and what it is now, with Cancel; tools and all but anchors faded and taking no click; anchors drawn over NPCs; the anchor under the cursor named; the current place marked now; the floor's places listed in the inspector, chosen by name | Map tests read the banner and the current place, pick an anchor under an NPC, and choose one from the list | Planned |
-| 13. The ring | The anchor's ring beside every place: the type's button, the locals list, the text on a node, the Anchors tool; the place type's line | View tests read the ring in each | Planned |
-| 14. Checks again | `make check` and the real-window suite; a real-window test picks a Call's place on the map and finds the workflow back in front with the place | The checks pass with no lint findings | Planned |
+| 10. Picks that say so | Pick on map turning into Cancel pick on the control that started it alone, a pick started elsewhere taking it over; the tab that asked back in front after a pick, the new place lit and the status naming it | View tests start, take over and cancel a pick from each control, and find the asking tab in front after an answer | Built |
+| 11. One place control | The place box with the ring, the name and its zone and floor, Pick on map and Clear, for a local's default, a Call's input and Go to on a map; the box opening a searchable list of every place, by zone and floor, with Pick on map last | View tests read the box in each inspector, choose a place by name and find it saved | Built |
+| 12. Picking on the map | A banner naming what the place is for and what it is now, with Cancel; tools and all but anchors faded and taking no click; anchors drawn over NPCs; the anchor under the cursor named; the current place marked now; the floor's places listed in the inspector, chosen by name | Map tests read the banner and the current place, pick an anchor under an NPC, and choose one from the list | Built |
+| 13. The ring | The anchor's ring beside every place: the type's button, the locals list, the text on a node, the Anchors tool; the place type's line | View tests read the ring in each | Built |
+| 14. Checks again | `make check` and the real-window suite; a real-window test picks a Call's place on the map and finds the workflow back in front with the place | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -267,6 +267,51 @@ Chosen while planning, for its author to check:
   day › Fetch stock › Go to with local.place the Shelf, then the path
   gone as the clerk comes back. The whole real-window suite, 47 tests,
   passed.
+- **Picks that say so:** each pick has an owner, the control that started
+  it, and only that control's button reads Cancel pick while it runs; a
+  Pick on map elsewhere takes the pick over, cancelling the first. The
+  map's answer carries the anchor's name, and the window that asked is
+  brought to the front when it arrives. The status says what was picked,
+  for what, and what Undo puts back, as Picked “Counter” for place. Undo
+  puts “Shelf” back. Verified: a view test starts a pick for a local,
+  takes it over from a Call's input, answers it and reads the status, then
+  starts and cancels one from the input's own button; an orchestrator test
+  finds the asker brought forward after the answer.
+- **One place control:** a local's default, a Call's place input and Go
+  to on a map show one box: the ring and the place's name in ink, its
+  zone and floor under it, then Pick on map and Clear, with Another value
+  on a Call's input. With no place it reads No place yet, grey and
+  dashed; a Call's input left unfilled reads Starts as Shelf, muted. A
+  place just picked or chosen glows in its box for a moment. A Call's
+  inputs name themselves over a small type tag, a place's with the ring,
+  in place of place · place. The box opens a list of every place in the
+  project, by zone and floor, with a search and Pick on map… last.
+  Verified: view tests choose a place by name for a Call's input, a
+  local's default and a Go to, read the status, pick on a map from the
+  list's last row, and clear a local's default.
+- **Picking on the map:** the window that asks sends what the pick would
+  replace. While picking, a blue banner over the map says what the place
+  is for and what it is now, with Cancel; the tools fade and rest; a
+  white wash fades the map, and the anchors are drawn again over it, so
+  an anchor under an NPC can be seen and clicked; the anchor under the
+  pointer, on the map or in the list, is washed blue and named, as Desk ·
+  click to choose; the place now is filled and tagged now. The inspector
+  lists the floor's places, which answer when clicked, over Cancel pick.
+  Verified: a map test finds the place now, finds the tools resting,
+  answers from the list, and cancels from the banner and the inspector.
+- **The ring:** the anchor's ring marks the place type's button, the
+  locals list, a Go to's place on its node, a type tag on a Call's input,
+  the value picker's place-only chip and the Anchors tool, whose line
+  says an anchor is a place NPCs go to. The type's line, A place is an
+  anchor on a map: one of the blue rings put down with the Anchors tool,
+  shows under the types. Verified: a form test finds the ring on the
+  place type's button and the box opening the list of places.
+- **Checks again:** `make check` passes with no lint findings. A
+  real-window test opens the clerk's day beside Sample zone, picks the
+  Call's place on the map, finds the map in picking mode with the shelf
+  marked now, chooses the Counter from its list, and finds the clerk's
+  day back in front giving the Counter. The whole real-window suite,
+  48 tests, passed.
 - **Steps 1 and 2 were built together,** in one commit, as the place type
   reached the shared value form while Return was being checked.
 
@@ -314,6 +359,20 @@ place is an anchor.
   node's text and beside the Anchors tool, whose line says places NPCs go
   to. The type's line says a place is an anchor on a map. Calling it an
   anchor everywhere was the other choice, not taken.
+
+Chosen while building these changes, for its author to check:
+
+- **The glow came with the box,** in step 11 rather than step 10, as the
+  box it lights arrived there.
+- **The place line shows only while the type can change:** an input in use
+  shows its ring and its place below, and the form was too tall for the
+  inspector with both.
+- **A local's form scrolls** inside the inspector when it is taller than
+  the room above the save bar, as an input in use with a place now is.
+- **The type buttons are as wide as their labels,** wrapping to a second
+  row, as the place type's ring did not fit an equal share of one.
+- **Every input of a Call names itself over a type tag,** not only a place.
+- **Go to still reads no destination** on its node when it has no place.
 
 ## Not in this increment
 

@@ -102,3 +102,30 @@ func TestClerkCallsFetchStock(t *testing.T) {
 	noCrashes(t, project)
 	t.Logf("screenshots: %s %s %s", watchShot, backShot, stripShot)
 }
+
+// TestPickingACallsPlace picks the place the clerk's day gives Fetch stock
+// on the Sample zone map: the map comes forward in picking mode with the
+// shelf marked now, a name in its list answers, and the clerk's day comes
+// back in front giving the Counter.
+func TestPickingACallsPlace(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	mapShot, dayShot := shotPath(t, "picking-map.png"), shotPath(t, "picking-back.png")
+	browserScript := script(
+		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), must("state:tabs:2", 600), wait(30),
+		doubleClick("row:Clerk's day"), quitWhenAlone(),
+	)
+	dayScript := script(
+		must("state:loaded", 900), wait(10), click("ui:zoom-fit"), wait(20), click("node:call-workflow:1"),
+		must("state:selected:call-workflow", 120), wait(10), click("ui:input-place-pick"), must("state:hidden", 600),
+		must("state:shown", 1800), must("state:given:place=Counter", 300), wait(10), shoot(dayShot), quit(),
+	)
+	mapScript := script(
+		must("state:loaded", 900), must("state:picking", 1500), must("state:pick-now=Shelf", 60), wait(10),
+		step{Repeat: 2, Screenshot: mapShot}, click("place:Counter"), wait(600), quit(),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {dayScript}, "map": {mapScript}})
+	noCrashes(t, project)
+	t.Logf("screenshots: %s %s", mapShot, dayShot)
+}

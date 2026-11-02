@@ -412,6 +412,14 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   to can go to a place value. A Call that no longer fits is flagged on the
   node, and Watch shows the path down through the calls.
   [Increment 21](increments/0021-flow-modules.md) builds it.
+- **Agreed (2026-11-02):** a place is an anchor on a map, marked wherever
+  it appears by the ring the map draws for one. Every place control is
+  one box naming the place, its zone and floor, which opens a list of
+  every place by name, with Pick on map; picking makes the map a mode of
+  its own, saying what the place is for and what it is now, and brings the
+  asking tab back with the place. [Increment
+  21](increments/0021-flow-modules.md) builds it, after its author tried
+  picking.
 - **Agreed:** custom behaviours compose logic, randomness and built-in
   behaviours such as wandering.
 - **Agreed:** editing flow matters more than arranging boxes: layout should mostly
