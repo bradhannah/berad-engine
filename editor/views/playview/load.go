@@ -22,10 +22,10 @@ import (
 )
 
 // A launch reads, one document at a time: the game settings, the start's
-// zone and its floors, the NPCs placed on them and their behaviours, the
-// documents the project's values are declared in, and the art they show. It
-// subscribes to each as it finds it, and launches once all
-// have loaded. A document deleted since something named it is skipped.
+// zone and its floors, the NPCs placed on them, their behaviours and the
+// workflows those call, the documents the project's values are declared in,
+// and the art they show. It subscribes to each as it finds it, and launches
+// once all have loaded. A document deleted since something named it is skipped.
 
 // loader gathers a launch's documents.
 type loader struct {
@@ -124,7 +124,8 @@ func (l *loader) zone(project *game.Project) {
 	}
 }
 
-// npcs reads the NPCs placed on the zone's floors and their behaviours.
+// npcs reads the NPCs placed on the zone's floors, their behaviours and the
+// workflows those call, in turn.
 func (l *loader) npcs(project *game.Project) {
 	for _, placed := range project.Floors {
 		for _, placement := range placed.Placements() {
@@ -138,16 +139,24 @@ func (l *loader) npcs(project *game.Project) {
 			})
 		}
 	}
+	var waiting []ids.ULID
 	for _, definition := range project.NPCs {
-		behaviour := definition.Behaviour
-		if _, read := project.Workflows[behaviour]; read || !l.need(behaviour) {
+		waiting = append(waiting, definition.Behaviour)
+	}
+	for len(waiting) > 0 {
+		workflowID := waiting[0]
+		waiting = waiting[1:]
+		if _, read := project.Workflows[workflowID]; read || !l.need(workflowID) {
 			continue
 		}
-		l.ctx.Docs.View(behaviour, func(document client.Document) {
+		l.ctx.Docs.View(workflowID, func(document client.Document) {
 			if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
-				project.Workflows[behaviour] = workflowDoc.Workflow.Clone()
+				project.Workflows[workflowID] = workflowDoc.Workflow.Clone()
 			}
 		})
+		if loaded, ok := project.Workflows[workflowID]; ok {
+			waiting = append(waiting, loaded.Callees()...)
+		}
 	}
 	l.state.npcSprites = map[ids.ULID]ids.ULID{}
 	for npcID, definition := range project.NPCs {

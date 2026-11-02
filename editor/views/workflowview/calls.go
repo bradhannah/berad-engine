@@ -33,17 +33,8 @@ type module struct {
 	revision uint64
 }
 
-// callees lists the workflows this one's Calls name, each once.
-func callees(workflow *flow.Workflow) []ids.ULID {
-	var called []ids.ULID
-	for _, node := range workflow.Nodes() {
-		if target, ok := node.Called(); node.Kind == flow.KindCall && ok && !slices.Contains(called, target) {
-			called = append(called, target)
-		}
-	}
-
-	return called
-}
+// callees lists the workflows a workflow's Calls name, each once.
+func callees(workflow *flow.Workflow) []ids.ULID { return workflow.Callees() }
 
 // loadModules reads the workflows this one's Calls name, one at a time,
 // and returns a key that changes when any of them does.

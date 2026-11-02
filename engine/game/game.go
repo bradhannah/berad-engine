@@ -54,8 +54,12 @@ type Game struct {
 	run      *play.Run
 	npcs     []*npcrun.NPC
 	flows    map[ids.ULID]*flow.Workflow
-	clock    *clock.Clock
-	values   *worldstate.Store
+	// behaviours names each NPC's behaviour, and workflows holds every
+	// workflow, for Calls to call.
+	behaviours map[ids.ULID]ids.ULID
+	workflows  map[ids.ULID]*flow.Workflow
+	clock      *clock.Clock
+	values     *worldstate.Store
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -110,8 +114,8 @@ func New(project Project) (*Game, error) {
 	}
 	game := &Game{
 		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
-		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, clock: clock.New(project.Seconds, clock.MinutePerSecond),
-		values: nil,
+		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
+		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -124,6 +128,7 @@ func New(project Project) (*Game, error) {
 			game.npcs = append(game.npcs, npcrun.Start(placement, level.ID, seed(project.Seed, placement.ID)))
 			if definition, ok := project.NPCs[placement.NPC]; ok && !definition.Behaviour.IsZero() {
 				game.flows[placement.NPC] = project.Workflows[definition.Behaviour]
+				game.behaviours[placement.NPC] = definition.Behaviour
 			}
 		}
 	}
@@ -160,8 +165,9 @@ func (g *Game) Step(input play.Input) Step {
 	var cues []npcrun.Sound
 	for _, character := range g.npcs {
 		world := npcrun.World{
-			Zone: g.levels, Workflow: g.flows[character.NPC], Clock: g.clock, Passed: passed, State: g.values,
-			Here: g.settings.Start.Zone, Others: others,
+			Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
+			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
+			Others: others,
 		}
 		character.Step(world, g.run.Tick())
 		for _, sound := range character.Sounds {
@@ -172,6 +178,13 @@ func (g *Game) Step(input play.Input) Step {
 	}
 
 	return Step{Outcome: outcome, Cues: cues}
+}
+
+// workflow finds a workflow a Call calls.
+func (g *Game) workflow(target ids.ULID) (*flow.Workflow, bool) {
+	found, ok := g.workflows[target]
+
+	return found, ok && found != nil
 }
 
 // Player returns the player.

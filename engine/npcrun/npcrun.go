@@ -57,17 +57,20 @@ type Change struct {
 }
 
 // World is what an NPC needs on a tick: the zone's floors as they are now,
-// its workflow (nil for none), the clock, and the game seconds that passed;
-// the values of the world, the zones and the NPCs, the zone it is in, and
-// the zone's other NPCs as the tick began, in placement order.
+// its workflow (nil for none) and that workflow's ID, the workflows its
+// Calls can call, the clock, and the game seconds that passed; the values
+// of the world, the zones and the NPCs, the zone it is in, and the zone's
+// other NPCs as the tick began, in placement order.
 type World struct {
-	Zone     play.Zone
-	Workflow *flow.Workflow
-	Clock    *clock.Clock
-	Passed   float64
-	State    *worldstate.Store
-	Here     ids.ULID
-	Others   []Other
+	Zone      play.Zone
+	Workflow  *flow.Workflow
+	Behaviour ids.ULID
+	Workflows flow.Lookup
+	Clock     *clock.Clock
+	Passed    float64
+	State     *worldstate.Store
+	Here      ids.ULID
+	Others    []Other
 }
 
 // NPC is one NPC running in a zone.
@@ -101,8 +104,12 @@ type NPC struct {
 	work  work
 	rng   *rand.Rand
 	jumps int
-	// locals are the local values its workflow has set.
+	// locals are the local values the workflow it is following has set;
+	// calls are the calls it is inside, outermost first, and module the
+	// workflow it is in a call to, zero in its behaviour.
 	locals map[ids.ULID]worldstate.Value
+	calls  []caller
+	module ids.ULID
 }
 
 // work is what the current node is doing: started once its node has set it
@@ -168,7 +175,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
-		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0, locals: nil,
+		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil, module: ids.ULID{},
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
@@ -188,9 +195,11 @@ func (n *NPC) At() (float64, float64) {
 }
 
 // Restart starts the NPC's workflow again from the start, where it stands,
-// as after a clock jump or an edit to its workflow. Its local values clear.
+// as after a clock jump or an edit to its workflow, out of any calls. Its
+// local values clear.
 func (n *NPC) Restart() {
 	n.Node, n.Container, n.work, n.Status, n.locals = ids.ULID{}, ids.ULID{}, idle(), "", nil
+	n.calls, n.module = nil, ids.ULID{}
 }
 
 // Step runs the NPC for one tick: it finishes or continues a step between
@@ -207,8 +216,11 @@ func (n *NPC) Step(world World, tick uint64) {
 		n.jumps = world.Clock.Jumps()
 		n.Restart()
 	}
-	if _, ok := world.Workflow.Node(n.Node); !ok {
-		n.enter(world.Workflow, world.Workflow.Start(), "", tick)
+	if n.Running(world) == nil {
+		n.Restart()
+	}
+	if running := n.Running(world); !hasNode(running, n.Node) {
+		n.enter(running, running.Start(), "", tick)
 	}
 	n.timeUp(world, tick)
 	n.wait(world)
@@ -230,19 +242,32 @@ func (n *NPC) walk() {
 	}
 }
 
+// hasNode reports whether a workflow has a node.
+func hasNode(workflow *flow.Workflow, node ids.ULID) bool {
+	_, ok := workflow.Node(node)
+
+	return ok
+}
+
 // timeUp leaves the container the NPC is in by its exit, at once, when its
-// time is up.
+// time is up, and every call inside it with it: the outermost container
+// whose time is up is left.
 func (n *NPC) timeUp(world World, tick uint64) {
-	if n.Container.IsZero() {
+	for _, inside := range n.levels(world) {
+		if inside.container.IsZero() || inside.workflow == nil {
+			continue
+		}
+		container, ok := inside.workflow.Node(inside.container)
+		bound, err := container.TimeRange("bound")
+		if !ok || err != nil || bound.Contains(world.Clock.MinuteOfDay()) {
+			continue
+		}
+		n.unwind(inside.depth)
+		n.Node, n.work = inside.container, idle()
+		n.take(world, flow.OutputExit, tick)
+
 		return
 	}
-	container, ok := world.Workflow.Node(n.Container)
-	bound, err := container.TimeRange("bound")
-	if !ok || err != nil || bound.Contains(world.Clock.MinuteOfDay()) {
-		return
-	}
-	n.Node = n.Container
-	n.take(world.Workflow, flow.OutputExit, tick)
 }
 
 // wait counts down a Wait in progress: game seconds on the game clock, or a
@@ -264,17 +289,29 @@ func (n *NPC) wait(world World) {
 func (n *NPC) follow(world World, tick uint64) {
 	n.Status = ""
 	for range MaxInstant {
-		node, ok := world.Workflow.Node(n.Node)
-		if !ok {
-			n.enter(world.Workflow, world.Workflow.Start(), "", tick)
-
-			continue
+		here := n.here(world)
+		if here.Workflow == nil {
+			n.Restart()
+			here = world
 		}
-		output, done := n.act(world, node)
-		if !done {
-			return
+		node, ok := here.Workflow.Node(n.Node)
+		switch {
+		case !ok:
+			n.enter(here.Workflow, here.Workflow.Start(), "", tick)
+		case node.Kind == flow.KindCall:
+			if !n.call(world, node, tick) {
+				n.work.skipped = StatusCallSkipped
+				n.take(world, flow.OutputDone, tick)
+			}
+		case node.Kind == flow.KindReturn:
+			n.actReturn(world, node, tick)
+		default:
+			output, done := n.act(here, node)
+			if !done {
+				return
+			}
+			n.take(world, output, tick)
 		}
-		n.take(world.Workflow, output, tick)
 	}
 	n.Status, n.Sounds = StatusLooping, n.Sounds[:0]
 }
@@ -458,29 +495,39 @@ func (n *NPC) step(zone play.Zone, delta image.Point) bool {
 
 // take leaves the current node by an output: to the node it leads to, or,
 // with nothing connected, back to the start, or inside a container back to
-// its first step.
-func (n *NPC) take(workflow *flow.Workflow, output string, tick uint64) {
+// its first step. In a module, a branch of the top level that ends goes back
+// to the Call by done.
+func (n *NPC) take(world World, output string, tick uint64) {
+	workflow := n.Running(world)
 	from, _ := workflow.Node(n.Node)
 	next, linked := from.Next[output]
-	if _, exists := workflow.Node(next); !linked || !exists {
-		next = n.restartOf(workflow, from, output)
+	if _, exists := workflow.Node(next); linked && exists {
+		n.enter(workflow, next, output, tick)
+
+		return
+	}
+	next, top := n.restartOf(workflow, from, output)
+	if top && len(n.calls) > 0 {
+		n.giveBack(world, flow.OutputDone, tick)
+
+		return
 	}
 	n.enter(workflow, next, output, tick)
 }
 
 // restartOf is where a branch with nothing connected goes: inside a
 // container, its first step, or out by its exit when it has none; at the top
-// level, the start.
-func (n *NPC) restartOf(workflow *flow.Workflow, from flow.Node, output string) ids.ULID {
+// level, the start, which top reports.
+func (n *NPC) restartOf(workflow *flow.Workflow, from flow.Node, output string) (ids.ULID, bool) {
 	if from.Kind == flow.KindContainer && output == flow.OutputExit || from.Parent.IsZero() {
-		return workflow.Start()
+		return workflow.Start(), true
 	}
 	container, ok := workflow.Node(from.Parent)
 	if first, has := container.Next[flow.OutputInside]; ok && has {
-		return first
+		return first, false
 	}
 
-	return workflow.Start()
+	return workflow.Start(), true
 }
 
 // enter moves the NPC onto a node, recording the change.

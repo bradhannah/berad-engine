@@ -299,6 +299,19 @@ func (w *Workflow) NewPort() string {
 	}
 }
 
+// Callees lists the workflows the workflow's Calls name, each once, in the
+// order of its Calls.
+func (w *Workflow) Callees() []ids.ULID {
+	var called []ids.ULID
+	for _, node := range w.nodes {
+		if target, ok := node.Called(); node.Kind == KindCall && ok && !slices.Contains(called, target) {
+			called = append(called, target)
+		}
+	}
+
+	return called
+}
+
 // Inputs returns the local values a caller fills, in order.
 func (w *Workflow) Inputs() []worldstate.Declaration { return w.withRole(worldstate.RoleInput) }
 
