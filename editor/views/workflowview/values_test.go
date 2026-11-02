@@ -231,8 +231,18 @@ func TestComparisonsFollowTheType(t *testing.T) {
 		t.Fatalf("between 0 and 5 is whole: %q", f.status())
 	}
 	f.click("ui:compare-" + flow.CompareLeast)
+	if f.has("another:" + flow.ParamAgainst) {
+		t.Fatal("A number is on until another value is asked for")
+	}
 	f.click("ui:source-value")
+	if !f.has("another:" + flow.ParamAgainst) {
+		t.Fatal("Another value lights as soon as it is chosen")
+	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("ui:pick-" + flow.ParamAgainst)
+	if _, open := f.state.Locate("valuerow:world.patience", f.docs); !open || !f.has("another:"+flow.ParamAgainst) {
+		t.Fatal("the box keeps the chooser open until a value is picked")
+	}
 	f.click("valuerow:world.patience")
 	if !f.has("refers:against=world.patience") || f.has("problem:"+flow.KindCheckValue+":1") ||
 		!f.has("title:check-value:1=Is world.patience ≥ world.patience?") {

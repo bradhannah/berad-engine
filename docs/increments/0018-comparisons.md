@@ -153,7 +153,12 @@ Chosen while planning, for its author to check:
 
 ## Changed after its author tried it
 
-Not yet tried.
+Settled by its author on 2026-11-01, after trying it:
+
+- **Another value lights as soon as it is clicked,** and the box under it
+  keeps the chooser open until a value is picked; the first build lit the
+  button only once a value was chosen, and a click on the box closed the
+  chooser, so the button seemed dead.
 
 ## Not in this increment
 

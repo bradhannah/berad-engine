@@ -739,7 +739,8 @@ func setSavedOperand(made *control, node flow.Node) {
 		saved = savedOperand(node, flow.ParamAgainst)
 	}
 	if len(made.sources) == ui.Half {
-		made.sources[0].On, made.sources[1].On = !made.refers, made.refers
+		another := made.refers || made.open
+		made.sources[0].On, made.sources[1].On = !another, another
 	}
 	if made.field != nil {
 		var integer int
@@ -1142,6 +1143,9 @@ func (s *State) locateValueRow(kind, value string) (image.Point, bool) {
 // value parameter, "operand:<param>=<saved>" for its operand and
 // "title:<kind>:<n>=<title>" for the nth value node of a kind's title.
 func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
+	if found, handled := s.hasOperandState(state, docs); handled {
+		return found, true
+	}
 	node, selected := s.selectedNode()
 	switch {
 	case strings.HasPrefix(state, "title:"):
@@ -1163,13 +1167,6 @@ func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
 		saved, err := node.Operand(param)
 
 		return selected && err == nil && string(saved) == want, true
-	case strings.HasPrefix(state, "refers:"):
-		param, want, _ := strings.Cut(strings.TrimPrefix(state, "refers:"), "=")
-		saved, err := node.Operand(param)
-		ref, refers := flow.OperandRef(saved)
-		_, path, problem := s.resolve(docs, ref)
-
-		return selected && err == nil && refers && problem == "" && path == want, true
 	}
 
 	return false, false

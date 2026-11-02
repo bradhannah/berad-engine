@@ -119,6 +119,41 @@ func (s *State) checkProblem(docs frame.Docs, node flow.Node, declared worldstat
 	return problemOperand
 }
 
+// hasOperandState answers "refers:<param>=<path>", whether the selected
+// node's operand refers to the value at a path, and "another:<param>",
+// whether its Another value button is on: the operand refers to a value,
+// or its chooser is open to pick one.
+func (s *State) hasOperandState(state string, docs frame.Docs) (bool, bool) {
+	node, selected := s.selectedNode()
+	switch {
+	case strings.HasPrefix(state, "refers:"):
+		param, want, _ := strings.Cut(strings.TrimPrefix(state, "refers:"), "=")
+		saved, err := node.Operand(param)
+		ref, refers := flow.OperandRef(saved)
+		_, path, problem := s.resolve(docs, ref)
+
+		return selected && err == nil && refers && problem == "" && path == want, true
+	case strings.HasPrefix(state, "another:"):
+		return s.anotherValueLit(strings.TrimPrefix(state, "another:")), true
+	default:
+		return false, false
+	}
+}
+
+// anotherValueLit reports whether an operand's Another value button is on.
+func (s *State) anotherValueLit(param string) bool {
+	if s.form == nil {
+		return false
+	}
+	for _, made := range s.form.controls {
+		if made.param.Name == param && len(made.sources) == ui.Half {
+			return made.sources[1].On
+		}
+	}
+
+	return false
+}
+
 // savedOperand is an operand as saved, or none when the node lacks it.
 func savedOperand(node flow.Node, name string) json.RawMessage {
 	saved, err := node.Operand(name)
@@ -320,12 +355,19 @@ func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *c
 }
 
 // updateOperandChooser opens and closes the chooser of an operand that
-// refers to a value, and saves the value picked in it.
+// refers to a value, and saves the value picked in it. While no value is
+// picked yet the box keeps the chooser open, so a click on it never seems
+// to do nothing.
 func (s *State) updateOperandChooser(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		if made.open {
+		switch {
+		case made.open && made.refers:
 			s.closeChooser(made)
+
+			return
+		case made.open:
+			s.focus.Set(made.search)
 
 			return
 		}
