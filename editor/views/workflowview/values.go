@@ -61,12 +61,46 @@ const (
 )
 
 // valueOption is one value a parameter can choose: its reference, path and
-// declaration, under a heading.
+// declaration, and where it is listed.
 type valueOption struct {
 	ref      flow.ValueRef
 	path     string
 	declared worldstate.Declaration
-	heading  string
+	place
+}
+
+// place is where a value is listed: under a heading, in one of the
+// picker's scopes on its rail, and with the root its path starts from
+// there, so what its path has between the root and its own name is its
+// group.
+type place struct {
+	heading string
+	rail    string
+	root    string
+}
+
+// The picker's scopes beyond the scopes' own: every scope, other NPCs' and
+// zones' values.
+const (
+	railEverywhere = "everywhere"
+	railOthers     = "others"
+	railZones      = "zones"
+)
+
+// scopePlace lists a value under a heading, in a scope of its own name.
+func scopePlace(heading string, scope worldstate.Scope) place {
+	return place{heading: heading, rail: string(scope), root: string(scope)}
+}
+
+// group is the group a value is in below its root, as world.quests, or ""
+// for one at the top.
+func (o valueOption) group() string {
+	cut := strings.LastIndex(o.path, ".")
+	if cut <= len(o.root) || !strings.HasPrefix(o.path, o.root+".") {
+		return ""
+	}
+
+	return o.path[:cut]
 }
 
 // declareTarget is where a chooser's row declares a value: a scope, the
@@ -225,13 +259,13 @@ type options struct {
 	seen   map[string]bool
 }
 
-func (o *options) add(heading string, ref flow.ValueRef, path string, declared worldstate.Declaration) {
+func (o *options) add(where place, ref flow.ValueRef, path string, declared worldstate.Declaration) {
 	key := encodeRef(ref)
 	if o.seen[key] {
 		return
 	}
 	o.seen[key] = true
-	o.listed = append(o.listed, valueOption{ref: ref, path: path, declared: declared, heading: heading})
+	o.listed = append(o.listed, valueOption{ref: ref, path: path, declared: declared, place: where})
 }
 
 func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef {
@@ -247,7 +281,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	locals := s.workflow.Locals().Values()
 	for _, local := range locals {
 		if (role == roleKeep) == (local.Type == worldstate.TypeNPC) && role != roleWhere {
-			found.add("LOCAL", refTo(local, ids.ULID{}, ids.ULID{}), localPath(local), local)
+			found.add(scopePlace("LOCAL", worldstate.ScopeLocal), refTo(local, ids.ULID{}, ids.ULID{}), localPath(local),
+				local)
 		}
 	}
 	if role == roleKeep {
@@ -259,7 +294,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 		heading = "THE NPC IT FINDS"
 	}
 	for _, held := range s.npcValues(docs, catalog, role) {
-		found.add(heading, refTo(held.Declaration, ids.ULID{}, ids.ULID{}), held.Path, held.Declaration)
+		found.add(scopePlace(heading, worldstate.ScopeNPC), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
+			held.Path, held.Declaration)
 	}
 	if role == roleWhere {
 		return found.listed
@@ -269,10 +305,12 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 		zoneValues = append(zoneValues, catalog.Held(worldstate.ScopeZone, zone)...)
 	}
 	for _, held := range zoneValues {
-		found.add("THIS ZONE", refTo(held.Declaration, ids.ULID{}, ids.ULID{}), held.Path, held.Declaration)
+		found.add(scopePlace("THIS ZONE", worldstate.ScopeZone), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
+			held.Path, held.Declaration)
 	}
 	for _, held := range catalog.Held(worldstate.ScopeWorld, ids.ULID{}) {
-		found.add("WORLD", refTo(held.Declaration, ids.ULID{}, ids.ULID{}), held.Path, held.Declaration)
+		found.add(scopePlace("WORLD", worldstate.ScopeWorld), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
+			held.Path, held.Declaration)
 	}
 	if role == roleCheck {
 		s.othersOptions(found, catalog, locals)
@@ -309,20 +347,26 @@ func (s *State) othersOptions(found *options, catalog *worldstate.Catalog, local
 		if holder.Type != worldstate.TypeNPC {
 			continue
 		}
+		where := place{heading: "THE NPC IN " + localPath(holder), rail: railOthers, root: localPath(holder)}
 		for _, held := range shared {
-			found.add("THE NPC IN "+localPath(holder), refTo(held.Declaration, ids.ULID{}, holder.ID),
+			found.add(where, refTo(held.Declaration, ids.ULID{}, holder.ID),
 				localPath(holder)+strings.TrimPrefix(held.Path, string(worldstate.ScopeNPC)), held.Declaration)
 		}
 	}
 	for _, scope := range []worldstate.Scope{worldstate.ScopeNPC, worldstate.ScopeZone} {
+		rail := railOthers
+		if scope == worldstate.ScopeZone {
+			rail = railZones
+		}
 		for _, ownerID := range catalog.Owners(scope) {
 			owner, _ := catalog.Owner(ownerID)
 			if owner.Path == "" {
 				continue
 			}
+			where := place{heading: strings.ToUpper(owner.Name), rail: rail, root: string(scope) + "." + owner.Path}
 			for _, held := range catalog.Held(scope, ownerID) {
-				found.add(strings.ToUpper(owner.Name), refTo(held.Declaration, ownerID, ids.ULID{}),
-					worldstate.NamedPath(held.Path, owner.Path), held.Declaration)
+				found.add(where, refTo(held.Declaration, ownerID, ids.ULID{}), worldstate.NamedPath(held.Path, owner.Path),
+					held.Declaration)
 			}
 		}
 	}
@@ -808,6 +852,15 @@ func (s *State) drawPickBox(screen *ebiten.Image, box image.Rectangle, label str
 // valueDetail is the one line shown under a chosen value: its type, an
 // integer's limits, and its description.
 func valueDetail(declared worldstate.Declaration) string {
+	if declared.Description == "" {
+		return typeDetail(declared)
+	}
+
+	return typeDetail(declared) + " · " + declared.Description
+}
+
+// typeDetail is a value's type and an integer's limits.
+func typeDetail(declared worldstate.Declaration) string {
 	parts := []string{declared.Type.Label()}
 	switch {
 	case declared.Min != nil && declared.Max != nil:
@@ -816,9 +869,6 @@ func valueDetail(declared worldstate.Declaration) string {
 		parts = append(parts, "at least "+strconv.Itoa(*declared.Min))
 	case declared.Max != nil:
 		parts = append(parts, "at most "+strconv.Itoa(*declared.Max))
-	}
-	if declared.Description != "" {
-		parts = append(parts, declared.Description)
 	}
 
 	return strings.Join(parts, " · ")

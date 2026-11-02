@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -84,5 +85,76 @@ func TestFindNPCPickers(t *testing.T) {
 	f.click("ui:pick-where")
 	if _, all := f.state.Locate("picker:type:all", f.docs); !all || !f.shown("npc.name") || f.shown("world.gold") {
 		t.Fatal("Only one whose offers the found NPC's values of any type, and no world value")
+	}
+}
+
+// withQuests declares world.gold, an integer, and the group world.quests
+// holding dragon_slain, a bool, and scales, an integer; and local.tally.
+func (f *fixture) withQuests() {
+	f.t.Helper()
+	slain := worldstate.New(frametest.ID(64), "dragon_slain", worldstate.ScopeWorld, worldstate.TypeBool)
+	scales := worldstate.New(frametest.ID(65), "scales", worldstate.ScopeWorld, worldstate.TypeInteger)
+	slain.Parent, scales.Parent = frametest.ID(63), frametest.ID(63)
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{Add: []worldstate.Declaration{
+		worldstate.New(frametest.ID(60), "gold", worldstate.ScopeWorld, worldstate.TypeInteger),
+		worldstate.New(frametest.ID(63), "quests", worldstate.ScopeWorld, worldstate.TypeGroup), slain, scales,
+	}, Set: nil, Remove: nil})
+	f.carryOutOn(workflowID, workflowplugin.ChangeLocalsEdit, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{
+			worldstate.New(frametest.ID(66), "tally", worldstate.ScopeLocal, worldstate.TypeInteger),
+		}, Set: nil, Remove: nil,
+	})
+}
+
+// TestPickerRailAndTree counts values by scope for the search typed and
+// narrows to one scope; with nothing typed a group folds, opens by a click
+// and by the arrows, and is open again in the next picker.
+func TestPickerRailAndTree(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindCheckValue)
+	f.withQuests()
+	f.click("ui:pick-value")
+	if !f.shown("world.gold") || f.shown("world.quests.dragon_slain") || !f.has("picker-count:world=3") ||
+		!f.has("picker-count:local=1") {
+		t.Fatal("with nothing typed, world.quests is folded and the rail counts every value")
+	}
+	f.typeText("scales")
+	if !f.shown("world.quests.scales") || !f.has("picker-count:everywhere=1") || !f.has("picker-count:local=0") {
+		t.Fatal("typing flattens the list to matches, and the counts follow")
+	}
+	f.keys("Cmd+A", "Backspace")
+	f.click("picker:group:world.quests")
+	if !f.shown("world.quests.dragon_slain") {
+		t.Fatal("a click opens the group")
+	}
+	f.click("picker:local")
+	if !f.shown("local.tally") || f.shown("world.gold") {
+		t.Fatal("the rail narrows to local values")
+	}
+	f.click("picker:everywhere")
+	f.keys("Escape")
+	f.click("ui:pick-value")
+	if !f.shown("world.quests.dragon_slain") {
+		t.Fatal("the last group opened is open in the next picker")
+	}
+	f.click("picker:group:world.quests")
+	if f.shown("world.quests.dragon_slain") {
+		t.Fatal("a click closes it")
+	}
+	f.keys("Right")
+	if !f.shown("world.quests.dragon_slain") {
+		t.Fatal("the right arrow opens the selected group")
+	}
+	f.keys("Down")
+	f.keys("Left")
+	f.keys("Left")
+	if f.shown("world.quests.dragon_slain") {
+		t.Fatal("left goes from a value to its group, and closes it")
+	}
+	f.keys("Enter")
+	f.keys("Down")
+	f.keys("Enter")
+	if f.has("picker") || !f.has("value:value=world.quests.dragon_slain") {
+		t.Fatal("Enter opens the group, and picks the value below it")
 	}
 }

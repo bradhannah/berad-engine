@@ -80,7 +80,7 @@ Chosen while planning, for its author to check:
 | --- | --- | --- | --- |
 | 1. The picker dialog | A dialog with the search, the results under headings with type and description, picking and closing; the inspector's Value box opens it and the inline chooser goes | View tests open it from the box and by Enter, search, pick, and close with Esc; the chooser tests of increment 15 pass through it | Built |
 | 2. Every chooser | Find NPC nearby's two choosers and Another value open the picker with their rules; the type lock and the count of hidden values | View tests of each chooser's offered values and of the lock | Built |
-| 3. The rail and the tree | The scope rail with counts, groups folding when nothing is typed, arrows opening them, the last group remembered | View tests of the counts, of narrowing by scope, of folding and of the memory | Planned |
+| 3. The rail and the tree | The scope rail with counts, groups folding when nothing is typed, arrows opening them, the last group remembered | View tests of the counts, of narrowing by scope, of folding and of the memory | Built |
 | 4. Declaring from the picker | Where, type and starting value when nothing matches, then chosen | View tests of declaring in each scope, and of the locked type | Planned |
 | 5. Checks | `make check` and the real-window suite; a real-window test opens the picker, searches, picks and declares | The checks pass with no lint findings | Planned |
 
@@ -114,6 +114,23 @@ Chosen while planning, for its author to check:
   operand's picker to integers, count and list the bool it hides without
   picking it, then pick an integer; and lock Keep it in to NPC values
   while Only one whose offers the found NPC's values and no world value.
+- **The rail and the tree:** a rail down the left of the list names the
+  scopes the chooser's values come from, Everywhere first, then Local,
+  This NPC, This zone and World, and for a Check value Other NPCs and
+  Zones, each with how many values of the types offered match the
+  search; a click narrows the list to one. With nothing typed the values
+  are a tree under their headings: a value at the top of its scope by its
+  path, a group's values under the group's row, as world.quests, by their
+  names from there, folded until a click on the row, Enter, or the right
+  arrow opens it; the left arrow closes it, or goes from a value to its
+  group. Typing flattens the list to the paths that match. The last group
+  opened is open again in the next picker, while the window is open. Each
+  row shows its type and limits at the right and its description after
+  its name. Verified: a view test counts values by scope with nothing
+  typed and with a search, narrows to local values, opens and closes
+  world.quests by a click and by the arrows, finds it open again in the
+  next picker, and picks a value inside it with Enter; the Check value
+  test of increment 15 searches for the template values that now fold.
 
 ## Changed after its author tried it
 

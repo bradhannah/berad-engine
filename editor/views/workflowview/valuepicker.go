@@ -63,9 +63,19 @@ type valuePicker struct {
 	others bool
 	show   *ui.Button
 	note   string
-	choose *ui.Button
-	cancel *ui.Button
-	box    image.Rectangle
+	// rail is the scopes on the rail and scope the one chosen, with counts
+	// of the values each has; open is the groups opened. paths and parents
+	// say, for each value's row as listed, its path and its group's row.
+	rail      []railEntry
+	railRects []image.Rectangle
+	scope     string
+	counts    map[string]int
+	open      map[string]bool
+	paths     map[string]string
+	parents   map[string]string
+	choose    *ui.Button
+	cancel    *ui.Button
+	box       image.Rectangle
 }
 
 // openValuePicker opens the picker for a parameter of a node, with the
@@ -81,9 +91,12 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 		node: node.ID, param: param, role: roleOf(node.Kind, param), only: only, kind: "", operand: operand,
 		title: title, search: search, list: &ui.List{ID: "values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
 		focus: ui.Focus{}, chips: chips, kinds: kinds, hidden: nil, others: false,
-		show: ui.NewButton("picker-show", "Show them"), note: "", choose: ui.NewButton("picker-choose", "Choose"),
+		show: ui.NewButton("picker-show", "Show them"), note: "", rail: nil, railRects: nil, scope: railEverywhere,
+		counts: map[string]int{}, open: map[string]bool{s.lastGroup: s.lastGroup != ""}, paths: map[string]string{},
+		parents: map[string]string{}, choose: ui.NewButton("picker-choose", "Choose"),
 		cancel: ui.NewButton(ui.DialogCancel, "Cancel"), box: ui.Zero(),
 	}
+	picker.rail = pickerRail(picker.optionRole())
 	picker.choose.Primary = true
 	picker.focus.Register(search)
 	picker.focus.Set(search)
@@ -134,8 +147,8 @@ func (p *valuePicker) offers(option valueOption) bool {
 }
 
 // layoutValuePicker centres the picker in the window and places its parts:
-// the title, the search, the type chips, the list, the line under it, and
-// Cancel and Choose at the foot.
+// the title, the search, the type chips, the rail and the list beside it,
+// the line under the list, and Cancel and Choose at the foot.
 func (s *State) layoutValuePicker(docs frame.Docs) {
 	picker := s.values
 	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
@@ -154,7 +167,8 @@ func (s *State) layoutValuePicker(docs frame.Docs) {
 	line += ui.ButtonH + ui.Half*ui.Gap
 	foot := top + height - ui.Inset - ui.ButtonH
 	below := foot - ui.Half*ui.Gap - ui.ButtonH
-	picker.list.Rect = image.Rect(left+ui.Inset, line, right, below-ui.Half*ui.Gap)
+	picker.layoutRail(left+ui.Inset, line)
+	picker.list.Rect = image.Rect(left+ui.Inset+railWidth+ui.Inset, line, right, below-ui.Half*ui.Gap)
 	picker.choose.Rect = image.Rect(right-pickerButton, foot, right, foot+ui.ButtonH)
 	picker.cancel.Rect = image.Rect(right-ui.Half*pickerButton-ui.Gap, foot, right-pickerButton-ui.Gap, foot+ui.ButtonH)
 	picker.list.Rows = s.pickerRows(docs)
@@ -170,13 +184,14 @@ func (s *State) layoutValuePicker(docs frame.Docs) {
 // pickerKeys are the keys the picker reads before its search field takes
 // the ones it uses.
 type pickerKeys struct {
-	enter, escape, up, down bool
+	enter, escape, up, down, left, right bool
 }
 
 func readPickerKeys(input *ui.Input) pickerKeys {
 	return pickerKeys{
 		enter: input.Has(ui.KeyEnter, ui.Plain()), escape: input.Has(ui.KeyEscape, ui.Plain()),
 		up: input.Has(ui.KeyUp, ui.Plain()), down: input.Has(ui.KeyDown, ui.Plain()),
+		left: input.Has(ui.KeyLeft, ui.Plain()), right: input.Has(ui.KeyRight, ui.Plain()),
 	}
 }
 
@@ -204,11 +219,8 @@ func (s *State) updateValuePicker(input *ui.Input, ctx *frame.Context) {
 		s.layoutValuePicker(ctx.Docs)
 	}
 	picker.list.Rows = s.pickerRows(ctx.Docs)
-	switch {
-	case keys.down:
-		picker.move(1)
-	case keys.up:
-		picker.move(-1)
+	if s.moveBy(keys) {
+		picker.list.Rows = s.pickerRows(ctx.Docs)
 	}
 	s.updatePickerList(input, ctx, keys.enter)
 }
@@ -230,10 +242,13 @@ func (s *State) updatePickerList(input *ui.Input, ctx *frame.Context, enter bool
 	}
 }
 
-// updateControls handles the type chips and Show them, and reports whether
-// one was clicked. Show them chooses All, or, for a locked type, lists the
-// values of another type, or hides them again.
+// updateControls handles the type chips, the rail and Show them, and
+// reports whether one was clicked. Show them chooses All, or, for a locked
+// type, lists the values of another type, or hides them again.
 func (p *valuePicker) updateControls(input *ui.Input) bool {
+	if p.updateRail(input) {
+		return true
+	}
 	for index, chip := range p.chips {
 		if chip.Update(input) && p.only == "" {
 			p.setKind(index)
@@ -290,7 +305,7 @@ func (p *valuePicker) chosen() string {
 		case row.Heading:
 		case row.ID == p.list.Selected:
 			return row.ID
-		case strings.HasPrefix(row.ID, otherPrefix):
+		case strings.HasPrefix(row.ID, otherPrefix), strings.HasPrefix(row.ID, groupPrefix):
 		case strings.HasPrefix(row.ID, declarePrefix):
 			if declare == "" {
 				declare = row.ID
@@ -308,10 +323,18 @@ func (p *valuePicker) chosen() string {
 
 // pickRow closes the picker and chooses, or declares and chooses, the row's
 // value: as a reference for an operand, or as the parameter's value. A
-// value of another type stays unpicked, with a note why.
+// group's row opens or closes it instead, and a value of another type stays
+// unpicked, with a note why.
 func (s *State) pickRow(ctx *frame.Context, rowID string) {
 	picker := s.values
-	if strings.HasPrefix(rowID, otherPrefix) {
+	switch {
+	case strings.HasPrefix(rowID, groupPrefix):
+		picker.list.Selected = rowID
+		s.foldGroup(rowID, !picker.open[rowID])
+		picker.list.Rows = s.pickerRows(ctx.Docs)
+
+		return
+	case strings.HasPrefix(rowID, otherPrefix):
 		picker.note = "Only " + picker.only.Label() + " values can be picked here, to match its value."
 
 		return
@@ -357,17 +380,19 @@ func (s *State) drawValuePicker(screen *ebiten.Image, docs frame.Docs) {
 	for _, chip := range picker.chips {
 		chip.Draw(screen, s.theme)
 	}
+	s.drawRail(screen)
 	s.drawPickerList(screen)
 	room := picker.list.Rect.Dx()
 	if !picker.show.Rect.Empty() {
-		room = picker.show.Rect.Min.X - left - ui.Half*ui.Gap
+		room = picker.show.Rect.Min.X - picker.list.Rect.Min.X - ui.Half*ui.Gap
 	}
 	below := picker.choose.Rect.Min.Y - ui.Half*ui.Gap - ui.ButtonH
 	ink := ui.ColorMuted()
 	if picker.note != "" {
 		ink = ui.ColorWarn()
 	}
-	s.theme.DrawText(screen, s.clip(picker.hiddenLine(), room), left, below+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
+	s.theme.DrawText(screen, s.clip(picker.hiddenLine(), room), picker.list.Rect.Min.X,
+		below+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
 	picker.show.Draw(screen, s.theme)
 	s.theme.DrawText(screen, "↑ ↓ move · Enter picks · Esc closes", left, centredText(picker.cancel.Rect),
 		ui.ColorMuted())
@@ -395,15 +420,15 @@ func (s *State) drawPickerList(screen *ebiten.Image) {
 }
 
 // locateInPicker finds a part of the open picker for input scripts: a row,
-// "valuerow:<path>" or "declare:<path>", a type chip, "picker:type:<type>",
-// its search, "ui:value-search", or a button, "ui:picker-choose",
-// "ui:picker-show" and "ui:cancel".
+// "valuerow:<path>" or "declare:<path>", a chip, a group or a scope on the
+// rail, "picker:..." (see locatePart), its search, "ui:value-search", or a
+// button, "ui:picker-choose", "ui:picker-show" and "ui:cancel".
 func (s *State) locateInPicker(docs frame.Docs, kind, value string) (image.Point, bool) {
 	picker := s.values
 	s.layoutValuePicker(docs)
 	switch kind {
 	case locateValue, locateDeclare:
-		return locateRowIn(picker.list, kind, value)
+		return picker.locateRow(kind, value)
 	case pickerLocate:
 		return picker.locatePart(value)
 	case "ui":
@@ -420,54 +445,29 @@ func (s *State) locateInPicker(docs frame.Docs, kind, value string) (image.Point
 	return image.Pt(0, 0), false
 }
 
-// locatePart finds a type chip, "type:<type>".
-func (p *valuePicker) locatePart(value string) (image.Point, bool) {
-	if named, isType := strings.CutPrefix(value, "type:"); isType {
-		for _, chip := range p.chips {
-			if chip.ID == chipPrefix+named {
-				return ui.Center(chip.Rect), true
-			}
-		}
-	}
-
-	return image.Pt(0, 0), false
-}
-
-// locateRowIn finds a list's value row by its path, or its declaring row by
-// what it would declare.
-func locateRowIn(list *ui.List, kind, value string) (image.Point, bool) {
-	for index, row := range list.Rows {
-		rect := list.RowRect(index)
-		if row.Heading || !rect.In(list.Rect) {
-			continue
-		}
-		target, declaring := decodeTarget(row.ID)
-		if (kind == locateValue && !declaring && row.Label == value) ||
-			(kind == locateDeclare && declaring && target.located() == value) {
-			return image.Pt(rect.Min.X+textPad, ui.Center(rect).Y), true
-		}
-	}
-
-	return image.Pt(0, 0), false
-}
-
-// hasPickerState answers "picker", whether the picker is open, and
+// hasPickerState answers "picker", whether the picker is open,
 // "picker-hidden=<n>", how many values the search matches that its type
-// hides.
+// hides, and "picker-count:<scope>=<n>", how many it matches in a scope on
+// the rail.
 func (s *State) hasPickerState(state string, docs frame.Docs) (bool, bool) {
-	switch {
-	case state == pickerLocate:
+	if state == pickerLocate {
 		return s.values != nil, true
-	case strings.HasPrefix(state, "picker-hidden="):
-		if s.values == nil {
-			return false, true
-		}
-		s.layoutValuePicker(docs)
-
-		return strconv.Itoa(len(s.values.hidden)) == strings.TrimPrefix(state, "picker-hidden="), true
-	default:
-		return false, false
 	}
+	hidden, isHidden := strings.CutPrefix(state, "picker-hidden=")
+	counted, isCount := strings.CutPrefix(state, "picker-count:")
+	switch {
+	case !isHidden && !isCount:
+		return false, false
+	case s.values == nil:
+		return false, true
+	}
+	s.layoutValuePicker(docs)
+	if isHidden {
+		return strconv.Itoa(len(s.values.hidden)) == hidden, true
+	}
+	scope, want, _ := strings.Cut(counted, "=")
+
+	return strconv.Itoa(s.values.counts[scope]) == want, true
 }
 
 // pickerTitle says what a picker chooses for: a parameter by its label, an

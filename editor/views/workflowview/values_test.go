@@ -127,7 +127,7 @@ func TestSetValueDeclaresAndSets(t *testing.T) {
 }
 
 // TestCheckValueReadsOthers lists another NPC's values in a Check value's
-// chooser, by its path name, and the values of the NPC a local holds; a Set
+// picker, by its path name, and the values of the NPC a local holds; a Set
 // value cannot choose them. A second NPC following the workflow without the
 // template is a problem.
 func TestCheckValueReadsOthers(t *testing.T) {
@@ -139,7 +139,11 @@ func TestCheckValueReadsOthers(t *testing.T) {
 		Add: []worldstate.Declaration{customer}, Set: nil, Remove: nil,
 	})
 	f.click("ui:pick-value")
-	for _, path := range []string{"npc.shop.waiting", "npc.name", "npc.ada.shop.waiting", "local.customer.shop.waiting"} {
+	if _, ok := f.state.Locate("valuerow:npc.name", f.docs); !ok {
+		t.Error("a Check value can read its NPC's name")
+	}
+	f.typeText("waiting")
+	for _, path := range []string{"npc.shop.waiting", "npc.ada.shop.waiting", "local.customer.shop.waiting"} {
 		if _, ok := f.state.Locate("valuerow:"+path, f.docs); !ok {
 			t.Errorf("a Check value can read %s", path)
 		}
@@ -163,6 +167,7 @@ func TestCheckValueReadsOthers(t *testing.T) {
 	set := withNode(t, flow.KindSetValue)
 	set.withShop()
 	set.click("ui:pick-value")
+	set.typeText("waiting")
 	if _, ok := set.state.Locate("valuerow:npc.ada.shop.waiting", set.docs); ok {
 		t.Fatal("a Set value never sets another NPC's value")
 	}
