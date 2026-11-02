@@ -355,6 +355,12 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   too, which a line under the box says. Workflows name a value by itself, not
   by its path, so a move rewrites nothing; a value something uses asks first,
   listing each use as it will read, and a move is undone as one change.
+- **Agreed (2026-11-02):** a row's right-click menu in the World state
+  window adds inside it: a group's, a template's, the World heading's, and
+  an NPC's or zone's own, Add value by type and Add group; the add buttons
+  say where they add. A value anything uses keeps its type: its other types
+  are greyed, and a new value is declared for another type. (Rejected:
+  changing a used value's type after asking, leaving its uses broken.)
 - **Agreed (2026-11-02):** **Find a value**, by its button or Cmd+F, opens the
   workflow's value picker over the World state window, with the window's own
   scopes, every type and how many places use each value; a pick shows the

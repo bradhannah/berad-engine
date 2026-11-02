@@ -245,6 +245,26 @@ Found by its author on 2026-11-02, trying it:
   window now hand the editor the picker's focused field. Verified: view
   tests find the search focused as each picker opens.
 
+Asked for by its author on 2026-11-02, after trying it, paraphrased: a
+right-click on a group in World state should add a value to it; and
+changing a value's type on the fly is a problem when what uses it expects
+its type. Agreed the same day from the wireframes on the canvas "Workflow
+canvas wireframes", row "World state: add inside a group from its menu",
+choosing to lock the type over asking first:
+
+- **Add from a row's right-click menu.** A group's menu, headed In
+  quests, offers Add value ›, by type, and Add group, then Move into,
+  Rename and Delete group. The World heading adds at the top of the world;
+  a template's row adds in the template; an NPC's or zone's row adds to its
+  own values and offers Apply template ›. What is added is selected with
+  its name ready to type.
+- **The add buttons say where they add,** as adds in quests, beside them.
+- **A value in use keeps its type.** While anything uses it, its other
+  type buttons are greyed and a line says why; Declare a new value… opens
+  Find to declare one beside it. A value nothing uses changes type freely.
+  (Rejected: asking first and letting the change through, leaving each use
+  a problem to mend.)
+
 ## Not in this increment
 
 - **Moving between sections,** from World into a zone or an NPC: a
