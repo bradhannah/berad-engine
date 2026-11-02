@@ -173,6 +173,12 @@ type State struct {
 	audioRevision int
 	audioAsking   bool
 	sounds        frame.Sounds
+	// modules are the workflows its Calls name, as last loaded, callsKey
+	// what they were loaded from, and missingWays each Call's ways out its
+	// module no longer has.
+	modules     map[ids.ULID]module
+	callsKey    string
+	missingWays map[ids.ULID]map[string]bool
 	// locals is the inspector's part for the workflow's local values, shown
 	// while no node or line is selected.
 	locals *localsPanel
@@ -198,6 +204,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
+		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
 	for _, kind := range flow.Kinds() {
@@ -269,16 +276,25 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 // anything they depend on has changed.
 func (s *State) load(docs frame.Docs) {
 	revision, found := uint64(0), false
+	var called []ids.ULID
 	docs.View(s.document, func(document client.Document) {
 		workflowDoc, ok := document.Model.(*workflowplugin.Document)
 		if !ok {
 			return
 		}
-		found, revision = true, document.Revision
-		if !s.hasLayout || revision != s.laidOut {
-			s.workflow = workflowDoc.Workflow.Clone()
-		}
+		found, revision, called = true, document.Revision, calledBy(workflowDoc.Workflow)
 	})
+	calls := s.loadModules(docs, called)
+	changed := !s.hasLayout || revision != s.laidOut || calls != s.callsKey
+	if found && changed {
+		docs.View(s.document, func(document client.Document) {
+			if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
+				s.workflow = workflowDoc.Workflow.Clone()
+			}
+		})
+		s.callsKey = calls
+		s.showWays()
+	}
 	if !found {
 		s.workflow, s.hasLayout = nil, false
 		s.shapes, s.routes, s.loops = map[ids.ULID]shape{}, map[routeKey][]image.Point{}, map[routeKey]bool{}
@@ -286,7 +302,7 @@ func (s *State) load(docs frame.Docs) {
 
 		return
 	}
-	if !s.hasLayout || revision != s.laidOut {
+	if changed {
 		s.shapes = shapes(s.workflow, s.noteHeight)
 		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
 		s.tints = s.workflow.Tints()
@@ -473,6 +489,7 @@ func (s *State) listAudio(ctx *frame.Context) {
 		s.askAudio(ctx)
 	}
 	s.watchValues(ctx)
+	s.watchCalls(ctx)
 }
 
 // keys handles the window's own keys while no text field has focus. Escape
@@ -581,7 +598,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
 		s.rightClick(point, input.Cursor)
 	case input.Pressed && input.Cursor.In(canvas):
-		s.press(ctx, point)
+		s.pressOrOpen(ctx, point, input.DoubleClick)
 	}
 }
 

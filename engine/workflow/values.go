@@ -277,8 +277,8 @@ func checkRef(value json.RawMessage) error {
 }
 
 // checkOperand reads an operand: null, an integer, true or false, a string
-// no longer than text can be, a list of those, or a reference to another
-// value.
+// no longer than text can be, a list of those, a place, or a reference to
+// another value.
 func checkOperand(value json.RawMessage) error {
 	if IsNoOperand(value) {
 		return nil
@@ -297,6 +297,11 @@ func checkOperand(value json.RawMessage) error {
 
 		return nil
 	case map[string]any:
+		if _, floor := read["floor"]; floor && read["ref"] == nil {
+			var place worldstate.Place
+
+			return json.Unmarshal(value, &place) //nolint:wrapcheck // Wrapped by the caller.
+		}
 		ref, err := json.Marshal(read["ref"])
 		if err != nil || read["ref"] == nil {
 			return fmt.Errorf("%w: %s is not a reference to a value", ErrNode, value)

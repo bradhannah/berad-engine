@@ -114,7 +114,9 @@ type form struct {
 	rows     int
 	shape    string
 	controls []control
-	remove   *ui.Button
+	// call is a Call's own part of the inspector, nil for another node.
+	call   *callPanel
+	remove *ui.Button
 	// bottom is where the last control ends, where the colour rows go.
 	bottom int
 }
@@ -140,6 +142,9 @@ func (s *State) syncForm(ctx *frame.Context) {
 	for index := range s.form.controls {
 		s.setSaved(&s.form.controls[index], node, ctx)
 	}
+	if s.form.call != nil {
+		s.form.call.setSaved(node)
+	}
 	for key, field := range s.form.keyed() {
 		if draft, kept := drafts[key]; kept {
 			field.Field.Restore(draft)
@@ -161,6 +166,9 @@ func (s *State) rebuildForm(docs frame.Docs, node flow.Node) map[string]string {
 	}
 	s.form = s.buildForm(docs, node)
 	s.form.shape = shape
+	if node.Kind == flow.KindCall {
+		s.form.call = s.newCallPanel(node)
+	}
 
 	return drafts
 }
@@ -175,6 +183,9 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 			declared, found := s.operandDeclaration(docs, node, param.Name)
 			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
+	}
+	if node.Kind == flow.KindCall {
+		shape.WriteString("call=" + s.callShape(node) + ";")
 	}
 	if node.Kind == flow.KindCheckValue {
 		_, refers := flow.OperandRef(savedOperand(node, flow.ParamAgainst))
@@ -204,25 +215,47 @@ func (f *form) fields() []*ui.TextField {
 // times or options, its output's name.
 func (f *form) keyedInOrder() func(yield func(*ui.TextField, string) bool) {
 	return func(yield func(*ui.TextField, string) bool) {
-		for _, made := range f.controls {
-			for _, field := range []*ui.TextField{made.field, made.from, made.to} {
-				if field != nil && !yield(field, field.ID) {
-					return
-				}
-			}
-			for _, row := range made.rows {
-				if !yield(row.from, made.param.Name+"/"+row.port+"/from") || !yield(row.to, made.param.Name+"/"+row.port+"/to") {
-					return
-				}
-			}
-			for _, option := range made.options {
-				if !yield(option.label, made.param.Name+"/"+option.port+"/label") ||
-					!yield(option.share, made.param.Name+"/"+option.port+"/share") {
-					return
-				}
+		for _, each := range f.keyedFields() {
+			if !yield(each.field, each.key) {
+				return
 			}
 		}
 	}
+}
+
+// keyedField is a text field of the form and its lasting key.
+type keyedField struct {
+	field *ui.TextField
+	key   string
+}
+
+// keyedFields lists the form's text fields, a Call's first, in order, each
+// with its lasting key.
+func (f *form) keyedFields() []keyedField {
+	var listed []keyedField
+	if f.call != nil {
+		for _, field := range f.call.fields() {
+			listed = append(listed, keyedField{field: field, key: field.ID})
+		}
+	}
+	for _, made := range f.controls {
+		for _, field := range []*ui.TextField{made.field, made.from, made.to} {
+			if field != nil {
+				listed = append(listed, keyedField{field: field, key: field.ID})
+			}
+		}
+		for _, row := range made.rows {
+			key := made.param.Name + "/" + row.port
+			listed = append(listed, keyedField{field: row.from, key: key + "/from"}, keyedField{field: row.to, key: key + "/to"})
+		}
+		for _, option := range made.options {
+			key := made.param.Name + "/" + option.port
+			listed = append(listed, keyedField{field: option.label, key: key + "/label"},
+				keyedField{field: option.share, key: key + "/share"})
+		}
+	}
+
+	return listed
 }
 
 // keyed maps each field's lasting key to the field.
@@ -282,7 +315,9 @@ func rowCount(node flow.Node) int {
 // buildForm makes a control for each of a node's parameters.
 func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
-	built := &form{node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, remove: nil, bottom: 0}
+	built := &form{
+		node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, call: nil, remove: nil, bottom: 0,
+	}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
@@ -331,10 +366,10 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 			s.newReferenceControl(docs, node, &made)
 		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
+			// A call's and a Return's own parameters have no row: the
+			// Call's inspector and the Return's name stand for them.
+			made.hidden = true
 		}
-		// A call's and a Return's own parameters have no row: the Call's
-		// inspector and the Return's name stand for them.
-		made.hidden = made.hidden || !param.Type.Shown()
 		built.controls = append(built.controls, made)
 	}
 
@@ -482,6 +517,10 @@ func (s *State) layoutForm(_ frame.Docs) {
 		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 		}
 	}
+	if node, ok := s.selectedNode(); ok && s.form.call != nil {
+		top = s.layoutCall(s.form.call, left, width, top)
+		s.form.call.hideRefControls(node)
+	}
 	s.form.bottom = top
 	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
 }
@@ -559,6 +598,9 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 	}
 	for index := range s.form.controls {
 		s.updateControl(input, ctx, &s.form.controls[index], node)
+	}
+	if s.form.call != nil {
+		s.updateCall(input, ctx, node)
 	}
 }
 
@@ -749,6 +791,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 // applyField reads a field's typed value into a node, or says what is wrong
 // with it.
 func (s *State) applyField(node flow.Node, field *ui.TextField) (flow.Node, string) {
+	if changed, problem, handled := s.applyCallField(node, field); handled {
+		return changed, problem
+	}
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
 		value, handled, problem := parseFor(made, field, field.Field.Value(), node)

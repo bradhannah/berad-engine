@@ -11,11 +11,13 @@ import (
 
 // Node sizes on the canvas, in pixels.
 const (
-	nodeWidth       = 172
-	nodeHeight      = 46
-	startWidth      = 110
-	headHeight      = 40
-	switchHead      = 30
+	nodeWidth  = 172
+	nodeHeight = 46
+	startWidth = 110
+	headHeight = 40
+	switchHead = 30
+	// callHead is a Call's heading: its kind, its module and its inputs.
+	callHead        = 58
 	outputRow       = 24
 	noteWidth       = 190
 	noteLine        = 16
@@ -202,9 +204,11 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, 
 	case flow.KindNote:
 		width := max(box.W, noteWidth)
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, noteHeight(node, width)))}
-	case flow.KindTimeSwitch, flow.KindRandom, flow.KindCheckValue, flow.KindFindNPC:
+	case flow.KindTimeSwitch, flow.KindRandom, flow.KindCheckValue, flow.KindFindNPC, flow.KindCall:
 		head, rows := headHeight, len(outputs)
 		switch node.Kind {
+		case flow.KindCall:
+			head = callHead
 		case flow.KindTimeSwitch:
 			head = switchHead
 		case flow.KindRandom:

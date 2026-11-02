@@ -278,6 +278,8 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		}
 		s.drawOutputRows(area, drawn)
+	case flow.KindCall:
+		s.drawCallNode(area, drawn, docs)
 	case flow.KindReturn:
 		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		s.theme.DrawStrong(area, s.clip(wayLabel(drawn.node), drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
@@ -312,7 +314,12 @@ func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
 		ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
 			ui.ColorRule())
 		label, ink := out.output.Label, ui.ColorInk()
-		if drawn.node.Kind == flow.KindTimeSwitch && out.output.Name == flow.OutputOtherwise {
+		missing := s.missingWays[drawn.node.ID][out.output.Name]
+		switch {
+		case missing:
+			ink = ui.ColorWarn()
+		case drawn.node.Kind == flow.KindTimeSwitch && out.output.Name == flow.OutputOtherwise,
+			drawn.node.Kind == flow.KindCall && out.output.Name == flow.OutputDone:
 			ink = ui.ColorMuted()
 		}
 		textY := row.Min.Y + (outputRow-ui.MonoSize)/ui.Half - 1
@@ -327,6 +334,11 @@ func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
 			s.theme.DrawMono(area, share, shareX, textY, ui.ColorInk())
 		default:
 			s.theme.DrawText(area, label, row.Min.X+textPad, row.Min.Y+(outputRow-ui.TextSize)/ui.Half-1, ink)
+		}
+		if missing {
+			middle := row.Min.Y + outputRow/ui.Half
+			ui.FillRect(area, image.Rect(row.Min.X+textPad, middle, row.Min.X+textPad+s.theme.TextWidth(label),
+				middle+ui.Hairline), ink)
 		}
 	}
 	if drawn.node.Kind == flow.KindRandom {
@@ -403,6 +415,8 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		return s.playSummary(node)
 	case flow.KindReturn:
 		return wayLabel(node)
+	case flow.KindCall:
+		return s.callTitle(node, docs)
 	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
 		return s.valueSummary(node, docs)
 	default:
@@ -515,9 +529,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, s.form.kind.Label, left, top+ui.LineHeight, ui.ColorInk())
 	s.theme.DrawText(screen, "("+group+")", left+s.titleWidth(s.form.kind.Label)+ui.Gap*ui.Half,
 		top+ui.LineHeight+ui.Half, ui.ColorMuted())
-	for index := range s.form.controls {
-		s.drawControl(screen, docs, &s.form.controls[index], node, left)
-	}
+	s.drawControls(screen, docs, node, left)
 	s.drawColours(screen)
 	if s.form.remove != nil {
 		s.form.remove.Draw(screen, s.theme)
@@ -560,6 +572,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	}
 	if strings.HasPrefix(state, localState) {
 		return s.hasLocal(state), true
+	}
+	if found, handled := s.hasCallState(state); handled {
+		return found, true
 	}
 
 	return false, false
@@ -690,6 +705,16 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 	}
 }
 
+// drawControls draws the selected node's parameters, and a Call's own part.
+func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.Node, left int) {
+	for index := range s.form.controls {
+		s.drawControl(screen, docs, &s.form.controls[index], node, left)
+	}
+	if s.form.call != nil {
+		s.drawCall(screen, docs, node, left)
+	}
+}
+
 // drawAnchor draws an anchor parameter: its destination, where it is, and
 // Pick on map and Clear.
 func (s *State) drawAnchor(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
@@ -785,6 +810,8 @@ func hintFor(kind string) string {
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindCall: "Runs another workflow, then carries on from the output named for the way out it took, " +
+			"or done. Its inputs are read once, as the call starts.",
 		flow.KindReturn: "Goes back to whatever called this workflow, out of the Call's output of this name. " +
 			"Two Returns with one name are one way out. Run as a behaviour, it starts again.",
 		flow.KindSetValue: "Sets one of this workflow's own values: its NPC's, its zone's, the world's or a " +
@@ -1023,6 +1050,11 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	if s.form == nil {
 		return image.Pt(0, 0), false
+	}
+	if s.form.call != nil {
+		if point, found := s.form.call.locate(widget); found {
+			return point, true
+		}
 	}
 	if s.form.remove != nil && widget == s.form.remove.ID {
 		return ui.Center(s.form.remove.Rect), true

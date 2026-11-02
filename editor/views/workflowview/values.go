@@ -223,10 +223,19 @@ const (
 	roleCheck
 	roleWhere
 	roleKeep
+	// roleGive is another value a Call gives an input, and roleKept a
+	// value it keeps an output in: of any type, an NPC or a place among
+	// them.
+	roleGive
+	roleKept
 )
 
 func roleOf(kind, param string) valueRole {
 	switch {
+	case kind == flow.KindCall && strings.HasPrefix(param, pickInput):
+		return roleGive
+	case kind == flow.KindCall:
+		return roleKept
 	case kind == flow.KindCheckValue:
 		return roleCheck
 	case kind == flow.KindFindNPC && param == "into":
@@ -265,7 +274,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	found := &options{listed: nil, seen: map[string]bool{}}
 	locals := s.workflow.Locals().Values()
 	for _, local := range locals {
-		if (role == roleKeep) == (local.Type == worldstate.TypeNPC) && role != roleWhere {
+		anyType := role == roleGive || role == roleKept
+		if anyType || (role == roleKeep) == (local.Type == worldstate.TypeNPC) && role != roleWhere {
 			found.add(scopePlace("LOCAL", worldstate.ScopeLocal), refTo(local, ids.ULID{}, ids.ULID{}), localPath(local),
 				local)
 		}
@@ -297,7 +307,7 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 		found.add(scopePlace("WORLD", worldstate.ScopeWorld), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
 			held.Path, held.Declaration)
 	}
-	if role == roleCheck {
+	if role == roleCheck || role == roleGive {
 		s.othersOptions(found, catalog, locals)
 	}
 
@@ -474,7 +484,7 @@ func declareScopes(role valueRole) []worldstate.Scope {
 		return []worldstate.Scope{worldstate.ScopeLocal}
 	case roleWhere:
 		return []worldstate.Scope{worldstate.ScopeNPC}
-	case roleSet, roleCheck:
+	case roleSet, roleCheck, roleGive, roleKept:
 	}
 
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
@@ -599,7 +609,7 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 		current, found := s.currentNode(ctx.Docs, nodeID)
 		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
 		switch {
-		case !found:
+		case !found, s.chooseForCall(ctx, current, param, ref):
 		case made.operand:
 			s.saveParam(ctx, current, param, flow.RefOperand(ref))
 		default:

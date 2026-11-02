@@ -1,6 +1,8 @@
 package workflowview
 
 import (
+	"strings"
+
 	"image"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -86,6 +88,11 @@ func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
 
 // chooseFromContext carries out a right-click menu choice on the selection.
 func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
+	if strings.HasPrefix(chosen, menuWorkflow) {
+		s.chooseModule(ctx, chosen)
+
+		return
+	}
 	switch chosen {
 	case menuDeleteNode:
 		s.removeSelected(ctx)
