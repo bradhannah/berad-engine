@@ -14,7 +14,8 @@ import (
 // TestWorldStateMovesAndFinds declares world.done from a workflow's Set
 // value, then in the World state window moves it by its right-click menu
 // into a new group, asked first as the workflow uses it, and names the
-// group progress; adds a value in progress and drags it out onto World;
+// group progress; adds a bool named ready from progress's menu; finds done's
+// type locked; adds a value in progress and drags it out onto World;
 // finds done by
 // Enter; and declares world.shop.open_hour from Find. The saved world state
 // holds them there, and the Set value still sets done, its box showing the
@@ -25,6 +26,7 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	menuShot, askShot, findShot, declareShot := shotPath(t, "state-menu.png"), shotPath(t, "state-move-ask.png"),
 		shotPath(t, "state-find.png"), shotPath(t, "state-find-declare.png")
+	addShot, lockShot := shotPath(t, "state-group-menu.png"), shotPath(t, "state-type-locked.png")
 	browserScript := script(
 		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
 		doubleClick("row:World state"), quitWhenAlone(),
@@ -42,6 +44,10 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 		shoot(menuShot), click("menu:into-new"), must("dialog:move", 300), wait(5), shoot(askShot),
 		click("dialog:move"), must("state:selected=world.group", 300), wait(5),
 		keys("Cmd+A"), typed("progress"), keys("Enter"), must("row:world.progress.done", 300), wait(10),
+		rightClick("row:world.progress"), wait(5), click("menu:add-value"), must("menu:add:bool", 60), wait(5),
+		shoot(addShot), click("menu:add:bool"), must("state:selected=world.progress.value", 300), wait(5),
+		typed("ready"), keys("Enter"), must("row:world.progress.ready", 300), wait(10),
+		click("row:world.progress.done"), wait(30), click("ui:value-type-bool"), wait(10), shoot(lockShot),
 		click("ui:add-value"), must("state:selected=world.progress.value", 300), wait(10),
 		drag("row:world.progress.value", "section:world", "section:world"), wait(5),
 		must("row:world.value", 300), wait(10),
@@ -65,8 +71,11 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 	_, dragged := values.Find(worldstate.ScopeWorld, ids.ULID{}, "value")
 	shop, _ := values.Find(worldstate.ScopeWorld, ids.ULID{}, "shop")
 	_, declared := values.Find(worldstate.ScopeWorld, shop.ID, "open_hour")
-	if !grouped || !moved || !dragged || !declared {
-		t.Fatalf("the world state holds progress.done, value and shop.open_hour: %+v", values.Values())
+	ready, added := values.Find(worldstate.ScopeWorld, progress.ID, "ready")
+	if !grouped || !moved || !dragged || !declared || !added || ready.Type != worldstate.TypeBool ||
+		done.Type != worldstate.TypeInteger {
+		t.Fatalf("the world state holds progress.done, still an integer, progress.ready, value and shop.open_hour: %+v",
+			values.Values())
 	}
 	logic, err := workflowplugin.Decode(readEnvelope(t, project, "workflows/workflow-1--????????.json").Data)
 	if err != nil {
@@ -78,5 +87,5 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 			t.Fatalf("the Set value still sets done: %+v %v", ref, refErr)
 		}
 	}
-	t.Logf("screenshots: %s %s %s %s", menuShot, askShot, findShot, declareShot)
+	t.Logf("screenshots: %s %s %s %s %s %s", menuShot, askShot, findShot, declareShot, addShot, lockShot)
 }

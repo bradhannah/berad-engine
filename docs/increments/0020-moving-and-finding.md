@@ -298,6 +298,13 @@ Built and verified:
   from World's heading, text in the guards template, an integer of
   George's own, and a zone template from the Zone heading; and applies the
   guards template to George from his menu.
+- **Checks:** `make check` passes with no lint findings. The real-window
+  test of moving and finding now also adds a bool named ready from
+  progress's menu and finds world.progress.done's type held while the
+  workflow uses it; the saved world state holds ready as a bool and done
+  still an integer. The whole real-window suite passed but for one tile
+  walls test whose editor did not quit while a demo editor was open beside
+  it; run alone it passed twice.
 - **Selecting the whole name, short of the wireframe:** the Name box in
   World state shows the dotted name, as quests.value, so selecting all of
   it would move the value out of quests on typing; only its own name is
