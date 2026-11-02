@@ -678,30 +678,34 @@ func newPort(spans []flow.TimeRange) string {
 	}
 }
 
-// updateAnchor picks the destination on a map, or clears it.
+// updateAnchor picks the destination on a map, chooses it from the list of
+// places its box opens, or clears it.
 func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
-	owner := anchorOwner(node.ID, made.param.Name)
-	made.pick.Label = s.picker.Label(owner)
+	target := s.anchorTarget(ctx.Docs, node, made.param.Name)
 	switch {
-	case made.pick.Update(input):
-		label := "a Go to in “" + s.name(ctx.Docs) + "”"
-		nodeID, param := node.ID, made.param.Name
-		s.picker.Toggle(ctx, owner, cancelledHere, label, func(answer protocol.PickAnswer, ctx *frame.Context) {
-			current, ok := s.currentNode(ctx.Docs, nodeID)
-			if !ok {
-				return
-			}
-			before, err := current.Anchor(param)
-			if err != nil {
-				before = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
-			}
-			if ref, picked := s.picked(ctx, answer, "Go to", s.placeWas(ctx.Docs, before)); picked {
-				s.saveParam(ctx, current, param, ref)
-			}
-		})
+	case s.pickUpdate(made.pick, target.owner, input):
+		s.pickOrCancel(ctx, target)
+	case input.Pressed && input.Cursor.In(made.anchor):
+		s.openPlaces(made.anchor, target)
 	case made.clear.Update(input):
 		s.saveParam(ctx, node, made.param.Name, floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}})
 	}
+}
+
+// anchorTarget is a Go to's place on a map, as a place control.
+func (s *State) anchorTarget(docs frame.Docs, node flow.Node, param string) placeTarget {
+	current, err := node.Anchor(param)
+	if err != nil {
+		current = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
+	}
+	nodeID := node.ID
+
+	return s.newPlaceTarget(anchorOwner(nodeID, param), current, "Go to", "a Go to in “"+s.name(docs)+"”",
+		func(ctx *frame.Context, ref floor.AnchorRef) {
+			if now, ok := s.currentNode(ctx.Docs, nodeID); ok {
+				s.saveParam(ctx, now, param, ref)
+			}
+		})
 }
 
 // currentNode reads a node from the window's copy of the workflow as it is

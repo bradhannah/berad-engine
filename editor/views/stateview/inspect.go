@@ -147,7 +147,7 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 			s.startDelete(ctx, selected)
 		case valueform.ChangeDeclareNew:
 			s.openFind(ctx, strings.TrimSuffix(selected.path, selected.declared.Name))
-		case valueform.ChangeNone, valueform.ChangePickPlace:
+		case valueform.ChangeNone, valueform.ChangePickPlace, valueform.ChangeChoosePlace:
 		}
 	case itemOwner:
 		for index, template := range s.templatesOf(selected.scope) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/loudness"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -80,6 +81,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		dialog.Draw(screen, s.theme)
 	}
 	s.contextMenu.Draw(screen, s.theme)
+	if s.places != nil {
+		s.drawPlaces(screen)
+	}
 	s.guard.Draw(screen, s.theme)
 	if s.values != nil {
 		s.drawValuePicker(screen, docs)
@@ -722,25 +726,33 @@ func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.No
 	}
 }
 
-// drawAnchor draws an anchor parameter: its destination, where it is, and
-// Pick on map and Clear.
+// drawAnchor draws an anchor parameter: its place's box, the zone and floor
+// it is on, and Pick on map and Clear.
 func (s *State) drawAnchor(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
 	destination, err := node.Anchor(made.param.Name)
 	if err != nil {
 		destination = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
 	}
-	name, detail := s.anchorLabel(docs, destination)
-	ui.Box(screen, made.anchor, ui.ColorBackground())
-	centre := image.Pt(made.anchor.Min.X+textPad+anchorDot, made.anchor.Min.Y+made.anchor.Dy()/ui.Half)
-	vector.StrokeCircle(screen, float32(centre.X), float32(centre.Y), anchorDot, anchorRing, ui.ColorSelect(), true)
-	ink := ui.ColorInk()
-	if destination.IsZero() || strings.HasPrefix(name, "Broken") {
-		ink = ui.ColorMuted()
-	}
-	s.theme.DrawText(screen, name, centre.X+anchorDot+textPad, made.anchor.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
-	s.theme.DrawText(screen, detail, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
+	owner := anchorOwner(node.ID, made.param.Name)
+	label, look, where := s.placeShown(docs, destination)
+	places.DrawBox(screen, s.theme, made.anchor, label, look, s.isLit(owner), s.placesOpen(owner))
+	s.theme.DrawText(screen, where, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
 	made.pick.Draw(screen, s.theme)
 	made.clear.Draw(screen, s.theme)
+}
+
+// placeShown is how a place box shows a place: its name, and the zone and
+// floor it is on, or No place yet, or what is wrong with it.
+func (s *State) placeShown(docs frame.Docs, ref floor.AnchorRef) (string, places.Look, string) {
+	if ref.IsZero() {
+		return "No place yet", places.Empty, ""
+	}
+	name, detail := s.anchorLabel(docs, ref)
+	if detail == "" || strings.HasPrefix(name, "Broken") {
+		return name, places.Falling, detail
+	}
+
+	return name, places.Chosen, places.Where(docs, ref.Floor)
 }
 
 // drawUnit writes a field's unit, faintly, at its right end.
@@ -900,7 +912,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return point, found
 	}
 	switch kind {
-	case "state":
+	case locateState:
 		if found, handled := s.hasValueState(value, docs); handled {
 			return image.Pt(0, 0), found
 		}
@@ -1014,6 +1026,9 @@ func (s *State) nthNode(value string) (shape, bool) {
 	return noShape(), false
 }
 
+// locateState is the locate kind that asks after a state, not a part.
+const locateState = "state"
+
 // locateInOverlay finds a part of whatever is over the window and takes its
 // input: the guard's dialog, the map picker's dialog or the value picker;
 // states are still the window's own. It reports whether one was open.
@@ -1027,8 +1042,12 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 		point, found := s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 
 		return point, found, true
-	case s.values != nil && kind != "state":
+	case s.values != nil && kind != locateState:
 		point, found := s.locateInPicker(docs, kind, value)
+
+		return point, found, true
+	case s.places != nil && kind != locateState:
+		point, found := s.locatePlaces(docs, kind, value)
 
 		return point, found, true
 	default:
@@ -1078,9 +1097,12 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// locate finds one of a control's fields or buttons, its cue as "cue", or
-// a value parameter's box as "pick-<param>".
+// locate finds one of a control's fields or buttons, its cue as "cue", a
+// value parameter's box as "pick-<param>", or a place's box as "place".
 func (made control) locate(widget string) (image.Point, bool) {
+	if widget == "place" && !made.anchor.Empty() {
+		return ui.Center(made.anchor), true
+	}
 	fields, buttons := made.widgets()
 	for _, field := range fields {
 		if field != nil && field.ID == widget && !field.Rect.Empty() {

@@ -13,6 +13,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -85,6 +86,11 @@ func (s *State) syncLocals(ctx *frame.Context) {
 		return
 	}
 	panel.form.PlaceName, panel.form.Locked = s.placeName(ctx, value), s.lockLocal(value)
+	panel.form.PlaceWhere, panel.form.PlaceLit, panel.form.PlaceOpen = "", s.isLit(localOwner(value.ID)),
+		s.placesOpen(localOwner(value.ID))
+	if start := value.Zero().Place; value.Type == worldstate.TypePlace && !start.IsZero() {
+		panel.form.PlaceWhere = places.Where(ctx.Docs, start.Floor)
+	}
 	if panel.form.Show(value, value.Name) || !panel.registered {
 		s.focus = ui.Focus{}
 		s.focus.Register(panel.form.Fields()...)
@@ -155,12 +161,17 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	if _, ok := s.selectedLocal(); !ok {
+	s.updateLocalForm(input, ctx)
+}
+
+// updateLocalForm handles the selected local's form.
+func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
+	panel := s.locals
+	declared, ok := s.selectedLocal()
+	if !ok {
 		return
 	}
-	if declared, ok := s.selectedLocal(); ok {
-		panel.form.PickPlace.Label = s.picker.Label(localOwner(declared.ID))
-	}
+	panel.form.PickPlace.Label = s.picker.Label(localOwner(declared.ID))
 	switch changed, change := panel.form.Update(input); change {
 	case valueform.ChangeValue:
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, changed, ids.ULID{}), nil)
@@ -169,7 +180,9 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", removal,
 			func(protocol.Result) { ctx.Frame.Status(localPath(changed) + " deleted. Undo brings it back.") })
 	case valueform.ChangePickPlace:
-		s.pickPlace(ctx, changed)
+		s.pickOrCancel(ctx, s.localTarget(ctx, changed))
+	case valueform.ChangeChoosePlace:
+		s.openPlaces(panel.form.PlaceBox, s.localTarget(ctx, changed))
 	case valueform.ChangeDeclareNew:
 		s.addLocal(ctx)
 	case valueform.ChangeNone:
@@ -189,26 +202,24 @@ func (s *State) placeName(ctx *frame.Context, declared worldstate.Declaration) s
 	return name
 }
 
-// pickPlace picks a place local's start on a map, or cancels its pick in
-// progress.
-func (s *State) pickPlace(ctx *frame.Context, declared worldstate.Declaration) {
+// localTarget is a place local's start, as a place control.
+func (s *State) localTarget(ctx *frame.Context, declared worldstate.Declaration) placeTarget {
+	start := declared.Zero().Place
+	current := floor.AnchorRef{Floor: start.Floor, Anchor: start.Anchor}
 	label := localPath(declared) + " in “" + s.name(ctx.Docs) + "”"
-	s.picker.Toggle(ctx, localOwner(declared.ID), cancelledHere, label, func(answer protocol.PickAnswer,
-		ctx *frame.Context,
-	) {
-		current, ok := s.workflow.Locals().Value(declared.ID)
-		if !ok {
-			return
-		}
-		ref, picked := s.picked(ctx, answer, localPath(current), s.placeName(ctx, current))
-		if !picked {
-			return
-		}
-		start := worldstate.NoValue()
-		start.Type, start.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
-		current.Default = start.Encode()
-		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, current, ids.ULID{}), nil)
-	})
+	localID := declared.ID
+
+	return s.newPlaceTarget(localOwner(localID), current, localPath(declared), label,
+		func(ctx *frame.Context, ref floor.AnchorRef) {
+			now, ok := s.workflow.Locals().Value(localID)
+			if !ok {
+				return
+			}
+			value := worldstate.NoValue()
+			value.Type, value.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
+			now.Default = value.Encode()
+			s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, now, ids.ULID{}), nil)
+		})
 }
 
 // localPath is how a workflow names a local value, such as local.clerk.

@@ -158,11 +158,16 @@ type State struct {
 	// opened in one, opened again in the next.
 	values    *valuePicker
 	lastGroup string
-	form      *form
-	save      *ui.SaveBar
-	guard     frame.Guard
-	focus     ui.Focus
-	picker    *picker.Picker
+	// places is the list of places while it is open; lit is the place
+	// control whose box glows, its place just set, for litLeft frames more.
+	places  *placeList
+	lit     string
+	litLeft int
+	form    *form
+	save    *ui.SaveBar
+	guard   frame.Guard
+	focus   ui.Focus
+	picker  *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -205,6 +210,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
+		places: nil, lit: "", litLeft: 0,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
@@ -238,8 +244,11 @@ func (s *State) name(docs frame.Docs) string {
 // Focused returns the focused text field.
 // While the value picker is open, it is the picker's.
 func (s *State) Focused() *ui.TextField {
-	if s.values != nil {
+	switch {
+	case s.values != nil:
 		return s.values.picker.Focused()
+	case s.places != nil:
+		return s.places.list.Focused()
 	}
 
 	return s.focus.Current()
@@ -410,6 +419,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.sounds = ctx.Sounds
+	s.fade()
 	s.load(ctx.Docs)
 	s.askCallers(ctx)
 	s.listAudio(ctx)

@@ -12,10 +12,10 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
-	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -69,6 +69,8 @@ type inputRow struct {
 	another *ui.Button
 	clear   *ui.Button
 	box     image.Rectangle
+	// place is a place input's box, which opens the list of places.
+	place image.Rectangle
 }
 
 // keepRow keeps one output of the module.
@@ -107,7 +109,7 @@ func (s *State) newInputRow(input worldstate.Declaration) inputRow {
 	row := inputRow{
 		input: input, label: 0, field: nil, choices: nil, values: nil, pick: nil,
 		another: ui.NewButton(prefix+"-another", "Another value"), clear: ui.NewButton(prefix+"-clear", "Clear"),
-		box: ui.Zero(),
+		box: ui.Zero(), place: ui.Zero(),
 	}
 	switch input.Type {
 	case worldstate.TypeInteger, worldstate.TypeText:
@@ -222,7 +224,8 @@ func (s *State) layoutCall(panel *callPanel, left, width, top int) int {
 }
 
 // layoutInput places one input's controls under its name, with Another
-// value at the right.
+// value at the right; a place's box takes the row, the line naming its zone
+// and floor under it, then Pick on map and Another value.
 func (s *State) layoutInput(row *inputRow, left, width, top int) int {
 	row.label = top
 	row.clear.Rect = image.Rect(left+width-clearW, top-ui.Half, left+width, top+ui.ButtonH-ui.Half)
@@ -234,8 +237,12 @@ func (s *State) layoutInput(row *inputRow, left, width, top int) int {
 		row.field.Rect = main
 	}
 	if row.pick != nil {
-		row.pick.Rect = main
-		top += ui.LineHeight
+		row.place = image.Rect(left, top, left+width, top+ui.ButtonH)
+		row.box = row.place
+		top += ui.ButtonH + ui.LineHeight
+		half := (width - rowSpace) / ui.Half
+		row.pick.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
+		row.another.Rect = image.Rect(left+width-half, top, left+width, top+ui.ButtonH)
 	}
 	if len(row.choices) > 0 {
 		top = s.layoutButtonRows(row.choices, main.Min.X, main.Dx(), top) - rowSpace
@@ -267,7 +274,7 @@ func (panel *callPanel) hideRefControls(node flow.Node) {
 			row.field.Rect = ui.Zero()
 		}
 		if row.pick != nil {
-			row.pick.Rect = ui.Zero()
+			row.pick.Rect, row.place = ui.Zero(), ui.Zero()
 		}
 		for _, button := range row.choices {
 			button.Rect = ui.Zero()
@@ -336,13 +343,24 @@ func (s *State) updateInput(input *ui.Input, ctx *frame.Context, node flow.Node,
 			s.giveInput(ctx, node, row.input.ID, row.values[index])
 		}
 	}
+	if row.pick != nil {
+		target := s.inputTarget(ctx.Docs, node, row.input)
+		switch {
+		case s.pickUpdate(row.pick, target.owner, input):
+			s.pickOrCancel(ctx, target)
+
+			return
+		case input.Pressed && input.Cursor.In(row.place):
+			s.openPlaces(row.place, target)
+
+			return
+		}
+	}
 	switch {
 	case row.another.Update(input), input.Pressed && input.Cursor.In(row.box):
 		s.openCallPicker(node, pickInput, row.input)
 	case row.clear.Update(input):
 		s.giveInput(ctx, node, row.input.ID, nil)
-	case row.pick != nil && s.pickUpdate(row.pick, inputOwner(node.ID, row.input.ID), input):
-		s.pickInputPlace(ctx, node.ID, row.input)
 	}
 }
 
@@ -357,29 +375,25 @@ func (s *State) giveInput(ctx *frame.Context, node flow.Node, input ids.ULID, ra
 	s.saveParam(ctx, node, flow.ParamInputs, inputs)
 }
 
-// pickInputPlace picks the place an input is given on a map, or cancels its
-// pick in progress.
-func (s *State) pickInputPlace(ctx *frame.Context, nodeID ids.ULID, input worldstate.Declaration) {
-	label := "the input " + input.Name + " of a Call in “" + s.name(ctx.Docs) + "”"
-	s.picker.Toggle(ctx, inputOwner(nodeID, input.ID), cancelledHere, label, func(answer protocol.PickAnswer,
-		ctx *frame.Context,
-	) {
-		current, ok := s.currentNode(ctx.Docs, nodeID)
-		if !ok {
-			return
-		}
-		was := ""
-		if value, err := input.Parse(current.Inputs()[input.ID]); err == nil && !value.Place.IsZero() {
-			was = s.placeWas(ctx.Docs, floor.AnchorRef{Floor: value.Place.Floor, Anchor: value.Place.Anchor})
-		}
-		ref, picked := s.picked(ctx, answer, input.Name, was)
-		if !picked {
-			return
-		}
-		given := worldstate.NoValue()
-		given.Type, given.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
-		s.giveInput(ctx, current, input.ID, given.Encode())
-	})
+// inputTarget is a Call's place input, as a place control.
+func (s *State) inputTarget(docs frame.Docs, node flow.Node, input worldstate.Declaration) placeTarget {
+	current := floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
+	if value, err := input.Parse(node.Inputs()[input.ID]); err == nil && !value.Place.IsZero() {
+		current = floor.AnchorRef{Floor: value.Place.Floor, Anchor: value.Place.Anchor}
+	}
+	nodeID := node.ID
+	label := "the input " + input.Name + " of a Call in “" + s.name(docs) + "”"
+
+	return s.newPlaceTarget(inputOwner(nodeID, input.ID), current, input.Name, label,
+		func(ctx *frame.Context, ref floor.AnchorRef) {
+			now, ok := s.currentNode(ctx.Docs, nodeID)
+			if !ok {
+				return
+			}
+			given := worldstate.NoValue()
+			given.Type, given.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
+			s.giveInput(ctx, now, input.ID, given.Encode())
+		})
 }
 
 // openCallPicker opens the value picker for another value an input is
@@ -584,28 +598,50 @@ func (s *State) drawCall(screen *ebiten.Image, docs frame.Docs, node flow.Node, 
 func (s *State) drawInput(screen *ebiten.Image, docs frame.Docs, row inputRow, given map[ids.ULID]json.RawMessage,
 	left int,
 ) {
-	s.theme.DrawText(screen, row.input.Name+" · "+row.input.Type.Label(), left, row.label, ui.ColorInk())
+	s.theme.DrawMonoStrong(screen, row.input.Name, left, row.label, ui.ColorInk())
+	s.drawTypeTag(screen, row.input.Type, left+s.theme.TextWidth(row.input.Name)+ui.Inset, row.label)
 	if row.field != nil && !row.field.Rect.Empty() {
 		row.field.Draw(screen)
 	}
 	raw, filled := given[row.input.ID]
-	if !row.box.Empty() {
+	if !row.box.Empty() && row.place.Empty() {
 		label := "Starts as " + row.input.Label(row.input.Zero())
 		if filled {
 			label = s.givenLabel(docs, row.input, raw)
 		}
 		s.drawPickBox(screen, row.box, label, ui.ColorInk(), false)
 	}
-	if row.pick != nil && !row.pick.Rect.Empty() {
-		label := s.placeLabel(docs, row.input.Zero().Place)
-		if filled {
-			label = s.givenLabel(docs, row.input, raw)
-		} else {
-			label = "starts as " + label
-		}
-		s.theme.DrawText(screen, s.clip(label, row.another.Rect.Max.X-row.pick.Rect.Min.X), row.pick.Rect.Min.X,
-			row.pick.Rect.Max.Y+ui.Half, ui.ColorMuted())
+	if !row.place.Empty() {
+		s.drawPlaceInput(screen, docs, row, raw)
 	}
+}
+
+// drawPlaceInput draws a place input's box: the place given, or the one it
+// starts as, muted, and the zone and floor under it.
+func (s *State) drawPlaceInput(screen *ebiten.Image, docs frame.Docs, row inputRow, raw json.RawMessage) {
+	place := row.input.Zero().Place
+	if value, err := row.input.Parse(raw); err == nil && raw != nil {
+		place = value.Place
+	}
+	label, look, where := s.placeShown(docs, floor.AnchorRef{Floor: place.Floor, Anchor: place.Anchor})
+	if raw == nil && look == places.Chosen {
+		label, look = "Starts as "+label, places.Falling
+	}
+	owner := inputOwner(s.selected, row.input.ID)
+	places.DrawBox(screen, s.theme, row.place, label, look, s.isLit(owner), s.placesOpen(owner))
+	s.theme.DrawText(screen, where, row.place.Min.X, row.place.Max.Y+ui.Gap, ui.ColorMuted())
+}
+
+// drawTypeTag draws a value's type after its name, small and muted, with a
+// place's ring.
+func (s *State) drawTypeTag(screen *ebiten.Image, kind worldstate.Type, left, top int) {
+	ink := ui.ColorMuted()
+	if kind == worldstate.TypePlace {
+		ui.DrawIcon(screen, ui.IconPlace, image.Pt(left, top+(ui.TextSize-ui.IconSize)/ui.Half+1))
+		left += ui.IconSize + ui.Gap
+		ink = ui.ColorSelect()
+	}
+	s.theme.DrawText(screen, kind.Label(), left, top, ink)
 }
 
 // locateCall finds a part of the Call's inspector.
@@ -623,15 +659,22 @@ func (panel *callPanel) locate(widget string) (image.Point, bool) {
 			return ui.Center(button.Rect), true
 		}
 	}
+
+	return panel.locateBox(widget)
+}
+
+// locateBox finds an input's place or value box, or an output's box.
+func (panel *callPanel) locateBox(widget string) (image.Point, bool) {
+	boxes := map[string]image.Rectangle{}
 	for _, row := range panel.inputs {
-		if widget == inputPrefix+row.input.Name+"-value" && !row.box.Empty() {
-			return ui.Center(row.box), true
-		}
+		boxes[inputPrefix+row.input.Name+"-place"] = row.place
+		boxes[inputPrefix+row.input.Name+"-value"] = row.box
 	}
 	for _, row := range panel.keeps {
-		if widget == keepPrefix+row.output.Name && !row.box.Empty() {
-			return ui.Center(row.box), true
-		}
+		boxes[keepPrefix+row.output.Name] = row.box
+	}
+	if box, found := boxes[widget]; found && !box.Empty() {
+		return ui.Center(box), true
 	}
 
 	return image.Pt(0, 0), false
