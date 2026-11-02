@@ -226,14 +226,16 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	f.keys("Cmd+A", "Backspace")
 	f.typeText("5")
 	f.keys("Enter")
-	if !f.has("operand:to=5") || !f.has("operand:against=0") || f.has("problem:"+flow.KindCheckValue+":1") {
+	if !f.has("operand:to=5") || !f.has("operand:against=0") || f.has("problem:"+flow.KindCheckValue+":1") ||
+		!f.has("title:check-value:1=Is world.patience between 0 and 5?") {
 		t.Fatalf("between 0 and 5 is whole: %q", f.status())
 	}
 	f.click("ui:compare-" + flow.CompareLeast)
 	f.click("ui:source-value")
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 	f.click("valuerow:world.patience")
-	if !f.has("refers:against=world.patience") || f.has("problem:"+flow.KindCheckValue+":1") {
+	if !f.has("refers:against=world.patience") || f.has("problem:"+flow.KindCheckValue+":1") ||
+		!f.has("title:check-value:1=Is world.patience ≥ world.patience?") {
 		t.Fatal("at least another integer value, read when it runs")
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
@@ -252,7 +254,8 @@ func TestComparisonsFollowTheType(t *testing.T) {
 			has("compare-"+flow.CompareIs), has("operand-"+flow.ParamAgainst+"-true"), f.has("problem:"+flow.KindCheckValue+":1"))
 	}
 	f.click("ui:operand-" + flow.ParamAgainst + "-true")
-	if !f.has("operand:against=true") || !f.has(`operand:compare="is"`) || f.has("problem:"+flow.KindCheckValue+":1") {
+	if !f.has("operand:against=true") || !f.has(`operand:compare="is"`) || f.has("problem:"+flow.KindCheckValue+":1") ||
+		!f.has("title:check-value:1=Is world.patience true?") {
 		t.Fatal("true mends the comparison to is")
 	}
 	value.Type, value.Default = worldstate.TypeChoice, []byte(`"c1"`)
@@ -268,13 +271,17 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	f.click("ui:operand-" + flow.ParamAmong + "-c1")
 	f.click("ui:operand-" + flow.ParamAmong + "-c3")
 	if !f.has(`operand:among=["c1","c3"]`) || !f.has(`operand:compare="`+flow.CompareAnyOf+`"`) ||
-		f.has("problem:"+flow.KindCheckValue+":1") {
+		f.has("problem:"+flow.KindCheckValue+":1") || !f.has("title:check-value:1=Is world.patience any of calm, glad?") {
 		t.Fatalf("ticking two choices makes any of them: %q", f.status())
 	}
 	f.click("ui:operand-" + flow.ParamAmong + "-c1")
 	f.click("ui:compare-" + flow.CompareNoneOf)
 	if !f.has(`operand:among=["c3"]`) || !f.has(`operand:compare="`+flow.CompareNoneOf+`"`) {
 		t.Fatal("unticking one and choosing none of")
+	}
+	f.click("ui:operand-" + flow.ParamAmong + "-c3")
+	if !f.has("problem:" + flow.KindCheckValue + ":1") {
+		t.Fatal("none ticked is a problem")
 	}
 	older := f.nth(flow.KindCheckValue, 1)
 	older, _ = older.WithParam(flow.ParamCompare, flow.CompareIs)

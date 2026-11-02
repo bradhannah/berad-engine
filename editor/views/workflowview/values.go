@@ -922,7 +922,10 @@ func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
 	if missing := s.missing(docs, ref, path); missing != "" {
 		return missing
 	}
-	if !unlimited(node) && !s.operandsFit(docs, node, declared) {
+	if node.Kind == flow.KindCheckValue {
+		return s.checkProblem(docs, node, declared)
+	}
+	if !s.operandsFit(docs, node, declared) {
 		return problemOperand
 	}
 
@@ -1049,11 +1052,12 @@ func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
 		if path(flow.ParamValue) == "" {
 			return "no value"
 		}
-		if unlimited(node) {
-			return path(flow.ParamValue) + " " + compareWords(node)
+		phrase, is := s.checkPhrase(docs, node)
+		if is {
+			phrase = "is " + phrase
 		}
 
-		return path(flow.ParamValue) + " " + compareWords(node) + " " + operand("against")
+		return path(flow.ParamValue) + " " + phrase
 	case flow.KindFindNPC:
 		return s.findSummary(node, path, operand)
 	}
@@ -1061,19 +1065,39 @@ func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
 	return ""
 }
 
-// operandLabel shows an operand as its value's type shows it, or "?".
+// operandLabel shows an operand as its value's type shows it: the value,
+// text in quotes, the path of a value it refers to, or a list's values
+// joined with commas; "?" for one that does not fit.
 func (s *State) operandLabel(docs frame.Docs, node flow.Node, param string) string {
 	declared, found := s.operandDeclaration(docs, node, param)
 	saved, err := node.Operand(param)
 	if !found || err != nil {
 		return "?"
 	}
-	value, err := declared.Parse(saved)
-	if err != nil {
+	if ref, refers := flow.OperandRef(saved); refers {
+		if _, path, problem := s.resolve(docs, ref); problem == "" {
+			return path
+		}
+
+		return "?"
+	}
+	var labels []string
+	for _, item := range flow.Operands(saved) {
+		value, parseErr := declared.Parse(item)
+		if parseErr != nil {
+			return "?"
+		}
+		label := declared.Label(value)
+		if declared.Type == worldstate.TypeText {
+			label = strconv.Quote(label)
+		}
+		labels = append(labels, label)
+	}
+	if len(labels) == 0 {
 		return "?"
 	}
 
-	return declared.Label(value)
+	return strings.Join(labels, ", ")
 }
 
 func (s *State) findSummary(node flow.Node, path, operand func(string) string) string {
@@ -1175,12 +1199,10 @@ func (s *State) valueTitle(node flow.Node, docs frame.Docs) string {
 		return "Find NPC within " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	case path == "":
 		return kind.Label + " · no value"
-	case node.Kind == flow.KindCheckValue && unlimited(node):
-		return "Is " + path + " " + compareWords(node) + "?"
-	case node.Kind == flow.KindCheckValue && choiceOf(node, "compare") == flow.CompareIs:
-		return "Is " + path + " " + operand + "?"
 	case node.Kind == flow.KindCheckValue:
-		return "Is " + path + " " + compareWords(node) + " " + operand + "?"
+		phrase, _ := s.checkPhrase(docs, node)
+
+		return "Is " + path + " " + phrase + "?"
 	case choiceOf(node, "how") == flow.HowAdd:
 		return "Add " + operand + " to " + path
 	}

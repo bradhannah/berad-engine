@@ -93,7 +93,7 @@ Chosen while planning, for its author to check:
 | --- | --- | --- | --- |
 | 1. Comparisons in the engine | The new comparison names, `to` and `among`, operands that refer to a value, format 6 reading 5, and `compares` by type; what a Check value may not ask of each type | Unit tests of every comparison on every type, of references read live, and of a version 5 workflow upgraded; the replace edit passes the shared apply-then-undo test with the new parameters | Built |
 | 2. The inspector by type | Compare filtered by the value's type, the symbol row and its words line, no row for a bool, choice toggles, text, the number or value switch, two fields for between | View tests of each type's rows, of ticking choices and of choosing another value | Built |
-| 3. Summaries and problems | The node's summary and the status bar's words; problems for none ticked, a reference of the wrong type and a comparison the type cannot make | View tests of the summaries and of each problem | Planned |
+| 3. Summaries and problems | The node's summary and the status bar's words; problems for none ticked, a reference of the wrong type and a comparison the type cannot make | View tests of the summaries and of each problem | Built |
 | 4. Checks | `make check` and the real-window suite; a real-window test checks an integer against another value and a choice against a list, and the saved logic holds both | The checks pass with no lint findings | Planned |
 
 ## Step results
@@ -132,6 +132,17 @@ Chosen while planning, for its author to check:
   turns the value into a bool, a choice and text and sees each type's rows,
   ticks choices into any of and none of, carries an older is over, and
   draws the chooser.
+- **Summaries and problems:** a Check value's node and title say what it
+  asks in its type's words: "stock ≥ reorder_level", "stock between 1 and
+  5", "serving is true", "mood is any of calm, glad", "name is not
+  \"Stranger\"", and as a question on the canvas, "Is stock ≥ 3?". A value
+  referred to shows by its path, a list by its values joined with commas,
+  text in quotes. The problems: a comparison the type cannot make, no
+  choice ticked, a referred value of another type or one deleted, and an
+  operand missing. Verified: the view test reads the titles for between,
+  a reference, a bool and a list, and sees no choice ticked as a problem.
+  The status bar does not name a hovered node; the node carries its
+  summary.
 
 ## Changed after its author tried it
 

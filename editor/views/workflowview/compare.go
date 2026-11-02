@@ -70,6 +70,55 @@ func compareNote(compare string) string {
 	}
 }
 
+// checkPhrase says what a Check value asks after its value's path, and
+// whether "is" goes between: an integer by its symbol, "≥ 3" or "between 1
+// and 5", or at its limit; a bool "is true"; a choice "is any of calm,
+// glad"; text "is not "Stranger"".
+func (s *State) checkPhrase(docs frame.Docs, node flow.Node) (string, bool) {
+	compare := choiceOf(node, flow.ParamCompare)
+	declared, found := s.operandDeclaration(docs, node, flow.ParamAgainst)
+	against := s.operandLabel(docs, node, flow.ParamAgainst)
+	switch {
+	case flow.Unlimited(compare):
+		return compareWords(node), false
+	case found && declared.Type == worldstate.TypeInteger && compare == flow.CompareBetween:
+		return "between " + against + " and " + s.operandLabel(docs, node, flow.ParamTo), false
+	case found && declared.Type == worldstate.TypeInteger:
+		return compareSymbol(compare) + " " + against, false
+	case compare == flow.CompareAnyOf || compare == flow.CompareNoneOf:
+		return strings.TrimPrefix(compareWords(node), "is ") + " " + s.operandLabel(docs, node, flow.ParamAmong), true
+	case found && declared.Type == worldstate.TypeText && compare == flow.CompareNot:
+		return "not " + against, true
+	case compare == flow.CompareNot:
+		return "not " + against, true
+	default:
+		return against, true
+	}
+}
+
+// checkProblem says what a Check value's operands lack: a choice ticked, a
+// value of the right type to compare with, or one at all.
+func (s *State) checkProblem(docs frame.Docs, node flow.Node, declared worldstate.Declaration) string {
+	if unlimited(node) || s.operandsFit(docs, node, declared) {
+		return ""
+	}
+	compare := choiceOf(node, flow.ParamCompare)
+	if compare == flow.CompareAnyOf || compare == flow.CompareNoneOf {
+		return "Tick at least one choice."
+	}
+	if ref, refers := flow.OperandRef(savedOperand(node, flow.ParamAgainst)); refers {
+		other, _, problem := s.resolve(docs, ref)
+		if problem != "" {
+			return "The value it compares with was deleted. Choose another."
+		}
+		if other.Type != declared.Type {
+			return "The value it compares with must have the same type, " + declared.Type.Label() + "."
+		}
+	}
+
+	return problemOperand
+}
+
 // savedOperand is an operand as saved, or none when the node lacks it.
 func savedOperand(node flow.Node, name string) json.RawMessage {
 	saved, err := node.Operand(name)
