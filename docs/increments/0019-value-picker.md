@@ -168,7 +168,9 @@ Chosen while planning, for its author to check:
 
 ## Changed after its author tried it
 
-Not yet tried.
+Tried by its author on 2026-11-02 and kept as built. What it asked for
+next, the picker over World state, moving values into groups and text on a
+node in quotes once, is [increment 20](0020-moving-and-finding.md).
 
 ## Not in this increment
 

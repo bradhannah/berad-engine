@@ -348,6 +348,18 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 - **Tentative:** control over when a conditional change becomes visible (for
   example on leaving a zone or area, immediately, or with a visual effect), so
   objects never appear inexplicably in view.
+- **Agreed (2026-11-02):** in the World state window a value or group moves
+  into a group by a right-click, Move into, or by dragging it onto the group,
+  and out of one by dragging it onto its section's heading; it never moves
+  between the world, zones and NPCs. A dotted name in the Name box moves it
+  too, which a line under the box says. Workflows name a value by itself, not
+  by its path, so a move rewrites nothing; a value something uses asks first,
+  listing each use as it will read, and a move is undone as one change.
+- **Agreed (2026-11-02):** **Find a value**, by its button or Cmd+F, opens the
+  workflow's value picker over the World state window, with the window's own
+  scopes, every type and how many places use each value; a pick shows the
+  value in the tree, and a name that matches nothing is declared from it in
+  the world, a zone, an NPC or a template, then shown.
 
 ## Workflows
 
