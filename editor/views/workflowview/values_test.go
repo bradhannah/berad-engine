@@ -235,14 +235,15 @@ func TestComparisonsFollowTheType(t *testing.T) {
 		t.Fatal("A number is on until another value is asked for")
 	}
 	f.click("ui:source-value")
-	if !f.has("another:" + flow.ParamAgainst) {
-		t.Fatal("Another value lights as soon as it is chosen")
+	if _, open := f.state.Locate("valuerow:world.patience", f.docs); !f.has("another:"+flow.ParamAgainst) || open {
+		t.Fatal("Another value lights as soon as it is chosen and puts up the box, closed")
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 	f.click("ui:pick-" + flow.ParamAgainst)
 	if _, open := f.state.Locate("valuerow:world.patience", f.docs); !open || !f.has("another:"+flow.ParamAgainst) {
-		t.Fatal("the box keeps the chooser open until a value is picked")
+		t.Fatal("the box opens the chooser, as the Value box does")
 	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 	f.click("valuerow:world.patience")
 	if !f.has("refers:against=world.patience") || f.has("problem:"+flow.KindCheckValue+":1") ||
 		!f.has("title:check-value:1=Is world.patience ≥ world.patience?") {

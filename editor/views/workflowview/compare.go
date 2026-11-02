@@ -140,6 +140,31 @@ func (s *State) hasOperandState(state string, docs frame.Docs) (bool, bool) {
 	}
 }
 
+// clearRects takes every widget of a control off the screen, for a control
+// that is hidden or whose parts are not all laid out this frame, so a stale
+// rectangle never takes a click meant for what is drawn there now.
+func (made *control) clearRects() {
+	fields, buttons := made.widgets()
+	for _, field := range fields {
+		if field != nil {
+			field.Rect = ui.Zero()
+		}
+	}
+	for _, button := range slices.Concat(buttons, made.sources) {
+		if button != nil {
+			button.Rect = ui.Zero()
+		}
+	}
+	made.cueBox, made.anchor = ui.Zero(), ui.Zero()
+	if made.list != nil {
+		made.list.Rect = ui.Zero()
+	}
+}
+
+// picksValue reports whether an operand shows the box to pick a value
+// from: it refers to one, or Another value was clicked.
+func (made *control) picksValue() bool { return made.refers || made.another }
+
 // anotherValueLit reports whether an operand's Another value button is on.
 func (s *State) anotherValueLit(param string) bool {
 	if s.form == nil {
@@ -330,23 +355,23 @@ func (s *State) layoutOperandChooser(docs frame.Docs, made *control, left, width
 }
 
 // updateOperandSource handles A number and Another value: a number drops
-// the reference for a zero to type over, another value opens the chooser.
+// the reference for a zero to type over; another value puts up the box to
+// pick one from, which opens its chooser when clicked, as the Value box
+// above does.
 func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) bool {
 	if len(made.sources) < ui.Half {
 		return false
 	}
 	switch {
 	case made.sources[0].Update(input):
+		made.another, made.open = false, false
 		if made.refers {
 			s.saveParam(ctx, node, made.param.Name, json.RawMessage("0"))
 		}
 
 		return true
 	case made.sources[1].Update(input):
-		if !made.open {
-			made.open = true
-			s.focus.Set(made.search)
-		}
+		made.another = true
 
 		return true
 	default:
@@ -355,19 +380,12 @@ func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *c
 }
 
 // updateOperandChooser opens and closes the chooser of an operand that
-// refers to a value, and saves the value picked in it. While no value is
-// picked yet the box keeps the chooser open, so a click on it never seems
-// to do nothing.
+// refers to a value, or is about to, and saves the value picked in it.
 func (s *State) updateOperandChooser(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		switch {
-		case made.open && made.refers:
+		if made.open {
 			s.closeChooser(made)
-
-			return
-		case made.open:
-			s.focus.Set(made.search)
 
 			return
 		}

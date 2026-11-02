@@ -155,10 +155,16 @@ Chosen while planning, for its author to check:
 
 Settled by its author on 2026-11-01, after trying it:
 
-- **Another value lights as soon as it is clicked,** and the box under it
-  keeps the chooser open until a value is picked; the first build lit the
-  button only once a value was chosen, and a click on the box closed the
-  chooser, so the button seemed dead.
+- **Another value lights as soon as it is clicked** and puts up the box to
+  pick from, which opens its chooser when clicked, as the Value box above
+  does; the first build lit the button only once a value was chosen and
+  opened the chooser at once, so the box seemed dead. Underneath, the
+  integer's own field kept its old rectangle while hidden, exactly where
+  the box was drawn, and took the click: a control's widgets now leave the
+  screen when they are not laid out.
+- **The colour rows stay clear of the inspector's notes and save bar:** a
+  form too tall for them, such as a Check value with its chooser open,
+  shows none until there is room.
 
 ## Not in this increment
 

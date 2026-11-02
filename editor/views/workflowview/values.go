@@ -739,8 +739,7 @@ func setSavedOperand(made *control, node flow.Node) {
 		saved = savedOperand(node, flow.ParamAgainst)
 	}
 	if len(made.sources) == ui.Half {
-		another := made.refers || made.open
-		made.sources[0].On, made.sources[1].On = !another, another
+		made.sources[0].On, made.sources[1].On = !made.picksValue(), made.picksValue()
 	}
 	if made.field != nil {
 		var integer int
@@ -765,10 +764,11 @@ func setSavedOperand(made *control, node flow.Node) {
 // value, or leaves room for a note while its value is not chosen. It
 // returns where the next control goes.
 func (s *State) layoutOperand(docs frame.Docs, made *control, left, width, top, bottom int) int {
+	made.clearRects()
 	if len(made.sources) > 0 {
 		top = s.layoutButtonRows(made.sources, left, width, top)
 	}
-	if made.refers || made.open {
+	if made.picksValue() {
 		return s.layoutOperandChooser(docs, made, left, width, top, bottom)
 	}
 	if made.field != nil {
@@ -801,7 +801,7 @@ func (s *State) updateOperand(input *ui.Input, ctx *frame.Context, made *control
 	if s.updateOperandSource(input, ctx, made, node) {
 		return
 	}
-	if made.refers || made.open {
+	if made.picksValue() {
 		s.updateOperandChooser(input, ctx, made, node)
 
 		return
@@ -882,7 +882,7 @@ func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control
 	for _, button := range made.sources {
 		button.Draw(screen, s.theme)
 	}
-	if made.refers || made.open {
+	if made.picksValue() {
 		s.drawOperandChooser(screen, docs, made, node)
 
 		return

@@ -100,6 +100,9 @@ type control struct {
 	note    bool
 	sources []*ui.Button
 	refers  bool
+	// another is set once Another value is clicked, until a value is picked
+	// or A number is clicked, so the box to pick from shows meanwhile.
+	another bool
 }
 
 // form is the inspector for the selected node. rows counts a time switch's
@@ -294,7 +297,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 		made := control{param: param, label: 0, field: nil, from: nil, to: nil, rows: nil, addRange: nil, pick: nil,
 			clear: nil, anchor: ui.Zero(), choices: nil, units: nil, clocks: nil, options: nil, addOption: nil,
 			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil, operandType: "",
-			unneeded: false, values: nil, hidden: false, note: false, sources: nil, refers: false}
+			unneeded: false, values: nil, hidden: false, note: false, sources: nil, refers: false, another: false}
 		switch param.Type {
 		case flow.TypeTiles:
 			made.field = text("param-"+param.Name, false)
@@ -444,6 +447,8 @@ func (s *State) layoutForm(docs frame.Docs) {
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
 		if made.hidden {
+			made.clearRects()
+
 			continue
 		}
 		made.label = top

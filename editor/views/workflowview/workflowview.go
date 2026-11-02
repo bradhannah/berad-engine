@@ -351,7 +351,23 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.colours = s.layoutColours(s.colourRows(), left, width, top)
 	} else if s.form != nil {
 		s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
+		if limit := s.notesTop(panel, width); len(s.colours) > 0 && coloursBottom(s.colours) > limit {
+			s.colours = nil
+		}
 	}
+}
+
+// coloursBottom is where the last colour row ends; a form too tall for its
+// rows to sit above the inspector's notes shows none.
+func coloursBottom(rows []colourRow) int {
+	bottom := 0
+	for _, row := range rows {
+		for _, choice := range row.swatches {
+			bottom = max(bottom, choice.rect.Max.Y)
+		}
+	}
+
+	return bottom
 }
 
 // Update handles one frame of input.
