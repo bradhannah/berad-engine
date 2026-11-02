@@ -176,6 +176,13 @@ func (f *Field) Focus() {
 	}
 }
 
+// SelectAll starts editing, if it has not, with the whole text selected,
+// so typing replaces it.
+func (f *Field) SelectAll() {
+	f.Focus()
+	f.draft.SelectAll()
+}
+
 // Blur stops editing. An unsaved draft is kept and shown as unsaved.
 func (f *Field) Blur() {
 	if f.draft != nil && !f.Dirty() && f.pending == nil {

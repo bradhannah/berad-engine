@@ -111,7 +111,8 @@ type Source interface {
 
 // Config is what a picker is for: its title and what it chooses for, the
 // search's placeholder and what an empty list says; the one type it offers,
-// locked, or none; the rail; the row selected at open; the group last
+// locked, or none; the rail; the row selected at open and the search typed;
+// the group last
 // opened, kept by the window between pickers; and its buttons' and the
 // declare panel's words.
 type Config struct {
@@ -122,6 +123,7 @@ type Config struct {
 	Only        worldstate.Type
 	Rail        []RailEntry
 	Selected    string
+	Query       string
 	LastGroup   *string
 	PickLabel   string
 	PickHint    string
@@ -170,6 +172,7 @@ type Picker struct {
 func New(config Config, source Source, theme *ui.Theme) *Picker {
 	search := ui.NewTextField("value-search", textedit.NewField("", false, maxSearch), false, theme)
 	search.Placeholder, search.Unmarked = config.Placeholder, true
+	search.Field.SetSaved(config.Query)
 	chips, kinds := typeChips(config.Only)
 	last := ""
 	if config.LastGroup != nil {

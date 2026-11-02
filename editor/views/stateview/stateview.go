@@ -86,6 +86,8 @@ type State struct {
 	uses       []protocol.Use
 	usesOf     string
 	usesAsking bool
+	// usesFor is the row uses last answered for, kept while asking again.
+	usesFor string
 	// templates are the selected NPC's or zone's templates to apply or take
 	// off, and takeOff takes the selected applied template off; path is its
 	// path name, for the row pathOf.
@@ -125,7 +127,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		list:  ui.NewList("values", ""),
 		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
-		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
+		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
 		menu:       ui.Menu{Items: nil, Width: 0},
 		revealPath: "", revealRename: false, find: nil, findButton: ui.NewButton(findID, "Find a value"),
@@ -254,7 +256,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.revealRow()
 	if s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd()) {
-		s.openFind(ctx)
+		s.openFind(ctx, "")
 
 		return
 	}

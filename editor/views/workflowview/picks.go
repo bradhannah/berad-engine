@@ -61,7 +61,7 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 	}
 	config := valuepicker.Config{
 		Title: chooseValueLabel, For: title, Placeholder: placeholder, Empty: empty, Only: only,
-		Rail: pickerRail(source.optionRole()), Selected: selected, LastGroup: &s.lastGroup, PickLabel: "Choose",
+		Rail: pickerRail(source.optionRole()), Selected: selected, Query: "", LastGroup: &s.lastGroup, PickLabel: "Choose",
 		PickHint: "picks", DeclareAs: "Declare and choose", DeclareLead: "It is chosen as soon as it is declared.",
 	}
 	s.values = &valuePicker{

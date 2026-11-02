@@ -265,6 +265,20 @@ choosing to lock the type over asking first:
   (Rejected: asking first and letting the change through, leaving each use
   a problem to mend.)
 
+Built and verified:
+
+- **A value in use keeps its type.** The inspector greys a value's other
+  types while anything uses it, saying "Fixed while 3 nodes use it. For
+  another type, declare a new value.", and while where it is used is
+  still being asked, as just after it is selected; the last answer for a
+  value holds while the question is asked again after each change, so the
+  buttons do not flicker. Declare a new value… opens Find with the path of
+  the value's group typed, as world.quests., for the new name. Local values
+  in the Workflow window are not locked. Verified: a view test finds
+  dragon_slain's type held while its uses are asked and while a workflow
+  uses it, opens Find from Declare a new value… with world.quests. typed,
+  and changes the type of a value nothing uses.
+
 ## Not in this increment
 
 - **Moving between sections,** from World into a zone or an NPC: a

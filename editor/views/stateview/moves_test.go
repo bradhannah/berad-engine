@@ -7,6 +7,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // rightClick right-clicks a named part of the window.
@@ -167,5 +168,39 @@ func TestDragging(t *testing.T) {
 	f.drag("row:npc.guards.arrests", "row:world.quests", 1)
 	if path := f.world().Path(arrestsID); path != "npc.guards.arrests" {
 		t.Fatalf("a template's value stays in its template: %s", path)
+	}
+}
+
+// TestUsedValueKeepsItsType keeps a value's type while where it is used is
+// asked, and while a workflow uses it, offering to declare a new value
+// beside it in Find; a value nothing uses changes type.
+func TestUsedValueKeepsItsType(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("row:world.quests.dragon_slain")
+	f.click("ui:value-type-integer")
+	if slain, _ := f.world().Value(slainID); slain.Type != worldstate.TypeBool {
+		t.Fatal("its type waits while its uses are asked")
+	}
+	f.answerUses(map[string][]protocol.Use{slainID.String(): {{
+		Document: frametest.ID(70), Name: "Workflow 1", Format: "workflow", Label: "a Check value node",
+	}}})
+	f.click("ui:value-type-integer")
+	if slain, _ := f.world().Value(slainID); slain.Type != worldstate.TypeBool {
+		t.Fatal("a value a workflow uses keeps its type")
+	}
+	f.click("ui:value-declare-new")
+	if field := f.state.Focused(); !f.has("find") || field == nil || field.Field.Value() != "world.quests." {
+		t.Fatal("Declare a new value opens Find beside it")
+	}
+	f.keys("Escape")
+	f.click("row:world.mood")
+	f.answerUses(nil)
+	f.click("ui:value-type-integer")
+	if mood, _ := f.world().Value(moodID); mood.Type != worldstate.TypeInteger {
+		t.Fatal("a value nothing uses changes type")
+	}
+	if _, offered := f.state.Locate("ui:value-declare-new", f.ctx.Docs); offered {
+		t.Fatal("and has no need to declare a new one")
 	}
 }

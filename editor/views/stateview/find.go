@@ -72,8 +72,9 @@ func findRail() []valuepicker.RailEntry {
 	}
 }
 
-// openFind opens Find, asking how many places use each value.
-func (s *State) openFind(ctx *frame.Context) {
+// openFind opens Find with a search typed, asking how many places use each
+// value.
+func (s *State) openFind(ctx *frame.Context, query string) {
 	s.findUses = nil
 	ctx.Requests.WhereUsed(worldstate.ID(), "", func(uses []protocol.Use, err error) {
 		if err != nil {
@@ -89,6 +90,7 @@ func (s *State) openFind(ctx *frame.Context) {
 	s.find = valuepicker.New(valuepicker.Config{
 		Title: "Find a value", For: "in World state", Placeholder: "Find a value, or type a new name",
 		Empty: "No value matches. Type a name to declare one.", Only: "", Rail: findRail(), Selected: "",
+		Query:     query,
 		LastGroup: &s.lastGroup, PickLabel: "Show", PickHint: "shows it", DeclareAs: "Declare and show",
 		DeclareLead: "It is shown in the tree once declared.",
 	}, source, s.theme)

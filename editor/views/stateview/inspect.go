@@ -4,6 +4,7 @@ import (
 	"image"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -36,6 +37,7 @@ func (s *State) inspect(selected item) {
 			s.focus.Register(s.form.Fields()...)
 		}
 		s.named = s.list.Selected
+		s.form.Locked = s.lockReason()
 	}
 	if selected.kind != itemOwner {
 		s.templates = nil
@@ -143,6 +145,8 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 			s.change(ctx, selected.list, setOnly(changed), "")
 		case valueform.ChangeDelete:
 			s.startDelete(ctx, selected)
+		case valueform.ChangeDeclareNew:
+			s.openFind(ctx, strings.TrimSuffix(selected.path, selected.declared.Name))
 		case valueform.ChangeNone:
 		}
 	case itemOwner:
@@ -171,9 +175,26 @@ func (s *State) askUses(ctx *frame.Context) {
 	ctx.Requests.WhereUsed(worldstate.ID(), selected.declared.ID.String(), func(uses []protocol.Use, err error) {
 		s.usesAsking = false
 		if err == nil {
-			s.uses, s.usesOf = uses, asked
+			s.uses, s.usesOf, s.usesFor = uses, asked, asked
 		}
 	})
+}
+
+// lockReason says why the selected value's type cannot change: something
+// uses it, or where it is used is not known yet; "" leaves it free. The
+// last answer for the row holds while the question is asked again after
+// each change.
+func (s *State) lockReason() string {
+	switch {
+	case s.usesFor != s.list.Selected:
+		return "Its type waits while its uses are checked."
+	case len(s.uses) == 1:
+		return "Fixed while a node uses it. For another type, declare a new value."
+	case len(s.uses) > 1:
+		return "Fixed while " + strconv.Itoa(len(s.uses)) + " nodes use it. For another type, declare a new value."
+	}
+
+	return ""
 }
 
 // drawInspector draws what the selected row has to show.
