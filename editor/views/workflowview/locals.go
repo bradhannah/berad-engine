@@ -42,7 +42,7 @@ type localsPanel struct {
 
 func newLocalsPanel(theme *ui.Theme) *localsPanel {
 	return &localsPanel{
-		list: &ui.List{ID: "locals", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		list: ui.NewList("locals", ""),
 		add:  ui.NewButton("add-local", "Add local"), form: valueform.New(theme), top: 0, registered: false,
 	}
 }

@@ -269,3 +269,94 @@ func (s *State) renameNewGroup() {
 		}
 	}
 }
+
+// dropInto says where dropping a dragged row on another moves it: into a
+// group of its own section, by the group's dotted name, or to its top level
+// for "", dropped on its section's row. It refuses another section, where
+// it already is, and itself or what it holds.
+func (s *State) dropInto(dragged, target string) (string, bool) {
+	moving, found := s.shown.items[dragged]
+	if !found || moving.kind != itemDeclared || moving.declared.Type == worldstate.TypeTemplate {
+		return "", false
+	}
+	list := moving.list.Values
+	root := valuetree.Root(list, moving.declared.ID)
+	if target == topRow(moving, root) {
+		return "", moving.declared.Parent != root
+	}
+	onto, found := s.shown.items[target]
+	if !found || !sameSection(moving, onto, root) || onto.declared.Type != worldstate.TypeGroup ||
+		onto.declared.ID == moving.declared.Parent || onto.declared.ID == moving.declared.ID ||
+		containsID(list.Within(moving.declared.ID), onto.declared.ID) {
+		return "", false
+	}
+
+	return valuetree.Dotted(list, onto.declared.ID), true
+}
+
+// topRow is the row whose drop takes a row to its section's top level: its
+// template's, its NPC's or zone's, or its scope's heading.
+func topRow(moving item, root ids.ULID) string {
+	switch {
+	case !root.IsZero():
+		return declaredPrefix + root.String()
+	case !moving.ownerID.IsZero():
+		return ownerPrefix + moving.ownerID.String()
+	}
+
+	return sectionPrefix + string(moving.scope)
+}
+
+// sameSection reports whether a row is declared in the same section as one
+// being moved: the same list, scope and root.
+func sameSection(moving, other item, root ids.ULID) bool {
+	return other.kind == itemDeclared && other.list.Document == moving.list.Document &&
+		other.declared.Scope == moving.declared.Scope && valuetree.Root(moving.list.Values, other.declared.ID) == root
+}
+
+// faded reports whether a row is faded while another is dragged: anything
+// outside the dragged row's section but its section's own row.
+func (s *State) faded(dragged, row string) bool {
+	moving, found := s.shown.items[dragged]
+	if !found {
+		return false
+	}
+	root := valuetree.Root(moving.list.Values, moving.declared.ID)
+	if row == topRow(moving, root) {
+		return false
+	}
+	other, found := s.shown.items[row]
+
+	return !found || !sameSection(moving, other, root)
+}
+
+// dragLabel is what a dragged row carries beside the pointer: its name,
+// and its new path over a row it can drop on.
+func (s *State) dragLabel(dragged, over string) string {
+	moving := s.shown.items[dragged]
+	group, ok := s.dropInto(dragged, over)
+	if !ok {
+		return moving.declared.Name
+	}
+	dotted := moving.declared.Name
+	if group != "" {
+		dotted = group + "." + dotted
+	}
+
+	return moving.declared.Name + "  →  " +
+		strings.TrimSuffix(moving.path, valuetree.Dotted(moving.list.Values, moving.declared.ID)) + dotted
+}
+
+// dropped moves a row dropped on a group or its section's row, and opens a
+// closed group a drag rests on.
+func (s *State) dropped(ctx *frame.Context, result ui.ListResult) {
+	if result.Rested != "" && s.toggled[result.Rested] && strings.HasPrefix(result.Rested, declaredPrefix) {
+		s.toggled[result.Rested] = false
+	}
+	if result.Dragged == "" || s.guard.Active() || s.Unsaved(ctx.Docs) > 0 {
+		return
+	}
+	if group, ok := s.dropInto(result.Dragged, result.Dropped); ok {
+		s.moveInto(ctx, s.shown.items[result.Dragged], group)
+	}
+}

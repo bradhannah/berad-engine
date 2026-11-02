@@ -91,7 +91,7 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 	chips, kinds := pickerChips(only)
 	picker := &valuePicker{
 		node: node.ID, param: param, role: roleOf(node.Kind, param), only: only, kind: "", operand: operand,
-		title: title, search: search, list: &ui.List{ID: "values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		title: title, search: search, list: ui.NewList("values", ""),
 		focus: ui.Focus{}, chips: chips, kinds: kinds, hidden: nil, others: false,
 		show: ui.NewButton("picker-show", "Show them"), note: "", rail: nil, railRects: nil, scope: railEverywhere,
 		counts: map[string]int{}, open: map[string]bool{s.lastGroup: s.lastGroup != ""}, paths: map[string]string{},

@@ -164,7 +164,7 @@ func (s *State) newCueControl(made *control) {
 	made.listen = ui.NewButton("listen", "Play")
 	made.search = ui.NewTextField("cue-search", textedit.NewField("", false, maxCueSearch), false, s.theme)
 	made.search.Placeholder, made.search.Unmarked = "Find a cue by name or ID", true
-	made.list = &ui.List{ID: "cues", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
+	made.list = ui.NewList("cues", "")
 	s.focus.Register(made.search)
 }
 

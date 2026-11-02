@@ -143,7 +143,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		list:       &ui.List{ID: "documents", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		list:       ui.NewList("documents", ""),
 		closed:     map[string]bool{},
 		focus:      ui.Focus{},
 		search:     ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),

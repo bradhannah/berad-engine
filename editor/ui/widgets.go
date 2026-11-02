@@ -212,17 +212,29 @@ const (
 )
 
 // List is a scrolling list of rows with one selected row. With CanDrop
-// set, a row can be dragged onto another row CanDrop accepts.
+// set, a row can be dragged onto another row CanDrop accepts. While one is
+// dragged, rows Faded names are drawn faded, and DragLabel, when set, says
+// what is carried beside the pointer, over a row or none.
 type List struct {
-	ID       string
-	Rect     image.Rectangle
-	Rows     []Row
-	Selected string
-	CanDrop  func(dragged, target string) bool
-	scroll   int
-	hover    string
-	hoverAdd bool
-	drag     listDrag
+	ID        string
+	Rect      image.Rectangle
+	Rows      []Row
+	Selected  string
+	CanDrop   func(dragged, target string) bool
+	Faded     func(dragged, row string) bool
+	DragLabel func(dragged, over string) string
+	scroll    int
+	hover     string
+	hoverAdd  bool
+	drag      listDrag
+}
+
+// NewList returns an empty list with a row selected, or none for "".
+func NewList(id, selected string) *List {
+	return &List{
+		ID: id, Rect: Zero(), Rows: nil, Selected: selected, CanDrop: nil, Faded: nil, DragLabel: nil, scroll: 0,
+		hover: "", hoverAdd: false, drag: noDrag(),
+	}
 }
 
 // listDrag follows a row pressed in a list that allows dragging: it becomes
@@ -234,11 +246,18 @@ type listDrag struct {
 	at       image.Point
 	dragging bool
 	over     string
+	resting  int
 }
 
 // dragDistance is how far the pointer moves, in screen pixels, before a
-// press on a row becomes a drag.
-const dragDistance = 5
+// press on a row becomes a drag; restFrames is how many frames a drag stays
+// over one row, about half a second, before it counts as resting there;
+// fadeAlpha is how much a faded row is washed out.
+const (
+	dragDistance = 5
+	restFrames   = 30
+	fadeAlpha    = 0xa0
+)
 
 // ListResult reports what happened to a list this frame.
 type ListResult struct {
@@ -251,9 +270,11 @@ type ListResult struct {
 	// heading, was clicked; Added is the section whose [+] was clicked.
 	Toggled string
 	Added   string
-	// Dragged is the row dropped on the row Dropped.
+	// Dragged is the row dropped on the row Dropped; Rested is the row a
+	// drag has just rested on, as a closed group to open.
 	Dragged string
 	Dropped string
+	Rested  string
 	// Context is true when the list was right-clicked, and ContextRow is the
 	// row under the pointer, or "" below the rows. The list leaves choosing
 	// what a right-click selects to its window.
@@ -307,7 +328,7 @@ func (l *List) LocateAdd(id string) (image.Point, bool) {
 // another.
 func (l *List) Update(input *Input) ListResult {
 	result := ListResult{
-		Changed: false, Activated: false, Toggled: "", Added: "", Dragged: "", Dropped: "", Context: false,
+		Changed: false, Activated: false, Toggled: "", Added: "", Dragged: "", Dropped: "", Rested: "", Context: false,
 		ContextRow: "",
 	}
 	inside := input.Cursor.In(l.Rect)
@@ -363,14 +384,14 @@ func (l *List) press(input *Input, row Row, rect image.Rectangle, result *ListRe
 		l.Selected = row.ID
 		result.Activated = double
 		if l.CanDrop != nil {
-			l.drag = listDrag{row: row.ID, from: input.Cursor, at: input.Cursor, dragging: false, over: ""}
+			l.drag = listDrag{row: row.ID, from: input.Cursor, at: input.Cursor, dragging: false, over: "", resting: 0}
 		}
 	}
 }
 
 // noDrag is a list with no row pressed.
 func noDrag() listDrag {
-	return listDrag{row: "", from: image.Pt(0, 0), at: image.Pt(0, 0), dragging: false, over: ""}
+	return listDrag{row: "", from: image.Pt(0, 0), at: image.Pt(0, 0), dragging: false, over: "", resting: 0}
 }
 
 // updateDrag follows a pressed row: once the pointer has moved far enough
@@ -392,13 +413,14 @@ func (l *List) updateDrag(input *Input, result *ListResult) bool {
 
 		return false
 	}
-	l.drag.over = ""
+	over := ""
 	for index, row := range l.Rows {
 		if input.Cursor.In(l.Rect) && input.Cursor.In(l.RowRect(index)) && row.ID != l.drag.row &&
 			l.CanDrop(l.drag.row, row.ID) {
-			l.drag.over = row.ID
+			over = row.ID
 		}
 	}
+	l.rest(over, result)
 	if !input.Down {
 		if l.drag.over != "" {
 			result.Dragged, result.Dropped = l.drag.row, l.drag.over
@@ -408,6 +430,21 @@ func (l *List) updateDrag(input *Input, result *ListResult) bool {
 	input.ClearPointer()
 
 	return true
+}
+
+// rest follows the row a drag is over, reporting it once the drag has
+// stayed there long enough.
+func (l *List) rest(over string, result *ListResult) {
+	if over != l.drag.over {
+		l.drag.over, l.drag.resting = over, 0
+	}
+	if over == "" {
+		return
+	}
+	l.drag.resting++
+	if l.drag.resting == restFrames {
+		result.Rested = over
+	}
 }
 
 // Dragging reports whether a row is being dragged.
@@ -498,12 +535,18 @@ func (l *List) drawDrag(area *ebiten.Image, theme *Theme) {
 	}
 	label := ""
 	for index, row := range l.Rows {
+		if l.Faded != nil && l.Faded(l.drag.row, row.ID) {
+			Box(area, l.RowRect(index), HexAlpha(hexBackground, fadeAlpha))
+		}
 		if row.ID == l.drag.over {
 			StrokeRound(area, highlight(l.RowRect(index)), rowRadius, Outline, ColorSelect())
 		}
 		if row.ID == l.drag.row {
 			label = row.Label
 		}
+	}
+	if l.DragLabel != nil {
+		label = l.DragLabel(l.drag.row, l.drag.over)
 	}
 	box := image.Rect(0, 0, theme.TextWidth(label)+Half*Inset, RowHeight).Add(l.drag.at.Add(image.Pt(Inset, Gap)))
 	FillRound(area, box, rowRadius, ColorSelectWash())

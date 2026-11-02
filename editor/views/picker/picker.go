@@ -168,7 +168,7 @@ func (p *Picker) chooseZone(ctx *frame.Context) {
 
 		return
 	}
-	list := &ui.List{ID: "zones", Rect: ui.Zero(), Rows: nil, Selected: zones[0].ID.String(), CanDrop: nil}
+	list := ui.NewList("zones", zones[0].ID.String())
 	for _, entry := range zones {
 		row := ui.NewRow(entry.ID.String(), entry.Name)
 		row.Icon = ui.IconZone
@@ -182,7 +182,7 @@ func (p *Picker) chooseZone(ctx *frame.Context) {
 
 func (p *Picker) chooseMap(ctx *frame.Context, maps []protocol.PickMap) {
 	index := names(ctx.Docs)
-	list := &ui.List{ID: "maps", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
+	list := ui.NewList("maps", "")
 	for number, option := range maps {
 		detail := "view " + option.Window.Short(shortID)
 		if !option.Shows {

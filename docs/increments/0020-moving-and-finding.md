@@ -111,7 +111,7 @@ Chosen while planning, for its author to check:
 | 1. Text on a node | Text operands in curly quotes once, nothing escaped, cut with … when long; empty text as empty; the same for Set value | View tests of the labels of empty text, plain text, text with quote marks and long text | Built |
 | 2. Move into | The right-click menu on a value or group with Move into and its submenu, Rename and Delete; a move as one change, refused where the name is taken; the line under the Name box | View tests move a value into a group, to the top level and into a new group, refuse a taken name, and undo | Built |
 | 3. Moving what is used | The dialog listing each use as it will read, Move and Cancel; a value nothing uses moves at once | View tests move a used value through the dialog, cancel it, and move an unused one without it | Built |
-| 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Planned |
+| 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Built |
 | 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Planned |
 | 6. Find a value | The button and Cmd+F; the World state rail and every type; uses counted; Show opening the groups and selecting the row | View tests find a value inside a closed group and show it, narrow by scope, and count uses | Planned |
 | 7. Declare and show | The declare panel with the world, zones, NPCs and templates as where; the new value selected in the tree | View tests declare in the world, for an NPC and in a template, and find each selected | Planned |
@@ -156,6 +156,22 @@ Chosen while planning, for its author to check:
   view test cancels and then makes the move of a value a workflow uses,
   reading the use and the paths in the dialog, and finds a group holding
   it asks first too.
+- **Dragging:** a value or group dragged onto a group of its own section
+  moves into it, and dragged onto its section's own row, the World or
+  Zone heading, its template's row or its NPC's or zone's row, moves to
+  the top level; it asks first when used, as the menu does. While
+  dragging, every row outside its section is washed out and refuses the
+  drop, the group under the pointer is outlined, and the label beside the
+  pointer carries the new path, as mood → world.quests.mood. Resting on a
+  closed group for about half a second opens it. The list gains what this
+  takes: rows to fade, the label to carry and the row a drag rests on;
+  lists are now made by one constructor. Verified: a view test drags
+  world.mood into quests and back onto World, is refused dropping it on
+  the guards template, opens quests by resting on it and drops into it,
+  and keeps a template's value in its template.
+- **"Drop to move into group" on the row, short of the wireframe:** the
+  group is outlined and the pointer's label gives the new path, which says
+  the same; the list writes nothing on the row.
 - **Each use as it will read, short of the plan:** where a value is used is
   answered as the workflow and the kind of node, as Workflow 1 · a Check
   value node, not the node's sentence, which only the Workflow window

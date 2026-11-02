@@ -193,7 +193,7 @@ func (s *State) choose(ctx *frame.Context, choice npcChoice, current ids.ULID) {
 	if !current.IsZero() {
 		selected = current.String()
 	}
-	list := &ui.List{ID: choice.list, Rect: ui.Zero(), Rows: nil, Selected: selected, CanDrop: nil}
+	list := ui.NewList(choice.list, selected)
 	list.Rows = append(list.Rows, ui.NewRow(choice.none, choice.noneLabel))
 	for _, entry := range s.index(ctx.Docs).OfFormat(choice.format) {
 		row := ui.NewRow(entry.ID.String(), entry.Name)

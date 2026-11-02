@@ -117,3 +117,54 @@ func TestMovingWhatIsUsed(t *testing.T) {
 
 // dialogSays reports whether the open dialog has a line.
 func (f *fixture) dialogSays(line string) bool { return f.has("says=" + line) }
+
+// drag presses one named part, moves to another, stays there some frames
+// and lets go, then answers where the value is used: nowhere.
+func (f *fixture) drag(from, onto string, stay int) {
+	f.t.Helper()
+	start, end := f.at(from), f.at(onto)
+	input := ui.NewInput(start)
+	input.Pressed, input.Down = true, true
+	f.frame(input)
+	for range stay + 1 {
+		input = ui.NewInput(end)
+		input.Down = true
+		f.frame(input)
+	}
+	input = ui.NewInput(end)
+	input.Released = true
+	f.frame(input)
+	f.answerUses(nil)
+	f.keys()
+}
+
+// TestDragging moves a value by dragging it onto a group and back onto its
+// section's heading, opens a closed group it rests on, and refuses another
+// section.
+func TestDragging(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.drag("row:world.mood", "row:world.quests", 1)
+	if path := f.world().Path(moodID); path != "world.quests.mood" {
+		t.Fatalf("dropped into quests: %s", path)
+	}
+	f.drag("row:world.quests.mood", "section:world", 1)
+	if path := f.world().Path(moodID); path != "world.mood" {
+		t.Fatalf("dropped on World, out of quests: %s", path)
+	}
+	f.drag("row:world.mood", "row:npc.guards", 1)
+	if path := f.world().Path(moodID); path != "world.mood" {
+		t.Fatalf("a world value cannot drop into a template: %s", path)
+	}
+	f.click("toggle:world.quests")
+	f.drag("row:world.mood", "row:world.quests", 40)
+	if _, open := f.state.Locate("row:world.quests.dragon_slain", f.ctx.Docs); !open ||
+		f.world().Path(moodID) != "world.quests.mood" {
+		t.Fatal("resting on a closed group opens it, and the drop goes in")
+	}
+	f.click("toggle:npc.guard1")
+	f.drag("row:npc.guards.arrests", "row:world.quests", 1)
+	if path := f.world().Path(arrestsID); path != "npc.guards.arrests" {
+		t.Fatalf("a template's value stays in its template: %s", path)
+	}
+}

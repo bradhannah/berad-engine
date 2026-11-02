@@ -112,7 +112,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	adds[0].Primary = true
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0),
-		list:  &ui.List{ID: "values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		list:  ui.NewList("values", ""),
 		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
@@ -123,6 +123,12 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	}
 	view.path.Placeholder = "such as george or market"
 	view.form.Dotted = true
+	view.list.CanDrop = func(dragged, target string) bool {
+		_, ok := view.dropInto(dragged, target)
+
+		return ok
+	}
+	view.list.Faded, view.list.DragLabel = view.faded, view.dragLabel
 
 	return view
 }
@@ -251,6 +257,7 @@ func (s *State) updateTree(input *ui.Input, ctx *frame.Context) {
 	if result.Context {
 		s.rightClick(input, ctx, result.ContextRow)
 	}
+	s.dropped(ctx, result)
 	if s.list.Selected == selected {
 		return
 	}
