@@ -14,6 +14,7 @@ package stateview
 import (
 	"fmt"
 	"image"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -58,6 +59,7 @@ const (
 	stateSelected = "selected="
 	stateValue    = "value="
 	stateApplied  = "applied="
+	stateSays     = "says="
 )
 
 // State is the World state window.
@@ -94,6 +96,7 @@ type State struct {
 	// what it would delete.
 	dialog   *ui.Dialog
 	deleting *deletion
+	moving   *pendingMove
 	// menu is the right-click menu on a row; renaming is the path of a
 	// group a move is making, to select for its name once it shows.
 	menu     ui.Menu
@@ -113,9 +116,10 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
-		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, menu: ui.Menu{Items: nil, Width: 0},
+		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
+		menu:     ui.Menu{Items: nil, Width: 0},
 		renaming: "",
-		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
+		path:     ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
 	view.form.Dotted = true
@@ -350,20 +354,21 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 // and "ui:template-<name>" for a template to apply; "row:<path>" for a row,
 // "toggle:<path>" for its triangle and "section:<scope>" for a scope;
 // "dialog:<button>"; "menu:<id>" for the right-click menu; and "state:loaded", "state:selected=<path>",
-// "state:value=<path>:<type>:<default>" or "state:applied=<owner path>:<template>".
+// "state:value=<path>:<type>:<default>", "state:applied=<owner path>:<template>"
+// or "state:says=<a line of the open dialog>".
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	loaded := s.refresh(docs)
 	s.layout()
 	kind, value, _ := strings.Cut(name, ":")
 	switch {
+	case kind+":" == statePrefix:
+		return image.Pt(0, 0), loaded && s.hasState(value)
 	case s.dialog != nil:
 		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	case kind == menuLocate:
 		return s.menu.Locate(value)
 	case s.guard.Active():
 		return s.guard.Locate(value, s.size)
-	case kind+":" == statePrefix:
-		return image.Pt(0, 0), loaded && s.hasState(value)
 	case kind+":" == rowLocate, kind+":" == toggleLocate:
 		for _, row := range s.list.Rows {
 			if meaning, found := s.shown.items[row.ID]; found && meaning.path == value {
@@ -420,6 +425,10 @@ func (s *State) hasState(state string) bool {
 		}
 	case strings.HasPrefix(state, stateApplied):
 		return s.applied(strings.TrimPrefix(state, stateApplied))
+	case strings.HasPrefix(state, stateSays) && s.dialog != nil:
+		return slices.ContainsFunc(s.dialog.Lines, func(line string) bool {
+			return strings.TrimSpace(line) == strings.TrimPrefix(state, stateSays)
+		})
 	}
 
 	return false

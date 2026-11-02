@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 )
 
 // rightClick right-clicks a named part of the window.
@@ -22,6 +24,8 @@ func (f *fixture) moveBy(row, into string) {
 	f.rightClick("row:" + row)
 	f.click("menu:move-into")
 	f.click("menu:" + into)
+	f.answerUses(nil)
+	f.keys()
 }
 
 // TestMoveInto moves a value by its right-click menu into a group, to the
@@ -72,3 +76,44 @@ func TestMoveInto(t *testing.T) {
 		t.Fatal("Rename puts the name to type")
 	}
 }
+
+// TestMovingWhatIsUsed asks before moving a value a workflow uses, listing
+// the use, and moves it on Move; Cancel leaves it; a group is asked about
+// for the values it holds.
+func TestMovingWhatIsUsed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	used := map[string][]protocol.Use{moodID.String(): {{
+		Document: frametest.ID(70), Name: "Workflow 1", Format: "workflow", Label: "a Check value node",
+	}}}
+	f.rightClick("row:world.mood")
+	f.click("menu:move-into")
+	f.click("menu:into:quests")
+	f.answerUses(used)
+	if f.world().Path(moodID) != "world.mood" || !f.dialogSays("Workflow 1 · a Check value node") ||
+		!f.dialogSays("world.mood  →  world.quests.mood") {
+		t.Fatal("a used value asks first, listing the use and the path before and after")
+	}
+	f.click("dialog:cancel")
+	if f.world().Path(moodID) != "world.mood" {
+		t.Fatal("Cancel leaves it")
+	}
+	f.rightClick("row:world.mood")
+	f.click("menu:move-into")
+	f.click("menu:into:quests")
+	f.answerUses(used)
+	f.click("dialog:move")
+	if f.world().Path(moodID) != "world.quests.mood" || !strings.Contains(f.status(), "Moved to world.quests.mood") {
+		t.Fatalf("Move moves it: %s", f.world().Path(moodID))
+	}
+	f.rightClick("row:world.quests")
+	f.click("menu:move-into")
+	f.click("menu:into-new")
+	f.answerUses(used)
+	if _, asks := f.state.Locate("dialog:move", f.ctx.Docs); !asks || f.world().Path(moodID) != "world.quests.mood" {
+		t.Fatal("a group holding a used value asks first")
+	}
+}
+
+// dialogSays reports whether the open dialog has a line.
+func (f *fixture) dialogSays(line string) bool { return f.has("says=" + line) }

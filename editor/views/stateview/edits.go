@@ -22,6 +22,7 @@ import (
 const (
 	usesListed = 8
 	deleteID   = "delete"
+	moveID     = "move"
 )
 
 // deletion is a delete waiting for its dialog: the list, what goes, and
@@ -175,28 +176,35 @@ func (s *State) toggleTemplate(ctx *frame.Context, owner item, template worldsta
 // refuses, asks or deletes.
 func (s *State) startDelete(ctx *frame.Context, selected item) {
 	removing, values := valuetree.Removal(selected.list.Values, selected.declared.ID)
+	going := deletion{list: selected.list, removing: removing, path: selected.path}
+	whereUsed(ctx, selected, func(uses []protocol.Use) { s.decideDelete(ctx, going, selected.declared, values, uses) })
+}
+
+// whereUsed asks where a declaration and everything in it is used, then
+// hands every use found on, at once when there is nothing to ask about.
+func whereUsed(ctx *frame.Context, selected item, then func([]protocol.Use)) {
+	removing, _ := valuetree.Removal(selected.list.Values, selected.declared.ID)
 	var asking []string
 	for _, id := range removing {
 		if held, ok := selected.list.Values.Value(id); ok && held.Type != worldstate.TypeGroup {
 			asking = append(asking, id.String())
 		}
 	}
-	going := deletion{list: selected.list, removing: removing, path: selected.path}
 	if len(asking) == 0 {
-		s.decideDelete(ctx, going, selected.declared, values, nil)
+		then(nil)
 
 		return
 	}
 	var uses []protocol.Use
 	remaining := len(asking)
-	for _, item := range asking {
-		ctx.Requests.WhereUsed(worldstate.ID(), item, func(found []protocol.Use, err error) {
+	for _, asked := range asking {
+		ctx.Requests.WhereUsed(worldstate.ID(), asked, func(found []protocol.Use, err error) {
 			remaining--
 			if err == nil {
 				uses = append(uses, found...)
 			}
 			if remaining == 0 {
-				s.decideDelete(ctx, going, selected.declared, values, uses)
+				then(uses)
 			}
 		})
 	}
@@ -253,8 +261,14 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	if choice == "" {
 		return
 	}
-	going := s.deleting
-	s.dialog, s.deleting = nil, nil
+	going, moving := s.deleting, s.moving
+	s.dialog, s.deleting, s.moving = nil, nil, nil
+	if choice == moveID && moving != nil {
+		s.change(ctx, moving.list, moving.change, moving.success)
+
+		return
+	}
+	s.renaming = ""
 	if choice == deleteID && going != nil {
 		s.change(ctx, going.list, stateplugin.ChangeArgs{Add: nil, Set: nil, Remove: going.removing},
 			going.path+" deleted. Undo brings it back.")

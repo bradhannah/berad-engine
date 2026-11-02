@@ -2,8 +2,11 @@ package stateview
 
 import (
 	"image"
+	"strconv"
 	"strings"
 
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
@@ -193,7 +196,59 @@ func (s *State) moveInto(ctx *frame.Context, selected item, group string) {
 		return
 	}
 	moved := strings.TrimSuffix(selected.path, valuetree.Dotted(list.Values, declared.ID)) + dotted
-	s.change(ctx, list, change, "Moved to "+moved+". Cmd+Z undoes it.")
+	going := pendingMove{list: list, change: change, success: "Moved to " + moved + ". Cmd+Z undoes it."}
+	whereUsed(ctx, selected, func(uses []protocol.Use) {
+		if len(uses) == 0 {
+			s.change(ctx, going.list, going.change, going.success)
+
+			return
+		}
+		s.askMove(selected, moved, group, uses, going)
+	})
+}
+
+// usesLine says how many uses a move would carry along.
+func usesLine(count int) string {
+	if count == 1 {
+		return "1 use follows it."
+	}
+
+	return strconv.Itoa(count) + " uses follow it."
+}
+
+// pendingMove is a move waiting for its dialog: the list, the change and
+// what the status says once it is made.
+type pendingMove struct {
+	list    valuetree.List
+	change  stateplugin.ChangeArgs
+	success string
+}
+
+// askMove asks before moving what something uses, showing the path before
+// and after and listing each use, which follows the value as it names the
+// value itself, not its path.
+func (s *State) askMove(selected item, moved, group string, uses []protocol.Use, going pendingMove) {
+	where := "the top level"
+	if group != "" {
+		where = group
+	}
+	lines := []string{
+		selected.path + "  →  " + moved, "",
+		usesLine(len(uses)) + " A use names the value itself,",
+		"not its path, so nothing needs rewriting.",
+	}
+	for index, use := range uses {
+		if index == usesListed {
+			lines = append(lines, "  and "+strconv.Itoa(len(uses)-usesListed)+" more")
+
+			break
+		}
+		lines = append(lines, "  "+use.Name+" · "+use.Label)
+	}
+	lines = append(lines, "", "Cmd+Z puts it back.")
+	s.dialog = ui.NewDialog("Move "+selected.declared.Name+" into "+where+"?", lines,
+		ui.DialogButton(moveID, "Move"), ui.DialogButton(ui.DialogCancel, "Cancel"))
+	s.moving = &going
 }
 
 // renameNewGroup selects a group just made by a move, once the tree shows

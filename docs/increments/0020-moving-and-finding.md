@@ -110,7 +110,7 @@ Chosen while planning, for its author to check:
 | --- | --- | --- | --- |
 | 1. Text on a node | Text operands in curly quotes once, nothing escaped, cut with … when long; empty text as empty; the same for Set value | View tests of the labels of empty text, plain text, text with quote marks and long text | Built |
 | 2. Move into | The right-click menu on a value or group with Move into and its submenu, Rename and Delete; a move as one change, refused where the name is taken; the line under the Name box | View tests move a value into a group, to the top level and into a new group, refuse a taken name, and undo | Built |
-| 3. Moving what is used | The dialog listing each use as it will read, Move and Cancel; a value nothing uses moves at once | View tests move a used value through the dialog, cancel it, and move an unused one without it | Planned |
+| 3. Moving what is used | The dialog listing each use as it will read, Move and Cancel; a value nothing uses moves at once | View tests move a used value through the dialog, cancel it, and move an unused one without it | Built |
 | 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Planned |
 | 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Planned |
 | 6. Find a value | The button and Cmd+F; the World state rail and every type; uses counted; Show opening the groups and selecting the row | View tests find a value inside a closed group and show it, narrow by scope, and count uses | Planned |
@@ -145,6 +145,21 @@ Chosen while planning, for its author to check:
   mood, moves it into a new group selected with its name to type, moves
   George's secret into a group of his own, finds no move for the guards
   template, and renames by the menu.
+- **Moving what is used:** before a move, the window asks where the value,
+  or every value in the group, is used, as a delete does. With no use it
+  moves at once; with uses a dialog, Move mood into quests?, shows
+  world.mood → world.quests.mood, says how many uses follow it and that a
+  use names the value itself, not its path, so nothing needs rewriting,
+  lists each use, and offers Move and Cancel, which leaves it. Input
+  scripts name the buttons "dialog:move" and "dialog:cancel", as every
+  dialog's are, and read its lines as "state:says=<line>". Verified: a
+  view test cancels and then makes the move of a value a workflow uses,
+  reading the use and the paths in the dialog, and finds a group holding
+  it asks first too.
+- **Each use as it will read, short of the plan:** where a value is used is
+  answered as the workflow and the kind of node, as Workflow 1 · a Check
+  value node, not the node's sentence, which only the Workflow window
+  writes; the dialog lists that.
 - **Submenus by the keyboard, short of the plan:** the editor's menus take
   no arrow keys yet, so a submenu opens by the pointer only.
 
