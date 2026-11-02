@@ -327,13 +327,31 @@ func previewChange(change npcrun.Change) protocol.PreviewChange {
 
 // npcEntity is an NPC as the preview's state carries it.
 func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
-	x, y := run.npc.At()
+	across, down := run.npc.At()
+
+	workflow := run.source
+	if module := run.npc.Module(); !module.IsZero() {
+		workflow = module
+	}
+	callers := run.npc.Callers()
+	calls := make([]protocol.PreviewCall, 0, len(callers))
+	for _, call := range callers {
+		caller := call.Workflow
+		if caller.IsZero() {
+			caller = run.source
+		}
+		calls = append(calls, protocol.PreviewCall{Workflow: caller, Call: call.Call})
+	}
+
+	if len(calls) == 0 {
+		calls = nil
+	}
 
 	return protocol.PreviewEntity{
-		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: x, Y: y,
-		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: run.source,
+		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
+		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
-		Last: previewChange(run.npc.Last), Changes: run.npc.Changes,
+		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls,
 	}
 }
 

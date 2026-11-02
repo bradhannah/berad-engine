@@ -317,9 +317,11 @@ type PreviewEntity struct {
 	Y     float64  `json:"y"`
 	// Face is the direction the entity faces, one cell.
 	Face [2]int `json:"face"`
-	// An NPC also says which NPC it is, the workflow it follows, the node it
-	// is on, what it is doing there, what keeps it from following its
-	// workflow, its latest change of node and how many changes it has made.
+	// An NPC also says which NPC it is, the workflow it follows now, its
+	// behaviour or a workflow it called, the node it is on, what it is
+	// doing there, what keeps it from following its workflow, its latest
+	// change of node and how many changes it has made. Calls are the calls
+	// it is inside, its behaviour's first.
 	NPC      ids.ULID      `json:"npc,omitzero"`
 	Workflow ids.ULID      `json:"workflow,omitzero"`
 	Node     ids.ULID      `json:"node,omitzero"`
@@ -327,6 +329,14 @@ type PreviewEntity struct {
 	Status   string        `json:"status,omitempty"`
 	Last     PreviewChange `json:"last,omitzero"`
 	Changes  uint64        `json:"changes,omitempty"`
+	Calls    []PreviewCall `json:"calls,omitempty"`
+}
+
+// PreviewCall is a call an NPC is inside: the workflow that called and its
+// Call workflow node.
+type PreviewCall struct {
+	Workflow ids.ULID `json:"workflow"`
+	Call     ids.ULID `json:"call"`
 }
 
 // PreviewChange is an NPC's change from one node to another: the output it
