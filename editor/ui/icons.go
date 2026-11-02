@@ -105,7 +105,11 @@ func IconColor(icon Icon) color.RGBA {
 // DrawIcon draws an icon in its type's colour with its top-left corner at a
 // point.
 func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
-	ink := IconColor(icon)
+	DrawIconInk(screen, icon, corner, IconColor(icon))
+}
+
+// DrawIconInk draws an icon in an ink of its own, as on a filled button.
+func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.RGBA) {
 	box := image.Rect(corner.X, corner.Y, corner.X+IconSize, corner.Y+IconSize)
 	left, top := float32(corner.X), float32(corner.Y)
 	switch icon {

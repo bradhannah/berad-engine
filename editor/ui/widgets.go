@@ -23,14 +23,16 @@ type Button struct {
 	// buttons open a menu and show a small triangle after their label.
 	Danger bool
 	Caret  bool
-	hover  bool
+	// Icon, when set, is drawn before the label, as a place's ring.
+	Icon  Icon
+	hover bool
 }
 
 // NewButton returns a plain button, placed later by setting Rect.
 func NewButton(id, label string) *Button {
 	return &Button{
 		ID: id, Label: label, Rect: image.Rect(0, 0, 0, 0), Disabled: false, Primary: false, On: false, Danger: false,
-		Caret: false, hover: false,
+		Caret: false, Icon: IconNone, hover: false,
 	}
 }
 
@@ -73,7 +75,18 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 	if b.Caret {
 		width += triangle*Half + labelGap
 	}
+	if b.Icon != IconNone {
+		width += IconSize + Gap
+	}
 	left := b.Rect.Min.X + (b.Rect.Dx()-width)/Half
+	if b.Icon != IconNone {
+		iconInk := IconColor(b.Icon)
+		if b.Disabled || b.Primary || b.On {
+			iconInk = ink
+		}
+		DrawIconInk(screen, b.Icon, image.Pt(left, b.Rect.Min.Y+(b.Rect.Dy()-IconSize)/Half), iconInk)
+		left += IconSize + Gap
+	}
 	theme.DrawText(screen, b.Label, left, b.Rect.Min.Y+(b.Rect.Dy()-TextSize)/Half-1, ink)
 	if b.Caret {
 		caret := image.Rect(left+width-triangle*Half, b.Rect.Min.Y, left+width, b.Rect.Max.Y)

@@ -37,15 +37,19 @@ type localsPanel struct {
 	add  *ui.Button
 	form *valueform.Form
 	// top is where the panel's heading goes; registered is whether the
-	// form's fields take part in focus.
+	// form's fields take part in focus. A form taller than the room above
+	// the save bar scrolls by scroll pixels inside shown.
 	top        int
 	registered bool
+	scroll     int
+	shown      image.Rectangle
 }
 
 func newLocalsPanel(theme *ui.Theme) *localsPanel {
 	return &localsPanel{
 		list: ui.NewList("locals", ""),
 		add:  ui.NewButton("add-local", "Add local"), form: valueform.New(theme), top: 0, registered: false,
+		scroll: 0, shown: ui.Zero(),
 	}
 }
 
@@ -77,6 +81,9 @@ func (s *State) syncLocals(ctx *frame.Context) {
 	for _, value := range s.workflow.Locals().Values() {
 		row := ui.NewRow(value.ID.String(), localPath(value))
 		row.Detail = value.Type.Label()
+		if value.Type == worldstate.TypePlace {
+			row.Icon = ui.IconPlace
+		}
 		panel.list.Rows = append(panel.list.Rows, row)
 	}
 	value, ok := s.selectedLocal()
@@ -119,11 +126,29 @@ func (s *State) layoutLocals() {
 	if _, ok := s.selectedLocal(); !ok {
 		return
 	}
-	panel.form.Layout(left, top, width)
 	bottom := inspector.Max.Y - ui.Inset
 	panel.form.Delete.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 	bottom = panel.form.Delete.Rect.Min.Y - ui.Half*ui.Gap
 	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
+	panel.shown = image.Rect(inspector.Min.X, top-ui.Gap, inspector.Max.X, s.save.Rect.Min.Y-ui.Gap)
+	tall := panel.form.Layout(left, top, width) - top
+	panel.scroll = max(0, min(panel.scroll, tall-panel.shown.Dy()+ui.Gap))
+	if panel.scroll > 0 {
+		panel.form.Layout(left, top-panel.scroll, width)
+	}
+}
+
+// scrollLocal scrolls a form taller than its room under the pointer, and
+// reports whether a press falls outside the room, where the form is hidden,
+// other than on Delete value below it.
+func (s *State) scrollLocal(input *ui.Input) bool {
+	panel := s.locals
+	if input.Cursor.In(panel.shown) && input.WheelY != 0 {
+		panel.scroll -= int(input.WheelY * ui.RowHeight)
+		s.layoutLocals()
+	}
+
+	return input.Pressed && !input.Cursor.In(panel.shown) && !input.Cursor.In(panel.form.Delete.Rect)
 }
 
 // updateLocals handles the local values' list, Add local and the form's
@@ -172,6 +197,9 @@ func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	panel.form.PickPlace.Label = s.picker.Label(localOwner(declared.ID))
+	if s.scrollLocal(input) {
+		return
+	}
 	switch changed, change := panel.form.Update(input); change {
 	case valueform.ChangeValue:
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, changed, ids.ULID{}), nil)
@@ -325,7 +353,9 @@ func (s *State) drawLocals(screen *ebiten.Image) {
 
 		return
 	}
-	panel.form.Draw(screen)
+	if shown, ok := screen.SubImage(panel.shown).(*ebiten.Image); ok && !panel.shown.Empty() {
+		panel.form.Draw(shown)
+	}
 	s.save.Draw(screen, s.theme)
 	panel.form.Delete.Draw(screen, s.theme)
 }

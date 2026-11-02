@@ -296,6 +296,9 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	default:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+		if s.drawGoToTitle(area, drawn, docs) {
+			break
+		}
 		title := kind.Label + " · " + s.summary(drawn.node, docs)
 		if drawn.node.Kind == flow.KindSetValue {
 			title = s.valueTitle(drawn.node, docs)
@@ -304,6 +307,26 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}
 	s.drawMark(area, drawn)
+}
+
+// drawGoToTitle writes a Go to's title with the ring before its place, and
+// reports whether the node is a Go to that has one.
+func (s *State) drawGoToTitle(area *ebiten.Image, drawn shape, docs frame.Docs) bool {
+	if drawn.node.Kind != flow.KindGoTo || s.destinationProblem(drawn.node, docs) != "" {
+		return false
+	}
+	rect := s.screenRect(drawn.rect)
+	kind, _ := flow.KindOf(drawn.node.Kind)
+	lead := kind.Label + " · "
+	left := rect.Min.X + textPad
+	s.theme.DrawText(area, lead, left, rect.Min.Y+titleDrop, ui.ColorInk())
+	left += s.theme.TextWidth(lead)
+	ui.DrawIcon(area, ui.IconPlace, image.Pt(left, rect.Min.Y+titleDrop+(ui.TextSize-ui.IconSize)/ui.Half+1))
+	left += ui.IconSize + ui.Gap
+	place := s.clip(s.summary(drawn.node, docs), rect.Max.X-textPad-left)
+	s.theme.DrawText(area, place, left, rect.Min.Y+titleDrop, ui.ColorInk())
+
+	return true
 }
 
 // drawOutputRows lists a time switch's times or a random choice's options,

@@ -125,6 +125,9 @@ type Form struct {
 	PlaceOpen  bool
 	means      image.Point
 	meansLines []string
+	// placeAt is where what a place is goes, in placeLines.
+	placeAt    image.Point
+	placeLines []string
 }
 
 // New returns an empty form.
@@ -144,7 +147,7 @@ func New(theme *ui.Theme) *Form {
 		DeclareNew: ui.NewButton(declareNewID, "Declare a new value…"), roles: nil,
 		PickPlace: ui.NewButton(pickPlaceID, "Pick on map"), ClearPlace: ui.NewButton(clearPlaceID, "Clear"),
 		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceLit: false, PlaceOpen: false, means: image.Pt(0, 0),
-		meansLines: nil,
+		meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
 	}
 	form.PickPlace.Primary = true
 	form.description.Placeholder = "What it is for, for whoever reads it next"
@@ -204,7 +207,11 @@ func (f *Form) build(declared worldstate.Declaration) {
 	f.types, f.roles = nil, nil
 	if declared.Type.IsValue() {
 		for _, kind := range worldstate.Types(declared.Scope) {
-			f.types = append(f.types, ui.NewButton(typePrefix+string(kind), kind.Label()))
+			button := ui.NewButton(typePrefix+string(kind), kind.Label())
+			if kind == worldstate.TypePlace {
+				button.Icon = ui.IconPlace
+			}
+			f.types = append(f.types, button)
 		}
 	}
 	if declared.Type.IsValue() && declared.Scope == worldstate.ScopeLocal {
@@ -359,8 +366,9 @@ func (f *Form) Layout(left, top, width int) int {
 	}
 	if f.shown.Type.IsValue() {
 		head("TYPE")
-		top = buttonRows(f.types, left, top, width, len(f.types))
+		top = f.fitRows(f.types, left, top, width)
 		top = f.layoutLock(left, top, width)
+		top = f.layoutPlaceLine(left, top, width)
 		top = f.layoutValue(left, top, width)
 	}
 	head(headDescription)
@@ -378,6 +386,21 @@ func (f *Form) layoutMeans(left, top, width int) int {
 	f.means, f.meansLines = image.Pt(left, top-rowSpace), f.theme.Wrap(means, width)
 
 	return top + len(f.meansLines)*ui.LineHeight + fieldSpace - rowSpace
+}
+
+// placeLine says what a place is, under the type buttons.
+const placeLine = "A place is an anchor on a map: one of the blue rings put down with the Anchors tool."
+
+// layoutPlaceLine places what a place is under the types, for a place
+// whose type can still change; one in use shows its ring and place below.
+func (f *Form) layoutPlaceLine(left, top, width int) int {
+	f.placeLines = nil
+	if f.shown.Type != worldstate.TypePlace || f.Locked != "" {
+		return top
+	}
+	f.placeAt, f.placeLines = image.Pt(left, top-rowSpace), f.theme.Wrap(placeLine, width)
+
+	return top + len(f.placeLines)*ui.LineHeight + fieldSpace - rowSpace
 }
 
 // layoutLock greys the types a locked value cannot change to, and places
@@ -458,6 +481,25 @@ func buttonRows(buttons []*ui.Button, left, top, width, perRow int) int {
 	}
 
 	return top + fieldSpace - rowSpace
+}
+
+// fitRows places buttons at the width their labels and icons need, as many
+// to a row as fit, and returns where the next part goes.
+func (f *Form) fitRows(buttons []*ui.Button, left, top, width int) int {
+	across := left
+	for _, button := range buttons {
+		need := f.theme.TextWidth(button.Label) + ui.Half*ui.Inset
+		if button.Icon != ui.IconNone {
+			need += ui.IconSize + ui.Gap
+		}
+		if across > left && across+need > left+width {
+			across, top = left, top+ui.ButtonH+rowSpace
+		}
+		button.Rect = image.Rect(across, top, across+need, top+ui.ButtonH)
+		across += need + rowSpace
+	}
+
+	return top + ui.ButtonH + fieldSpace
 }
 
 // Change is what a click on the form asks for.
@@ -733,6 +775,9 @@ func (f *Form) Draw(screen *ebiten.Image) {
 	}
 	for index, line := range f.meansLines {
 		f.theme.DrawText(screen, line, f.means.X, f.means.Y+index*ui.LineHeight, ui.ColorMuted())
+	}
+	for index, line := range f.placeLines {
+		f.theme.DrawText(screen, line, f.placeAt.X, f.placeAt.Y+index*ui.LineHeight, ui.ColorMuted())
 	}
 	if !f.PlaceBox.Empty() {
 		f.drawPlace(screen)

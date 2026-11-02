@@ -201,6 +201,9 @@ func typeChips(only worldstate.Type) ([]*ui.Button, []worldstate.Type) {
 	if only != "" {
 		chip := ui.NewButton(chipPrefix+string(only), only.Label()+" only")
 		chip.On = true
+		if only == worldstate.TypePlace {
+			chip.Icon = ui.IconPlace
+		}
 
 		return []*ui.Button{chip}, []worldstate.Type{only}
 	}

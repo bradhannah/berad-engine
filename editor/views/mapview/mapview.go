@@ -75,7 +75,7 @@ func tools() []toolInfo {
 		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family."},
 		{ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup."},
 		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
-		{ToolAnchor, "Anchors", "A", "Click to add an anchor; drag one to move it."},
+		{ToolAnchor, "Anchors", "A", "Click to add an anchor, a place NPCs go to; drag one to move it."},
 		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left; drag one to move it."},
 		{ToolSelect, "Select walls", "S", "Click a wall for its run, double-click a room, or drag an area."},
 		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor."},
@@ -267,6 +267,9 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	for _, info := range tools() {
 		row := ui.NewRow(string(info.tool), info.label)
 		row.Detail = string(info.key)
+		if info.tool == ToolAnchor {
+			row.Icon = ui.IconPlace
+		}
 		view.toolList.Rows = append(view.toolList.Rows, row)
 	}
 
@@ -1451,11 +1454,11 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	simple := map[string]bool{"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen()}
+	if s.pick != nil {
+		simple["pick-now="+s.pick.Now.Name] = true
+	}
 	if value, isSimple := simple[state]; isSimple {
 		return value
-	}
-	if name, isNow := strings.CutPrefix(state, "pick-now="); isNow {
-		return s.pick != nil && s.pick.Now.Name == name
 	}
 	switch {
 	case state == "loaded":
