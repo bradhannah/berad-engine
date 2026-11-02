@@ -73,9 +73,11 @@ type valuePicker struct {
 	open      map[string]bool
 	paths     map[string]string
 	parents   map[string]string
-	choose    *ui.Button
-	cancel    *ui.Button
-	box       image.Rectangle
+	// declare is the panel that declares the name typed.
+	declare *pickerDeclare
+	choose  *ui.Button
+	cancel  *ui.Button
+	box     image.Rectangle
 }
 
 // openValuePicker opens the picker for a parameter of a node, with the
@@ -93,12 +95,12 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 		focus: ui.Focus{}, chips: chips, kinds: kinds, hidden: nil, others: false,
 		show: ui.NewButton("picker-show", "Show them"), note: "", rail: nil, railRects: nil, scope: railEverywhere,
 		counts: map[string]int{}, open: map[string]bool{s.lastGroup: s.lastGroup != ""}, paths: map[string]string{},
-		parents: map[string]string{}, choose: ui.NewButton("picker-choose", "Choose"),
-		cancel: ui.NewButton(ui.DialogCancel, "Cancel"), box: ui.Zero(),
+		parents: map[string]string{}, declare: newPickerDeclare(only, s.theme),
+		choose: ui.NewButton("picker-choose", "Choose"), cancel: ui.NewButton(ui.DialogCancel, "Cancel"), box: ui.Zero(),
 	}
 	picker.rail = pickerRail(picker.optionRole())
 	picker.choose.Primary = true
-	picker.focus.Register(search)
+	picker.focus.Register(search, picker.declare.start)
 	picker.focus.Set(search)
 	if operand {
 		if ref, refers := flow.OperandRef(savedOperand(node, param)); refers {
@@ -148,7 +150,8 @@ func (p *valuePicker) offers(option valueOption) bool {
 
 // layoutValuePicker centres the picker in the window and places its parts:
 // the title, the search, the type chips, the rail and the list beside it,
-// the line under the list, and Cancel and Choose at the foot.
+// or the panel that declares a value in the list's place, the line under
+// the list, and the buttons at the foot.
 func (s *State) layoutValuePicker(docs frame.Docs) {
 	picker := s.values
 	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
@@ -169,16 +172,16 @@ func (s *State) layoutValuePicker(docs frame.Docs) {
 	below := foot - ui.Half*ui.Gap - ui.ButtonH
 	picker.layoutRail(left+ui.Inset, line)
 	picker.list.Rect = image.Rect(left+ui.Inset+railWidth+ui.Inset, line, right, below-ui.Half*ui.Gap)
-	picker.choose.Rect = image.Rect(right-pickerButton, foot, right, foot+ui.ButtonH)
-	picker.cancel.Rect = image.Rect(right-ui.Half*pickerButton-ui.Gap, foot, right-pickerButton-ui.Gap, foot+ui.ButtonH)
 	picker.list.Rows = s.pickerRows(docs)
 	picker.show.Rect, picker.show.Label = ui.Zero(), "Show them"
-	if len(picker.hidden) > 0 && picker.note == "" {
+	if len(picker.hidden) > 0 && picker.note == "" && !picker.declare.showing() {
 		picker.show.Rect = image.Rect(right-pickerButton, below, right, below+ui.ButtonH)
 	}
 	if picker.others && picker.only != "" {
 		picker.show.Label = "Hide them"
 	}
+	s.layoutPickerFoot(right, foot)
+	s.layoutDeclare(picker.list.Rect)
 }
 
 // pickerKeys are the keys the picker reads before its search field takes
@@ -197,7 +200,8 @@ func readPickerKeys(input *ui.Input) pickerKeys {
 
 // updateValuePicker runs the open picker for a frame, taking all input:
 // typing searches, a chip narrows by type, arrows move, a click on a row or
-// Enter picks, Escape, a click outside or Cancel closes.
+// Enter picks, or declares the name typed while the panel shows; Escape, a
+// click outside or Cancel closes.
 func (s *State) updateValuePicker(input *ui.Input, ctx *frame.Context) {
 	picker := s.values
 	s.layoutValuePicker(ctx.Docs)
@@ -221,6 +225,9 @@ func (s *State) updateValuePicker(input *ui.Input, ctx *frame.Context) {
 	picker.list.Rows = s.pickerRows(ctx.Docs)
 	if s.moveBy(keys) {
 		picker.list.Rows = s.pickerRows(ctx.Docs)
+	}
+	if s.updateDeclare(input, ctx, keys.enter) {
+		return
 	}
 	s.updatePickerList(input, ctx, keys.enter)
 }
@@ -297,32 +304,25 @@ func (p *valuePicker) move(step int) {
 }
 
 // chosen is the row Enter or Choose picks: the selected one, else the top
-// value that matches, else the top row that would declare one.
+// value that matches.
 func (p *valuePicker) chosen() string {
-	first, declare := "", ""
+	first := ""
 	for _, row := range p.list.Rows {
 		switch {
 		case row.Heading:
 		case row.ID == p.list.Selected:
 			return row.ID
 		case strings.HasPrefix(row.ID, otherPrefix), strings.HasPrefix(row.ID, groupPrefix):
-		case strings.HasPrefix(row.ID, declarePrefix):
-			if declare == "" {
-				declare = row.ID
-			}
 		case first == "":
 			first = row.ID
 		}
 	}
-	if first != "" {
-		return first
-	}
 
-	return declare
+	return first
 }
 
-// pickRow closes the picker and chooses, or declares and chooses, the row's
-// value: as a reference for an operand, or as the parameter's value. A
+// pickRow closes the picker and chooses the row's value: as a reference
+// for an operand, or as the parameter's value. A
 // group's row opens or closes it instead, and a value of another type stays
 // unpicked, with a note why.
 func (s *State) pickRow(ctx *frame.Context, rowID string) {
@@ -342,11 +342,6 @@ func (s *State) pickRow(ctx *frame.Context, rowID string) {
 	s.values = nil
 	node, found := s.currentNode(ctx.Docs, picker.node)
 	if !found {
-		return
-	}
-	if target, declaring := decodeTarget(rowID); declaring {
-		s.declareValue(ctx, node.ID, picker.param, target)
-
 		return
 	}
 	ref, refers := decodeRef(rowID)
@@ -381,7 +376,11 @@ func (s *State) drawValuePicker(screen *ebiten.Image, docs frame.Docs) {
 		chip.Draw(screen, s.theme)
 	}
 	s.drawRail(screen)
-	s.drawPickerList(screen)
+	if picker.declare.showing() {
+		s.drawDeclare(screen, docs)
+	} else {
+		s.drawPickerList(screen)
+	}
 	room := picker.list.Rect.Dx()
 	if !picker.show.Rect.Empty() {
 		room = picker.show.Rect.Min.X - picker.list.Rect.Min.X - ui.Half*ui.Gap
@@ -394,10 +393,19 @@ func (s *State) drawValuePicker(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawText(screen, s.clip(picker.hiddenLine(), room), picker.list.Rect.Min.X,
 		below+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
 	picker.show.Draw(screen, s.theme)
-	s.theme.DrawText(screen, "↑ ↓ move · Enter picks · Esc closes", left, centredText(picker.cancel.Rect),
+	leftmost := picker.cancel.Rect.Min.X
+	if !picker.declare.ask.Rect.Empty() {
+		leftmost = picker.declare.ask.Rect.Min.X
+	}
+	hint := "↑ ↓ move · → opens · Enter picks · Esc closes"
+	if picker.declare.showing() {
+		hint = "Enter declares · Esc closes"
+	}
+	s.theme.DrawText(screen, s.clip(hint, leftmost-left-ui.Inset), left, centredText(picker.cancel.Rect),
 		ui.ColorMuted())
-	picker.cancel.Draw(screen, s.theme)
-	picker.choose.Draw(screen, s.theme)
+	for _, button := range []*ui.Button{picker.declare.ask, picker.cancel, picker.choose, picker.declare.declare} {
+		button.Draw(screen, s.theme)
+	}
 }
 
 // centredText is the top of a line of text centred on a row as high as a
@@ -413,32 +421,40 @@ func (s *State) drawPickerList(screen *ebiten.Image) {
 	case len(picker.list.Rows) > 0:
 		picker.list.Draw(screen, s.theme)
 	case picker.operand:
-		s.theme.DrawText(screen, "No other "+picker.only.Label()+" to compare with.", empty.X, empty.Y, ui.ColorMuted())
+		s.theme.DrawText(screen, "No other "+picker.only.Label()+" to compare with. Type a name to declare one.",
+			empty.X, empty.Y, ui.ColorMuted())
 	default:
 		s.theme.DrawText(screen, "No value matches. Type a name to declare one.", empty.X, empty.Y, ui.ColorMuted())
 	}
 }
 
 // locateInPicker finds a part of the open picker for input scripts: a row,
-// "valuerow:<path>" or "declare:<path>", a chip, a group or a scope on the
-// rail, "picker:..." (see locatePart), its search, "ui:value-search", or a
-// button, "ui:picker-choose", "ui:picker-show" and "ui:cancel".
+// "valuerow:<path>"; where a value can be declared, "declare:<path>"; a
+// chip, a group or a scope on the rail, "picker:..." (see locatePart); a
+// field, "ui:value-search" or "ui:declare-start"; or a button, as
+// "ui:picker-choose", "ui:picker-declare", "ui:declare-type-bool" or
+// "ui:cancel".
 func (s *State) locateInPicker(docs frame.Docs, kind, value string) (image.Point, bool) {
 	picker := s.values
 	s.layoutValuePicker(docs)
 	switch kind {
-	case locateValue, locateDeclare:
-		return picker.locateRow(kind, value)
+	case locateValue:
+		return picker.locateRow(value)
+	case locateDeclare:
+		return picker.declare.locateWhere(value)
 	case pickerLocate:
 		return picker.locatePart(value)
 	case "ui":
-		for _, button := range []*ui.Button{picker.choose, picker.cancel, picker.show} {
+		buttons, start := picker.declare.widgets()
+		for _, button := range append(buttons, picker.choose, picker.cancel, picker.show) {
 			if value == button.ID && !button.Rect.Empty() {
 				return ui.Center(button.Rect), true
 			}
 		}
-		if value == picker.search.ID {
-			return picker.search.Center(), true
+		for _, field := range []*ui.TextField{picker.search, start} {
+			if value == field.ID && !field.Rect.Empty() {
+				return field.Center(), true
+			}
 		}
 	}
 

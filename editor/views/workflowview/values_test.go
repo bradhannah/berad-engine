@@ -49,6 +49,14 @@ func (f *fixture) adaValues() *worldstate.Declarations {
 	return values
 }
 
+// declare declares a value from the open picker: where, by its path, then
+// Declare and choose.
+func (f *fixture) declare(path string) {
+	f.t.Helper()
+	f.click("declare:" + path)
+	f.click("ui:picker-declare")
+}
+
 // withNode adds a node of a kind after the start and selects it.
 func withNode(t *testing.T, kind string) *fixture {
 	t.Helper()
@@ -86,14 +94,14 @@ func TestSetValueDeclaresAndSets(t *testing.T) {
 	}
 	f.click("ui:pick-value")
 	f.typeText("world.quests.dragon_slain")
-	f.click("declare:world.quests.dragon_slain")
+	f.declare("world.quests.dragon_slain")
 	world := f.world()
 	if world.Len() != 2 || !f.has("value:value=world.quests.dragon_slain") || !f.has("operand:to=0") {
 		t.Fatalf("declared a group and an integer in it, and chose it: %+v", world.Values())
 	}
 	f.click("ui:pick-value")
 	f.typeText("mood")
-	f.click("declare:npc.mood for ada")
+	f.declare("npc.mood for ada")
 	own := f.adaValues()
 	if own.Len() != 1 || !f.has("value:value=npc.mood") {
 		t.Fatalf("declared npc.mood as Ada's own: %+v", own.Values())
@@ -183,7 +191,7 @@ func TestAtItsLimit(t *testing.T) {
 	f := withNode(t, flow.KindCheckValue)
 	f.click("ui:pick-value")
 	f.typeText("world.patience")
-	f.click("declare:world.patience")
+	f.declare("world.patience")
 	f.click("ui:compare-" + flow.CompareMax)
 	if !f.has("problem:" + flow.KindCheckValue + ":1") {
 		t.Fatal("an integer with no maximum is never at it")
@@ -212,13 +220,13 @@ func TestValuePicker(t *testing.T) {
 		t.Fatal("the Value box opens the picker")
 	}
 	f.typeText("world.gold")
-	f.click("declare:world.gold")
+	f.declare("world.gold")
 	if f.has("picker") || !f.has("value:value=world.gold") {
 		t.Fatal("declaring from the picker chooses the value and closes it")
 	}
 	f.click("ui:pick-value")
 	f.typeText("world.silver")
-	f.click("declare:world.silver")
+	f.declare("world.silver")
 	f.click("ui:pick-value")
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 	f.typeText("gol")
@@ -249,7 +257,7 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	f := withNode(t, flow.KindCheckValue)
 	f.click("ui:pick-value")
 	f.typeText("world.patience")
-	f.click("declare:world.patience")
+	f.declare("world.patience")
 	has := func(widget string) bool {
 		_, ok := f.state.Locate("ui:"+widget, f.docs)
 
@@ -374,7 +382,7 @@ func TestFindNPCKeepsWhatItFinds(t *testing.T) {
 	}
 	f.click("ui:pick-into")
 	f.typeText("customer")
-	f.click("declare:local.customer")
+	f.declare("local.customer")
 	locals := f.workflow().Locals().Values()
 	if len(locals) != 1 || locals[0].Name != "customer" || locals[0].Type != worldstate.TypeNPC {
 		t.Fatalf("declared %+v", locals)

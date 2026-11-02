@@ -69,10 +69,10 @@ func (p *valuePicker) optionRole() valueRole {
 }
 
 // pickerRows lists what the picker offers for the search typed: the values
-// it matches of the types offered in the scope chosen, as a tree or flat;
-// those of another type, when asked for; and, for a parameter, the rows
-// that would declare the name typed. It counts the values each scope has,
-// and keeps the ones the type hides.
+// it matches of the types offered in the scope chosen, as a tree or flat,
+// and those of another type, when asked for. It counts the values each
+// scope has, keeps the ones the type hides, and where the name typed could
+// be declared.
 func (s *State) pickerRows(docs frame.Docs) []ui.Row {
 	picker := s.values
 	query := picker.query()
@@ -104,9 +104,8 @@ func (s *State) pickerRows(docs frame.Docs) []ui.Row {
 	if picker.others && picker.only != "" {
 		rows = append(rows, picker.flatRows(picker.hidden, true)...)
 	}
-	if !picker.operand {
-		rows = append(rows, s.declareRows(docs, picker.role, query, taken)...)
-	}
+	picker.declare.matched = len(shown)
+	s.setTargets(docs, s.freeTargets(docs, picker.optionRole(), query, taken))
 
 	return rows
 }
@@ -198,26 +197,6 @@ func groupRow(key, group string, count int, open bool) ui.Row {
 	}
 
 	return row
-}
-
-// declareRows lists the rows that declare a value named by the search,
-// where no value already has that path.
-func (s *State) declareRows(docs frame.Docs, role valueRole, query string, taken map[string]bool) []ui.Row {
-	var rows []ui.Row
-	for _, target := range s.declareTargets(docs, role, query) {
-		if taken[target.Path] {
-			continue
-		}
-		label := "Declare " + target.Path
-		if target.For != "" {
-			label += " for " + s.ownerName(docs, target.Document)
-		}
-		row := ui.NewRow(declarePrefix+encodeTarget(target), label)
-		row.Tree = true
-		rows = append(rows, row)
-	}
-
-	return rows
 }
 
 // foldGroup opens or closes a group; the last one opened is remembered,
@@ -351,18 +330,11 @@ func (p *valuePicker) locatePart(value string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// locateRow finds a value's row by its path, or a declaring row by what it
-// would declare.
-func (p *valuePicker) locateRow(kind, value string) (image.Point, bool) {
+// locateRow finds a value's row by its path, while the list shows.
+func (p *valuePicker) locateRow(value string) (image.Point, bool) {
 	for index, row := range p.list.Rows {
 		rect := p.list.RowRect(index)
-		if row.Heading || !rect.In(p.list.Rect) {
-			continue
-		}
-		target, declaring := decodeTarget(row.ID)
-		path, isValue := p.paths[row.ID]
-		if (kind == locateValue && isValue && path == value) ||
-			(kind == locateDeclare && declaring && target.located() == value) {
+		if path, isValue := p.paths[row.ID]; isValue && path == value && rect.In(p.list.Rect) && !p.declare.showing() {
 			return image.Pt(rect.Min.X+railWidth/ui.Half, ui.Center(rect).Y), true
 		}
 	}

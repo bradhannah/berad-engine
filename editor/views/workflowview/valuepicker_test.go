@@ -158,3 +158,108 @@ func TestPickerRailAndTree(t *testing.T) {
 		t.Fatal("Enter opens the group, and picks the value below it")
 	}
 }
+
+// declared finds a declaration by its name.
+func declared(t *testing.T, values []worldstate.Declaration, name string) worldstate.Declaration {
+	t.Helper()
+	for _, value := range values {
+		if value.Name == name {
+			return value
+		}
+	}
+	t.Fatalf("%s is not declared", name)
+
+	return worldstate.Declaration{}
+}
+
+// TestDeclaringFromThePicker declares from the picker in the world and as
+// a local, as a bool, text and an integer starting where the panel says,
+// refuses a start that is not a number, offers the panel on asking while
+// values match, and keeps an operand's type fixed.
+func TestDeclaringFromThePicker(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSetValue)
+	f.click("ui:pick-value")
+	f.typeText("gold")
+	for _, where := range []string{"local.gold", "npc.gold for ada", "world.gold"} {
+		if _, ok := f.state.Locate("declare:"+where, f.docs); !ok {
+			t.Errorf("gold can be declared as %s", where)
+		}
+	}
+	f.click("declare:world.gold")
+	f.click("ui:declare-type-bool")
+	f.click("ui:declare-start-true")
+	f.click("ui:picker-declare")
+	if gold := declared(t, f.world().Values(), "gold"); gold.Type != worldstate.TypeBool ||
+		string(gold.Default) != "true" || !f.has("value:value=world.gold") || !f.has("operand:to=true") {
+		t.Fatalf("declared world.gold, a bool starting true, and chose it: %+v", gold)
+	}
+	f.click("ui:pick-value")
+	f.typeText("greeting")
+	f.click("declare:local.greeting")
+	f.click("ui:declare-type-text")
+	f.click("ui:declare-start")
+	f.typeText("Hello")
+	f.keys("Enter")
+	if greeting := declared(t, f.workflow().Locals().Values(), "greeting"); greeting.Type != worldstate.TypeText ||
+		string(greeting.Default) != `"Hello"` || !f.has(`operand:to="Hello"`) {
+		t.Fatalf("Enter declared local.greeting, text starting Hello: %+v", greeting)
+	}
+	f.click("ui:pick-value")
+	f.typeText("count")
+	f.click("declare:world.count")
+	f.click("ui:declare-start")
+	f.keys("Cmd+A")
+	f.typeText("x")
+	f.click("ui:picker-declare")
+	if !f.has("picker") {
+		t.Fatal("a start that is not a whole number is refused")
+	}
+	f.click("ui:declare-start")
+	f.keys("Cmd+A")
+	f.typeText("7")
+	f.keys("Enter")
+	if count := declared(t, f.world().Values(), "count"); string(count.Default) != "7" || !f.has("operand:to=7") {
+		t.Fatalf("declared world.count starting at 7: %+v", count)
+	}
+	f.click("ui:pick-value")
+	f.typeText("gold")
+	if _, panel := f.state.Locate("declare:local.gold", f.docs); panel || !f.shown("world.gold") {
+		t.Fatal("while a value matches, the list shows")
+	}
+	f.click("ui:picker-new")
+	if _, panel := f.state.Locate("declare:local.gold", f.docs); !panel {
+		t.Fatal("asking shows the panel")
+	}
+	f.click("ui:picker-new")
+	if !f.shown("world.gold") {
+		t.Fatal("and Back to values the list again")
+	}
+}
+
+// TestDeclaringAnOperand declares another value to compare with from an
+// operand's picker, an integer, fixed.
+func TestDeclaringAnOperand(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindCheckValue)
+	f.click("ui:pick-value")
+	f.typeText("world.stock")
+	f.declare("world.stock")
+	f.click("ui:source-value")
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("ui:pick-" + flow.ParamAgainst)
+	f.typeText("world.reorder")
+	_, fixed := f.state.Locate("ui:declare-type-integer", f.docs)
+	if _, other := f.state.Locate("ui:declare-type-bool", f.docs); !fixed || other {
+		t.Fatal("an operand's value is declared as an integer, fixed")
+	}
+	f.click("declare:world.reorder")
+	f.click("ui:declare-start")
+	f.keys("Cmd+A")
+	f.typeText("5")
+	f.click("ui:picker-declare")
+	if reorder := declared(t, f.world().Values(), "reorder"); string(reorder.Default) != "5" ||
+		!f.has("refers:against=world.reorder") {
+		t.Fatalf("declared world.reorder starting at 5, and compares with it: %+v", reorder)
+	}
+}

@@ -23,8 +23,8 @@ func TestWorkflowComparesWithAnotherValue(t *testing.T) {
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
 		click("node:start:1"), wait(5), click("palette:"+flow.KindCheckValue), must("state:nodes:2", 300), wait(10),
-		click("ui:pick-value"), wait(5), typed("world.stock"), wait(10), click("declare:world.stock"),
-		must("state:value:value=world.stock", 300), wait(10),
+		click("ui:pick-value"), wait(5), typed("world.stock"), wait(10), click("declare:world.stock"), wait(5),
+		click("ui:picker-declare"), must("state:value:value=world.stock", 300), wait(10),
 		click("ui:compare-"+flow.CompareLeast), wait(10), click("ui:source-value"), wait(10),
 		click("ui:pick-"+flow.ParamAgainst), wait(10),
 		click("valuerow:world.stock"), must("state:refers:against=world.stock", 300), wait(10),

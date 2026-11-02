@@ -65,7 +65,8 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 		must("state:loaded", 600), wait(5),
 		click("node:start:1"), wait(5), click("palette:set-value"), must("state:selected:set-value", 300),
 		click("ui:pick-value"), wait(5), typed("done"), wait(5), must("declare:world.done", 120),
-		click("declare:world.done"), must("state:value:value=world.done", 300), wait(5),
+		click("declare:world.done"), wait(5), click("ui:picker-declare"), must("state:value:value=world.done", 300),
+		wait(5),
 		click("ui:operand-to"), keys("Cmd+A"), typed("1"), keys("Enter"), must("state:operand:to=1", 300), wait(10),
 		shoot(setShot),
 		click("palette:check-value"), must("state:selected:check-value", 300),
@@ -119,7 +120,12 @@ func TestShopkeeperServesACustomer(t *testing.T) {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
 	choose := func(param, name, row string) []step {
-		return script(click("ui:pick-"+param), wait(5), typed(name), must(row, 3600), click(row), wait(10))
+		picked := script(click("ui:pick-"+param), wait(5), typed(name), must(row, 3600), click(row), wait(10))
+		if strings.HasPrefix(row, "declare:") {
+			picked = append(picked, script(click("ui:picker-declare"), wait(10))...)
+		}
+
+		return picked
 	}
 	pause := func() []step {
 		return script(click("palette:wait"), wait(10), retype("param-duration", "1"), click("ui:duration-seconds"), wait(10))

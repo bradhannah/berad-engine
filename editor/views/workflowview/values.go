@@ -33,12 +33,10 @@ import (
 const (
 	maxValueSearch = 200
 	// Row IDs: a value's row is its reference, encoded; a heading's starts
-	// with valueHeading; a row that declares a value starts with
-	// declarePrefix and encodes where.
-	valueHeading  = "values:"
-	declarePrefix = "declare:"
-	// locateValue names a chooser row for input scripts, "valuerow:<path>",
-	// and locateDeclare a row that declares one, "declare:<path>".
+	// with valueHeading.
+	valueHeading = "values:"
+	// locateValue names a picker's row for input scripts, "valuerow:<path>",
+	// and locateDeclare where a value can be declared, "declare:<path>".
 	locateValue   = "valuerow"
 	locateDeclare = "declare"
 	// valueBoxPrefix names a value parameter's box, "ui:pick-<param>".
@@ -482,25 +480,6 @@ func (s *State) ownedTargets(docs frame.Docs, target declareTarget, names []stri
 	return targets
 }
 
-func encodeTarget(target declareTarget) string {
-	data, err := json.Marshal(target)
-	if err != nil {
-		return ""
-	}
-
-	return string(data)
-}
-
-func decodeTarget(row string) (declareTarget, bool) {
-	var target declareTarget
-	encoded, declaring := strings.CutPrefix(row, declarePrefix)
-	if !declaring || json.Unmarshal([]byte(encoded), &target) != nil {
-		return target, false
-	}
-
-	return target, true
-}
-
 // declareScopes are the scopes a chooser can declare a new value in.
 func declareScopes(role valueRole) []worldstate.Scope {
 	switch role {
@@ -563,27 +542,35 @@ func operandOfValue(kind, param string) string {
 	return ""
 }
 
-// declareValue declares a value where a chooser's row says, with the
-// groups its name needs, then chooses it. A value to keep an NPC in is an
-// NPC; any other starts as an integer.
-func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, target declareTarget) {
-	node, ok := s.currentNode(ctx.Docs, nodeID)
-	if !ok {
+// declaring is a value to declare from the picker: where, its type and what
+// it starts at, nil for its type's own; operand is set when it is then
+// chosen as an operand's reference rather than as a value parameter.
+type declaring struct {
+	target  declareTarget
+	kind    worldstate.Type
+	start   json.RawMessage
+	operand bool
+}
+
+// declareValue declares a value where the picker says, with the groups its
+// name needs, then chooses it for a node's parameter.
+func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, made declaring) {
+	if _, ok := s.currentNode(ctx.Docs, nodeID); !ok {
 		return
 	}
-	kind := worldstate.TypeInteger
-	if roleOf(node.Kind, param) == roleKeep {
-		kind = worldstate.TypeNPC
-	}
+	target := made.target
 	list, listed := s.declareList(ctx.Docs, target)
 	if !listed {
 		return
 	}
-	change, err := valuetree.Declare(list.Values, target.Scope, target.Parent, target.Name, kind)
+	change, err := valuetree.Declare(list.Values, target.Scope, target.Parent, target.Name, made.kind)
 	if err != nil {
 		ctx.Frame.Status(strings.TrimPrefix(err.Error(), valuetree.ErrName.Error()+": "))
 
 		return
+	}
+	if made.start != nil {
+		change.Add[len(change.Add)-1].Default = made.start
 	}
 	data, err := json.Marshal(change)
 	if err != nil {
@@ -598,11 +585,19 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 
 			return
 		}
-		if current, found := s.currentNode(ctx.Docs, nodeID); found {
-			ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
+		// A local is declared in this workflow, so it is read again before
+		// the value is chosen and its operand started at it.
+		s.load(ctx.Docs)
+		current, found := s.currentNode(ctx.Docs, nodeID)
+		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
+		switch {
+		case !found:
+		case made.operand:
+			s.saveParam(ctx, current, param, flow.RefOperand(ref))
+		default:
 			s.chooseValue(ctx, ctx.Docs, current, param, ref)
 		}
-		ctx.Frame.Status("Declared " + target.Path + ". Change its type in " + declaredWhere(target.Scope) + ".")
+		ctx.Frame.Status("Declared " + target.Path + ". Change it in " + declaredWhere(target.Scope) + ".")
 	})
 }
 

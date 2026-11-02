@@ -81,7 +81,7 @@ Chosen while planning, for its author to check:
 | 1. The picker dialog | A dialog with the search, the results under headings with type and description, picking and closing; the inspector's Value box opens it and the inline chooser goes | View tests open it from the box and by Enter, search, pick, and close with Esc; the chooser tests of increment 15 pass through it | Built |
 | 2. Every chooser | Find NPC nearby's two choosers and Another value open the picker with their rules; the type lock and the count of hidden values | View tests of each chooser's offered values and of the lock | Built |
 | 3. The rail and the tree | The scope rail with counts, groups folding when nothing is typed, arrows opening them, the last group remembered | View tests of the counts, of narrowing by scope, of folding and of the memory | Built |
-| 4. Declaring from the picker | Where, type and starting value when nothing matches, then chosen | View tests of declaring in each scope, and of the locked type | Planned |
+| 4. Declaring from the picker | Where, type and starting value when nothing matches, then chosen | View tests of declaring in each scope, and of the locked type | Built |
 | 5. Checks | `make check` and the real-window suite; a real-window test opens the picker, searches, picks and declares | The checks pass with no lint findings | Planned |
 
 ## Step results
@@ -131,6 +131,26 @@ Chosen while planning, for its author to check:
   world.quests by a click and by the arrows, finds it open again in the
   next picker, and picks a value inside it with Enter; the Check value
   test of increment 15 searches for the template values that now fold.
+- **Declaring from the picker:** when the search names a value nothing
+  has, the list gives way to a panel that declares it: Where, a button for
+  each place the name can go, as Local, NPC template shop, Ada Clerk's own
+  or World; Type, every type a saved value can have, or one fixed where an
+  operand must match its value's type or Keep it in keeps an NPC; and
+  Starts at, a number or text to type, false or true, or a note that a
+  choice starts at the first of two to name elsewhere. Declare and choose,
+  or Enter, declares it with the groups its name needs and chooses it at
+  once, an operand's as the value it compares with; a start that is not a
+  whole number is refused with a note. While values match, a button at
+  the foot asks for the panel, and Back to values returns. The declare
+  rows of step 1 are gone; input scripts name where by its path, as
+  "declare:world.gold", then click "ui:picker-declare". A value chosen
+  just after it is declared as a local is now read first, so the operand
+  that follows it starts at its starting value. Verified: view tests
+  declare world.gold as a bool starting true, local.greeting as text by
+  Enter, refuse x and declare world.count at 7, ask for the panel while
+  world.gold matches and go back, and declare world.reorder for an
+  operand as a fixed integer at 5; the value tests of increments 15 and
+  18 and three real-window tests declare through the panel.
 
 ## Changed after its author tried it
 
