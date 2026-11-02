@@ -114,7 +114,7 @@ Chosen while planning, for its author to check:
 | 4. Dragging | Dragging a value or group onto a group or its section's heading; other sections faded and refused; a closed group opening at rest | View tests drag into a group, out to the heading, into a group opened at rest, and refuse another section | Built |
 | 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Built |
 | 6. Find a value | The button and Cmd+F; the World state rail and every type; uses counted; Show opening the groups and selecting the row | View tests find a value inside a closed group and show it, narrow by scope, and count uses | Built |
-| 7. Declare and show | The declare panel with the world, zones, NPCs and templates as where; the new value selected in the tree | View tests declare in the world, for an NPC and in a template, and find each selected | Planned |
+| 7. Declare and show | The declare panel with the world, zones, NPCs and templates as where; the new value selected in the tree | View tests declare in the world, for an NPC and in a template, and find each selected | Built |
 | 8. Checks | `make check` and the real-window suite; a real-window test moves a used value by the menu, drags another into a group, finds one and declares one | The checks pass with no lint findings | Planned |
 
 ## Step results
@@ -200,6 +200,19 @@ Chosen while planning, for its author to check:
   world.quests.dragon_slain from a closed quests, narrows to NPCs and
   counts their values and their templates', and shows George's secret by
   Enter, opening George.
+- **Declare and show:** a name in Find that no value has gives way to
+  the picker's declare panel. Where offers the world, each NPC and zone
+  template and each NPC and zone by name; a name starting with a scope, as
+  npc., stays in that scope, and one whose first name names a template or
+  an NPC or zone there, as npc.guards.on_duty or npc.george.mood_today,
+  goes only there. Every type is offered, with its start. Declare and
+  show, or Enter, declares it with the groups its name needs and then
+  shows it in the tree, selected with its inspector open for its limits,
+  choices and description, which the panel says are set there. Verified:
+  a view test offers shift in the world, the guards template, George and
+  the market; declares world.shop.open_hour starting at 9, George's own
+  mood_today as true, and on_duty in the guards template by Enter, and
+  finds each selected.
 - **Each use as it will read, short of the plan:** where a value is used is
   answered as the workflow and the kind of node, as Workflow 1 · a Check
   value node, not the node's sentence, which only the Workflow window
