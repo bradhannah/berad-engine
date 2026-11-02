@@ -110,7 +110,8 @@ func TestMovingWhatIsUsed(t *testing.T) {
 	f.click("menu:move-into")
 	f.click("menu:into-new")
 	f.answerUses(used)
-	if _, asks := f.state.Locate("dialog:move", f.ctx.Docs); !asks || f.world().Path(moodID) != "world.quests.mood" {
+	if _, asks := f.state.Locate("dialog:move", f.ctx.Docs); !asks || f.world().Path(moodID) != "world.quests.mood" ||
+		!f.dialogSays("Move quests into a new group, group?") {
 		t.Fatal("a group holding a used value asks first")
 	}
 }

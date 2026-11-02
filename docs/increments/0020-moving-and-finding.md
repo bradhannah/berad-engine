@@ -1,6 +1,6 @@
 # Increment 20: Moving and finding values
 
-**Status:** Planned
+**Status:** Built
 
 The twentieth increment makes the World state window easier to tidy and to
 search, and makes text read well on a node. Today a value moves into a
@@ -115,7 +115,7 @@ Chosen while planning, for its author to check:
 | 5. The shared picker | The picker in a package of its own, the Workflow window using it as before | The picker tests of increment 19 pass unchanged | Built |
 | 6. Find a value | The button and Cmd+F; the World state rail and every type; uses counted; Show opening the groups and selecting the row | View tests find a value inside a closed group and show it, narrow by scope, and count uses | Built |
 | 7. Declare and show | The declare panel with the world, zones, NPCs and templates as where; the new value selected in the tree | View tests declare in the world, for an NPC and in a template, and find each selected | Built |
-| 8. Checks | `make check` and the real-window suite; a real-window test moves a used value by the menu, drags another into a group, finds one and declares one | The checks pass with no lint findings | Planned |
+| 8. Checks | `make check` and the real-window suite; a real-window test moves a used value by the menu, drags another into a group, finds one and declares one | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -213,6 +213,19 @@ Chosen while planning, for its author to check:
   the market; declares world.shop.open_hour starting at 9, George's own
   mood_today as true, and on_duty in the guards template by Enter, and
   finds each selected.
+- **Checks:** `make check` passes with no lint findings, and so does the
+  whole real-window suite, 45 tests. A new real-window test declares
+  world.done from a workflow's Set value, then in the World state window
+  moves it by its right-click menu into a new group, asked first as the
+  workflow uses it, and names the group progress; adds a value in progress
+  and drags it out onto World; finds done by Enter; and declares
+  world.shop.open_hour from Find. The Set value's box follows done to
+  world.progress.done, and the saved world state and logic hold all of it.
+  Its screenshots showed the menu offering "Delete integer" and the dialog
+  asking to move into "group" when the group was new; the menu now says
+  Delete value, group or template, and the dialog "into a new group,
+  group". Add value with a value in a group selected adds it in that
+  group, as before.
 - **Each use as it will read, short of the plan:** where a value is used is
   answered as the workflow and the kind of node, as Workflow 1 · a Check
   value node, not the node's sentence, which only the Workflow window

@@ -391,7 +391,7 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 // "toggle:<path>" for its triangle and "section:<scope>" for a scope;
 // "dialog:<button>"; "menu:<id>" for the right-click menu; and "state:loaded", "state:selected=<path>",
 // "state:value=<path>:<type>:<default>", "state:applied=<owner path>:<template>"
-// or "state:says=<a line of the open dialog>".
+// or "state:says=<the open dialog's title or one of its lines>".
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	loaded := s.refresh(docs)
 	s.layout()
@@ -471,7 +471,7 @@ func (s *State) hasState(docs frame.Docs, state string) bool {
 	case strings.HasPrefix(state, stateApplied):
 		return s.applied(strings.TrimPrefix(state, stateApplied))
 	case strings.HasPrefix(state, stateSays) && s.dialog != nil:
-		return slices.ContainsFunc(s.dialog.Lines, func(line string) bool {
+		return slices.ContainsFunc(append([]string{s.dialog.Title}, s.dialog.Lines...), func(line string) bool {
 			return strings.TrimSpace(line) == strings.TrimPrefix(state, stateSays)
 		})
 	}

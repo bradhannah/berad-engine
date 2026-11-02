@@ -356,6 +356,7 @@ func (s *State) revealRow() {
 		if s.revealRename {
 			s.focus.Set(s.form.Fields()[0])
 		}
+		s.revealRename = false
 
 		return
 	}

@@ -69,7 +69,7 @@ func (s *State) menuItems(meaning item) []ui.MenuItem {
 		},
 		{ID: menuRename, Label: "Rename", Icon: ui.IconNone, Disabled: false, Danger: false, Rule: false},
 		{
-			ID: menuDelete, Label: "Delete " + kind.Label(), Icon: ui.IconNone, Disabled: false, Danger: true,
+			ID: menuDelete, Label: "Delete " + kindName(kind), Icon: ui.IconNone, Disabled: false, Danger: true,
 			Rule: true,
 		},
 	}
@@ -111,6 +111,18 @@ func (s *State) intoItems(meaning item) []ui.MenuItem {
 	return append(items, ui.MenuItem{
 		ID: menuNewGroup, Label: "New group…", Icon: ui.IconNone, Disabled: false, Danger: false, Rule: true,
 	})
+}
+
+// kindName names what a declaration is: a value, a group or a template.
+func kindName(kind worldstate.Type) string {
+	switch {
+	case kind.IsValue():
+		return "value"
+	case kind == worldstate.TypeTemplate:
+		return "template"
+	}
+
+	return "group"
 }
 
 // sectionName names where a row's moves stay: the world, a template, or an
@@ -185,14 +197,14 @@ func (s *State) moveInto(ctx *frame.Context, selected item, group string) {
 	if err == nil && group == "" && list.Document != worldstate.ID() {
 		if clash := valuetree.Clash(s.shown.catalog, list.Document, declared.Name); clash != "" {
 			ctx.Frame.Status(clash + ".")
-			s.revealPath = ""
+			s.revealPath, s.revealRename = "", false
 
 			return
 		}
 	}
 	if err != nil {
 		ctx.Frame.Status(strings.TrimPrefix(err.Error(), valuetree.ErrName.Error()+": ") + ".")
-		s.revealPath = ""
+		s.revealPath, s.revealRename = "", false
 
 		return
 	}
@@ -230,7 +242,10 @@ type pendingMove struct {
 // value itself, not its path.
 func (s *State) askMove(selected item, moved, group string, uses []protocol.Use, going pendingMove) {
 	where := "the top level"
-	if group != "" {
+	switch {
+	case s.revealRename:
+		where = "a new group, " + group
+	case group != "":
 		where = group
 	}
 	lines := []string{
