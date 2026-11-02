@@ -9,6 +9,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
@@ -210,4 +211,76 @@ func (f *fixture) renameWay(nodeID ids.ULID, label string) {
 		f.t.Fatal(err)
 	}
 	f.carryOutOn(moduleID, workflowplugin.ReplaceEdit, workflowplugin.ReplaceArgs{Node: renamed})
+}
+
+// TestCallProblems raises and mends each of a Call's problems: no workflow
+// chosen, a way out the module lost, a module that calls back, an input
+// whose type changed and a module deleted.
+func TestCallProblems(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withModule()
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindCall)
+	if !f.has("problem:call-workflow:1=No workflow chosen yet.") {
+		t.Fatal("a Call with no workflow is flagged")
+	}
+	f.click("ui:call-workflow")
+	f.click("menu:workflow:" + moduleID.String())
+	if f.has("problem:call-workflow:1") {
+		t.Fatal("calling Go to work is fine")
+	}
+	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:700,400"))
+	f.drag(f.at("port:call-workflow:1:w2"), f.at("node:wait:1"))
+	f.carryOutOn(moduleID, workflowplugin.RemoveEdit, workflowplugin.RemoveArgs{Nodes: []ids.ULID{closedID}})
+	if !f.has("problem:call-workflow:1=Go to work has no way out called Closed any more. Remove the line, " +
+		"or add the Return back.") {
+		t.Fatal("a way out the module lost is flagged")
+	}
+	f.carryOutOn(moduleID, workflowplugin.AddEdit, workflowplugin.AddArgs{
+		Nodes: []flow.Node{returnNode(t, closedID, "Closed", "w2")}, Boxes: map[ids.ULID]flow.Box{}, Links: nil,
+	})
+	if f.has("problem:call-workflow:1") {
+		t.Fatal("putting the Return back mends it")
+	}
+	back := frametest.ID(78)
+	callsBack, err := flow.NewNode(flow.KindCall)
+	if err == nil {
+		callsBack, err = callsBack.WithParam(flow.ParamWorkflow, workflowID.String())
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	callsBack.ID = back
+	f.carryOutOn(moduleID, workflowplugin.AddEdit, workflowplugin.AddArgs{
+		Nodes: []flow.Node{callsBack}, Boxes: map[ids.ULID]flow.Box{}, Links: nil,
+	})
+	if !f.has("problem:call-workflow:1=Calls itself: Daily routine calls Go to work, which calls Daily routine. " +
+		"Choose another workflow.") {
+		t.Fatal("a module that calls back is flagged")
+	}
+	f.carryOutOn(moduleID, workflowplugin.RemoveEdit, workflowplugin.RemoveArgs{Nodes: []ids.ULID{back}})
+	f.click("node:call-workflow:1")
+	f.typeInto("input-opens_at", "10")
+	opens, _ := f.module().Locals().Value(opensAt)
+	text := worldstate.New(opens.ID, opens.Name, worldstate.ScopeLocal, worldstate.TypeText)
+	text.Role = worldstate.RoleInput
+	f.carryOutOn(moduleID, workflowplugin.ChangeLocalsEdit, stateplugin.ChangeArgs{
+		Add: nil, Set: []worldstate.Declaration{text}, Remove: nil,
+	})
+	if !f.has("problem:call-workflow:1=The input opens_at is now text; 10 no longer fits. Type text, " +
+		"or choose another value.") {
+		t.Fatal("an input whose type changed is flagged")
+	}
+	f.typeInto("input-opens_at", "ten")
+	if f.has("problem:call-workflow:1") {
+		t.Fatal("typing text mends it")
+	}
+	f.docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
+		{ID: workflowID, Name: "Daily routine", Format: flow.FormatName},
+	}))
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("problem:call-workflow:1=The workflow it calls was deleted. Choose another workflow.") {
+		t.Fatal("a deleted module is flagged")
+	}
 }

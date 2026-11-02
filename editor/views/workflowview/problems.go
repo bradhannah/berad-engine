@@ -34,7 +34,7 @@ const (
 // project's names or a destination floor has changed. Floors are read one at
 // a time, never one inside another.
 func (s *State) refreshProblems(docs frame.Docs) {
-	parts := []string{strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision)}
+	parts := []string{strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision), "calls:" + s.callsKey}
 	docs.View(project.IndexID(), func(document client.Document) {
 		parts = append(parts, "index:"+strconv.FormatUint(document.Revision, 10))
 	})
@@ -84,6 +84,10 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		}
 	case flow.KindReturn:
 		if problem := returnProblem(node); problem != "" {
+			return problem
+		}
+	case flow.KindCall:
+		if problem := s.callProblem(node, docs); problem != "" {
 			return problem
 		}
 	}

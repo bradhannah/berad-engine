@@ -315,3 +315,77 @@ func (w *Workflow) withRole(role worldstate.Role) []worldstate.Declaration {
 
 	return declared
 }
+
+// MaxCallDepth bounds how deep calls go, one workflow calling another: past
+// it, as in a workflow that calls itself, a Call is skipped.
+const MaxCallDepth = 16
+
+// Lookup finds a workflow by its ID, as a game or the editor holds them.
+type Lookup func(ids.ULID) (*Workflow, bool)
+
+// MissingWays lists the ways out a Call has lines from that its module no
+// longer has.
+func MissingWays(call Node, module *Workflow) []WayOut {
+	saved, err := call.Ways()
+	if err != nil {
+		return nil
+	}
+	live := module.WaysOut()
+	var missing []WayOut
+	for _, way := range saved {
+		_, linked := call.Next[way.Port]
+		if linked && !slices.ContainsFunc(live, func(kept WayOut) bool { return kept.Port == way.Port }) {
+			missing = append(missing, way)
+		}
+	}
+
+	return missing
+}
+
+// CallsBack returns how calling target comes back to from: the workflows
+// in order, from first and last, each calling the next, or nil when it
+// never does. A workflow that calls itself is the shortest.
+func CallsBack(from, target ids.ULID, lookup Lookup) []ids.ULID {
+	paths := [][]ids.ULID{{target}}
+	seen := map[ids.ULID]bool{target: true}
+	for len(paths) > 0 && len(seen) <= MaxNodes {
+		path := paths[0]
+		paths = paths[1:]
+		if path[len(path)-1] == from {
+			return append([]ids.ULID{from}, path...)
+		}
+		called, ok := lookup(path[len(path)-1])
+		if !ok {
+			continue
+		}
+		for _, node := range called.nodes {
+			next, calls := node.Called()
+			if node.Kind != KindCall || !calls || (seen[next] && next != from) {
+				continue
+			}
+			seen[next] = true
+			paths = append(paths, append(slices.Clone(path), next))
+		}
+	}
+
+	return nil
+}
+
+// UnfitInputs lists the inputs a Call gives a value that no longer fits
+// them, as when an input's type changed; another value is read as the call
+// starts, and checked then.
+func UnfitInputs(call Node, module *Workflow) []worldstate.Declaration {
+	given := call.Inputs()
+	var unfit []worldstate.Declaration
+	for _, input := range module.Inputs() {
+		raw, filled := given[input.ID]
+		if _, refers := OperandRef(raw); !filled || refers {
+			continue
+		}
+		if value, err := input.Parse(raw); err != nil || !input.Fits(value) {
+			unfit = append(unfit, input)
+		}
+	}
+
+	return unfit
+}

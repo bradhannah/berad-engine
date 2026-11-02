@@ -1,6 +1,7 @@
 package workflow_test
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -133,4 +134,73 @@ func TestInputsAndOutputs(t *testing.T) {
 	if world.Check() == nil {
 		t.Fatal("only a local value is an input")
 	}
+}
+
+func TestCallProblems(t *testing.T) {
+	t.Parallel()
+	module, err := workflow.New(id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opens := worldstate.New(id(20), "opens_at", worldstate.ScopeLocal, worldstate.TypeText)
+	opens.Role = worldstate.RoleInput
+	if err := module.Locals().Insert(opens); err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Insert([]workflow.Node{returning(t, 3, ids.ULID{}, "Arrived", "w1")}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	call := node(t, 4, workflow.KindCall, ids.ULID{})
+	call, err = call.WithParam(workflow.ParamWays, []workflow.WayOut{{Port: "w1", Label: "Arrived"}, {Port: "w2", Label: "Closed"}})
+	if err == nil {
+		call, err = call.WithParam(workflow.ParamInputs, map[ids.ULID]json.RawMessage{id(20): json.RawMessage("9")})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	call = call.WithLink("w1", id(5)).WithLink("w2", id(6))
+	if missing := workflow.MissingWays(call, module); len(missing) != 1 || missing[0].Label != "Closed" {
+		t.Fatalf("Closed is missing: %v", missing)
+	}
+	if unfit := workflow.UnfitInputs(call, module); len(unfit) != 1 || unfit[0].ID != id(20) {
+		t.Fatalf("9 no longer fits text: %v", unfit)
+	}
+	calls := func(target ids.ULID) workflow.Node {
+		made := node(t, 7, workflow.KindCall, ids.ULID{})
+		made, err := made.WithParam(workflow.ParamWorkflow, target.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return made
+	}
+	day, work := workflowWith(t, calls(id(41))), workflowWith(t, calls(id(40)))
+	lookup := func(target ids.ULID) (*workflow.Workflow, bool) {
+		found := map[ids.ULID]*workflow.Workflow{id(40): day, id(41): work}[target]
+
+		return found, found != nil
+	}
+	if back := workflow.CallsBack(id(40), id(41), lookup); !slices.Equal(back, []ids.ULID{id(40), id(41), id(40)}) {
+		t.Fatalf("the day calls work, which calls the day: %v", back)
+	}
+	if back := workflow.CallsBack(id(40), id(40), lookup); !slices.Equal(back, []ids.ULID{id(40), id(40)}) {
+		t.Fatalf("a workflow calling itself: %v", back)
+	}
+	if back := workflow.CallsBack(id(42), id(41), lookup); back != nil {
+		t.Fatalf("another workflow is never called back: %v", back)
+	}
+}
+
+// workflowWith is a workflow holding one node.
+func workflowWith(t *testing.T, held workflow.Node) *workflow.Workflow {
+	t.Helper()
+	made, err := workflow.New(id(1))
+	if err == nil {
+		err = made.Insert([]workflow.Node{held}, nil, nil)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return made
 }

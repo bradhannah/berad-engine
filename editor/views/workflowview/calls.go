@@ -118,16 +118,6 @@ func shownWays(node flow.Node, live []flow.WayOut) ([]flow.WayOut, map[string]bo
 	return ways, missing
 }
 
-// watchCalls loads the workflows the Calls name.
-func (s *State) watchCalls(ctx *frame.Context) {
-	if s.workflow == nil {
-		return
-	}
-	for _, target := range callees(s.workflow) {
-		s.subscribe(target, ctx)
-	}
-}
-
 // drawCallNode draws a Call: its kind, the workflow it calls and what it
 // gives its inputs, over a row for each way out and done.
 func (s *State) drawCallNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
