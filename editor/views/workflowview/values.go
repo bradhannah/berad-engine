@@ -493,18 +493,39 @@ func declareScopes(role valueRole) []worldstate.Scope {
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
 }
 
-// updateValue opens the picker when the value's box is clicked: locked to
-// NPC values for one to keep an NPC in.
+// updateValue opens the picker when the value's box is clicked.
 func (s *State) updateValue(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
-	if !input.Pressed || !input.Cursor.In(made.cueBox) {
-		return
+	if input.Pressed && input.Cursor.In(made.cueBox) {
+		input.ClearPointer()
+		s.openValueBox(node, made)
 	}
-	input.ClearPointer()
+}
+
+// openValueBox opens the picker for a value's box: locked to NPC values for
+// one to keep an NPC in.
+func (s *State) openValueBox(node flow.Node, made *control) {
 	only := worldstate.Type("")
 	if roleOf(node.Kind, made.param.Name) == roleKeep {
 		only = worldstate.TypeNPC
 	}
 	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
+}
+
+// openFirstBox opens the picker for the selected node's first value box.
+// The inspector's boxes take no keyboard focus, so Enter with a value node
+// selected stands for Enter on its box.
+func (s *State) openFirstBox() {
+	node, selected := s.selectedNode()
+	if !selected || s.form == nil {
+		return
+	}
+	for index := range s.form.controls {
+		if made := &s.form.controls[index]; made.param.Type == flow.TypeValue && !made.cueBox.Empty() {
+			s.openValueBox(node, made)
+
+			return
+		}
+	}
 }
 
 // chooseValue sets a value parameter, starting its operand at the value's

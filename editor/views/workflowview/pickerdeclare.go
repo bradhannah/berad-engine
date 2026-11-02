@@ -194,7 +194,7 @@ func (s *State) layoutPickerFoot(right, foot int) {
 	switch {
 	case panel.asked:
 		panel.ask.Label = "Back to values"
-	case len(panel.targets) > 0:
+	case len(panel.targets) > 0 && panel.matched > 0:
 		panel.ask.Label = s.clip(`Declare "`+picker.query()+`"…`, askWidth-ui.Half*ui.Inset)
 	default:
 		return

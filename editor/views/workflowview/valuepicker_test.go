@@ -69,6 +69,10 @@ func TestPickerTypes(t *testing.T) {
 	if f.has("picker") || !f.has("refers:against=world.silver") {
 		t.Fatal("an integer is picked")
 	}
+	f.keys("Enter")
+	if !f.has("picker") || !f.shown("world.gold") || !f.shown("world.open") {
+		t.Fatal("Enter with the node selected opens the picker for its Value box")
+	}
 }
 
 // TestFindNPCPickers locks Keep it in's picker to NPC values, and offers Only
@@ -185,6 +189,9 @@ func TestDeclaringFromThePicker(t *testing.T) {
 		if _, ok := f.state.Locate("declare:"+where, f.docs); !ok {
 			t.Errorf("gold can be declared as %s", where)
 		}
+	}
+	if _, ask := f.state.Locate("ui:picker-new", f.docs); ask {
+		t.Fatal("with nothing matching the panel shows, with nothing to ask for")
 	}
 	f.click("declare:world.gold")
 	f.click("ui:declare-type-bool")

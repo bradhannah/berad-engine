@@ -1,6 +1,6 @@
 # Increment 19: The value picker
 
-**Status:** Planned
+**Status:** Built
 
 The nineteenth increment moves choosing a value out of the inspector into
 a **picker**, a dialog over the window. Today a chooser is a search field
@@ -82,7 +82,7 @@ Chosen while planning, for its author to check:
 | 2. Every chooser | Find NPC nearby's two choosers and Another value open the picker with their rules; the type lock and the count of hidden values | View tests of each chooser's offered values and of the lock | Built |
 | 3. The rail and the tree | The scope rail with counts, groups folding when nothing is typed, arrows opening them, the last group remembered | View tests of the counts, of narrowing by scope, of folding and of the memory | Built |
 | 4. Declaring from the picker | Where, type and starting value when nothing matches, then chosen | View tests of declaring in each scope, and of the locked type | Built |
-| 5. Checks | `make check` and the real-window suite; a real-window test opens the picker, searches, picks and declares | The checks pass with no lint findings | Planned |
+| 5. Checks | `make check` and the real-window suite; a real-window test opens the picker, searches, picks and declares | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -151,6 +151,20 @@ Chosen while planning, for its author to check:
   world.gold matches and go back, and declare world.reorder for an
   operand as a fixed integer at 5; the value tests of increments 15 and
   18 and three real-window tests declare through the panel.
+- **Checks:** `make check` passes with no lint findings, and so does the
+  whole real-window suite. A new real-window test declares
+  world.quests.dragon_slain from a Set value's picker as a bool starting
+  true and world.gold by Enter, opens a Check value's picker by Enter,
+  opens world.quests, searches for gold and picks it; the saved world
+  state and logic hold what was declared and picked. Its screenshots
+  showed the foot still offering to declare while the panel already
+  showed, with nothing to go back to; that button now shows only while
+  values match.
+- **The keyboard, short of the plan:** the inspector's boxes take no
+  keyboard focus, as no button in the editor does yet, so Enter on the
+  focused box became Enter with a value node selected, which opens the
+  picker for its first box. Focus for the boxes is listed below as not in
+  this increment.
 
 ## Changed after its author tried it
 
@@ -162,3 +176,5 @@ Not yet tried.
 - **Recent or favourite values** at the top of the picker; a candidate once
   real projects show what gets chosen again and again.
 - **Choosing several values at once.**
+- **Keyboard focus for the inspector's boxes,** so Tab reaches each box and
+  Enter opens its picker; the editor's focus is for text fields only.

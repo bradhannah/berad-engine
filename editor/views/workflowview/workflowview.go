@@ -469,7 +469,8 @@ func (s *State) listAudio(ctx *frame.Context) {
 }
 
 // keys handles the window's own keys while no text field has focus. Escape
-// closes an open cue chooser before anything else.
+// closes an open cue chooser before anything else; Enter opens the picker
+// for a selected value node's first box.
 func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	plain := ui.Plain()
 	if made, open := s.openChooser(); open && input.Consume(ui.KeyEscape, plain) {
@@ -488,6 +489,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.zoomTo(s.zoom-1, s.zoomFocus(input.Cursor))
 	case input.Consume(ui.Key0, ui.Cmd()):
 		s.zoomTo(defaultZoom, s.zoomFocus(input.Cursor))
+	case input.Consume(ui.KeyEnter, plain):
+		s.openFirstBox()
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		if s.lineSelected() {
 			s.removeLine(ctx)
