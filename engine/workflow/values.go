@@ -198,9 +198,14 @@ func OperandList(items []json.RawMessage) json.RawMessage {
 	return mustJSON(items)
 }
 
+// noRef is a value parameter before its value is chosen.
+func noRef() ValueRef {
+	return ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}}
+}
+
 // valueKinds declares Set value, Check value and Find NPC nearby.
 func valueKinds(next []Output) []Kind {
-	none := mustJSON(ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}})
+	none := mustJSON(noRef())
 
 	return []Kind{
 		{

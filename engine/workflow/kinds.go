@@ -222,14 +222,7 @@ func Kinds() []Kind {
 			},
 			Outputs: []Output{{Name: OutputInside, Label: "first step"}, {Name: OutputExit, Label: "exit"}},
 		},
-		{
-			Name: KindGoTo, Label: "Go to", Group: GroupMovement,
-			Params: []Param{{
-				Name: "destination", Label: "Destination", Type: TypeAnchor,
-				Default: mustJSON(tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}), Choices: nil,
-			}},
-			Outputs: next,
-		},
+		goToKind(next),
 		moveKind(next),
 		{
 			Name: KindWait, Label: "Wait", Group: GroupAction,
@@ -285,6 +278,35 @@ func playSoundKind(next []Output) Kind {
 			{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil},
 			{Name: "loudness", Label: "Loudness this time", Type: TypeChoice, Default: mustJSON(LoudnessAsCue),
 				Choices: choices},
+		},
+		Outputs: next,
+	}
+}
+
+// Where a Go to goes: an anchor picked on a map, or the place a value
+// holds.
+const (
+	GoesToMap   = "map"
+	GoesToValue = "value"
+	ParamGoes   = "goes"
+	ParamPlace  = "place"
+)
+
+// goToKind declares Go to: where it goes, chosen as an anchor on a map or a
+// place value.
+func goToKind(next []Output) Kind {
+	return Kind{
+		Name: KindGoTo, Label: "Go to", Group: GroupMovement,
+		Params: []Param{
+			{
+				Name: ParamGoes, Label: "Destination", Type: TypeChoice, Default: mustJSON(GoesToMap),
+				Choices: []Choice{{Value: GoesToMap, Label: "A place on a map"}, {Value: GoesToValue, Label: "A place value"}},
+			},
+			{
+				Name: "destination", Label: "On the map", Type: TypeAnchor,
+				Default: mustJSON(tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}), Choices: nil,
+			},
+			{Name: ParamPlace, Label: "Place value", Type: TypeValue, Default: mustJSON(noRef()), Choices: nil},
 		},
 		Outputs: next,
 	}

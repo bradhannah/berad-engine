@@ -228,6 +228,8 @@ const (
 	// them.
 	roleGive
 	roleKept
+	// rolePlace is a Go to's place value: a place local.
+	rolePlace
 )
 
 func roleOf(kind, param string) valueRole {
@@ -236,6 +238,8 @@ func roleOf(kind, param string) valueRole {
 		return roleGive
 	case kind == flow.KindCall:
 		return roleKept
+	case kind == flow.KindGoTo:
+		return rolePlace
 	case kind == flow.KindCheckValue:
 		return roleCheck
 	case kind == flow.KindFindNPC && param == "into":
@@ -274,13 +278,12 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	found := &options{listed: nil, seen: map[string]bool{}}
 	locals := s.workflow.Locals().Values()
 	for _, local := range locals {
-		anyType := role == roleGive || role == roleKept
-		if anyType || (role == roleKeep) == (local.Type == worldstate.TypeNPC) && role != roleWhere {
+		if offersLocal(role, local) {
 			found.add(scopePlace("LOCAL", worldstate.ScopeLocal), refTo(local, ids.ULID{}, ids.ULID{}), localPath(local),
 				local)
 		}
 	}
-	if role == roleKeep {
+	if role == roleKeep || role == rolePlace {
 		return found.listed
 	}
 	catalog := s.catalog(docs)
@@ -312,6 +315,25 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	}
 
 	return found.listed
+}
+
+// offersLocal reports whether a role's chooser offers a local: an NPC to
+// keep what Find NPC nearby finds, a place to go to, any local a Call gives
+// or keeps, and otherwise any but an NPC or a place.
+func offersLocal(role valueRole, local worldstate.Declaration) bool {
+	switch role {
+	case roleKeep:
+		return local.Type == worldstate.TypeNPC
+	case rolePlace:
+		return local.Type == worldstate.TypePlace
+	case roleGive, roleKept:
+		return true
+	case roleWhere:
+		return false
+	case roleSet, roleCheck:
+	}
+
+	return local.Type != worldstate.TypeNPC && local.Type != worldstate.TypePlace
 }
 
 // npcValues lists the values a workflow's own NPC can have: its name, and
@@ -480,7 +502,7 @@ func (s *State) ownedTargets(docs frame.Docs, target declareTarget, names []stri
 // declareScopes are the scopes a chooser can declare a new value in.
 func declareScopes(role valueRole) []worldstate.Scope {
 	switch role {
-	case roleKeep:
+	case roleKeep, rolePlace:
 		return []worldstate.Scope{worldstate.ScopeLocal}
 	case roleWhere:
 		return []worldstate.Scope{worldstate.ScopeNPC}
@@ -502,8 +524,12 @@ func (s *State) updateValue(input *ui.Input, _ *frame.Context, made *control, no
 // one to keep an NPC in.
 func (s *State) openValueBox(node flow.Node, made *control) {
 	only := worldstate.Type("")
-	if roleOf(node.Kind, made.param.Name) == roleKeep {
+	switch roleOf(node.Kind, made.param.Name) {
+	case roleKeep:
 		only = worldstate.TypeNPC
+	case rolePlace:
+		only = worldstate.TypePlace
+	case roleSet, roleCheck, roleWhere, roleGive, roleKept:
 	}
 	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
 }
@@ -1130,7 +1156,7 @@ func (s *State) findSummary(node flow.Node, path, operand func(string) string) s
 
 // hasValueState answers "value:<param>=<path>" for the selected node's
 // value parameter, "operand:<param>=<saved>" for its operand and
-// "title:<kind>:<n>=<title>" for the nth value node of a kind's title.
+// "title:<kind>:<n>=<title>" for the nth node of a kind's title.
 func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
 	if found, handled := s.hasPickerState(state, docs); handled {
 		return found, true
@@ -1144,7 +1170,12 @@ func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
 		which, want, _ := strings.Cut(strings.TrimPrefix(state, "title:"), "=")
 		drawn, found := s.nthNode(which)
 
-		return found && s.valueTitle(drawn.node, docs) == want, true
+		title := s.valueTitle(drawn.node, docs)
+		if kind := drawn.node.Kind; kind != flow.KindSetValue && kind != flow.KindCheckValue && kind != flow.KindFindNPC {
+			title = s.nodeLabel(drawn.node, docs)
+		}
+
+		return found && title == want, true
 	case strings.HasPrefix(state, "value:"):
 		param, want, _ := strings.Cut(strings.TrimPrefix(state, "value:"), "=")
 		ref, err := node.Ref(param)

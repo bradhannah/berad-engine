@@ -416,10 +416,33 @@ func Format() content.Format {
 	}
 }
 
-// upgradeFrom6 reads a version 6 workflow unchanged: version 7 added kinds
-// of node, roles and a type of local, none of which it has.
+// upgradeFrom6 gives every Go to the anchor it had as where it goes, and no
+// place value: version 7 let a Go to go to a place value instead, and added
+// Return and Call workflow, roles and place locals, which it has none of.
 func upgradeFrom6(data json.RawMessage) (json.RawMessage, error) {
-	return data, nil
+	var wire wireWorkflow
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	for index, node := range wire.Nodes {
+		if node.Kind != KindGoTo {
+			continue
+		}
+		upgraded, err := node.WithParam(ParamGoes, GoesToMap)
+		if err == nil {
+			upgraded, err = upgraded.WithParam(ParamPlace, noRef())
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: upgrade %s: %w", ErrData, node.ID, err)
+		}
+		wire.Nodes[index] = upgraded
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade workflow: %w", err)
+	}
+
+	return encoded, nil
 }
 
 // upgradeFrom5 reads a version 5 workflow unchanged: version 6 added

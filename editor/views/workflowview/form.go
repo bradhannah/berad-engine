@@ -166,8 +166,11 @@ func (s *State) rebuildForm(docs frame.Docs, node flow.Node) map[string]string {
 	}
 	s.form = s.buildForm(docs, node)
 	s.form.shape = shape
-	if node.Kind == flow.KindCall {
+	switch node.Kind {
+	case flow.KindCall:
 		s.form.call = s.newCallPanel(node)
+	case flow.KindGoTo:
+		shapeGoTo(s.form, node)
 	}
 
 	return drafts
@@ -184,8 +187,11 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
 	}
-	if node.Kind == flow.KindCall {
+	switch node.Kind {
+	case flow.KindCall:
 		shape.WriteString("call=" + s.callShape(node) + ";")
+	case flow.KindGoTo:
+		shape.WriteString("goes=" + choiceOf(node, flow.ParamGoes) + ";")
 	}
 	if node.Kind == flow.KindCheckValue {
 		_, refers := flow.OperandRef(savedOperand(node, flow.ParamAgainst))

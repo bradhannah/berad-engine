@@ -386,6 +386,9 @@ func (s *State) drawAddOption(area *ebiten.Image, drawn shape) {
 func (s *State) summary(node flow.Node, docs frame.Docs) string {
 	switch node.Kind {
 	case flow.KindGoTo:
+		if choiceOf(node, flow.ParamGoes) == flow.GoesToValue {
+			return s.placeValueLabel(node, docs)
+		}
 		destination, err := node.Anchor("destination")
 		if err != nil {
 			return "?"
@@ -803,7 +806,7 @@ func hintFor(kind string) string {
 			"shows what that works out to.",
 		flow.KindContainer: "Repeats what is inside while its time lasts, then leaves by its exit, even partway " +
 			"through a step.",
-		flow.KindGoTo: "Walks to the anchor.",
+		flow.KindGoTo: "Walks to the anchor picked on a map, or to the place a place value holds as it starts.",
 		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
 		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
 			"ignores it.",

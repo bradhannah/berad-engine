@@ -10,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/play"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // Route search costs: a straight step and a diagonal one, roughly in the
@@ -26,7 +27,7 @@ const (
 // another floor, or there is no way there.
 func (n *NPC) actGoTo(world World, node flow.Node) (string, bool) {
 	if !n.work.started {
-		if status := n.plan(world.Zone, node); status != "" {
+		if status := n.plan(world, node); status != "" {
 			n.work.skipped = status
 
 			return flow.OutputNext, true
@@ -41,7 +42,7 @@ func (n *NPC) actGoTo(world World, node flow.Node) (string, bool) {
 
 		return "", false
 	}
-	if status := n.plan(world.Zone, node); status != "" {
+	if status := n.plan(world, node); status != "" {
 		n.work.skipped = status
 
 		return flow.OutputNext, true
@@ -50,11 +51,33 @@ func (n *NPC) actGoTo(world World, node flow.Node) (string, bool) {
 	return "", false
 }
 
+// destination is where a Go to goes: its anchor, or the place its place
+// value holds now.
+func (n *NPC) destination(world World, node flow.Node) (tilefloor.AnchorRef, bool) {
+	none := tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}
+	if goes, err := node.Choice(flow.ParamGoes); err != nil || goes != flow.GoesToValue {
+		destination, err := node.Anchor("destination")
+
+		return destination, err == nil && !destination.IsZero()
+	}
+	ref, err := node.Ref(flow.ParamPlace)
+	if err != nil {
+		return none, false
+	}
+	declared, value, readable := n.read(world, ref)
+	if !readable || declared.Type != worldstate.TypePlace || value.Place.IsZero() {
+		return none, false
+	}
+
+	return tilefloor.AnchorRef{Floor: value.Place.Floor, Anchor: value.Place.Anchor}, true
+}
+
 // plan sets up a Go to: finds its anchor on the NPC's floor and a route
 // there. It returns why it cannot, or "".
-func (n *NPC) plan(zone play.Zone, node flow.Node) string {
-	destination, err := node.Anchor("destination")
-	if err != nil || destination.IsZero() {
+func (n *NPC) plan(world World, node flow.Node) string {
+	zone := world.Zone
+	destination, ok := n.destination(world, node)
+	if !ok {
 		return StatusNoAnchor
 	}
 	if destination.Floor != n.Floor {

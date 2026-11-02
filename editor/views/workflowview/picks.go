@@ -163,7 +163,7 @@ func pickerRail(role valueRole) []valuepicker.RailEntry {
 	everywhere := valuepicker.RailEntry{ID: valuepicker.Everywhere, Label: "Everywhere"}
 	local := valuepicker.RailEntry{ID: string(worldstate.ScopeLocal), Label: "Local"}
 	switch role {
-	case roleKeep:
+	case roleKeep, rolePlace:
 		return []valuepicker.RailEntry{everywhere, local}
 	case roleWhere:
 		return []valuepicker.RailEntry{everywhere, {ID: string(worldstate.ScopeNPC), Label: "The NPC it finds"}}

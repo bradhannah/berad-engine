@@ -97,6 +97,9 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 // destinationProblem says what is wrong with a Go to's destination. A floor
 // not loaded yet is not a problem until it arrives.
 func (s *State) destinationProblem(node flow.Node, docs frame.Docs) string {
+	if choiceOf(node, flow.ParamGoes) == flow.GoesToValue {
+		return s.placeValueProblem(node, docs)
+	}
 	destination, err := node.Anchor("destination")
 	if err != nil || destination.IsZero() {
 		return problemNoDestination
