@@ -440,6 +440,24 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   stay yes and otherwise. *Candidate:* a Switch on a value, one outcome per
   choice, when a workflow wants a fan-out; Check value stays a yes or no
   question.
+- **Agreed (2026-11-01):** a value is chosen in a **picker**, a dialog over
+  the window, not a list inside the inspector, which gets too cramped as
+  values multiply. The box in the inspector opens it, by click or Enter,
+  with its search focused so typing starts at once; the search matches any
+  part of a path. Type chips narrow the list and are locked to the type an
+  operand must match; a scope rail, Everywhere, Local, This NPC, This zone,
+  World, Other NPCs and Zones, shows how many match in each and narrows to
+  one. Results sit under headings with path, type and description; values
+  of another type are counted and hidden, shown on request. With nothing
+  typed, groups fold as the World state tree does, arrows open them, and
+  the last group opened is remembered. A name that matches nothing can be
+  declared from the picker, with where, type and starting value, and is
+  chosen at once. Arrows move, Enter picks, Esc closes. The inspector keeps
+  only the box, showing the path and one line of type, limits and
+  description. Every chooser uses it: Set value's and Check value's Value,
+  Find NPC nearby's Only one whose and Keep it in, and an integer's Another
+  value. (Rejected: a popover anchored to the box; shorter for a short
+  list, cramped again for a long one.)
 - **Candidate:** reusable blocks of text, paragraphs long, kept in the
   project view rather than in one workflow (its author's "static strings").
   *Open:* what they are for, given that the Texts view holds a game's texts.
