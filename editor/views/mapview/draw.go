@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
 )
@@ -74,6 +75,10 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	}
 	s.drawPanel(screen, docs)
 	s.drawInspector(screen, docs)
+	if s.pick != nil {
+		s.drawPickBanner(screen)
+		s.drawPickPanel(screen)
+	}
 	if s.menu != nil {
 		s.menu.Draw(screen, s.theme)
 	}
@@ -123,6 +128,9 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawSelection(area, grid)
 		s.drawPlayer(area, grid)
 		s.drawStartCell(area, floorDoc.Floor, grid)
+		if s.pick != nil {
+			s.drawPickWash(area, floorDoc.Floor, grid)
+		}
 	})
 	if !loaded {
 		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())
@@ -334,22 +342,46 @@ func (s *State) drawAnchors(area *ebiten.Image, floorData *floor.Floor, grid ima
 		centreX, centreY := float32(rect.Min.X)+float32(size)/ui.Half, float32(rect.Min.Y)+float32(size)/ui.Half
 		radius := max(float32(size)*anchorRadius, minAnchorRadius)
 		fill := ui.ColorBackground()
-		if anchor.ID == s.anchor {
+		if anchor.ID == s.anchor || s.isNow(anchor.ID) {
 			fill = blue
+		}
+		if s.pick != nil {
+			s.drawPickCell(area, rect, anchor.ID)
 		}
 		vector.FillCircle(area, centreX, centreY, radius, fill, true)
 		vector.StrokeCircle(area, centreX, centreY, radius, anchorRing, blue, true)
-		if s.pick != nil {
-			ui.StrokeRect(area, rect, ui.Outline, blue)
-		}
 		if size >= minLabel {
-			labelX, labelY := rect.Max.X+ui.Half, rect.Min.Y+(size-ui.LabelSize)/ui.Half-ui.Half
-			width := s.theme.SmallWidth(anchor.Name)
-			backing := image.Rect(labelX-1, labelY, labelX+width+ui.Half, labelY+ui.LabelSize+ui.Gap+ui.Half)
-			ui.FillRect(area, backing, ui.HexAlpha(hexWhite, labelBacking))
-			s.theme.DrawSmall(area, anchor.Name, labelX, labelY, blue)
+			s.drawAnchorName(area, rect, anchor)
 		}
 	}
+}
+
+// drawPickCell outlines an anchor's cell while picking, washed blue under
+// the pointer.
+func (s *State) drawPickCell(area *ebiten.Image, rect image.Rectangle, anchor ids.ULID) {
+	if anchor == s.picking.hovered {
+		ui.FillRect(area, rect, ui.ColorSelectWash())
+	}
+	ui.StrokeRect(area, rect, ui.Outline, ui.ColorSelect())
+}
+
+// drawAnchorName writes an anchor's name beside its cell, and, while
+// picking, "now" after the place the pick would replace.
+func (s *State) drawAnchorName(area *ebiten.Image, rect image.Rectangle, anchor floor.Anchor) {
+	size := rect.Dx()
+	blue := ui.ColorSelect()
+	labelX, labelY := rect.Max.X+ui.Half, rect.Min.Y+(size-ui.LabelSize)/ui.Half-ui.Half
+	width := s.theme.SmallWidth(anchor.Name)
+	backing := image.Rect(labelX-1, labelY, labelX+width+ui.Half, labelY+ui.LabelSize+ui.Gap+ui.Half)
+	ui.FillRect(area, backing, ui.HexAlpha(hexWhite, labelBacking))
+	s.theme.DrawSmall(area, anchor.Name, labelX, labelY, blue)
+	if !s.isNow(anchor.ID) {
+		return
+	}
+	tagX := backing.Max.X + ui.Gap
+	tag := image.Rect(tagX, backing.Min.Y, tagX+s.theme.SmallWidth(nowTag)+ui.Half*pickTagPad, backing.Max.Y)
+	ui.FillRound(area, tag, float32(tag.Dy())/ui.Half, blue)
+	s.theme.DrawSmall(area, nowTag, tag.Min.X+pickTagPad, labelY, ui.ColorBackground())
 }
 
 func (s *State) drawSelection(area *ebiten.Image, grid image.Rectangle) {
@@ -403,6 +435,11 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 // selected or under the cursor.
 func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
+	if s.pick != nil {
+		s.drawPickInspector(screen)
+
+		return
+	}
 	panel := frame.Inspector(s.size)
 	textX := panel.Min.X + ui.Inset
 	textY := panel.Min.Y + ui.Inset
@@ -434,12 +471,6 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		line("revision "+strconv.FormatUint(document.Revision, 10)+"  zoom "+zoom+" px", ui.ColorSubdued())
 		textY += ui.LineHeight / ui.Half
 		switch {
-		case s.pick != nil:
-			s.theme.DrawLabel(screen, "PICKING", textX, textY, ui.ColorSelect())
-			textY += ui.LineHeight
-			line("Click an anchor for", ui.ColorInk())
-			line(labelOr(s.pick.Label, "the other tab")+".", ui.ColorInk())
-			line("Escape cancels.", ui.ColorMuted())
 		case !s.anchor.IsZero():
 			s.drawAnchorInspector(screen, floorData, textX, &textY)
 		case !s.placement.IsZero():

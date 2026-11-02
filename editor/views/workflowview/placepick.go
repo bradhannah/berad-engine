@@ -52,7 +52,11 @@ func (s *State) newPlaceTarget(owner string, current floor.AnchorRef, what, labe
 	target := placeTarget{owner: owner, current: current, what: what, set: set, pick: nil}
 	target.pick = func(ctx *frame.Context) {
 		was := s.placeWas(ctx.Docs, current)
-		s.picker.Start(ctx, owner, label, func(answer protocol.PickAnswer, ctx *frame.Context) {
+		now := protocol.PickNow{Floor: ids.ULID{}, Item: "", Name: ""}
+		if !current.IsZero() {
+			now = protocol.PickNow{Floor: current.Floor, Item: current.Anchor.String(), Name: was}
+		}
+		s.picker.Start(ctx, owner, label, now, func(answer protocol.PickAnswer, ctx *frame.Context) {
 			anchor, err := ids.Parse(answer.Item)
 			if err != nil {
 				ctx.Frame.Status("The map answered with something that is not an anchor")

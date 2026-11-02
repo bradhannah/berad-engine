@@ -41,13 +41,15 @@ type Picker struct {
 	dialog   *ui.Dialog
 	choosing choice
 	label    string
+	now      protocol.PickNow
 	done     func(protocol.PickAnswer, *frame.Context)
 }
 
 // New returns the picker for a window.
 func New(window ids.ULID) *Picker {
 	return &Picker{
-		window: window, picking: "", owner: "", count: 0, dialog: nil, choosing: choosingNothing, label: "", done: nil,
+		window: window, picking: "", owner: "", count: 0, dialog: nil, choosing: choosingNothing, label: "",
+		now: protocol.PickNow{Floor: ids.ULID{}, Item: "", Name: ""}, done: nil,
 	}
 }
 
@@ -69,7 +71,7 @@ func (p *Picker) Label(owner string) string {
 
 // Toggle cancels the owner's pick in progress, or starts one for it, taking
 // over any other pick, with reason saying where a cancel came from.
-func (p *Picker) Toggle(ctx *frame.Context, owner, reason, label string,
+func (p *Picker) Toggle(ctx *frame.Context, owner, reason, label string, now protocol.PickNow,
 	done func(protocol.PickAnswer, *frame.Context),
 ) {
 	if p.PickingFor(owner) {
@@ -77,21 +79,23 @@ func (p *Picker) Toggle(ctx *frame.Context, owner, reason, label string,
 
 		return
 	}
-	p.Start(ctx, owner, label, done)
+	p.Start(ctx, owner, label, now, done)
 }
 
 // Dialog returns the dialog choosing a map or zone, or nil.
 func (p *Picker) Dialog() *ui.Dialog { return p.dialog }
 
 // Start begins picking an anchor for an owner, taking over a pick in
-// progress. label says what it is for, shown in the Map window; done
-// receives the answer.
-func (p *Picker) Start(ctx *frame.Context, owner, label string, done func(protocol.PickAnswer, *frame.Context)) {
+// progress. label says what it is for and now what it would replace, both
+// shown in the Map window; done receives the answer.
+func (p *Picker) Start(ctx *frame.Context, owner, label string, now protocol.PickNow,
+	done func(protocol.PickAnswer, *frame.Context),
+) {
 	if p.picking != "" {
 		ctx.Requests.PickCancel(protocol.PickCancel{Pick: p.picking, Reason: reasonTakenOver})
 		p.picking = ""
 	}
-	p.owner, p.label, p.done = owner, label, done
+	p.owner, p.label, p.now, p.done = owner, label, now, done
 	ctx.Requests.PickAsk(protocol.PickAnchor, func(maps []protocol.PickMap, err error) {
 		if err != nil {
 			ctx.Frame.Status(err.Error())
@@ -104,6 +108,7 @@ func (p *Picker) Start(ctx *frame.Context, owner, label string, done func(protoc
 		case 1:
 			p.begin(ctx, protocol.PickStart{
 				Pick: "", What: "", Label: "", Window: maps[0].Window, Zone: maps[0].Zone, From: ids.ULID{},
+				Now: p.now,
 			})
 		default:
 			p.chooseMap(ctx, maps)
@@ -155,7 +160,9 @@ func (p *Picker) UpdateDialog(input *ui.Input, ctx *frame.Context, window image.
 	if err != nil {
 		return
 	}
-	start := protocol.PickStart{Pick: "", What: "", Label: "", Window: ids.ULID{}, Zone: ids.ULID{}, From: ids.ULID{}}
+	start := protocol.PickStart{
+		Pick: "", What: "", Label: "", Window: ids.ULID{}, Zone: ids.ULID{}, From: ids.ULID{}, Now: p.now,
+	}
 	if kind == choosingZone {
 		start.Zone = target
 	} else {
@@ -184,7 +191,7 @@ func (p *Picker) begin(ctx *frame.Context, start protocol.PickStart) {
 	p.count++
 	start.Pick = p.window.String() + "-" + strconv.Itoa(p.count)
 	start.What = protocol.PickAnchor
-	start.Label = p.label
+	start.Label, start.Now = p.label, p.now
 	p.picking = start.Pick
 	ctx.Requests.PickStart(start, func(result protocol.Result, err error) {
 		if err != nil {

@@ -398,3 +398,37 @@ func TestSwitchingFloors(t *testing.T) {
 		t.Fatal("clicking the bottom floor in the list did not switch to it")
 	}
 }
+
+// TestPickingMode starts a pick that would replace the desk: the map marks
+// it now, the tools rest, a name in the inspector's list answers, and both
+// Cancel buttons cancel.
+func TestPickingMode(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	start := protocol.PickStart{
+		Pick: "p1", What: protocol.PickAnchor, Label: "the input place", Window: ids.ULID{}, Zone: ids.ULID{},
+		From: frametest.ID(7), Now: protocol.PickNow{Floor: groundID, Item: deskID.String(), Name: "Desk"},
+	}
+	f.state.Changed(client.Update{PickStart: &start}, f.ctx)
+	if !f.has("pick-now=Desk") {
+		t.Fatal("the map knows the place the pick would replace")
+	}
+	f.keys("G")
+	f.click("cell:5,5")
+	if len(f.requests.Of(tilefloor.PaintEdit)) != 0 || len(f.requests.PickAnswers) != 0 || !f.state.Picking() {
+		t.Fatal("while picking, the tools rest and a cell without an anchor answers nothing")
+	}
+	f.click("place:Desk")
+	if len(f.requests.PickAnswers) != 1 || f.requests.PickAnswers[0].Item != deskID.String() ||
+		f.requests.PickAnswers[0].Name != "Desk" || f.state.Picking() {
+		t.Fatalf("a name in the list answers: %+v", f.requests.PickAnswers)
+	}
+	for index, cancel := range []string{"ui:pick-cancel", "ui:pick-banner-cancel"} {
+		start.Pick = "p" + string(rune('2'+index))
+		f.state.Changed(client.Update{PickStart: &start}, f.ctx)
+		f.click(cancel)
+		if len(f.requests.PickCancels) != index+1 || f.requests.PickCancels[index].Pick != start.Pick || f.state.Picking() {
+			t.Fatalf("%s cancels: %+v", cancel, f.requests.PickCancels)
+		}
+	}
+}

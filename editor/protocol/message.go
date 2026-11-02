@@ -269,8 +269,8 @@ type PickAsk struct {
 }
 
 // PickStart starts a pick. The requesting window names an open Map window, or
-// a zone for the orchestrator to open one on. The orchestrator forwards it to
-// the Map window with From set.
+// a zone for the orchestrator to open one on, and what the pick would
+// replace. The orchestrator forwards it to the Map window with From set.
 type PickStart struct {
 	Pick   string   `json:"pick"`
 	What   string   `json:"what"`
@@ -278,6 +278,15 @@ type PickStart struct {
 	Window ids.ULID `json:"window,omitzero"`
 	Zone   ids.ULID `json:"zone,omitzero"`
 	From   ids.ULID `json:"from,omitzero"`
+	Now    PickNow  `json:"now,omitzero"`
+}
+
+// PickNow is what a pick would replace, so the Map window can mark it: the
+// floor and item, and its name; zero when nothing is there yet.
+type PickNow struct {
+	Floor ids.ULID `json:"floor,omitzero"`
+	Item  string   `json:"item,omitempty"`
+	Name  string   `json:"name,omitempty"`
 }
 
 // PickAnswer reports what was picked, and its name; the requesting window

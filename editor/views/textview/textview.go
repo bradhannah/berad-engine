@@ -135,6 +135,16 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	}
 }
 
+// now is the text's location, for the map to mark while picking.
+func (s *State) now(docs frame.Docs) protocol.PickNow {
+	now := protocol.PickNow{Floor: ids.ULID{}, Item: "", Name: ""}
+	if document, ok := s.text(docs); ok && !document.Location.IsZero() {
+		now.Floor, now.Item = document.Location.Floor, document.Location.Anchor.String()
+	}
+
+	return now
+}
+
 func (s *State) answered(answer protocol.PickAnswer, ctx *frame.Context) {
 	anchor, err := ids.Parse(answer.Item)
 	if err != nil {
@@ -208,7 +218,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case s.pickBtn.Update(input):
 		label := "the location of “" + s.zoneNames(ctx.Docs).Name(s.document, "this text") + "”"
-		s.picker.Toggle(ctx, locationOwner, cancelledHere, label, s.answered)
+		s.picker.Toggle(ctx, locationOwner, cancelledHere, label, s.now(ctx.Docs), s.answered)
 	case s.clearBtn.Update(input):
 		cleared := textdoc.SetLocationArgs{Location: floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}}
 		s.command(ctx, textdoc.SetLocationEdit, cleared, "Location cleared")
