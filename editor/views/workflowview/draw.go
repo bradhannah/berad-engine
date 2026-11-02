@@ -278,6 +278,10 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		}
 		s.drawOutputRows(area, drawn)
+	case flow.KindReturn:
+		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+		s.theme.DrawStrong(area, s.clip(wayLabel(drawn.node), drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
+			rect.Min.Y+titleDrop, ui.ColorInk())
 	case flow.KindCheckValue, flow.KindFindNPC:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		s.theme.DrawText(area, s.clip(s.valueTitle(drawn.node, docs), drawn.rect.Dx()-ui.Half*textPad),
@@ -397,6 +401,8 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	case flow.KindPlaySound:
 		return s.playSummary(node)
+	case flow.KindReturn:
+		return wayLabel(node)
 	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
 		return s.valueSummary(node, docs)
 	default:
@@ -586,10 +592,11 @@ func (s *State) hasLineState(state string) (bool, bool) {
 	case strings.HasPrefix(state, "problems:"):
 		return strconv.Itoa(len(s.problems)) == strings.TrimPrefix(state, "problems:"), true
 	case strings.HasPrefix(state, "problem:"):
-		drawn, ok := s.nthNode(strings.TrimPrefix(state, "problem:"))
-		_, problem := s.problems[drawn.node.ID]
+		which, says, saying := strings.Cut(strings.TrimPrefix(state, "problem:"), "=")
+		drawn, ok := s.nthNode(which)
+		problem, marked := s.problems[drawn.node.ID]
 
-		return ok && problem, true
+		return ok && marked && (!saying || problem == says), true
 	default:
 		return false, false
 	}
@@ -672,29 +679,36 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		}
 		made.addRange.Draw(screen, s.theme)
 	case flow.TypeAnchor:
-		destination, err := node.Anchor(made.param.Name)
-		if err != nil {
-			destination = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
-		}
-		name, detail := s.anchorLabel(docs, destination)
-		ui.Box(screen, made.anchor, ui.ColorBackground())
-		centre := image.Pt(made.anchor.Min.X+textPad+anchorDot, made.anchor.Min.Y+made.anchor.Dy()/ui.Half)
-		vector.StrokeCircle(screen, float32(centre.X), float32(centre.Y), anchorDot, anchorRing, ui.ColorSelect(), true)
-		ink := ui.ColorInk()
-		if destination.IsZero() || strings.HasPrefix(name, "Broken") {
-			ink = ui.ColorMuted()
-		}
-		s.theme.DrawText(screen, name, centre.X+anchorDot+textPad, made.anchor.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
-		s.theme.DrawText(screen, detail, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
-		made.pick.Draw(screen, s.theme)
-		made.clear.Draw(screen, s.theme)
+		s.drawAnchor(screen, docs, made, node, left)
 	case flow.TypeCue:
 		s.drawCue(screen, made, node)
 	case flow.TypeValue:
 		s.drawValue(screen, docs, made, node)
 	case flow.TypeOperand:
 		s.drawOperand(screen, docs, made, node, left)
+	case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
+}
+
+// drawAnchor draws an anchor parameter: its destination, where it is, and
+// Pick on map and Clear.
+func (s *State) drawAnchor(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
+	destination, err := node.Anchor(made.param.Name)
+	if err != nil {
+		destination = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
+	}
+	name, detail := s.anchorLabel(docs, destination)
+	ui.Box(screen, made.anchor, ui.ColorBackground())
+	centre := image.Pt(made.anchor.Min.X+textPad+anchorDot, made.anchor.Min.Y+made.anchor.Dy()/ui.Half)
+	vector.StrokeCircle(screen, float32(centre.X), float32(centre.Y), anchorDot, anchorRing, ui.ColorSelect(), true)
+	ink := ui.ColorInk()
+	if destination.IsZero() || strings.HasPrefix(name, "Broken") {
+		ink = ui.ColorMuted()
+	}
+	s.theme.DrawText(screen, name, centre.X+anchorDot+textPad, made.anchor.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
+	s.theme.DrawText(screen, detail, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
+	made.pick.Draw(screen, s.theme)
+	made.clear.Draw(screen, s.theme)
 }
 
 // drawUnit writes a field's unit, faintly, at its right end.
@@ -732,7 +746,8 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 			s.drawCompareNote(screen, made, node)
 		}
 	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
-		flow.TypeCue, flow.TypeValue, flow.TypeOperand:
+		flow.TypeCue, flow.TypeValue, flow.TypeOperand,
+		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
 }
 
@@ -770,6 +785,8 @@ func hintFor(kind string) string {
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindReturn: "Goes back to whatever called this workflow, out of the Call's output of this name. " +
+			"Two Returns with one name are one way out. Run as a behaviour, it starts again.",
 		flow.KindSetValue: "Sets one of this workflow's own values: its NPC's, its zone's, the world's or a " +
 			"local one. Add counts a number up, or down with a minus.",
 		flow.KindCheckValue: "Takes “yes” when the value compares as asked, and “otherwise” when not. It can " +
@@ -1067,7 +1084,8 @@ func (made control) widgets() ([]*ui.TextField, []*ui.Button) {
 // the selected Go to has one, "entries:<kind>:<n>=C" when C links come into
 // the nth node of a kind, "line-selected" while a line is selected,
 // "lit:<kind>:<n>:<output>" while that line is drawn blue,
-// "problems:N" when N nodes have problems and "problem:<kind>:<n>" when the
+// "problems:N" when N nodes have problems and "problem:<kind>:<n>", or
+// "problem:<kind>:<n>=<problem>" for what it says, when the
 // nth node of a kind has one.
 func (s *State) hasState(state string) bool {
 	if found, handled := s.hasPartState(state); handled {

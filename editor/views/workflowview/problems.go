@@ -82,6 +82,10 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := s.valueProblem(node, docs); problem != "" {
 			return problem
 		}
+	case flow.KindReturn:
+		if problem := returnProblem(node); problem != "" {
+			return problem
+		}
 	}
 	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {
 		return problemUnreached

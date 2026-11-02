@@ -36,7 +36,7 @@ import (
 // tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 6
+	FormatVersion       = 7
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 3
 )
@@ -411,9 +411,15 @@ func Format() content.Format {
 	return content.Format{
 		Name: FormatName, Current: FormatVersion,
 		Migrations: map[int]content.Migration{
-			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5,
+			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5, 6: upgradeFrom6,
 		},
 	}
+}
+
+// upgradeFrom6 reads a version 6 workflow unchanged: version 7 added kinds
+// of node, roles and a type of local, none of which it has.
+func upgradeFrom6(data json.RawMessage) (json.RawMessage, error) {
+	return data, nil
 }
 
 // upgradeFrom5 reads a version 5 workflow unchanged: version 6 added

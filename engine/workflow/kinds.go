@@ -208,6 +208,9 @@ func Kinds() []Kind {
 			Outputs: []Output{{Name: OutputOtherwise, Label: "otherwise"}},
 		},
 		randomKind(),
+	}
+	kinds = append(kinds, callKinds()...)
+	kinds = append(kinds, []Kind{
 		{
 			Name: KindContainer, Label: "Time-bound container", Group: GroupFlow,
 			Params: []Param{
@@ -237,7 +240,7 @@ func Kinds() []Kind {
 			Outputs: next,
 		},
 		playSoundKind(next),
-	}
+	}...)
 	kinds = append(kinds, valueKinds(next)...)
 
 	return append(kinds, Kind{
@@ -342,6 +345,9 @@ func Outputs(node Node) []Output {
 	if !ok {
 		return nil
 	}
+	if node.Kind == KindCall {
+		return callOutputs(node)
+	}
 	if node.Kind == KindRandom {
 		options, err := node.Shares("options")
 		if err != nil {
@@ -415,12 +421,7 @@ func checkValue(param Param, value json.RawMessage) error {
 	case TypeShares:
 		return checkShares(value)
 	case TypeTimeRange:
-		var span TimeRange
-		if err := json.Unmarshal(value, &span); err != nil {
-			return err //nolint:wrapcheck // Wrapped by the caller.
-		}
-
-		return checkRange(span)
+		return checkSpan(value)
 	case TypeTimeRanges:
 		return checkRanges(value)
 	case TypeText, TypeCue:
@@ -429,9 +430,21 @@ func checkValue(param Param, value json.RawMessage) error {
 		return checkRef(value)
 	case TypeOperand:
 		return checkOperand(value)
+	case TypeWorkflow, TypeInputs, TypeKeeps, TypeWays, TypePort:
+		return checkCallValue(param, value)
 	default:
 		return fmt.Errorf("%w: unknown parameter type %q", ErrNode, param.Type)
 	}
+}
+
+// checkSpan reads a time range.
+func checkSpan(value json.RawMessage) error {
+	var span TimeRange
+	if err := json.Unmarshal(value, &span); err != nil {
+		return err //nolint:wrapcheck // Wrapped by the caller.
+	}
+
+	return checkRange(span)
 }
 
 // textLimit is how long a text or a cue's ID can be.

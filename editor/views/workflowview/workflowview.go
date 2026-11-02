@@ -400,7 +400,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.syncForm(ctx)
-	s.syncLocals()
+	s.syncLocals(ctx)
 	s.layoutWidgets(ctx.Docs)
 	if s.updateOverlay(input, ctx) {
 		return
@@ -982,6 +982,9 @@ func (s *State) add(ctx *frame.Context, kind string, place image.Point, parent i
 		return
 	}
 	node.Parent = parent
+	if kind == flow.KindReturn {
+		node = s.freshReturn(node)
+	}
 	box := newBox(kind, place)
 	gesture := s.gesture()
 	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}

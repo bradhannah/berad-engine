@@ -85,7 +85,7 @@ func Comparisons(kind worldstate.Type) []string {
 		return []string{CompareAnyOf, CompareNoneOf}
 	case worldstate.TypeText:
 		return []string{CompareIs, CompareNot}
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
 	}
 
 	return nil

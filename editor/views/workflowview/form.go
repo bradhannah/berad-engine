@@ -330,7 +330,11 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 			made.addRange = ui.NewButton("add-time", "Add time")
 		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 			s.newReferenceControl(docs, node, &made)
+		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 		}
+		// A call's and a Return's own parameters have no row: the Call's
+		// inspector and the Return's name stand for them.
+		made.hidden = made.hidden || !param.Type.Shown()
 		built.controls = append(built.controls, made)
 	}
 
@@ -354,7 +358,7 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 			s.shapeCheckOperand(node, made, declared, found)
 		}
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
-		flow.TypeTimeRanges:
+		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
 }
 
@@ -408,7 +412,7 @@ func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 		s.setSavedReference(made, node, ctx)
 	case flow.TypeOperand:
 		setSavedOperand(made, node)
-	case flow.TypeValue:
+	case flow.TypeValue, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
 }
 
@@ -475,6 +479,7 @@ func (s *State) layoutForm(_ frame.Docs) {
 			top += ui.ButtonH + fieldSpace
 		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 			top = s.layoutReference(made, image.Rect(left, top, left+width, footer))
+		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 		}
 	}
 	s.form.bottom = top
@@ -502,7 +507,7 @@ func (s *State) layoutReference(made *control, room image.Rectangle) int {
 	case flow.TypeOperand:
 		return s.layoutOperand(made, left, width, top)
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
-		flow.TypeTimeRanges:
+		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
 
 	return top
@@ -574,7 +579,8 @@ func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control
 		s.updateValue(input, ctx, made, node)
 	case flow.TypeOperand:
 		s.updateOperand(input, ctx, made, node)
-	case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange:
+	case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps,
+		flow.TypeWays, flow.TypePort:
 	}
 }
 
@@ -752,6 +758,14 @@ func (s *State) applyField(node flow.Node, field *ui.TextField) (flow.Node, stri
 		if problem != "" {
 			return node, problem
 		}
+		if node.Kind == flow.KindReturn && made.param.Name == flow.ParamWayName {
+			name, named := value.(string)
+			if !named {
+				return node, problemWayName
+			}
+
+			return s.nameWayOut(node, name)
+		}
 		changed, err := node.WithParam(made.param.Name, value)
 		if err != nil {
 			return node, err.Error()
@@ -847,7 +861,8 @@ func parseFor(made *control, field *ui.TextField, value string, node flow.Node) 
 		return parseRangesField(made, field, value, node)
 	case flow.TypeOperand:
 		return parseOperand(made, field, value)
-	case flow.TypeAnchor, flow.TypeCue, flow.TypeValue:
+	case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps,
+		flow.TypeWays, flow.TypePort:
 	}
 
 	return nil, false, ""

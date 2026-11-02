@@ -207,6 +207,10 @@ func checkSamplePlays(t *testing.T, project string, ground *floor.Floor, sampleZ
 		kinds[node.Kind] = true
 	}
 	for _, kind := range flow.Kinds() {
+		// The sample calls no module until increment 21 gives it one.
+		if kind.Name == flow.KindCall || kind.Name == flow.KindReturn {
+			continue
+		}
 		if !kinds[kind.Name] {
 			t.Fatalf("the clerk's day has no %s", kind.Name)
 		}

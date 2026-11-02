@@ -292,7 +292,8 @@ func detail(declared worldstate.Declaration, catalog *worldstate.Catalog) string
 		}
 
 		return "template · on " + strconv.Itoa(applied)
-	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC:
+	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC,
+		worldstate.TypePlace:
 	}
 	written := declared.Type.Label()
 	if declared.Min != nil || declared.Max != nil {

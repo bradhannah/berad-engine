@@ -98,7 +98,8 @@ func (s *State) declaredMenu(meaning item, adds func(string, worldstate.Scope) [
 		items = adds("In "+meaning.declared.Name, meaning.scope)
 	case worldstate.TypeTemplate:
 		items = adds("In the "+meaning.declared.Name+" template", meaning.scope)
-	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC:
+	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC,
+		worldstate.TypePlace:
 	}
 	if kind != worldstate.TypeTemplate {
 		items = append(items, choice(menuMoveInto, "Move into", len(items) > 0))
@@ -221,7 +222,7 @@ func kindPhrase(kind worldstate.Type) string {
 		return "an integer"
 	case worldstate.TypeGroup, worldstate.TypeTemplate:
 		return "a " + kindName(kind)
-	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC:
+	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC, worldstate.TypePlace:
 	}
 
 	return "a " + kind.Label()
