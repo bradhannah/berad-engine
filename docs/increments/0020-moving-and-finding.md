@@ -278,6 +278,30 @@ Built and verified:
   dragon_slain's type held while its uses are asked and while a workflow
   uses it, opens Find from Declare a new value… with world.quests. typed,
   and changes the type of a value nothing uses.
+- **Add from a row's right-click menu.** A group's menu, headed In
+  quests, offers Add value ›, a submenu of integer, bool, choice and text,
+  and Add group, then Move into, Rename and Delete group; a template's,
+  headed In the guards template, the same adds, Rename and Delete
+  template; an NPC's or zone's, headed George's own, the adds and Apply
+  template ›, a submenu of the templates it has not got; the World heading
+  adds at the top of the world without selecting anything; and the Zone
+  and NPC headings and their Templates rows Add template. What is added is
+  selected, the tree opened to it, with its own name selected in the Name
+  box after the groups its dotted name starts with, so typing renames it
+  where it is; the status says "Added value, a bool, in quests. Type its
+  name.". The add buttons, and Move into's New group…, put the name to
+  type the same way. Beside the add buttons a line says where they add:
+  adds in quests, adds in the guards template, adds to George's own, or
+  adds at the top of World. Verified: a view test reads where the buttons
+  add with nothing selected and beside a value in quests; adds a bool in
+  quests from its menu and renames it ready there by typing; adds a group
+  from World's heading, text in the guards template, an integer of
+  George's own, and a zone template from the Zone heading; and applies the
+  guards template to George from his menu.
+- **Selecting the whole name, short of the wireframe:** the Name box in
+  World state shows the dotted name, as quests.value, so selecting all of
+  it would move the value out of quests on typing; only its own name is
+  selected.
 
 ## Not in this increment
 
