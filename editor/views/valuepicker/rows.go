@@ -85,6 +85,9 @@ func (p *Picker) rows(docs frame.Docs) []ui.Row {
 // as never picked.
 func (p *Picker) valueRow(option Option, label string, indent int, other bool) ui.Row {
 	rowID, detail := option.ID, TypeDetail(option.Declared)
+	if option.Detail != "" {
+		detail += " · " + option.Detail
+	}
 	if other {
 		rowID, detail = otherPrefix+rowID, detail+" · cannot be picked here"
 	}

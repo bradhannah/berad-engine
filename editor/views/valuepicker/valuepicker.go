@@ -14,6 +14,7 @@ package valuepicker
 import (
 	"encoding/json"
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -55,7 +56,8 @@ const (
 // Option is a value the picker can list: its row's ID, handed back when it
 // is picked; its path; its declaration; and where it is listed: under a
 // heading, in a scope on the rail, and from a root, so what its path has
-// between the root and its own name is its group.
+// between the root and its own name is its group. Detail, when set, is
+// added to the type at the right of its row.
 type Option struct {
 	ID       string
 	Path     string
@@ -63,6 +65,7 @@ type Option struct {
 	Heading  string
 	Rail     string
 	Root     string
+	Detail   string
 }
 
 // group is the group a value is in below its root, as world.quests, or ""
@@ -541,17 +544,26 @@ func (p *Picker) Locate(docs frame.Docs, window image.Rectangle, kind, value str
 }
 
 // HasState answers "picker-hidden=<n>", how many values the search matches
-// that its type hides, and "picker-count:<scope>=<n>", how many it matches
-// in a scope on the rail; it reports whether the state was one of these.
+// that its type hides; "picker-count:<scope>=<n>", how many it matches in a
+// scope on the rail; and "picker-detail:<path>=<detail>", what a value's
+// row says at its right. It reports whether the state was one of these.
 func (p *Picker) HasState(docs frame.Docs, window image.Rectangle, state string) (bool, bool) {
 	hidden, isHidden := strings.CutPrefix(state, "picker-hidden=")
 	counted, isCount := strings.CutPrefix(state, "picker-count:")
-	if !isHidden && !isCount {
+	detailed, isDetail := strings.CutPrefix(state, "picker-detail:")
+	if !isHidden && !isCount && !isDetail {
 		return false, false
 	}
 	p.layout(docs, window)
-	if isHidden {
+	switch {
+	case isHidden:
 		return strconv.Itoa(len(p.hidden)) == hidden, true
+	case isDetail:
+		path, want, _ := strings.Cut(detailed, "=")
+
+		return slices.ContainsFunc(p.list.Rows, func(row ui.Row) bool {
+			return p.paths[row.ID] == path && row.Detail == want
+		}), true
 	}
 	scope, want, _ := strings.Cut(counted, "=")
 

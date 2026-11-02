@@ -167,7 +167,8 @@ func (s *State) moveIntoNew(ctx *frame.Context, selected item) {
 		taken[held.Name] = true
 	}
 	group := worldstate.UniqueName(newGroupName, taken)
-	s.renaming = strings.TrimSuffix(selected.path, valuetree.Dotted(list, selected.declared.ID)) + group
+	s.revealPath = strings.TrimSuffix(selected.path, valuetree.Dotted(list, selected.declared.ID)) + group
+	s.revealRename = true
 	s.moveInto(ctx, selected, group)
 }
 
@@ -184,14 +185,14 @@ func (s *State) moveInto(ctx *frame.Context, selected item, group string) {
 	if err == nil && group == "" && list.Document != worldstate.ID() {
 		if clash := valuetree.Clash(s.shown.catalog, list.Document, declared.Name); clash != "" {
 			ctx.Frame.Status(clash + ".")
-			s.renaming = ""
+			s.revealPath = ""
 
 			return
 		}
 	}
 	if err != nil {
 		ctx.Frame.Status(strings.TrimPrefix(err.Error(), valuetree.ErrName.Error()+": ") + ".")
-		s.renaming = ""
+		s.revealPath = ""
 
 		return
 	}
@@ -249,25 +250,6 @@ func (s *State) askMove(selected item, moved, group string, uses []protocol.Use,
 	s.dialog = ui.NewDialog("Move "+selected.declared.Name+" into "+where+"?", lines,
 		ui.DialogButton(moveID, "Move"), ui.DialogButton(ui.DialogCancel, "Cancel"))
 	s.moving = &going
-}
-
-// renameNewGroup selects a group just made by a move, once the tree shows
-// it, with its name ready to type.
-func (s *State) renameNewGroup() {
-	if s.renaming == "" {
-		return
-	}
-	for _, row := range s.list.Rows {
-		if meaning, found := s.shown.items[row.ID]; found && meaning.path == s.renaming {
-			s.list.Selected, s.renaming = row.ID, ""
-			if selected, ok := s.selected(); ok {
-				s.inspect(selected)
-			}
-			s.focus.Set(s.form.Fields()[0])
-
-			return
-		}
-	}
 }
 
 // dropInto says where dropping a dragged row on another moves it: into a

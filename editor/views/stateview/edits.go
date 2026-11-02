@@ -268,7 +268,7 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	s.renaming = ""
+	s.revealPath = ""
 	if choice == deleteID && going != nil {
 		s.change(ctx, going.list, stateplugin.ChangeArgs{Add: nil, Set: nil, Remove: going.removing},
 			going.path+" deleted. Undo brings it back.")

@@ -86,7 +86,7 @@ func (v *valueSource) Options(docs frame.Docs) []valuepicker.Option {
 	for _, option := range found {
 		listed = append(listed, valuepicker.Option{
 			ID: encodeRef(option.ref), Path: option.path, Declared: option.declared, Heading: option.heading,
-			Rail: option.rail, Root: option.root,
+			Rail: option.rail, Root: option.root, Detail: "",
 		})
 	}
 

@@ -26,6 +26,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
+	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -97,10 +98,19 @@ type State struct {
 	dialog   *ui.Dialog
 	deleting *deletion
 	moving   *pendingMove
-	// menu is the right-click menu on a row; renaming is the path of a
-	// group a move is making, to select for its name once it shows.
-	menu     ui.Menu
-	renaming string
+	// menu is the right-click menu on a row. revealPath is the path of a
+	// row to select once the tree shows it, for a move or for Find, and
+	// revealRename puts its name to type.
+	menu         ui.Menu
+	revealPath   string
+	revealRename bool
+	// find is Find a value while it is open, with findButton opening it;
+	// findUses counts each value's uses, once answered; lastGroup is the
+	// group last opened in it.
+	find       *valuepicker.Picker
+	findButton *ui.Button
+	findUses   map[string]int
+	lastGroup  string
 }
 
 // New returns the World state window for the project's world state.
@@ -117,9 +127,10 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
-		menu:     ui.Menu{Items: nil, Width: 0},
-		renaming: "",
-		path:     ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
+		menu:       ui.Menu{Items: nil, Width: 0},
+		revealPath: "", revealRename: false, find: nil, findButton: ui.NewButton(findID, "Find a value"),
+		findUses: nil, lastGroup: "",
+		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
 	view.form.Dotted = true
@@ -193,6 +204,7 @@ func (s *State) layout() {
 		button.Rect = image.Rect(left, headerTop, left+addWidth, headerTop+ui.ButtonH)
 	}
 	s.list.Rect = image.Rect(0, listTop, right, content.Max.Y)
+	s.layoutFind(right)
 	s.layoutInspector(panel)
 }
 
@@ -206,14 +218,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.layout()
 	s.save.Unsaved = s.Unsaved(ctx.Docs)
 	s.askUses(ctx)
-	if s.dialog != nil {
-		s.updateDialog(input, ctx)
-
-		return
-	}
-	if s.menu.IsOpen() {
-		s.chooseFromMenu(ctx, s.menu.Update(input))
-
+	if s.updateOverlay(input, ctx) {
 		return
 	}
 	if s.guard.Active() {
@@ -240,10 +245,34 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if !loaded {
 		return
 	}
-	s.renameNewGroup()
+	s.revealRow()
+	if s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd()) {
+		s.openFind(ctx)
+
+		return
+	}
 	s.updateTree(input, ctx)
 	s.updateAdds(input, ctx)
 	s.updateInspector(input, ctx)
+}
+
+// updateOverlay gives a frame's input to the dialog, the right-click menu
+// or Find while one is open, and reports whether one was.
+func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
+	switch {
+	case s.dialog != nil:
+		s.updateDialog(input, ctx)
+	case s.menu.IsOpen():
+		s.chooseFromMenu(ctx, s.menu.Update(input))
+	case s.find != nil:
+		if !s.find.Update(input, ctx, s.screen()) {
+			s.find = nil
+		}
+	default:
+		return false
+	}
+
+	return true
 }
 
 // updateTree opens and closes rows and moves the selection, asking first
@@ -369,9 +398,11 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	kind, value, _ := strings.Cut(name, ":")
 	switch {
 	case kind+":" == statePrefix:
-		return image.Pt(0, 0), loaded && s.hasState(value)
+		return image.Pt(0, 0), loaded && s.hasState(docs, value)
 	case s.dialog != nil:
 		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	case s.find != nil:
+		return s.find.Locate(docs, s.screen(), kind, value)
 	case kind == menuLocate:
 		return s.menu.Locate(value)
 	case s.guard.Active():
@@ -402,7 +433,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if widget == pathID && !s.path.Rect.Empty() {
 		return s.path.Center(), true
 	}
-	for _, button := range append(append(append([]*ui.Button{}, s.adds...), s.templates...), s.takeOff) {
+	for _, button := range append(append(append([]*ui.Button{s.findButton}, s.adds...), s.templates...), s.takeOff) {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
@@ -411,10 +442,17 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	return s.form.Locate(widget)
 }
 
-func (s *State) hasState(state string) bool {
+func (s *State) hasState(docs frame.Docs, state string) bool {
+	if s.find != nil {
+		if found, handled := s.find.HasState(docs, s.screen(), state); handled {
+			return found
+		}
+	}
 	switch {
 	case state == stateLoaded:
 		return true
+	case state == findState:
+		return s.find != nil
 	case strings.HasPrefix(state, stateSelected):
 		meaning, found := s.selected()
 
@@ -469,7 +507,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, "World state", ui.Inset, ui.Inset, ui.ColorInk())
 	s.theme.DrawText(screen, "The world's values, and each zone's and NPC's. Templates give many the same values.",
 		ui.Inset, ui.Inset+ui.LineHeight, ui.ColorMuted())
-	for _, button := range s.adds {
+	for _, button := range append([]*ui.Button{s.findButton}, s.adds...) {
 		button.Draw(screen, s.theme)
 	}
 	if loaded {
@@ -481,4 +519,10 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	if s.find != nil {
+		s.find.Draw(screen, docs, s.screen())
+	}
 }
+
+// screen is the whole window, where dialogs are centred.
+func (s *State) screen() image.Rectangle { return image.Rectangle{Min: image.Pt(0, 0), Max: s.size} }

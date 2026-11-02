@@ -447,6 +447,22 @@ func (l *List) rest(over string, result *ListResult) {
 	}
 }
 
+// Reveal scrolls the list as little as it takes to show a row.
+func (l *List) Reveal(id string) {
+	for index, row := range l.Rows {
+		if row.ID != id {
+			continue
+		}
+		top := index * RowHeight
+		if top < l.scroll {
+			l.scroll = top
+		}
+		if bottom := top + RowHeight; bottom > l.scroll+l.Rect.Dy() {
+			l.scroll = bottom - l.Rect.Dy()
+		}
+	}
+}
+
 // Dragging reports whether a row is being dragged.
 func (l *List) Dragging() bool { return l.drag.dragging }
 

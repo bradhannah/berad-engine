@@ -252,6 +252,7 @@ func (o *Orchestrator) whereUsed(question protocol.Query) []protocol.Use {
 			}
 			uses = append(uses, protocol.Use{
 				Document: documentID, Name: entry.info.Name, Format: entry.info.Format, Label: reference.Label,
+				Item: reference.Item,
 			})
 		}
 	}

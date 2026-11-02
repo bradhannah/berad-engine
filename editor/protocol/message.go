@@ -235,12 +235,14 @@ type Query struct {
 	Item     string   `json:"item,omitempty"`
 }
 
-// Use is one place that refers to the thing asked about.
+// Use is one place that refers to the thing asked about, and the item in
+// it referred to.
 type Use struct {
 	Document ids.ULID `json:"document"`
 	Name     string   `json:"name"`
 	Format   string   `json:"format"`
 	Label    string   `json:"label"`
+	Item     string   `json:"item,omitempty"`
 }
 
 // Answer replies to a Query.
