@@ -81,7 +81,8 @@ Chosen while planning, for its author to check:
   unchanged, the new parameters having defaults.
 - **The number or value switch** is two buttons over the With row, A
   number and Another value, the chosen one deciding whether a field or a
-  chooser shows under it; between shows two fields, or two choosers.
+  chooser shows under it. Between's second number, "and", is a number to
+  type; a reference for it waits for a workflow that needs one.
 - **Summaries:** "stock ≥ reorder_level", "stock between 1 and 5",
   "serving is true", "mood is any of happy, calm", "name is not
   \"Stranger\""; the status bar says the same when the node is hovered.
@@ -91,7 +92,7 @@ Chosen while planning, for its author to check:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Comparisons in the engine | The new comparison names, `to` and `among`, operands that refer to a value, format 6 reading 5, and `compares` by type; what a Check value may not ask of each type | Unit tests of every comparison on every type, of references read live, and of a version 5 workflow upgraded; the replace edit passes the shared apply-then-undo test with the new parameters | Built |
-| 2. The inspector by type | Compare filtered by the value's type, the symbol row and its words line, no row for a bool, choice toggles, text, the number or value switch, two fields for between | View tests of each type's rows, of ticking choices and of choosing another value | Planned |
+| 2. The inspector by type | Compare filtered by the value's type, the symbol row and its words line, no row for a bool, choice toggles, text, the number or value switch, two fields for between | View tests of each type's rows, of ticking choices and of choosing another value | Built |
 | 3. Summaries and problems | The node's summary and the status bar's words; problems for none ticked, a reference of the wrong type and a comparison the type cannot make | View tests of the summaries and of each problem | Planned |
 | 4. Checks | `make check` and the real-window suite; a real-window test checks an integer against another value and a choice against a list, and the saved logic holds both | The checks pass with no lint findings | Planned |
 
@@ -115,6 +116,22 @@ Chosen while planning, for its author to check:
   wrong type, of a bool, of a choice against lists, an empty list and a
   legacy is, and of text. The replace edit's apply-then-undo test covers
   the new parameters through the existing Check value cases.
+- **The inspector by type:** Check value's Compare row is built from
+  `Comparisons` for its value's type, so a type never sees a button it
+  cannot use, and hides when there is nothing to choose or no value yet;
+  an integer's buttons are the symbols, with the chosen one read back in
+  words under them. With gains A number and Another value over an
+  integer's operand, the second opening a chooser of the integer values
+  the node may read; a bool's With is called Is; a choice ticks its
+  choices under With in place of a single one, any number on, and a
+  choice an older is compared with shows ticked and is carried into any of
+  when another is ticked; between shows "and" with a second number. A
+  true or false clicked on a bool whose comparison no longer fits mends it
+  to is. Verified: a view test declares an integer and sees its symbols,
+  between's second number and a reference to another value, read live;
+  turns the value into a bool, a choice and text and sees each type's rows,
+  ticks choices into any of and none of, carries an older is over, and
+  draws the chooser.
 
 ## Changed after its author tried it
 

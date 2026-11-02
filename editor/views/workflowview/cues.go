@@ -325,8 +325,8 @@ func (s *State) openChooser() (*control, bool) {
 		return nil, false
 	}
 	for index := range s.form.controls {
-		if made := &s.form.controls[index]; (made.param.Type == flow.TypeCue || made.param.Type == flow.TypeValue) &&
-			made.open {
+		if made := &s.form.controls[index]; (made.param.Type == flow.TypeCue || made.param.Type == flow.TypeValue ||
+			made.param.Type == flow.TypeOperand) && made.open {
 			return made, true
 		}
 	}

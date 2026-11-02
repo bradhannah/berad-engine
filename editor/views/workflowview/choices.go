@@ -47,7 +47,7 @@ func setSavedChoices(made *control, node flow.Node) {
 	case flow.TypeChoice:
 		chosen, err := node.Choice(made.param.Name)
 		if err == nil {
-			markChosen(made.choices, made.param.Choices, chosen)
+			markValues(made.choices, made.values, chosen)
 		}
 	case flow.TypeDuration:
 		wait, err := node.Duration(made.param.Name)
@@ -77,6 +77,13 @@ func setSavedChoices(made *control, node flow.Node) {
 func markChosen(buttons []*ui.Button, choices []flow.Choice, chosen string) {
 	for index, button := range buttons {
 		button.On = index < len(choices) && choices[index].Value == chosen
+	}
+}
+
+// markValues turns on the button whose value is chosen.
+func markValues(buttons []*ui.Button, values []string, chosen string) {
+	for index, button := range buttons {
+		button.On = index < len(values) && values[index] == chosen
 	}
 }
 
@@ -117,6 +124,9 @@ func (s *State) layoutChoices(made *control, left, width, top int) int {
 	switch made.param.Type {
 	case flow.TypeChoice:
 		row(made.choices)
+		if made.note {
+			top += ui.LineHeight
+		}
 	case flow.TypeDuration:
 		made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + rowSpace
@@ -145,8 +155,13 @@ func (s *State) layoutChoices(made *control, left, width, top int) int {
 // is clicked.
 func (s *State) updateChoices(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
 	for index, button := range made.choices {
-		if button.Update(input) && !button.On {
-			s.saveParam(ctx, node, made.param.Name, made.param.Choices[index].Value)
+		if !button.Update(input) || button.On || index >= len(made.values) {
+			continue
+		}
+		if node.Kind == flow.KindCheckValue && made.param.Name == flow.ParamCompare {
+			s.saveCompare(ctx, node, made.values[index])
+		} else {
+			s.saveParam(ctx, node, made.param.Name, made.values[index])
 		}
 	}
 	if made.param.Type != flow.TypeDuration {

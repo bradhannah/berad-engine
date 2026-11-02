@@ -3,6 +3,7 @@ package workflowview
 import (
 	"encoding/json"
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -46,17 +47,16 @@ const (
 
 // Problems the value nodes can have.
 const (
-	problemNoValue        = "No value chosen yet."
-	problemValueGone      = "Its value was deleted. Choose another, or undo the delete."
-	problemReadOnly       = "It can read another NPC's or zone's values, but never set them."
-	problemNPCValue       = "An NPC value cannot be set or checked here."
-	problemOperand        = "Choose what it sets the value to, or compares it with."
-	problemAddInteger     = "Only an integer can be added to."
-	problemCompareInteger = "Only an integer can be at least, below or at a limit."
-	problemNoKeep         = "Choose a local NPC value to keep what it finds in."
-	problemWhere          = "Only an NPC's own value can be looked for."
-	problemOwnerGone      = "Its NPC or zone was deleted."
-	problemFoundGone      = "The local value holding its NPC was deleted."
+	problemNoValue    = "No value chosen yet."
+	problemValueGone  = "Its value was deleted. Choose another, or undo the delete."
+	problemReadOnly   = "It can read another NPC's or zone's values, but never set them."
+	problemNPCValue   = "An NPC value cannot be set or checked here."
+	problemOperand    = "Choose what it sets the value to, or compares it with."
+	problemAddInteger = "Only an integer can be added to."
+	problemNoKeep     = "Choose a local NPC value to keep what it finds in."
+	problemWhere      = "Only an NPC's own value can be looked for."
+	problemOwnerGone  = "Its NPC or zone was deleted."
+	problemFoundGone  = "The local value holding its NPC was deleted."
 )
 
 // valueOption is one value a parameter can choose: its reference, path and
@@ -726,11 +726,20 @@ func (s *State) newOperandControl(made *control, node flow.Node, declared worlds
 	}
 }
 
-// setSavedOperand shows an operand's saved value.
+// setSavedOperand shows an operand's saved value: a field's text, the
+// button or buttons on, and whether an integer's is a number or another
+// value. A choice's Among with nothing in it shows the one choice an older
+// is compared with.
 func setSavedOperand(made *control, node flow.Node) {
 	saved, err := node.Operand(made.param.Name)
 	if err != nil {
 		return
+	}
+	if made.param.Name == flow.ParamAmong && flow.IsNoOperand(saved) {
+		saved = savedOperand(node, flow.ParamAgainst)
+	}
+	if len(made.sources) == ui.Half {
+		made.sources[0].On, made.sources[1].On = !made.refers, made.refers
 	}
 	if made.field != nil {
 		var integer int
@@ -742,15 +751,25 @@ func setSavedOperand(made *control, node flow.Node) {
 			made.field.Field.SetSaved(strconv.Itoa(integer))
 		}
 	}
+	items := flow.Operands(saved)
 	for index, button := range made.choices {
-		button.On = index < len(made.operands) && string(made.operands[index]) == string(saved)
+		button.On = index < len(made.operands) && slices.ContainsFunc(items, func(item json.RawMessage) bool {
+			return string(item) == string(made.operands[index])
+		})
 	}
 }
 
-// layoutOperand places an operand's field or buttons, or leaves room for a
-// note while its value is not chosen. It returns where the next control
-// goes.
-func layoutOperand(made *control, left, width, top int) int {
+// layoutOperand places an operand's field or buttons, with A number and
+// Another value over an integer's and the chooser when it refers to a
+// value, or leaves room for a note while its value is not chosen. It
+// returns where the next control goes.
+func (s *State) layoutOperand(docs frame.Docs, made *control, left, width, top, bottom int) int {
+	if len(made.sources) > 0 {
+		top = s.layoutButtonRows(made.sources, left, width, top)
+	}
+	if made.refers || made.open {
+		return s.layoutOperandChooser(docs, made, left, width, top, bottom)
+	}
 	if made.field != nil {
 		made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 
@@ -775,10 +794,30 @@ func layoutOperand(made *control, left, width, top int) int {
 }
 
 // updateOperand saves an operand's false, true or choice when its button is
-// clicked.
+// clicked, ticks a choice in a list, and handles A number, Another value
+// and the chooser of an integer's operand.
 func (s *State) updateOperand(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
+	if s.updateOperandSource(input, ctx, made, node) {
+		return
+	}
+	if made.refers || made.open {
+		s.updateOperandChooser(input, ctx, made, node)
+
+		return
+	}
 	for index, button := range made.choices {
-		if button.Update(input) && !button.On && index < len(made.operands) {
+		if !button.Update(input) || index >= len(made.operands) {
+			continue
+		}
+		switch {
+		case made.param.Name == flow.ParamAmong:
+			s.saveAmong(ctx, node, made, index)
+
+			return
+		case button.On:
+		case node.Kind == flow.KindCheckValue && made.param.Name == flow.ParamAgainst:
+			s.saveAgainst(ctx, node, made, made.operands[index])
+		default:
 			s.saveParam(ctx, node, made.param.Name, made.operands[index])
 		}
 	}
@@ -838,7 +877,15 @@ func (s *State) drawValue(screen *ebiten.Image, docs frame.Docs, made *control, 
 }
 
 // drawOperand draws an operand's field or buttons, or says why it has none.
-func (s *State) drawOperand(screen *ebiten.Image, made *control, left int) {
+func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
+	for _, button := range made.sources {
+		button.Draw(screen, s.theme)
+	}
+	if made.refers || made.open {
+		s.drawOperandChooser(screen, docs, made, node)
+
+		return
+	}
 	if made.field != nil {
 		made.field.Draw(screen)
 
@@ -875,7 +922,7 @@ func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
 	if missing := s.missing(docs, ref, path); missing != "" {
 		return missing
 	}
-	if !unlimited(node) && !operandFits(node, operandOfValue(node.Kind, flow.ParamValue), declared) {
+	if !unlimited(node) && !s.operandsFit(docs, node, declared) {
 		return problemOperand
 	}
 
@@ -894,10 +941,10 @@ func kindProblem(node flow.Node, ref flow.ValueRef, declared worldstate.Declarat
 		return problemNPCValue
 	case node.Kind == flow.KindSetValue && choiceOf(node, "how") == flow.HowAdd && declared.Type != worldstate.TypeInteger:
 		return problemAddInteger
-	case node.Kind != flow.KindCheckValue || compare == flow.CompareIs:
+	case node.Kind != flow.KindCheckValue:
 		return ""
-	case declared.Type != worldstate.TypeInteger:
-		return problemCompareInteger
+	case !flow.CanCompare(compare, declared.Type):
+		return "A " + declared.Type.Label() + " cannot be compared that way. Choose a comparison it takes."
 	case compare == flow.CompareMax && declared.Max == nil:
 		return "It has no maximum to be at. Give it one in the World state window."
 	case compare == flow.CompareMin && declared.Min == nil:
@@ -948,15 +995,27 @@ func operandFits(node flow.Node, operand string, declared worldstate.Declaration
 
 // compareWords says a Check value's comparison in words.
 func compareWords(node flow.Node) string {
-	switch choiceOf(node, "compare") {
+	switch choiceOf(node, flow.ParamCompare) {
+	case flow.CompareNot:
+		return "is not"
 	case flow.CompareLeast:
 		return "at least"
+	case flow.CompareMost:
+		return "at most"
+	case flow.CompareAbove:
+		return "above"
 	case flow.CompareBelow:
 		return "below"
+	case flow.CompareBetween:
+		return "between"
 	case flow.CompareMax:
 		return "at its maximum"
 	case flow.CompareMin:
 		return "at its minimum"
+	case flow.CompareAnyOf:
+		return "is any of"
+	case flow.CompareNoneOf:
+		return "is none of"
 	}
 
 	return "is"
@@ -1038,7 +1097,7 @@ func (s *State) findSummary(node flow.Node, path, operand func(string) string) s
 // "declare:<path> for <its path name>", for input scripts.
 func (s *State) locateValueRow(kind, value string) (image.Point, bool) {
 	made, open := s.openChooser()
-	if !open || made.param.Type != flow.TypeValue {
+	if !open || (made.param.Type != flow.TypeValue && made.param.Type != flow.TypeOperand) {
 		return image.Pt(0, 0), false
 	}
 	for index, row := range made.list.Rows {
@@ -1080,6 +1139,13 @@ func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
 		saved, err := node.Operand(param)
 
 		return selected && err == nil && string(saved) == want, true
+	case strings.HasPrefix(state, "refers:"):
+		param, want, _ := strings.Cut(strings.TrimPrefix(state, "refers:"), "=")
+		saved, err := node.Operand(param)
+		ref, refers := flow.OperandRef(saved)
+		_, path, problem := s.resolve(docs, ref)
+
+		return selected && err == nil && refers && problem == "" && path == want, true
 	}
 
 	return false, false

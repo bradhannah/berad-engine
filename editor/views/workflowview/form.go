@@ -89,6 +89,17 @@ type control struct {
 	operands    []json.RawMessage
 	operandType worldstate.Type
 	unneeded    bool
+	// values are what each of a choice's buttons sets, in order. A hidden
+	// control takes no room and is not drawn: Check value's comparison for
+	// a type with nothing to choose, and an operand its comparison has no
+	// use for. note marks an integer's comparison row, drawn as symbols,
+	// for the words under it; sources are A number and Another value over
+	// an integer's operand, and refers is set while it is another value.
+	values  []string
+	hidden  bool
+	note    bool
+	sources []*ui.Button
+	refers  bool
 }
 
 // form is the inspector for the selected node. rows counts a time switch's
@@ -161,6 +172,10 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 			declared, found := s.operandDeclaration(docs, node, param.Name)
 			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
+	}
+	if node.Kind == flow.KindCheckValue {
+		_, refers := flow.OperandRef(savedOperand(node, flow.ParamAgainst))
+		shape.WriteString("compare=" + choiceOf(node, flow.ParamCompare) + ";refers=" + strconv.FormatBool(refers) + ";")
 	}
 
 	return shape.String()
@@ -279,14 +294,12 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 		made := control{param: param, label: 0, field: nil, from: nil, to: nil, rows: nil, addRange: nil, pick: nil,
 			clear: nil, anchor: ui.Zero(), choices: nil, units: nil, clocks: nil, options: nil, addOption: nil,
 			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil, operandType: "",
-			unneeded: false}
+			unneeded: false, values: nil, hidden: false, note: false, sources: nil, refers: false}
 		switch param.Type {
 		case flow.TypeTiles:
 			made.field = text("param-"+param.Name, false)
 		case flow.TypeChoice:
-			for _, choice := range param.Choices {
-				made.choices = append(made.choices, ui.NewButton(param.Name+"-"+choice.Value, choice.Label))
-			}
+			s.newChoiceControl(docs, node, &made)
 		case flow.TypeDuration:
 			made.field = text("param-"+param.Name, false)
 			made.units, made.clocks = durationButtons(param.Name)
@@ -334,6 +347,9 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 	case flow.TypeOperand:
 		declared, found := s.operandDeclaration(docs, node, made.param.Name)
 		s.newOperandControl(made, node, declared, found)
+		if node.Kind == flow.KindCheckValue {
+			s.shapeCheckOperand(node, made, declared, found)
+		}
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges:
 	}
@@ -427,6 +443,9 @@ func (s *State) layoutForm(docs frame.Docs) {
 	footer := s.notesTop(panel, width)
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
+		if made.hidden {
+			continue
+		}
 		made.label = top
 		top += ui.LineHeight
 		switch made.param.Type {
@@ -477,7 +496,7 @@ func (s *State) layoutReference(docs frame.Docs, made *control, node flow.Node, 
 	case flow.TypeValue:
 		return s.layoutValue(docs, made, node, left, width, top, room.Max.Y)
 	case flow.TypeOperand:
-		return layoutOperand(made, left, width, top)
+		return s.layoutOperand(docs, made, left, width, top, room.Max.Y)
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges:
 	}

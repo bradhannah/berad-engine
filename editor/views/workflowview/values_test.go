@@ -5,6 +5,8 @@ import (
 	"image"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
@@ -191,6 +193,113 @@ func TestAtItsLimit(t *testing.T) {
 	}
 	if !f.has("title:check-value:1=Is world.patience at its maximum?") {
 		t.Fatal("titled as a question")
+	}
+}
+
+// TestComparisonsFollowTheType declares an integer and sees its symbols,
+// between's second number and another value on the right; turns the value
+// into a bool, whose Compare row goes and whose click mends the comparison;
+// into a choice, ticked into any of or none of, an older is carried over;
+// and into text, which is or is not.
+func TestComparisonsFollowTheType(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindCheckValue)
+	f.click("ui:pick-value")
+	f.typeText("world.patience")
+	f.click("declare:world.patience")
+	has := func(widget string) bool {
+		_, ok := f.state.Locate("ui:"+widget, f.docs)
+
+		return ok
+	}
+	if !has("compare-"+flow.CompareNot) || !has("compare-"+flow.CompareBetween) || has("compare-"+flow.CompareAnyOf) {
+		t.Fatal("an integer offers its symbols and between, never any of")
+	}
+	if has("operand-" + flow.ParamTo) {
+		t.Fatal("between's second number waits for between")
+	}
+	f.click("ui:compare-" + flow.CompareBetween)
+	if !has("operand-" + flow.ParamTo) {
+		t.Fatal("between shows its second number")
+	}
+	f.click("ui:operand-" + flow.ParamTo)
+	f.keys("Cmd+A", "Backspace")
+	f.typeText("5")
+	f.keys("Enter")
+	if !f.has("operand:to=5") || !f.has("operand:against=0") || f.has("problem:"+flow.KindCheckValue+":1") {
+		t.Fatalf("between 0 and 5 is whole: %q", f.status())
+	}
+	f.click("ui:compare-" + flow.CompareLeast)
+	f.click("ui:source-value")
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("valuerow:world.patience")
+	if !f.has("refers:against=world.patience") || f.has("problem:"+flow.KindCheckValue+":1") {
+		t.Fatal("at least another integer value, read when it runs")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("ui:source-number")
+	if !f.has("operand:against=0") {
+		t.Fatal("A number drops the reference for a zero to type over")
+	}
+	value := f.world().Values()[0]
+	value.Type, value.Default = worldstate.TypeBool, []byte("false")
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: nil, Set: []worldstate.Declaration{value}, Remove: nil,
+	})
+	f.frame(noInput())
+	if has("compare-"+flow.CompareIs) || !has("operand-"+flow.ParamAgainst+"-true") || !f.has("problem:"+flow.KindCheckValue+":1") {
+		t.Fatalf("a bool has no Compare row (%v), only true and false (%v), and at least no longer fits (%v)",
+			has("compare-"+flow.CompareIs), has("operand-"+flow.ParamAgainst+"-true"), f.has("problem:"+flow.KindCheckValue+":1"))
+	}
+	f.click("ui:operand-" + flow.ParamAgainst + "-true")
+	if !f.has("operand:against=true") || !f.has(`operand:compare="is"`) || f.has("problem:"+flow.KindCheckValue+":1") {
+		t.Fatal("true mends the comparison to is")
+	}
+	value.Type, value.Default = worldstate.TypeChoice, []byte(`"c1"`)
+	value.Choices = []worldstate.Choice{{ID: "c1", Name: "calm"}, {ID: "c2", Name: "cross"}, {ID: "c3", Name: "glad"}}
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: nil, Set: []worldstate.Declaration{value}, Remove: nil,
+	})
+	f.frame(noInput())
+	if !has("compare-"+flow.CompareAnyOf) || !has("compare-"+flow.CompareNoneOf) || has("compare-"+flow.CompareIs) ||
+		!has("operand-"+flow.ParamAmong+"-c2") || has("operand-"+flow.ParamAgainst+"-c2") {
+		t.Fatal("a choice is any of or none of its choices, ticked")
+	}
+	f.click("ui:operand-" + flow.ParamAmong + "-c1")
+	f.click("ui:operand-" + flow.ParamAmong + "-c3")
+	if !f.has(`operand:among=["c1","c3"]`) || !f.has(`operand:compare="`+flow.CompareAnyOf+`"`) ||
+		f.has("problem:"+flow.KindCheckValue+":1") {
+		t.Fatalf("ticking two choices makes any of them: %q", f.status())
+	}
+	f.click("ui:operand-" + flow.ParamAmong + "-c1")
+	f.click("ui:compare-" + flow.CompareNoneOf)
+	if !f.has(`operand:among=["c3"]`) || !f.has(`operand:compare="`+flow.CompareNoneOf+`"`) {
+		t.Fatal("unticking one and choosing none of")
+	}
+	older := f.nth(flow.KindCheckValue, 1)
+	older, _ = older.WithParam(flow.ParamCompare, flow.CompareIs)
+	older, _ = older.WithParam(flow.ParamAgainst, json.RawMessage(`"c2"`))
+	older, _ = older.WithParam(flow.ParamAmong, flow.NoOperand())
+	f.carryOutOn(workflowID, workflowplugin.ReplaceEdit, workflowplugin.ReplaceArgs{Node: older})
+	f.frame(noInput())
+	if f.has("problem:" + flow.KindCheckValue + ":1") {
+		t.Fatal("a choice checked with is, from before any of, still fits")
+	}
+	f.click("ui:operand-" + flow.ParamAmong + "-c1")
+	if !f.has(`operand:among=["c1","c2"]`) || !f.has(`operand:compare="`+flow.CompareAnyOf+`"`) {
+		t.Fatal("ticking another keeps the older choice and becomes any of")
+	}
+	value.Type, value.Default, value.Choices = worldstate.TypeText, []byte(`""`), nil
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: nil, Set: []worldstate.Declaration{value}, Remove: nil,
+	})
+	f.frame(noInput())
+	if !has("compare-"+flow.CompareNot) || has("compare-"+flow.CompareLeast) || !has("operand-"+flow.ParamAgainst) {
+		t.Fatal("text is or is not typed text")
+	}
+	f.click("ui:compare-" + flow.CompareNot)
+	if !f.has(`operand:compare="` + flow.CompareNot + `"`) {
+		t.Fatal("is not is saved")
 	}
 }
 

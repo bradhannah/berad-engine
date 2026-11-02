@@ -645,6 +645,9 @@ func (s *State) titleWidth(value string) int {
 }
 
 func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
+	if made.hidden {
+		return
+	}
 	s.theme.DrawStrong(screen, made.param.Label, left, made.label, ui.ColorInk())
 	switch made.param.Type {
 	case flow.TypeTiles, flow.TypeText:
@@ -684,7 +687,7 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 	case flow.TypeValue:
 		s.drawValue(screen, docs, made, node)
 	case flow.TypeOperand:
-		s.drawOperand(screen, made, left)
+		s.drawOperand(screen, docs, made, node, left)
 	}
 }
 
@@ -718,7 +721,11 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 			option.remove.Draw(screen, s.theme)
 		}
 		made.addOption.Draw(screen, s.theme)
-	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
+	case flow.TypeChoice:
+		if made.note {
+			s.drawCompareNote(screen, made, node)
+		}
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
 		flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 	}
 }
@@ -999,13 +1006,11 @@ func (made control) locate(widget string) (image.Point, bool) {
 			return field.Center(), true
 		}
 	}
-	box := (made.param.Type == flow.TypeValue && widget == valueBoxPrefix+made.param.Name) ||
-		(made.param.Type == flow.TypeCue && widget == "cue")
-	if box && !made.cueBox.Empty() {
+	if made.isBox(widget) && !made.cueBox.Empty() {
 		return ui.Center(made.cueBox), true
 	}
-	for _, button := range buttons {
-		if button != nil && button.ID == widget {
+	for _, button := range slices.Concat(buttons, made.sources) {
+		if button != nil && button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
 	}
