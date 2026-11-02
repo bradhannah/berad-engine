@@ -334,6 +334,7 @@ func TestIntegerLimits(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("row:world.quests.dragon_slain")
+	f.answerUses(nil)
 	f.click("ui:value-type-integer")
 	f.typeInto("value-max", "3")
 	if slain, _ := f.world().Value(slainID); slain.Max == nil || *slain.Max != 3 {

@@ -42,7 +42,7 @@ type localsPanel struct {
 
 func newLocalsPanel(theme *ui.Theme) *localsPanel {
 	return &localsPanel{
-		list: &ui.List{ID: "locals", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		list: ui.NewList("locals", ""),
 		add:  ui.NewButton("add-local", "Add local"), form: valueform.New(theme), top: 0, registered: false,
 	}
 }
@@ -163,7 +163,7 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 		removal := localChange(nil, worldstate.New(ids.ULID{}, "", "", ""), changed.ID)
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", removal,
 			func(protocol.Result) { ctx.Frame.Status(localPath(changed) + " deleted. Undo brings it back.") })
-	case valueform.ChangeNone:
+	case valueform.ChangeNone, valueform.ChangeDeclareNew:
 	}
 }
 

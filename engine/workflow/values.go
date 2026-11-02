@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -38,18 +39,68 @@ const (
 	OutputNone  = "none"
 )
 
-// Ways to set a value, and to compare one. At its maximum and at its
-// minimum ask whether an integer is at its limit, with nothing to compare
-// with.
+// Ways to set a value, and to compare one. Which comparisons a value takes
+// follows its type, see Comparisons: an integer compares with is, is not,
+// below, at most, above, at least and between, or asks whether it is at its
+// maximum or minimum, with nothing to compare with; a bool only is; a
+// choice is any of, or none of, a list; text is, or is not.
 const (
-	HowSet       = "set"
-	HowAdd       = "add"
-	CompareIs    = "is"
-	CompareLeast = "at-least"
-	CompareBelow = "below"
-	CompareMax   = "at-max"
-	CompareMin   = "at-min"
+	HowSet         = "set"
+	HowAdd         = "add"
+	CompareIs      = "is"
+	CompareNot     = "is-not"
+	CompareLeast   = "at-least"
+	CompareMost    = "at-most"
+	CompareAbove   = "above"
+	CompareBelow   = "below"
+	CompareBetween = "between"
+	CompareMax     = "at-max"
+	CompareMin     = "at-min"
+	CompareAnyOf   = "any-of"
+	CompareNoneOf  = "none-of"
 )
+
+// Check value's parameters besides its value: the comparison, what the
+// value is compared with, the top of between's range, and the list any of
+// and none of look in.
+const (
+	ParamCompare = "compare"
+	ParamAgainst = "against"
+	ParamTo      = "to"
+	ParamAmong   = "among"
+)
+
+// Comparisons lists the comparisons a value of a type takes, in the order
+// the inspector offers them; a type with no value to compare takes none.
+func Comparisons(kind worldstate.Type) []string {
+	switch kind {
+	case worldstate.TypeInteger:
+		return []string{
+			CompareIs, CompareNot, CompareBelow, CompareMost, CompareAbove, CompareLeast, CompareBetween, CompareMax,
+			CompareMin,
+		}
+	case worldstate.TypeBool:
+		return []string{CompareIs}
+	case worldstate.TypeChoice:
+		return []string{CompareAnyOf, CompareNoneOf}
+	case worldstate.TypeText:
+		return []string{CompareIs, CompareNot}
+	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	}
+
+	return nil
+}
+
+// CanCompare reports whether a value of a type takes a comparison. Is,
+// equality, is taken by every type with a value, so a choice checked with
+// is from before any of existed still runs.
+func CanCompare(compare string, kind worldstate.Type) bool {
+	if compare == CompareIs {
+		return len(Comparisons(kind)) > 0
+	}
+
+	return slices.Contains(Comparisons(kind), compare)
+}
 
 // Limits on Find NPC nearby.
 const defaultWithin = 2
@@ -106,6 +157,47 @@ func IsNoOperand(raw json.RawMessage) bool {
 	return len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
+// OperandRef reads an operand that refers to another value, saved as
+// {"ref": ...}, read when the check runs rather than holding a value.
+func OperandRef(raw json.RawMessage) (ValueRef, bool) {
+	var wire struct {
+		Ref *ValueRef `json:"ref"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil || wire.Ref == nil || wire.Ref.IsZero() {
+		return ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}}, false
+	}
+
+	return *wire.Ref, true
+}
+
+// RefOperand saves a reference to another value as an operand.
+func RefOperand(ref ValueRef) json.RawMessage { return mustJSON(map[string]ValueRef{"ref": ref}) }
+
+// Operands reads an operand holding a list, as any of and none of take,
+// into its items; an operand holding one value is one item, and none is
+// no items.
+func Operands(raw json.RawMessage) []json.RawMessage {
+	if IsNoOperand(raw) {
+		return nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err == nil {
+		return items
+	}
+
+	return []json.RawMessage{raw}
+}
+
+// OperandList saves items as one operand holding a list; no items is no
+// operand.
+func OperandList(items []json.RawMessage) json.RawMessage {
+	if len(items) == 0 {
+		return NoOperand()
+	}
+
+	return mustJSON(items)
+}
+
 // valueKinds declares Set value, Check value and Find NPC nearby.
 func valueKinds(next []Output) []Kind {
 	none := mustJSON(ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}})
@@ -126,12 +218,17 @@ func valueKinds(next []Output) []Kind {
 			Name: KindCheckValue, Label: "Check value", Group: GroupValues,
 			Params: []Param{
 				{Name: ParamValue, Label: "Value", Type: TypeValue, Default: none, Choices: nil},
-				{Name: "compare", Label: "Compare", Type: TypeChoice, Default: mustJSON(CompareIs), Choices: []Choice{
-					{Value: CompareIs, Label: "is"}, {Value: CompareLeast, Label: "at least"},
-					{Value: CompareBelow, Label: "below"}, {Value: CompareMax, Label: "at its maximum"},
-					{Value: CompareMin, Label: "at its minimum"},
+				{Name: ParamCompare, Label: "Compare", Type: TypeChoice, Default: mustJSON(CompareIs), Choices: []Choice{
+					{Value: CompareIs, Label: "is"}, {Value: CompareNot, Label: "is not"},
+					{Value: CompareBelow, Label: "below"}, {Value: CompareMost, Label: "at most"},
+					{Value: CompareAbove, Label: "above"}, {Value: CompareLeast, Label: "at least"},
+					{Value: CompareBetween, Label: "between"}, {Value: CompareMax, Label: "at its maximum"},
+					{Value: CompareMin, Label: "at its minimum"}, {Value: CompareAnyOf, Label: "any of"},
+					{Value: CompareNoneOf, Label: "none of"},
 				}},
-				{Name: "against", Label: "With", Type: TypeOperand, Default: NoOperand(), Choices: nil},
+				{Name: ParamAgainst, Label: "With", Type: TypeOperand, Default: NoOperand(), Choices: nil},
+				{Name: ParamTo, Label: "and", Type: TypeOperand, Default: NoOperand(), Choices: nil},
+				{Name: ParamAmong, Label: "Among", Type: TypeOperand, Default: NoOperand(), Choices: nil},
 			},
 			Outputs: []Output{{Name: OutputYes, Label: "yes"}, {Name: OutputOtherwise, Label: OutputOtherwise}},
 		},
@@ -179,8 +276,9 @@ func checkRef(value json.RawMessage) error {
 	return nil
 }
 
-// checkOperand reads an operand: null, an integer, true or false, or a
-// string no longer than text can be.
+// checkOperand reads an operand: null, an integer, true or false, a string
+// no longer than text can be, a list of those, or a reference to another
+// value.
 func checkOperand(value json.RawMessage) error {
 	if IsNoOperand(value) {
 		return nil
@@ -190,6 +288,30 @@ func checkOperand(value json.RawMessage) error {
 		return err //nolint:wrapcheck // Wrapped by the caller.
 	}
 	switch read := operand.(type) {
+	case []any:
+		for _, item := range read {
+			if err := checkOperandItem(item); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case map[string]any:
+		ref, err := json.Marshal(read["ref"])
+		if err != nil || read["ref"] == nil {
+			return fmt.Errorf("%w: %s is not a reference to a value", ErrNode, value)
+		}
+
+		return checkRef(ref)
+	default:
+		return checkOperandItem(operand)
+	}
+}
+
+// checkOperandItem reads one value of an operand: an integer, true or
+// false, or a string no longer than text can be.
+func checkOperandItem(item any) error {
+	switch read := item.(type) {
 	case float64, bool:
 		return nil
 	case string:
@@ -198,9 +320,9 @@ func checkOperand(value json.RawMessage) error {
 		}
 
 		return nil
+	default:
+		return fmt.Errorf("%w: %v is not an integer, true or false, a choice or text", ErrNode, item)
 	}
-
-	return fmt.Errorf("%w: %s is not an integer, true or false, a choice or text", ErrNode, value)
 }
 
 // OperandOf returns the parameter whose value an operand is of: Set value's and Check

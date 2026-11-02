@@ -261,6 +261,12 @@ Settled by its author on 2026-11-01, after trying it:
   as NPCs do.
 - **Every NPC has a `name` value,** text that starts as its display name
   and that workflows may set, such as a name the player learns.
+- **A choice's buttons wrap into rows when their labels do not fit:**
+  Check value's five comparisons overflowed one row of the inspector.
+- **A bool is true or false in every word of the editor,** never yes or
+  no, as its buttons already said; the "yes or no" above predates the
+  type's name. How Check value compares each type is settled in [increment
+  18](0018-comparisons.md).
 - **The types are integer, bool, choice and text,** with NPC for local
   values only. An integer has an optional minimum and maximum, and a Set
   value or Add that would pass one holds it at the limit; Check value asks

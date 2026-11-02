@@ -137,6 +137,25 @@ func operand(node flow.Node, name string, declared worldstate.Declaration) (worl
 	return value, err == nil
 }
 
+// operandOf reads a Check value's operand as a value of the declaration's
+// type: another value it refers to, read now and of the same type, or the
+// value saved in it.
+func (n *NPC) operandOf(
+	world World, node flow.Node, name string, declared worldstate.Declaration,
+) (worldstate.Value, bool) {
+	raw, err := node.Operand(name)
+	if err != nil {
+		return worldstate.NoValue(), false
+	}
+	if ref, refers := flow.OperandRef(raw); refers {
+		other, value, readable := n.read(world, ref)
+
+		return value, readable && other.Type == declared.Type
+	}
+
+	return operand(node, name, declared)
+}
+
 // actSet sets a value, or adds to an integer, holding an integer at its
 // limits, and carries on.
 func (n *NPC) actSet(world World, node flow.Node) {
@@ -174,8 +193,10 @@ func (n *NPC) actSet(world World, node flow.Node) {
 	}
 }
 
-// actCheck compares a value, or asks whether an integer is at a limit, and
-// takes "yes" or "otherwise".
+// actCheck compares a value as its type allows, or asks whether an integer
+// is at a limit, and takes "yes" or "otherwise". A comparison the type
+// cannot make, or an operand that is missing or of the wrong type, takes
+// otherwise and says why.
 func (n *NPC) actCheck(world World, node flow.Node) string {
 	ref, err := node.Ref(flow.ParamValue)
 	if err != nil {
@@ -189,37 +210,97 @@ func (n *NPC) actCheck(world World, node flow.Node) string {
 
 		return flow.OutputOtherwise
 	}
-	compare, err := node.Choice("compare")
+	compare, err := node.Choice(flow.ParamCompare)
 	if err != nil {
 		compare = flow.CompareIs
 	}
-	switch {
-	case compare == flow.CompareMax && declared.AtMost(current), compare == flow.CompareMin && declared.AtLeast(current):
-		return flow.OutputYes
-	case flow.Unlimited(compare):
+	if !flow.CanCompare(compare, declared.Type) {
+		n.work.skipped = StatusNoOperand
+
 		return flow.OutputOtherwise
 	}
-	against, fits := operand(node, "against", declared)
+	switch compare {
+	case flow.CompareMax:
+		return outcome(declared.AtMost(current))
+	case flow.CompareMin:
+		return outcome(declared.AtLeast(current))
+	case flow.CompareBetween:
+		return n.checkBetween(world, node, declared, current)
+	case flow.CompareAnyOf, flow.CompareNoneOf:
+		return n.checkAmong(node, compare, declared, current)
+	}
+	against, fits := n.operandOf(world, node, flow.ParamAgainst, declared)
 	if !fits {
 		n.work.skipped = StatusNoOperand
 
 		return flow.OutputOtherwise
 	}
-	if compares(compare, current, against) {
+
+	return outcome(compares(compare, current, against))
+}
+
+// checkBetween asks whether an integer is within a range, both ends
+// included, each end a number or another value.
+func (n *NPC) checkBetween(
+	world World, node flow.Node, declared worldstate.Declaration, current worldstate.Value,
+) string {
+	low, lowFits := n.operandOf(world, node, flow.ParamAgainst, declared)
+	high, highFits := n.operandOf(world, node, flow.ParamTo, declared)
+	if !lowFits || !highFits {
+		n.work.skipped = StatusNoOperand
+
+		return flow.OutputOtherwise
+	}
+
+	return outcome(current.Integer >= low.Integer && current.Integer <= high.Integer)
+}
+
+// checkAmong asks whether a choice is any of a list, or none of it; an
+// empty list is no operand.
+func (n *NPC) checkAmong(
+	node flow.Node, compare string, declared worldstate.Declaration, current worldstate.Value,
+) string {
+	among, err := node.Operand(flow.ParamAmong)
+	items := flow.Operands(among)
+	if err != nil || len(items) == 0 {
+		n.work.skipped = StatusNoOperand
+
+		return flow.OutputOtherwise
+	}
+	matched := false
+	for _, item := range items {
+		if parsed, parseErr := declared.Parse(item); parseErr == nil && current.Equal(parsed) {
+			matched = true
+		}
+	}
+
+	return outcome(matched == (compare == flow.CompareAnyOf))
+}
+
+// outcome is "yes" when a comparison holds, "otherwise" when not.
+func outcome(holds bool) string {
+	if holds {
 		return flow.OutputYes
 	}
 
 	return flow.OutputOtherwise
 }
 
-// compares reports whether two values compare as a Check value asks: is, at
-// least or below, the last two for integers only.
+// compares reports whether two values compare as a Check value asks: is or
+// is not for any type, below, at most, above and at least for integers.
 func compares(compare string, current, against worldstate.Value) bool {
+	integer := current.Type == worldstate.TypeInteger
 	switch compare {
+	case flow.CompareNot:
+		return !current.Equal(against)
 	case flow.CompareLeast:
-		return current.Type == worldstate.TypeInteger && current.Integer >= against.Integer
+		return integer && current.Integer >= against.Integer
+	case flow.CompareMost:
+		return integer && current.Integer <= against.Integer
+	case flow.CompareAbove:
+		return integer && current.Integer > against.Integer
 	case flow.CompareBelow:
-		return current.Type == worldstate.TypeInteger && current.Integer < against.Integer
+		return integer && current.Integer < against.Integer
 	}
 
 	return current.Equal(against)

@@ -176,6 +176,13 @@ func (f *Field) Focus() {
 	}
 }
 
+// SelectFrom starts editing, if it has not, with the text from a byte
+// offset to its end selected, so typing replaces that part.
+func (f *Field) SelectFrom(start int) {
+	f.Focus()
+	f.draft.Select(start, len(f.draft.text))
+}
+
 // Blur stops editing. An unsaved draft is kept and shown as unsaved.
 func (f *Field) Blur() {
 	if f.draft != nil && !f.Dirty() && f.pending == nil {

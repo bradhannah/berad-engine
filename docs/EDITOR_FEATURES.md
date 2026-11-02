@@ -348,6 +348,24 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 - **Tentative:** control over when a conditional change becomes visible (for
   example on leaving a zone or area, immediately, or with a visual effect), so
   objects never appear inexplicably in view.
+- **Agreed (2026-11-02):** in the World state window a value or group moves
+  into a group by a right-click, Move into, or by dragging it onto the group,
+  and out of one by dragging it onto its section's heading; it never moves
+  between the world, zones and NPCs. A dotted name in the Name box moves it
+  too, which a line under the box says. Workflows name a value by itself, not
+  by its path, so a move rewrites nothing; a value something uses asks first,
+  listing each use as it will read, and a move is undone as one change.
+- **Agreed (2026-11-02):** a row's right-click menu in the World state
+  window adds inside it: a group's, a template's, the World heading's, and
+  an NPC's or zone's own, Add value by type and Add group; the add buttons
+  say where they add. A value anything uses keeps its type: its other types
+  are greyed, and a new value is declared for another type. (Rejected:
+  changing a used value's type after asking, leaving its uses broken.)
+- **Agreed (2026-11-02):** **Find a value**, by its button or Cmd+F, opens the
+  workflow's value picker over the World state window, with the window's own
+  scopes, every type and how many places use each value; a pick shows the
+  value in the tree, and a name that matches nothing is declared from it in
+  the world, a zone, an NPC or a template, then shown.
 
 ## Workflows
 
@@ -394,6 +412,73 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
 - **Agreed (2026-10-31):** the Workflow canvas zooms with the Map's floating
   zoom control and keys, and Recentre in its toolbar brings a workflow panned
   out of sight back to the middle.
+- **Agreed (2026-11-01):** every interior leg of a line can be dragged: a
+  forward line's upright part, as today, and a back line's drop, level run
+  and end legs. Each is one offset saved with the layout, measured from the
+  line's own node, so the line keeps its shape when its nodes move; Reset
+  line puts it back where the editor would run it. No free waypoints: lines
+  stay level and upright. *Candidate:* an Add bend menu item that splits a
+  leg in three, if a real workflow ever needs a line to go round something.
+- **Agreed (2026-11-01):** the status bar names the line under the pointer:
+  where it leaves, by which outcome, where it enters, whether it loops back
+  and whether it was moved by hand. A Legend toggle in the toolbar says what
+  each look means: solid goes forward, dashed loops back, grey is a time
+  switch's otherwise, blue is lit, orange is live.
+- **Agreed (2026-11-01):** colour is organisation, not meaning. The editor
+  offers seven fixed tints, none blue and none red, so selection and
+  problems stay unmistakable; the project declares no colours of its own. A
+  node, a container or an outcome (one output of a node) can be given one. A
+  line's colour is unset, from its outcome, or set by hand, and the
+  inspector says which; selected and live always win over it. Colours are
+  layout, saved with positions and bends, and mean nothing to the engine.
+- **Agreed (2026-11-01):** a long line shows its outcome's name again near
+  its arrowhead, small and muted; a short line does not, since the outcome's
+  own row is in view.
+- **Agreed (2026-11-01):** several nodes and containers can be selected,
+  with Shift-click or a box dragged from empty canvas, and moved, coloured,
+  duplicated (Cmd+D, or copied and pasted into another workflow) or deleted
+  together, each one undo step. Lines are never part of a group. A
+  container brings its contents, and a dragged group stops at a container's
+  wall, as one node does. Arrow keys nudge the selection, and Arrange can
+  lay out the selection alone.
+- **Agreed (2026-11-01):** dropping a node onto a line, from the palette or
+  from the canvas, puts it in the flow: the line ends at the new node, and
+  the node's first output continues to the old target; its other outputs
+  stay free, labelled as free outputs are. A target with several entries
+  takes the line on its next free dot.
+- **Agreed (2026-11-01):** Check value compares by its value's type, and
+  shows only the comparisons that type allows. An integer compares with
+  `=`, `≠`, `<`, `≤`, `>` and `≥`, as symbols, or is between two numbers,
+  both included, or at its maximum or minimum; its right side is a typed
+  number or another integer value the node may read, and a line under the
+  row reads the chosen symbol back in words. A bool has no comparison to
+  choose, only true or false. A choice is any of, or none of, a ticked list
+  of its choices. Text is, or is not, typed text. A bool is true or false
+  in every word of the editor, never yes or no; a Check value's outcomes
+  stay yes and otherwise. *Candidate:* a Switch on a value, one outcome per
+  choice, when a workflow wants a fan-out; Check value stays a yes or no
+  question.
+- **Agreed (2026-11-01):** a value is chosen in a **picker**, a dialog over
+  the window, not a list inside the inspector, which gets too cramped as
+  values multiply. The box in the inspector opens it, by click or Enter,
+  with its search focused so typing starts at once; the search matches any
+  part of a path. Type chips narrow the list and are locked to the type an
+  operand must match; a scope rail, Everywhere, Local, This NPC, This zone,
+  World, Other NPCs and Zones, shows how many match in each and narrows to
+  one. Results sit under headings with path, type and description; values
+  of another type are counted and hidden, shown on request. With nothing
+  typed, groups fold as the World state tree does, arrows open them, and
+  the last group opened is remembered. A name that matches nothing can be
+  declared from the picker, with where, type and starting value, and is
+  chosen at once. Arrows move, Enter picks, Esc closes. The inspector keeps
+  only the box, showing the path and one line of type, limits and
+  description. Every chooser uses it: Set value's and Check value's Value,
+  Find NPC nearby's Only one whose and Keep it in, and an integer's Another
+  value. (Rejected: a popover anchored to the box; shorter for a short
+  list, cramped again for a long one.)
+- **Candidate:** reusable blocks of text, paragraphs long, kept in the
+  project view rather than in one workflow (its author's "static strings").
+  *Open:* what they are for, given that the Texts view holds a game's texts.
 - **Candidate:** cut scenes as workflows that block player input.
 
 ## NPCs

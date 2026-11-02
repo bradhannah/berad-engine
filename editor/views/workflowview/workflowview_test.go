@@ -694,6 +694,143 @@ func TestMovingAForwardLineSideways(t *testing.T) {
 	}
 }
 
+// TestMovingABackLinesLegs drags the loop's drop leg and then its end leg
+// sideways: each sets its own offset and keeps the other's, and Reset line
+// clears them both.
+func TestMovingABackLinesLegs(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	key := flow.LineKey(f.nth(flow.KindWait, 1).ID, flow.OutputNext)
+	drop := f.at("bend:wait:1:next:drop")
+	f.drag(drop, drop.Add(image.Pt(14, 0)))
+	if bend := f.lastLines()[key]; bend.Lane == nil || bend.Depth != nil || bend.End != nil {
+		t.Fatalf("dragging the drop leg sets its lane alone: %+v", bend)
+	}
+	if moved := f.at("bend:wait:1:next:drop"); moved.X != drop.X+14 {
+		t.Fatalf("the drop leg follows the pointer: %d, was %d", moved.X, drop.X)
+	}
+	end := f.at("bend:wait:1:next:end")
+	f.drag(end, end.Add(image.Pt(-10, 0)))
+	if bend := f.lastLines()[key]; bend.Lane == nil || bend.End == nil || *bend.End >= 0 {
+		t.Fatalf("dragging the end leg keeps the lane and sets the end: %+v", bend)
+	}
+	if moved := f.at("bend:wait:1:next:end"); moved.X != end.X-10 {
+		t.Fatalf("the end leg follows the pointer: %d, was %d", moved.X, end.X)
+	}
+	if run := f.at("bend:wait:1:next"); run.X != (drop.X+14+end.X-10)/2 {
+		t.Fatalf("the run spans the moved legs: %d", run.X)
+	}
+	f.click("bend:wait:1:next")
+	f.click("ui:reset-line")
+	if f.has("bent:wait:1:next") {
+		t.Fatal("Reset line clears every leg")
+	}
+}
+
+// TestHoveringALineNamesIt moves the pointer over the loop and over the
+// start's line: the status bar says where each goes, that the loop loops
+// back, and, once it is moved by hand, that it was.
+func TestHoveringALineNamesIt(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	f.frame(ui.NewInput(f.at("line:wait:1:next")))
+	if status := f.status(); !strings.Contains(status, " → ") || !strings.Contains(status, "loops back") {
+		t.Fatalf("hovering the loop names it: %q", status)
+	}
+	f.frame(ui.NewInput(f.at("line:start:1:next")))
+	if status := f.status(); !strings.Contains(status, " → ") || strings.Contains(status, "loops back") {
+		t.Fatalf("hovering the start's line names it: %q", status)
+	}
+	grip := f.at("bend:wait:1:next")
+	f.drag(grip, grip.Add(image.Pt(0, 30)))
+	f.frame(ui.NewInput(f.at("line:wait:1:next")))
+	if status := f.status(); !strings.Contains(status, "moved by hand") {
+		t.Fatalf("a line moved by hand says so: %q", status)
+	}
+}
+
+// TestColours colours the random choice, its first outcome and the line
+// that leaves it: the line takes its outcome's colour, a colour of its own
+// overrides it, none takes it away and inherit gives it back; none takes a
+// node's colour away too.
+func TestColours(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	f.click("node:random:1")
+	f.click("ui:swatch:node:green")
+	if !f.has("tint:random:1=green") {
+		t.Fatalf("a swatch colours the node: %d tint edits sent, status %q, tints %+v",
+			len(f.requests.Of(workflowplugin.TintEdit)), f.status(), f.workflow().Tints())
+	}
+	f.click("ui:swatch:outcome:o1:amber")
+	if !f.has("outcome-tint:random:1:o1=amber") || !f.has("line-tint:random:1:o1=amber") {
+		t.Fatal("an outcome's colour colours its line")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("line:random:1:o1")
+	if !f.has("line-selected") {
+		t.Fatal("clicking the line selects it")
+	}
+	f.click("ui:swatch:line:purple")
+	if !f.has("line-tint:random:1:o1=purple") || !f.has("outcome-tint:random:1:o1=amber") {
+		t.Fatal("a line's own colour overrides its outcome's, which keeps it")
+	}
+	f.click("ui:swatch:line:none")
+	if !f.has("line-tint:random:1:o1=") {
+		t.Fatal("none takes the line's colour away over its outcome's")
+	}
+	f.click("ui:swatch:line:inherit")
+	if !f.has("line-tint:random:1:o1=amber") {
+		t.Fatal("inherit gives the line its outcome's colour again")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("node:random:1")
+	f.click("ui:swatch:node:none")
+	if !f.has("tint:random:1=") {
+		t.Fatal("none takes a node's colour away")
+	}
+}
+
+// TestLongLinesRepeatTheirOutcome moves the Wait far from the random
+// choice: the line from its first outcome, now long, repeats the outcome's
+// name near its arrowhead; a short line, and a line from a node with one
+// output, show nothing.
+func TestLongLinesRepeatTheirOutcome(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	if f.has("far-label:random:1:o1") {
+		t.Fatal("a short line shows no name at its arrowhead")
+	}
+	wait := f.at("node:wait:1")
+	f.drag(wait, wait.Add(image.Pt(200, 0)))
+	if !f.has("far-label:random:1:o1") {
+		t.Fatal("a long line repeats its outcome's name near its arrowhead")
+	}
+	if f.has("far-label:start:1:next") {
+		t.Fatal("a node with one output has no name worth repeating")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+}
+
+// TestLegendToggles shows the legend from the toolbar, draws it, and hides
+// it again.
+func TestLegendToggles(t *testing.T) {
+	t.Parallel()
+	f := loopFixture(t)
+	if f.has("legend") {
+		t.Fatal("the legend starts hidden")
+	}
+	f.click("ui:legend")
+	if !f.has("legend") {
+		t.Fatal("Legend shows the legend")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("ui:legend")
+	if f.has("legend") {
+		t.Fatal("Legend again hides it")
+	}
+}
+
 // TestLinesRunOverNotes puts a note on top of a line: clicking the line
 // there selects the line, not the note.
 func TestLinesRunOverNotes(t *testing.T) {

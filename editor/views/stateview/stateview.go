@@ -14,6 +14,7 @@ package stateview
 import (
 	"fmt"
 	"image"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -25,6 +26,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
+	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -58,6 +60,8 @@ const (
 	stateSelected = "selected="
 	stateValue    = "value="
 	stateApplied  = "applied="
+	stateSays     = "says="
+	stateAdds     = "adds="
 )
 
 // State is the World state window.
@@ -83,6 +87,8 @@ type State struct {
 	uses       []protocol.Use
 	usesOf     string
 	usesAsking bool
+	// usesFor is the row uses last answered for, kept while asking again.
+	usesFor string
 	// templates are the selected NPC's or zone's templates to apply or take
 	// off, and takeOff takes the selected applied template off; path is its
 	// path name, for the row pathOf.
@@ -94,6 +100,22 @@ type State struct {
 	// what it would delete.
 	dialog   *ui.Dialog
 	deleting *deletion
+	moving   *pendingMove
+	// menu is the right-click menu on a row. revealPath is the path of a
+	// row to select once the tree shows it, for a move or for Find, and
+	// revealRename puts its name to type.
+	menu         ui.Menu
+	menuOf       string
+	revealPath   string
+	revealRename bool
+	nameAdded    bool
+	// find is Find a value while it is open, with findButton opening it;
+	// findUses counts each value's uses, once answered; lastGroup is the
+	// group last opened in it.
+	find       *valuepicker.Picker
+	findButton *ui.Button
+	findUses   map[string]int
+	lastGroup  string
 }
 
 // New returns the World state window for the project's world state.
@@ -105,15 +127,25 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	adds[0].Primary = true
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0),
-		list:  &ui.List{ID: "values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil},
+		list:  ui.NewList("values", ""),
 		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
-		named: "", uses: nil, usesOf: "", usesAsking: false, templates: nil,
-		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil,
+		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
+		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
+		menu:   ui.Menu{Items: nil, Width: 0},
+		menuOf: "", revealPath: "", revealRename: false, nameAdded: false, find: nil,
+		findButton: ui.NewButton(findID, "Find a value"),
+		findUses:   nil, lastGroup: "",
 		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
 	view.form.Dotted = true
+	view.list.CanDrop = func(dragged, target string) bool {
+		_, ok := view.dropInto(dragged, target)
+
+		return ok
+	}
+	view.list.Faded, view.list.DragLabel = view.faded, view.dragLabel
 
 	return view
 }
@@ -122,7 +154,14 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 func (s *State) Title(frame.Docs) string { return "World state" }
 
 // Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+// While Find is open, it is Find's.
+func (s *State) Focused() *ui.TextField {
+	if s.find != nil {
+		return s.find.Focused()
+	}
+
+	return s.focus.Current()
+}
 
 // Start keeps the project index loaded, for the NPCs and zones.
 func (s *State) Start(ctx *frame.Context) { s.subscribe(ctx, project.IndexID()) }
@@ -178,6 +217,7 @@ func (s *State) layout() {
 		button.Rect = image.Rect(left, headerTop, left+addWidth, headerTop+ui.ButtonH)
 	}
 	s.list.Rect = image.Rect(0, listTop, right, content.Max.Y)
+	s.layoutFind(right)
 	s.layoutInspector(panel)
 }
 
@@ -191,9 +231,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.layout()
 	s.save.Unsaved = s.Unsaved(ctx.Docs)
 	s.askUses(ctx)
-	if s.dialog != nil {
-		s.updateDialog(input, ctx)
-
+	if s.updateOverlay(input, ctx) {
 		return
 	}
 	if s.guard.Active() {
@@ -220,9 +258,35 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if !loaded {
 		return
 	}
+	s.revealRow()
+	s.nameNewRow()
+	if s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd()) {
+		s.openFind(ctx, "")
+
+		return
+	}
 	s.updateTree(input, ctx)
 	s.updateAdds(input, ctx)
 	s.updateInspector(input, ctx)
+}
+
+// updateOverlay gives a frame's input to the dialog, the right-click menu
+// or Find while one is open, and reports whether one was.
+func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
+	switch {
+	case s.dialog != nil:
+		s.updateDialog(input, ctx)
+	case s.menu.IsOpen():
+		s.chooseFromMenu(ctx, s.menu.Update(input))
+	case s.find != nil:
+		if !s.find.Update(input, ctx, s.screen()) {
+			s.find = nil
+		}
+	default:
+		return false
+	}
+
+	return true
 }
 
 // updateTree opens and closes rows and moves the selection, asking first
@@ -233,6 +297,10 @@ func (s *State) updateTree(input *ui.Input, ctx *frame.Context) {
 	if result.Toggled != "" {
 		s.toggled[result.Toggled] = !s.toggled[result.Toggled]
 	}
+	if result.Context {
+		s.rightClick(input, ctx, result.ContextRow)
+	}
+	s.dropped(ctx, result)
 	if s.list.Selected == selected {
 		return
 	}
@@ -335,19 +403,25 @@ func (s *State) Leave(ctx *frame.Context, then func()) {
 // Add value, Add group, Add template, the inspector's fields and buttons
 // and "ui:template-<name>" for a template to apply; "row:<path>" for a row,
 // "toggle:<path>" for its triangle and "section:<scope>" for a scope;
-// "dialog:<button>"; and "state:loaded", "state:selected=<path>",
-// "state:value=<path>:<type>:<default>" or "state:applied=<owner path>:<template>".
+// "dialog:<button>"; "menu:<id>" for the right-click menu; and "state:loaded", "state:selected=<path>",
+// "state:value=<path>:<type>:<default>", "state:applied=<owner path>:<template>"
+// "state:says=<the open dialog's title or one of its lines>" or
+// "state:adds=<where Add value adds>".
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	loaded := s.refresh(docs)
 	s.layout()
 	kind, value, _ := strings.Cut(name, ":")
 	switch {
+	case kind+":" == statePrefix:
+		return image.Pt(0, 0), loaded && s.hasState(docs, value)
 	case s.dialog != nil:
 		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	case s.find != nil:
+		return s.find.Locate(docs, s.screen(), kind, value)
+	case kind == menuLocate:
+		return s.menu.Locate(value)
 	case s.guard.Active():
 		return s.guard.Locate(value, s.size)
-	case kind+":" == statePrefix:
-		return image.Pt(0, 0), loaded && s.hasState(value)
 	case kind+":" == rowLocate, kind+":" == toggleLocate:
 		for _, row := range s.list.Rows {
 			if meaning, found := s.shown.items[row.ID]; found && meaning.path == value {
@@ -374,7 +448,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if widget == pathID && !s.path.Rect.Empty() {
 		return s.path.Center(), true
 	}
-	for _, button := range append(append(append([]*ui.Button{}, s.adds...), s.templates...), s.takeOff) {
+	for _, button := range append(append(append([]*ui.Button{s.findButton}, s.adds...), s.templates...), s.takeOff) {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
@@ -383,27 +457,45 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	return s.form.Locate(widget)
 }
 
-func (s *State) hasState(state string) bool {
+func (s *State) hasState(docs frame.Docs, state string) bool {
+	if s.find != nil {
+		if found, handled := s.find.HasState(docs, s.screen(), state); handled {
+			return found
+		}
+	}
 	switch {
 	case state == stateLoaded:
 		return true
+	case state == findState:
+		return s.find != nil
 	case strings.HasPrefix(state, stateSelected):
 		meaning, found := s.selected()
 
 		return found && meaning.path == strings.TrimPrefix(state, stateSelected)
 	case strings.HasPrefix(state, stateValue):
-		for _, meaning := range s.shown.items {
-			declared := meaning.declared
-			if !declared.Type.IsValue() || declared.ID.IsZero() {
-				continue
-			}
-			shown := meaning.path + ":" + string(declared.Type) + ":" + declared.Label(declared.Zero())
-			if shown == strings.TrimPrefix(state, stateValue) {
-				return true
-			}
-		}
+		return s.hasValue(strings.TrimPrefix(state, stateValue))
 	case strings.HasPrefix(state, stateApplied):
 		return s.applied(strings.TrimPrefix(state, stateApplied))
+	case strings.HasPrefix(state, stateAdds):
+		return s.addsNote(docs) == strings.TrimPrefix(state, stateAdds)
+	case strings.HasPrefix(state, stateSays) && s.dialog != nil:
+		return slices.ContainsFunc(append([]string{s.dialog.Title}, s.dialog.Lines...), func(line string) bool {
+			return strings.TrimSpace(line) == strings.TrimPrefix(state, stateSays)
+		})
+	}
+
+	return false
+}
+
+// hasValue answers "<path>:<type>:<default>": whether a value shown in the
+// tree is one.
+func (s *State) hasValue(asked string) bool {
+	for _, meaning := range s.shown.items {
+		declared := meaning.declared
+		if declared.Type.IsValue() && !declared.ID.IsZero() &&
+			meaning.path+":"+string(declared.Type)+":"+declared.Label(declared.Zero()) == asked {
+			return true
+		}
 	}
 
 	return false
@@ -437,15 +529,27 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, "World state", ui.Inset, ui.Inset, ui.ColorInk())
 	s.theme.DrawText(screen, "The world's values, and each zone's and NPC's. Templates give many the same values.",
 		ui.Inset, ui.Inset+ui.LineHeight, ui.ColorMuted())
-	for _, button := range s.adds {
+	for _, button := range append([]*ui.Button{s.findButton}, s.adds...) {
 		button.Draw(screen, s.theme)
+	}
+	if where := s.addsNote(docs); loaded && where != "" {
+		room := s.findButton.Rect.Min.X - s.adds[2].Rect.Max.X - ui.Half*ui.Gap*ui.Half
+		s.theme.DrawText(screen, s.theme.FitText(where, room), s.adds[2].Rect.Max.X+ui.Half*ui.Gap,
+			s.adds[2].Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
 	}
 	if loaded {
 		s.list.Draw(screen, s.theme)
 	}
 	s.drawInspector(screen)
+	s.menu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	if s.find != nil {
+		s.find.Draw(screen, docs, s.screen())
+	}
 }
+
+// screen is the whole window, where dialogs are centred.
+func (s *State) screen() image.Rectangle { return image.Rectangle{Min: image.Pt(0, 0), Max: s.size} }

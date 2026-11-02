@@ -70,6 +70,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.drawZoomed(screen, docs)
 	if s.workflow != nil {
 		s.zoomCard.draw(screen, s.theme)
+		s.drawLegend(screen)
 	}
 	s.drawToolbar(screen, docs)
 	s.drawPalette(screen)
@@ -79,6 +80,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	}
 	s.contextMenu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
+	if s.values != nil {
+		s.drawValuePicker(screen, docs)
+	}
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -89,6 +93,7 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawStrong(screen, s.name(docs), ui.Inset+s.theme.TextWidth(trail), textY, ui.ColorInk())
 	s.arrange.Draw(screen, s.theme)
 	s.recentre.Draw(screen, s.theme)
+	s.legend.Draw(screen, s.theme)
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 }
 
@@ -206,13 +211,17 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 func (s *State) drawPorts(area *ebiten.Image, from shape) {
 	for _, out := range from.ports {
 		centre := s.toScreen(out.at)
+		key := routeKey{from: from.node.ID, output: out.output.Name}
 		_, linked := from.node.Next[out.output.Name]
 		fill, ring := ui.ColorBackground(), ui.ColorInk()
+		if coloured, ok := s.outcomeTint(key); ok {
+			ring = coloured.ink
+		}
 		switch {
-		case linked && s.lineLit(routeKey{from: from.node.ID, output: out.output.Name}):
+		case linked && s.lineLit(key):
 			fill, ring = ui.ColorSelect(), ui.ColorSelect()
 		case linked:
-			fill = ui.ColorInk()
+			fill = ring
 		}
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
@@ -251,7 +260,11 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 
 		return
 	}
-	ui.Box(area, rect, ui.ColorBackground())
+	face := ui.ColorBackground()
+	if coloured, ok := s.nodeTint(drawn.node.ID); ok {
+		face = coloured.wash
+	}
+	ui.Box(area, rect, face)
 	switch drawn.node.Kind {
 	case flow.KindStart:
 		s.theme.DrawLabel(area, flow.GroupFlow, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
@@ -286,8 +299,12 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 // one row per output, the options with what their shares work out to and
 // "+ option" under them.
 func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
+	bottom := s.screenRect(drawn.rect).Max.Y
 	for index, out := range drawn.ports {
 		row := s.screenRect(out.row)
+		if coloured, ok := s.outcomeTint(routeKey{from: drawn.node.ID, output: out.output.Name}); ok {
+			washRow(area, row, row.Max.Y >= bottom-ui.Half, coloured.wash)
+		}
 		ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
 			ui.ColorRule())
 		label, ink := out.output.Label, ui.ColorInk()
@@ -311,6 +328,20 @@ func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
 	if drawn.node.Kind == flow.KindRandom {
 		s.drawAddOption(area, drawn)
 	}
+}
+
+// washRow fills an outcome's row with its tint's wash, inside the node's
+// border; a row at the node's foot follows its rounded corners.
+func washRow(area *ebiten.Image, row image.Rectangle, last bool, wash color.Color) {
+	washed := image.Rect(row.Min.X+ui.Half, row.Min.Y, row.Max.X-ui.Half, row.Max.Y)
+	if !last {
+		ui.FillRect(area, washed, wash)
+
+		return
+	}
+	washed.Max.Y -= ui.Half
+	ui.FillRound(area, washed, ui.Radius, wash)
+	ui.FillRect(area, image.Rect(washed.Min.X, washed.Min.Y, washed.Max.X, washed.Max.Y-int(ui.Radius)), wash)
 }
 
 // shareLabel is what a random choice's option works out to, as "25%".
@@ -418,7 +449,11 @@ func (s *State) drawContainer(area *ebiten.Image, drawn shape) {
 	rect := s.screenRect(drawn.rect)
 	ui.FillRect(area, rect, ui.HexAlpha(hexWhite, containerAlpha))
 	head := image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+containerHead)
-	ui.FillRect(area, head, ui.ColorGroup())
+	wash := ui.ColorGroup()
+	if coloured, ok := s.nodeTint(drawn.node.ID); ok {
+		wash = coloured.wash
+	}
+	ui.FillRect(area, head, wash)
 	strokeDashed(area, rect, containerLine, ui.ColorInk())
 	strokeDashed(area, image.Rect(head.Min.X, head.Max.Y, head.Max.X, head.Max.Y+1), ui.Border, ui.ColorInk())
 	textY := head.Min.Y + (containerHead-ui.TextSize)/ui.Half - 1
@@ -477,6 +512,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	for index := range s.form.controls {
 		s.drawControl(screen, docs, &s.form.controls[index], node, left)
 	}
+	s.drawColours(screen)
 	if s.form.remove != nil {
 		s.form.remove.Draw(screen, s.theme)
 	}
@@ -510,6 +546,12 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasCueState(state); handled {
 		return found, true
 	}
+	if found, handled := s.hasTintState(state); handled {
+		return found, true
+	}
+	if state == "legend" {
+		return s.legend.On, true
+	}
 	if strings.HasPrefix(state, localState) {
 		return s.hasLocal(state), true
 	}
@@ -528,6 +570,11 @@ func (s *State) hasLineState(state string) (bool, bool) {
 		_, bent := s.workflow.Bend(key.from, key.output)
 
 		return ok && bent, true
+	case strings.HasPrefix(state, "far-label:"):
+		key, ok := s.lineNamed(strings.TrimPrefix(state, "far-label:"))
+		_, far := s.farLabel(key)
+
+		return ok && far, true
 	case strings.HasPrefix(state, "lit:"):
 		where := strings.Split(strings.TrimPrefix(state, "lit:"), ":")
 		if len(where) != portParts {
@@ -571,10 +618,11 @@ func (s *State) drawLineInspector(screen *ebiten.Image, docs frame.Docs, left, t
 		s.theme.DrawText(screen, "It loops back, so it is dashed.", left, textTop+4*ui.LineHeight+ui.Half*fieldSpace,
 			ui.ColorMuted())
 	}
+	s.drawColours(screen)
 	s.deleteLine.Draw(screen, s.theme)
 	s.resetLine.Draw(screen, s.theme)
 	panel := frame.Inspector(s.size)
-	text := "Drag the middle of the line to move it. Delete or Backspace removes it. Undo puts it back."
+	text := "Drag a handle on the line to move that part of it. Delete or Backspace removes it. Undo puts it back."
 	hint := s.wrap(text, panel.Dx()-ui.Half*ui.Inset)
 	bottom := s.deleteLine.Rect.Min.Y - ui.Gap
 	if !s.resetLine.Rect.Empty() {
@@ -603,6 +651,9 @@ func (s *State) titleWidth(value string) int {
 }
 
 func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
+	if made.hidden {
+		return
+	}
 	s.theme.DrawStrong(screen, made.param.Label, left, made.label, ui.ColorInk())
 	switch made.param.Type {
 	case flow.TypeTiles, flow.TypeText:
@@ -642,7 +693,7 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 	case flow.TypeValue:
 		s.drawValue(screen, docs, made, node)
 	case flow.TypeOperand:
-		s.drawOperand(screen, made, left)
+		s.drawOperand(screen, docs, made, node, left)
 	}
 }
 
@@ -676,7 +727,11 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 			option.remove.Draw(screen, s.theme)
 		}
 		made.addOption.Draw(screen, s.theme)
-	case flow.TypeAnchor, flow.TypeChoice, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
+	case flow.TypeChoice:
+		if made.note {
+			s.drawCompareNote(screen, made, node)
+		}
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
 		flow.TypeCue, flow.TypeValue, flow.TypeOperand:
 	}
 }
@@ -778,21 +833,20 @@ func mod(value, divisor int) int {
 
 // Locate finds a named part of the window for input scripts: "palette:<kind>",
 // "node:<kind>:<n>" for the nth node of a kind, "port:<kind>:<n>:<output>",
-// "bend:<kind>:<n>:<output>" for the middle of a line that can be dragged,
+// "bend:<kind>:<n>:<output>" for the middle of a line's upright part or
+// run, or with ":drop" or ":end" a back line's drop or end leg,
 // "entry:<kind>:<n>" for its spare entry dot or "entry:<kind>:<n>:<i>" for
 // its i-th filled one, "add-option:<kind>:<n>" for a
 // random choice's "+ option", "canvas:X,Y" for a canvas point, "ui:<id>" for
-// a button or field, a dialog button, "menu:<id>" for an item of the open
+// a button or field, "ui:swatch:<row>:<label>" for a colour swatch (see
+// locateSwatch), a dialog button, "menu:<id>" for an item of the open
 // right-click menu, or "state:..." (see hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.load(docs)
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
-	if s.guard.Active() {
-		return s.guard.Locate(value, s.size)
-	}
-	if s.picker.Dialog() != nil {
-		return s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	if point, found, handled := s.locateInOverlay(docs, kind, value); handled {
+		return point, found
 	}
 	switch kind {
 	case "state":
@@ -802,7 +856,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return image.Pt(0, 0), s.hasState(value)
 	case locateValue, locateDeclare:
-		return s.locateValueRow(kind, value)
+		return image.Pt(0, 0), false
 	case locateCue, locatePlay:
 		return s.locateCueRow(kind, value)
 	case "palette":
@@ -909,8 +963,33 @@ func (s *State) nthNode(value string) (shape, bool) {
 	return noShape(), false
 }
 
+// locateInOverlay finds a part of whatever is over the window and takes its
+// input: the guard's dialog, the map picker's dialog or the value picker;
+// states are still the window's own. It reports whether one was open.
+func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Point, bool, bool) {
+	switch {
+	case s.guard.Active():
+		point, found := s.guard.Locate(value, s.size)
+
+		return point, found, true
+	case s.picker.Dialog() != nil:
+		point, found := s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+
+		return point, found, true
+	case s.values != nil && kind != "state":
+		point, found := s.locateInPicker(docs, kind, value)
+
+		return point, found, true
+	default:
+		return image.Pt(0, 0), false, false
+	}
+}
+
 func (s *State) locateWidget(widget string) (image.Point, bool) {
-	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.deleteLine, s.resetLine},
+	if rest, isSwatch := strings.CutPrefix(widget, "swatch:"); isSwatch {
+		return s.locateSwatch(rest)
+	}
+	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine},
 		s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
@@ -952,13 +1031,11 @@ func (made control) locate(widget string) (image.Point, bool) {
 			return field.Center(), true
 		}
 	}
-	box := (made.param.Type == flow.TypeValue && widget == valueBoxPrefix+made.param.Name) ||
-		(made.param.Type == flow.TypeCue && widget == "cue")
-	if box && !made.cueBox.Empty() {
+	if made.isBox(widget) && !made.cueBox.Empty() {
 		return ui.Center(made.cueBox), true
 	}
-	for _, button := range buttons {
-		if button != nil && button.ID == widget {
+	for _, button := range slices.Concat(buttons, made.sources) {
+		if button != nil && button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
 	}

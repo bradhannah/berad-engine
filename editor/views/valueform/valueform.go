@@ -37,7 +37,8 @@ const (
 // "ui:value-default" for an integer's or text's default,
 // "ui:value-default-<choice id, true or false>", "ui:value-min",
 // "ui:value-max", "ui:value-choice-<n>", "ui:value-choice-<n>-remove",
-// "ui:value-add-choice", "ui:value-description" and "ui:value-delete".
+// "ui:value-add-choice", "ui:value-description", "ui:value-declare-new" and
+// "ui:value-delete".
 const (
 	nameID        = "value-name"
 	defaultID     = "value-default"
@@ -49,6 +50,7 @@ const (
 	choicePrefix  = "value-choice-"
 	addChoiceID   = "value-add-choice"
 	deleteID      = "value-delete"
+	declareNewID  = "value-declare-new"
 )
 
 // Headings.
@@ -82,8 +84,17 @@ type Form struct {
 	addChoice                                  *ui.Button
 	// Delete removes the declaration; the window places it.
 	Delete *ui.Button
-	// heads are where each label goes, by label.
+	// heads are where each label goes, by label; hint is where the line
+	// under the name goes, when it has one.
 	heads map[string]image.Point
+	hint  image.Point
+	// Locked, when set, says why a value's type cannot change, and its other
+	// types are greyed; lock is where that goes, in lines, with DeclareNew
+	// under it.
+	Locked     string
+	lock       image.Point
+	lockLines  []string
+	DeclareNew *ui.Button
 }
 
 // New returns an empty form.
@@ -99,7 +110,8 @@ func New(theme *ui.Theme) *Form {
 		text: field(defaultID, false, worldstate.MaxText), low: field(minID, false, maxNumberText),
 		high: field(maxID, false, maxNumberText), description: field(descriptionID, true, worldstate.MaxDescription),
 		types: nil, defaults: nil, choices: nil, addChoice: ui.NewButton(addChoiceID, "Add choice"), Delete: remove,
-		heads: map[string]image.Point{},
+		heads: map[string]image.Point{}, hint: image.Pt(0, 0), Locked: "", lock: image.Pt(0, 0), lockLines: nil,
+		DeclareNew: ui.NewButton(declareNewID, "Declare a new value…"),
 	}
 	form.description.Placeholder = "What it is for, for whoever reads it next"
 	form.low.Placeholder, form.high.Placeholder = "No minimum", "No maximum"
@@ -290,15 +302,39 @@ func (f *Form) Layout(left, top, width int) int {
 	}
 	head(headName)
 	place(f.name, ui.ButtonH)
+	f.hint = image.Pt(0, 0)
+	if f.Dotted && f.shown.Type != worldstate.TypeTemplate {
+		f.hint = image.Pt(left, top-rowSpace)
+		top += ui.LineHeight
+	}
+	f.DeclareNew.Rect, f.lockLines = ui.Zero(), nil
 	if f.shown.Type.IsValue() {
 		head("TYPE")
 		top = buttonRows(f.types, left, top, width, len(f.types))
+		top = f.layoutLock(left, top, width)
 		top = f.layoutValue(left, top, width)
 	}
 	head(headDescription)
 	place(f.description, descHeight)
 
 	return top
+}
+
+// layoutLock greys the types a locked value cannot change to, and places
+// why under them, with Declare a new value….
+func (f *Form) layoutLock(left, top, width int) int {
+	for _, button := range f.types {
+		button.Disabled = f.Locked != "" && !button.On
+	}
+	if f.Locked == "" {
+		return top
+	}
+	f.lock, f.lockLines = image.Pt(left, top-rowSpace), f.theme.Wrap(f.Locked, width)
+	top += len(f.lockLines)*ui.LineHeight - rowSpace
+	f.DeclareNew.Rect = image.Rect(left, top, left+min(width, f.theme.TextWidth(f.DeclareNew.Label)+ui.Inset*ui.Half),
+		top+ui.ButtonH)
+
+	return top + ui.ButtonH + fieldSpace
 }
 
 // layoutValue places what a value's type has: its choices, its limits and
@@ -364,11 +400,13 @@ func buttonRows(buttons []*ui.Button, left, top, width, perRow int) int {
 // Change is what a click on the form asks for.
 type Change int
 
-// Changes: nothing, a changed declaration to save, or deleting it.
+// Changes: nothing, a changed declaration to save, deleting it, or
+// declaring a new value instead of changing a locked one's type.
 const (
 	ChangeNone Change = iota
 	ChangeValue
 	ChangeDelete
+	ChangeDeclareNew
 )
 
 // Update handles the form's buttons. A changed declaration is returned for
@@ -378,9 +416,12 @@ func (f *Form) Update(input *ui.Input) (worldstate.Declaration, Change) {
 	if f.Delete.Update(input) {
 		return declared, ChangeDelete
 	}
+	if f.DeclareNew.Update(input) {
+		return declared, ChangeDeclareNew
+	}
 	for _, button := range f.types {
 		kind := worldstate.Type(strings.TrimPrefix(button.ID, typePrefix))
-		if button.Update(input) && kind != declared.Type {
+		if button.Update(input) && kind != declared.Type && f.Locked == "" {
 			return retype(declared, kind), ChangeValue
 		}
 	}
@@ -563,7 +604,7 @@ func (f *Form) Buttons() []*ui.Button {
 		buttons = append(buttons, row.remove)
 	}
 
-	return append(buttons, f.addChoice, f.Delete)
+	return append(buttons, f.addChoice, f.DeclareNew, f.Delete)
 }
 
 // Locate finds a field or button by its ID.
@@ -596,6 +637,13 @@ func (f *Form) Draw(screen *ebiten.Image) {
 		if !button.Rect.Empty() && button != f.Delete {
 			button.Draw(screen, f.theme)
 		}
+	}
+	if f.hint != image.Pt(0, 0) {
+		f.theme.DrawText(screen, "Dots move it into a group, as group."+f.shown.Name, f.hint.X,
+			f.hint.Y, ui.ColorMuted())
+	}
+	for index, line := range f.lockLines {
+		f.theme.DrawText(screen, line, f.lock.X, f.lock.Y+index*ui.LineHeight, ui.ColorMuted())
 	}
 	if f.shown.Type == worldstate.TypeNPC {
 		at := f.heads[headDescription]

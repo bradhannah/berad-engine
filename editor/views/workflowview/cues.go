@@ -164,7 +164,7 @@ func (s *State) newCueControl(made *control) {
 	made.listen = ui.NewButton("listen", "Play")
 	made.search = ui.NewTextField("cue-search", textedit.NewField("", false, maxCueSearch), false, s.theme)
 	made.search.Placeholder, made.search.Unmarked = "Find a cue by name or ID", true
-	made.list = &ui.List{ID: "cues", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
+	made.list = ui.NewList("cues", "")
 	s.focus.Register(made.search)
 }
 
@@ -325,8 +325,8 @@ func (s *State) openChooser() (*control, bool) {
 		return nil, false
 	}
 	for index := range s.form.controls {
-		if made := &s.form.controls[index]; (made.param.Type == flow.TypeCue || made.param.Type == flow.TypeValue) &&
-			made.open {
+		if made := &s.form.controls[index]; (made.param.Type == flow.TypeCue || made.param.Type == flow.TypeValue ||
+			made.param.Type == flow.TypeOperand) && made.open {
 			return made, true
 		}
 	}

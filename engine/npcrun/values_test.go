@@ -3,6 +3,7 @@ package npcrun_test
 import (
 	"encoding/json"
 	"image"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -179,6 +180,160 @@ func TestSetAndCheck(t *testing.T) {
 	}
 	if !town.value(t, servedID, clerk.NPC).Bool {
 		t.Fatal("a restart keeps the NPC's own values")
+	}
+}
+
+// Locals for the comparison tests: a flag the yes branch sets, an integer
+// limit, a mood of three choices, a name and a readiness.
+const (
+	flagL  = 67
+	limitL = 68
+	moodL  = 69
+	nameL  = 71
+	readyL = 72
+)
+
+// checks runs one Check value on the loner, after the setup nodes have set
+// its values, and reports whether the check took yes: the yes branch sets a
+// local flag, the otherwise branch only waits.
+func checks(t *testing.T, declare func(*flow.Workflow), setup []flow.Node, check map[string]any) bool {
+	t.Helper()
+	nodes := append(slices.Clone(setup),
+		node(t, 8, flow.KindCheckValue, check),
+		setLocal(t, 9, flagL, "true"),
+		node(t, 10, flow.KindWait, map[string]any{"duration": waitFor(1, flow.UnitSeconds, flow.ClockGame)}),
+	)
+	links := []flow.Link{link(8, flow.OutputYes, 9), link(8, flow.OutputOtherwise, 10), link(9, flow.OutputNext, 10)}
+	previous := byte(1)
+	for _, made := range setup {
+		links = append(links, link(previous, flow.OutputNext, made.ID[15]))
+		previous = made.ID[15]
+	}
+	links = append(links, link(previous, flow.OutputNext, 8))
+	workflow := workflowOf(t, nodes, links...)
+	withLocal(t, workflow, flagL, "flag", worldstate.TypeBool)
+	declare(workflow)
+	town := newTown(t, worldstate.NewStore(catalog(t)))
+	npc := town.place(loner, image.Pt(2, 2), workflow)
+	town.run(2)
+
+	return npc.Locals()[id(flagL)].Bool
+}
+
+// setLocal makes a Set value node that sets a local to a saved value.
+func setLocal(t *testing.T, seed, local byte, to string) flow.Node {
+	t.Helper()
+
+	return node(t, seed, flow.KindSetValue, map[string]any{
+		flow.ParamValue: ref(worldstate.ScopeLocal, local), "to": json.RawMessage(to),
+	})
+}
+
+// quoted makes a list operand of the given choices.
+func quoted(items ...string) json.RawMessage {
+	raws := make([]json.RawMessage, 0, len(items))
+	for _, item := range items {
+		raws = append(raws, json.RawMessage(strconv.Quote(item)))
+	}
+
+	return flow.OperandList(raws)
+}
+
+// TestComparisonsByType checks the loner's patience, an integer from 0 to
+// 3, with every integer comparison, against a number and against another
+// value; a bool; a choice against a list; and text.
+func TestComparisonsByType(t *testing.T) {
+	t.Parallel()
+	patience := ref(worldstate.ScopeNPC, patienceID)
+	setPatience := func(to string) []flow.Node {
+		return []flow.Node{node(t, 2, flow.KindSetValue, map[string]any{flow.ParamValue: patience, "to": json.RawMessage(to)})}
+	}
+	none := func(*flow.Workflow) {}
+	for _, tc := range []struct {
+		compare, against, to string
+		want                 bool
+	}{
+		{flow.CompareIs, "2", "", true}, {flow.CompareNot, "2", "", false}, {flow.CompareBelow, "3", "", true},
+		{flow.CompareBelow, "2", "", false}, {flow.CompareMost, "2", "", true}, {flow.CompareAbove, "2", "", false},
+		{flow.CompareAbove, "1", "", true}, {flow.CompareLeast, "3", "", false}, {flow.CompareBetween, "1", "2", true},
+		{flow.CompareBetween, "3", "5", false}, {flow.CompareMax, "", "", false},
+	} {
+		check := map[string]any{flow.ParamValue: patience, flow.ParamCompare: tc.compare}
+		if tc.against != "" {
+			check[flow.ParamAgainst] = json.RawMessage(tc.against)
+		}
+		if tc.to != "" {
+			check[flow.ParamTo] = json.RawMessage(tc.to)
+		}
+		if got := checks(t, none, setPatience("2"), check); got != tc.want {
+			t.Fatalf("patience 2 %s %s %s: %v", tc.compare, tc.against, tc.to, got)
+		}
+	}
+	if !checks(t, none, setPatience("3"), map[string]any{flow.ParamValue: patience, flow.ParamCompare: flow.CompareMax}) {
+		t.Fatal("patience 3 is at its maximum")
+	}
+	withLimit := func(workflow *flow.Workflow) { withLocal(t, workflow, limitL, "limit", worldstate.TypeInteger) }
+	limit := flow.RefOperand(ref(worldstate.ScopeLocal, limitL))
+	if !checks(t, withLimit, append(setPatience("2"), setLocal(t, 3, limitL, "2")),
+		map[string]any{flow.ParamValue: patience, flow.ParamCompare: flow.CompareIs, flow.ParamAgainst: limit}) {
+		t.Fatal("patience 2 is the limit 2, read from another value")
+	}
+	if checks(t, withLimit, append(setPatience("2"), setLocal(t, 3, limitL, "3")),
+		map[string]any{flow.ParamValue: patience, flow.ParamCompare: flow.CompareLeast, flow.ParamAgainst: limit}) {
+		t.Fatal("patience 2 is not at least the limit 3")
+	}
+	withReady := func(workflow *flow.Workflow) { withLocal(t, workflow, readyL, "ready", worldstate.TypeBool) }
+	ready := ref(worldstate.ScopeLocal, readyL)
+	if checks(t, withReady, setPatience("2"), map[string]any{
+		flow.ParamValue: patience, flow.ParamCompare: flow.CompareIs, flow.ParamAgainst: flow.RefOperand(ready),
+	}) {
+		t.Fatal("a reference of another type takes otherwise")
+	}
+	isTrue := map[string]any{flow.ParamValue: ready, flow.ParamCompare: flow.CompareIs, flow.ParamAgainst: json.RawMessage("true")}
+	if !checks(t, withReady, []flow.Node{setLocal(t, 2, readyL, "true")}, isTrue) {
+		t.Fatal("a bool is true")
+	}
+	isTrue[flow.ParamCompare] = flow.CompareLeast
+	if checks(t, withReady, []flow.Node{setLocal(t, 2, readyL, "true")}, isTrue) {
+		t.Fatal("a bool cannot be at least anything")
+	}
+	withMood := func(workflow *flow.Workflow) {
+		mood := worldstate.New(id(moodL), "mood", worldstate.ScopeLocal, worldstate.TypeChoice)
+		mood.Choices = []worldstate.Choice{{ID: "happy", Name: "happy"}, {ID: "calm", Name: "calm"}, {ID: "grumpy", Name: "grumpy"}}
+		mood.Default = mood.Empty().Encode()
+		if err := workflow.Locals().Insert(mood); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mood, calm := ref(worldstate.ScopeLocal, moodL), []flow.Node{setLocal(t, 2, moodL, `"calm"`)}
+	for _, tc := range []struct {
+		compare string
+		among   json.RawMessage
+		want    bool
+	}{
+		{flow.CompareAnyOf, quoted("happy", "calm"), true}, {flow.CompareNoneOf, quoted("happy", "calm"), false},
+		{flow.CompareNoneOf, quoted("grumpy"), true}, {flow.CompareAnyOf, quoted("grumpy"), false},
+		{flow.CompareAnyOf, flow.NoOperand(), false},
+	} {
+		got := checks(t, withMood, calm, map[string]any{flow.ParamValue: mood, flow.ParamCompare: tc.compare, flow.ParamAmong: tc.among})
+		if got != tc.want {
+			t.Fatalf("calm %s %s: %v", tc.compare, tc.among, got)
+		}
+	}
+	if !checks(t, withMood, calm, map[string]any{
+		flow.ParamValue: mood, flow.ParamCompare: flow.CompareIs, flow.ParamAgainst: json.RawMessage(`"calm"`),
+	}) {
+		t.Fatal("a choice checked with is, from before any of, still matches")
+	}
+	withName := func(workflow *flow.Workflow) { withLocal(t, workflow, nameL, "name", worldstate.TypeText) }
+	name, bob := ref(worldstate.ScopeLocal, nameL), []flow.Node{setLocal(t, 2, nameL, `"Bob"`)}
+	stranger := map[string]any{flow.ParamValue: name, flow.ParamCompare: flow.CompareNot, flow.ParamAgainst: json.RawMessage(`"Stranger"`)}
+	if !checks(t, withName, bob, stranger) {
+		t.Fatal("text is not a stranger")
+	}
+	stranger[flow.ParamCompare] = flow.CompareIs
+	if checks(t, withName, bob, stranger) {
+		t.Fatal("text is not a stranger, so is fails")
 	}
 }
 

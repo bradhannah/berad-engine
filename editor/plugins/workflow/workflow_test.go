@@ -134,10 +134,22 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	}
 	key, depth := flow.LineKey(id(1), flow.OutputNext), -60
 	bend := encode(t, workflow.MoveArgs{
-		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: id(3), Lane: nil, Depth: &depth}},
+		Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: id(3), Lane: nil, Depth: &depth, End: &depth}},
 	})
 	if err := model.VerifyUndo(document, workflow.Move{}, bend, registry.Edit); err != nil {
 		t.Fatalf("moving a line: %v", err)
+	}
+	tint := encode(t, workflow.TintArgs{Tints: flow.Tints{
+		Nodes: map[ids.ULID]string{id(3): "green"}, Outcomes: map[string]string{key: "amber"},
+		Lines: map[string]string{key: flow.TintNone},
+	}})
+	if err := model.VerifyUndo(document, workflow.Tint{}, tint, registry.Edit); err != nil {
+		t.Fatalf("colouring: %v", err)
+	}
+	apply(t, document, workflow.Tint{}, tint)
+	if err := model.VerifyUndo(document, workflow.Remove{}, encode(t, workflow.RemoveArgs{Nodes: []ids.ULID{id(3)}}),
+		registry.Edit); err != nil {
+		t.Fatalf("removing a coloured node: %v", err)
 	}
 	apply(t, document, workflow.Move{}, bend)
 	for _, check := range []struct {
@@ -145,7 +157,7 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		args json.RawMessage
 	}{
 		{workflow.Move{}, encode(t, workflow.MoveArgs{
-			Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: ids.ULID{}, Lane: nil, Depth: nil}},
+			Boxes: map[ids.ULID]flow.Box{}, Lines: map[string]flow.Bend{key: {To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}},
 		})},
 		{workflow.Remove{}, encode(t, workflow.RemoveArgs{Nodes: []ids.ULID{id(3)}})},
 	} {

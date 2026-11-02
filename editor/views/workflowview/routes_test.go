@@ -350,8 +350,8 @@ func TestBendsMoveLines(t *testing.T) {
 	}
 	depth, lane := top-loop[0].Y-30, down[1].X-down[0].X+20
 	if _, err := workflow.SetBends(map[string]flow.Bend{
-		flow.LineKey(testID(5), flow.OutputNext): {To: testID(2), Lane: nil, Depth: &depth},
-		flow.LineKey(testID(2), "o2"):            {To: testID(4), Lane: &lane, Depth: nil},
+		flow.LineKey(testID(5), flow.OutputNext): {To: testID(2), Lane: nil, Depth: &depth, End: nil},
+		flow.LineKey(testID(2), "o2"):            {To: testID(4), Lane: &lane, Depth: nil, End: nil},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -361,5 +361,40 @@ func TestBendsMoveLines(t *testing.T) {
 	}
 	if upright := bent[routeKey{from: testID(2), output: "o2"}][1].X; upright != down[1].X+20 {
 		t.Fatalf("the down line turns where it was moved: %d, was %d", upright, down[1].X)
+	}
+}
+
+// TestBackLineLegsMoveByHand moves the loop's drop leg, run and end leg each
+// by its own offset; the legs keep their offsets when a node moves.
+func TestBackLineLegsMoveByHand(t *testing.T) {
+	t.Parallel()
+	workflow := randomWalk(t)
+	_, found := arranged(t, workflow)
+	key := routeKey{from: testID(5), output: flow.OutputNext}
+	loop := found[key]
+	if len(loop) != backCorners {
+		t.Fatalf("the loop goes back: %v", loop)
+	}
+	lane, depth, end := loop[1].X-loop[0].X+12, loop[2].Y-loop[0].Y+30, loop[3].X-loop[5].X-16
+	if _, err := workflow.SetBends(map[string]flow.Bend{
+		flow.LineKey(testID(5), flow.OutputNext): {To: testID(2), Lane: &lane, Depth: &depth, End: &end},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bent := routes(workflow, shapes(workflow, plainNotes))[key]
+	if bent[1].X != loop[1].X+12 || bent[2].Y != loop[2].Y+30 || bent[3].X != loop[3].X-16 {
+		t.Fatalf("each leg moves by its own offset: %v, was %v", bent, loop)
+	}
+	box, placed := workflow.Box(testID(2))
+	if !placed {
+		t.Fatal("the loop's target is placed")
+	}
+	box.Y += 40
+	if _, err := workflow.Move(map[ids.ULID]flow.Box{testID(2): box}); err != nil {
+		t.Fatal(err)
+	}
+	moved := routes(workflow, shapes(workflow, plainNotes))[key]
+	if moved[1].X-moved[0].X != lane || moved[2].Y-moved[0].Y != depth || moved[3].X-moved[5].X != end {
+		t.Fatalf("the legs keep their offsets when a node moves: %v", moved)
 	}
 }

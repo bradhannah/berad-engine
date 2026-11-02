@@ -44,6 +44,7 @@ const (
 	groupSpace    = 26
 	arrangeWidth  = 110
 	recentreWidth = 90
+	legendWidth   = 80
 	dragStart     = 4
 	shortID       = 6
 	// newGap is the space between a node and one added after it.
@@ -74,9 +75,11 @@ type containerResize struct {
 	gesture string
 }
 
-// lineDrag moves the middle of a line by hand.
+// lineDrag moves one leg of a line by hand; part is the part of the line's
+// bend it sets.
 type lineDrag struct {
 	key     routeKey
+	part    string
 	start   image.Point
 	gesture string
 	moved   bool
@@ -143,11 +146,23 @@ type State struct {
 	recentre   *ui.Button
 	deleteLine *ui.Button
 	resetLine  *ui.Button
-	form       *form
-	save       *ui.SaveBar
-	guard      frame.Guard
-	focus      ui.Focus
-	picker     *picker.Picker
+	// legend is the toolbar's Legend toggle; legendBox is where the legend
+	// card sits over the canvas while it is on.
+	legend    *ui.Button
+	legendBox image.Rectangle
+	// tints are the workflow's tints as laid out; colours the inspector's
+	// colour rows for the selection.
+	tints   flow.Tints
+	colours []colourRow
+	// values is the value picker while it is open; lastGroup the group last
+	// opened in one, opened again in the next.
+	values    *valuePicker
+	lastGroup string
+	form      *form
+	save      *ui.SaveBar
+	guard     frame.Guard
+	focus     ui.Focus
+	picker    *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -179,6 +194,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
 		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
+		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
+		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
@@ -209,7 +226,14 @@ func (s *State) name(docs frame.Docs) string {
 }
 
 // Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+// While the value picker is open, it is the picker's.
+func (s *State) Focused() *ui.TextField {
+	if s.values != nil {
+		return s.values.picker.Focused()
+	}
+
+	return s.focus.Current()
+}
 
 // Selected returns the selected node's ID.
 func (s *State) Selected() ids.ULID { return s.selected }
@@ -258,13 +282,14 @@ func (s *State) load(docs frame.Docs) {
 	if !found {
 		s.workflow, s.hasLayout = nil, false
 		s.shapes, s.routes, s.loops = map[ids.ULID]shape{}, map[routeKey][]image.Point{}, map[routeKey]bool{}
-		s.problems = map[ids.ULID]string{}
+		s.problems, s.tints = map[ids.ULID]string{}, flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}
 
 		return
 	}
 	if !s.hasLayout || revision != s.laidOut {
 		s.shapes = shapes(s.workflow, s.noteHeight)
 		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
+		s.tints = s.workflow.Tints()
 		s.laidOut, s.hasLayout, s.watchFloors = revision, true, true
 		s.layouts++
 	}
@@ -307,6 +332,9 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.zoomCard.layout(s.Canvas(), s.zoom, s.lowestZoom())
 	s.recentre.Rect = image.Rect(s.arrange.Rect.Min.X-ui.Inset-recentreWidth, s.arrange.Rect.Min.Y,
 		s.arrange.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
+	s.legend.Rect = image.Rect(s.recentre.Rect.Min.X-ui.Inset-legendWidth, s.arrange.Rect.Min.Y,
+		s.recentre.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
+	s.legendBox = s.legendLayout()
 	top, group := paletteTop, ""
 	for index := range s.palette {
 		entry := &s.palette[index]
@@ -320,15 +348,37 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.layoutForm(docs)
 	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
+	panel := frame.Inspector(s.size)
+	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
+	s.colours = nil
 	if s.lineSelected() {
-		panel := frame.Inspector(s.size)
 		bottom := panel.Max.Y - ui.Inset
-		s.deleteLine.Rect = image.Rect(panel.Min.X+ui.Inset, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
+		s.deleteLine.Rect = image.Rect(left, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
 		if _, bent := s.workflow.Bend(s.selectedLink.from, s.selectedLink.output); bent {
 			above := bottom - ui.ButtonH - rowSpace
-			s.resetLine.Rect = image.Rect(panel.Min.X+ui.Inset, above-ui.ButtonH, panel.Max.X-ui.Inset, above)
+			s.resetLine.Rect = image.Rect(left, above-ui.ButtonH, panel.Max.X-ui.Inset, above)
+		}
+		top := panelTextTop(panel.Min.Y+ui.Inset) + (forwardCorners+1)*ui.LineHeight + fieldSpace
+		s.colours = s.layoutColours(s.colourRows(), left, width, top)
+	} else if s.form != nil {
+		s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
+		if limit := s.notesTop(panel, width); len(s.colours) > 0 && coloursBottom(s.colours) > limit {
+			s.colours = nil
 		}
 	}
+}
+
+// coloursBottom is where the last colour row ends; a form too tall for its
+// rows to sit above the inspector's notes shows none.
+func coloursBottom(rows []colourRow) int {
+	bottom := 0
+	for _, row := range rows {
+		for _, choice := range row.swatches {
+			bottom = max(bottom, choice.rect.Max.Y)
+		}
+	}
+
+	return bottom
 }
 
 // Update handles one frame of input.
@@ -372,19 +422,32 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 	}
 	s.updateLineButtons(input, ctx)
+	s.updateColours(input, ctx)
 	s.updateForm(input, ctx)
 	s.updateLocals(input, ctx)
+	s.updateToolbar(input, ctx)
+	s.updateZoom(input)
+	s.updatePalette(input, ctx)
+	s.updateCanvas(input, ctx)
+	s.guardSelection(ctx)
+	s.openContextMenu()
+}
+
+// updateToolbar handles Auto-arrange, Recentre and the Legend toggle, and
+// keeps a press on the legend's card from reaching the canvas under it.
+func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 	if s.arrange.Update(input) {
 		s.autoArrange(ctx)
 	}
 	if s.recentre.Update(input) {
 		s.recentreView(ctx)
 	}
-	s.updateZoom(input)
-	s.updatePalette(input, ctx)
-	s.updateCanvas(input, ctx)
-	s.guardSelection(ctx)
-	s.openContextMenu()
+	if s.legend.Update(input) {
+		s.legend.On = !s.legend.On
+	}
+	if input.Pressed && input.Cursor.In(s.legendBox) {
+		input.ClearPointer()
+	}
 }
 
 // updateLineButtons handles Delete line and Reset line for the selected
@@ -397,7 +460,7 @@ func (s *State) updateLineButtons(input *ui.Input, ctx *frame.Context) {
 		s.removeLine(ctx)
 	}
 	if !s.resetLine.Rect.Empty() && s.resetLine.Update(input) {
-		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, "")
+		s.bend(ctx, s.selectedLink, flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}, "")
 		ctx.Frame.Status("Line reset. Undo puts it back where you moved it.")
 	}
 }
@@ -413,7 +476,8 @@ func (s *State) listAudio(ctx *frame.Context) {
 }
 
 // keys handles the window's own keys while no text field has focus. Escape
-// closes an open cue chooser before anything else.
+// closes an open cue chooser before anything else; Enter opens the picker
+// for a selected value node's first box.
 func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	plain := ui.Plain()
 	if made, open := s.openChooser(); open && input.Consume(ui.KeyEscape, plain) {
@@ -432,6 +496,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.zoomTo(s.zoom-1, s.zoomFocus(input.Cursor))
 	case input.Consume(ui.Key0, ui.Cmd()):
 		s.zoomTo(defaultZoom, s.zoomFocus(input.Cursor))
+	case input.Consume(ui.KeyEnter, plain):
+		s.openFirstBox()
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		if s.lineSelected() {
 			s.removeLine(ctx)
@@ -501,7 +567,8 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	point := s.toCanvas(input.Cursor)
-	s.updateHover(ctx, input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor), point)
+	onCanvas := input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor) && !input.Cursor.In(s.legendBox)
+	s.updateHover(ctx, onCanvas, point)
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
@@ -566,8 +633,8 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	}
 	if key, onLine := s.linkAt(point); onLine {
 		s.selected, s.selectedLink = ids.ULID{}, key
-		if s.onMiddle(key, point) {
-			s.bending = &lineDrag{key: key, start: point, gesture: s.gesture(), moved: false}
+		if part, onLeg := s.legAt(key, point); onLeg {
+			s.bending = &lineDrag{key: key, part: part, start: point, gesture: s.gesture(), moved: false}
 		}
 
 		return
@@ -660,9 +727,10 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, point image.Po
 		workflowplugin.MoveArgs{Boxes: map[ids.ULID]flow.Box{s.resize.id: box}, Lines: nil}, nil)
 }
 
-// updateBend moves the middle of a line as it is dragged: a forward line's
-// upright part sideways, or a back line's run up or down, above the nodes if
-// wanted. Each change is a move edit in the drag's gesture.
+// updateBend moves one leg of a line as it is dragged: a forward line's
+// upright part or a back line's drop and end legs sideways, a back line's
+// run up or down, above the nodes if wanted. The line's other legs keep
+// their offsets. Each change is a move edit in the drag's gesture.
 func (s *State) updateBend(input *ui.Input, ctx *frame.Context, point image.Point) {
 	drag := s.bending
 	if !input.Down {
@@ -682,16 +750,22 @@ func (s *State) updateBend(input *ui.Input, ctx *frame.Context, point image.Poin
 
 		return
 	}
-	output := corners[0]
-	bend := flow.Bend{To: target, Lane: nil, Depth: nil}
-	if len(corners) == backCorners {
+	output, entry := corners[0], corners[len(corners)-1]
+	current, bent := s.workflow.Bend(drag.key.from, drag.key.output)
+	bend := current
+	bend.To = target
+	switch drag.part {
+	case partDepth:
 		depth := point.Y - output.Y
 		bend.Depth = &depth
-	} else {
+	case partEnd:
+		end := point.X - entry.X
+		bend.End = &end
+	default:
 		lane := point.X - output.X
 		bend.Lane = &lane
 	}
-	if current, bent := s.workflow.Bend(drag.key.from, drag.key.output); bent && sameBend(current, bend) {
+	if bent && sameBend(current, bend) {
 		return
 	}
 	s.bend(ctx, drag.key, bend, drag.gesture)
@@ -709,7 +783,7 @@ func (s *State) bend(ctx *frame.Context, key routeKey, bend flow.Bend, gesture s
 func sameBend(a, b flow.Bend) bool {
 	same := func(x, y *int) bool { return (x == nil && y == nil) || (x != nil && y != nil && *x == *y) }
 
-	return a.To == b.To && same(a.Lane, b.Lane) && same(a.Depth, b.Depth)
+	return a.To == b.To && same(a.Lane, b.Lane) && same(a.Depth, b.Depth) && same(a.End, b.End)
 }
 
 // updateLink follows a connection being drawn from a port, or a line picked
@@ -869,11 +943,15 @@ func newBox(kind string, place image.Point) flow.Box {
 // updateHover follows the line and the problem mark under the pointer, and
 // says what the problem is when the pointer comes onto a mark.
 func (s *State) updateHover(ctx *frame.Context, onCanvas bool, point image.Point) {
+	was := s.hoverLink
 	s.hoverLink = noRoute()
 	mark := ids.ULID{}
 	if onCanvas && s.drag == nil && s.resize == nil {
 		s.hoverLink, _ = s.linkAt(point)
 		mark = s.markAt(point)
+	}
+	if s.hoverLink != was && s.hoverLink != noRoute() {
+		ctx.Frame.Status(s.describeLine(s.hoverLink, ctx.Docs))
 	}
 	if mark != s.hoverMark && !mark.IsZero() {
 		ctx.Frame.Status(s.problems[mark])
@@ -949,7 +1027,7 @@ func (s *State) autoArrange(ctx *frame.Context) {
 		if args.Lines == nil {
 			args.Lines = map[string]flow.Bend{}
 		}
-		args.Lines[key] = flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil}
+		args.Lines[key] = flow.Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}
 	}
 	s.command(ctx, workflowplugin.MoveEdit, "", args, func(protocol.Result) {
 		ctx.Frame.Status("Arranged. Undo puts the nodes back where they were.")

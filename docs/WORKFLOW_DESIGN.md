@@ -156,9 +156,15 @@ drawn back to either only repeats what the rule already does.
   files keep their format version and upgrade like any other file.
 - **Candidate: inputs are read-only.** A workflow changes state only through
   action nodes, such as Set flag, Change stat or Give quest.
-- **Candidate: a Check node** compares a value with values or ranges and has
-  one outcome for each, and one for anything else. The time switch is a
-  check on the clock; a conversation's stat or skill check is another.
+- **Agreed (2026-11-01): Check value compares by its value's type** and
+  stays a yes or otherwise question: symbols for an integer, `=` `≠` `<`
+  `≤` `>` `≥`, with between and its limits, against a number or another
+  integer value; true or false for a bool; any of or none of a ticked list
+  for a choice; is or is not for text. [Increment
+  18](increments/0018-comparisons.md) builds it. **Candidate: a Switch on a
+  value,** one outcome per choice and one for anything else, when a
+  workflow wants a fan-out; the time switch is one on the clock, and a
+  conversation's stat or skill check would be another.
 - **Candidate: an NPC is driven by one workflow at a time.** Actions move
   only the workflow's own NPC; other NPCs are reached through shared values,
   sensing or messages, so two workflows never fight over one body.
@@ -255,3 +261,11 @@ world-state tree with provisions, references in parameters, Set and Check
 nodes); sprite workflows reacting to what an NPC is doing; calls between
 workflows; conversations. Values and sensing are planned first, in
 [increment 15](increments/0015-values-and-sensing.md), ahead of containers.
+
+**Agreed (2026-11-01):** two canvas increments come before containers, so
+that building workflows stops snagging on the canvas: [increment
+17](increments/0017-reading-the-graph.md), reading the graph (handles on
+every leg of a line, the status bar naming a line, colours), and a planned
+one for working with many nodes (multi-select, duplicate, nudge, dropping a
+node onto a line). Both are layout: nothing in them changes what the engine
+runs.

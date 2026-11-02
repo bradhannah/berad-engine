@@ -428,12 +428,12 @@ func TestBends(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := workflow.LineKey(id(1), workflow.OutputNext)
-	depth := -40
-	previous, err := flow.SetBends(map[string]workflow.Bend{key: {To: id(2), Lane: nil, Depth: &depth}})
+	depth, end := -40, -30
+	previous, err := flow.SetBends(map[string]workflow.Bend{key: {To: id(2), Lane: nil, Depth: &depth, End: &end}})
 	if err != nil || !previous[key].To.IsZero() {
 		t.Fatalf("set bends: %v %v", previous, err)
 	}
-	if bend, ok := flow.Bend(id(1), workflow.OutputNext); !ok || *bend.Depth != -40 {
+	if bend, ok := flow.Bend(id(1), workflow.OutputNext); !ok || *bend.Depth != -40 || *bend.End != -30 {
 		t.Fatalf("the bend applies: %+v %v", bend, ok)
 	}
 	layout, err := flow.EncodeLayout()
@@ -466,8 +466,201 @@ func TestBends(t *testing.T) {
 	if len(flow.Bends()) != 0 {
 		t.Fatal("setting the previous bends undoes them")
 	}
-	if _, err := flow.SetBends(map[string]workflow.Bend{"nonsense": {To: id(2), Lane: nil, Depth: nil}}); !errors.Is(err, workflow.ErrNode) {
+	if _, err := flow.SetBends(map[string]workflow.Bend{"nonsense": {To: id(2), Lane: nil, Depth: nil, End: nil}}); !errors.Is(err, workflow.ErrNode) {
 		t.Fatalf("a key that names no line is refused: %v", err)
+	}
+}
+
+// TestComparisonsByType lists what each type can be compared with, keeps
+// is for a choice checked before any of existed, and accepts a list and a
+// reference as operands while refusing a list within a list.
+func TestComparisonsByType(t *testing.T) {
+	t.Parallel()
+	if got := workflow.Comparisons(worldstate.TypeInteger); len(got) != 9 || got[0] != workflow.CompareIs ||
+		got[6] != workflow.CompareBetween {
+		t.Fatalf("an integer's comparisons: %v", got)
+	}
+	if got := workflow.Comparisons(worldstate.TypeBool); len(got) != 1 || got[0] != workflow.CompareIs {
+		t.Fatalf("a bool only is: %v", got)
+	}
+	if got := workflow.Comparisons(worldstate.TypeChoice); len(got) != 2 || got[0] != workflow.CompareAnyOf {
+		t.Fatalf("a choice is any of or none of: %v", got)
+	}
+	if got := workflow.Comparisons(worldstate.TypeText); len(got) != 2 || got[1] != workflow.CompareNot {
+		t.Fatalf("text is or is not: %v", got)
+	}
+	if workflow.Comparisons(worldstate.TypeNPC) != nil || workflow.CanCompare(workflow.CompareIs, worldstate.TypeNPC) {
+		t.Fatal("an NPC compares with nothing")
+	}
+	if !workflow.CanCompare(workflow.CompareIs, worldstate.TypeChoice) ||
+		workflow.CanCompare(workflow.CompareLeast, worldstate.TypeBool) {
+		t.Fatal("is still fits a choice; at least never fits a bool")
+	}
+	check, err := workflow.NewNode(workflow.KindCheckValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := check.WithParam(workflow.ParamAmong, []string{"happy", "calm"})
+	if err != nil || workflow.CheckParams(listed) != nil {
+		t.Fatalf("a list of choices is an operand: %v", err)
+	}
+	if items := workflow.Operands(mustOperand(t, listed, workflow.ParamAmong)); len(items) != 2 {
+		t.Fatalf("the list reads back as items: %v", items)
+	}
+	nested, _ := check.WithParam(workflow.ParamAmong, [][]string{{"happy"}})
+	if err := workflow.CheckParams(nested); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("a list within a list is refused: %v", err)
+	}
+	referring, err := check.WithParam(workflow.ParamAgainst, workflow.RefOperand(workflow.ValueRef{
+		Scope: worldstate.ScopeWorld, Value: id(7), Owner: ids.ULID{}, Found: ids.ULID{},
+	}))
+	if err != nil || workflow.CheckParams(referring) != nil {
+		t.Fatalf("a reference is an operand: %v", err)
+	}
+	if ref, refers := workflow.OperandRef(mustOperand(t, referring, workflow.ParamAgainst)); !refers || ref.Value != id(7) {
+		t.Fatalf("the reference reads back: %+v %v", ref, refers)
+	}
+	if _, refers := workflow.OperandRef(json.RawMessage(`3`)); refers {
+		t.Fatal("a number is no reference")
+	}
+	wrong, _ := check.WithParam(workflow.ParamAgainst, map[string]int{"foo": 1})
+	if err := workflow.CheckParams(wrong); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("an object that is no reference is refused: %v", err)
+	}
+	if len(workflow.Operands(workflow.NoOperand())) != 0 || len(workflow.Operands(json.RawMessage(`"calm"`))) != 1 {
+		t.Fatal("no operand is no items and one value is one item")
+	}
+}
+
+func mustOperand(t *testing.T, node workflow.Node, name string) json.RawMessage {
+	t.Helper()
+	raw, err := node.Operand(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return raw
+}
+
+// TestUpgradeFromVersion5 reads a version 5 Check value, from before
+// comparisons by type, unchanged: its comparison and operand keep their
+// meaning.
+func TestUpgradeFromVersion5(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.Format()); err != nil {
+		t.Fatal(err)
+	}
+	five := `{"start":"` + id(1).String() + `","nodes":[{"id":"` + id(1).String() + `","kind":"start","next":{"next":"` +
+		id(2).String() + `"}},{"id":"` + id(2).String() + `","kind":"check-value","params":{"value":{"scope":"local","value":"` +
+		id(20).String() + `"},"compare":"at-least","against":3}}],"locals":[{"id":"` + id(20).String() +
+		`","name":"tally","scope":"local","type":"integer","default":0}]}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.FormatName, Version: 5, ID: id(9), Name: "Old", Revision: 1, Data: json.RawMessage(five),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.FormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	read, err := workflow.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked, _ := read.Node(id(2))
+	compare, err := checked.Choice(workflow.ParamCompare)
+	if err != nil || compare != workflow.CompareLeast || string(mustOperand(t, checked, workflow.ParamAgainst)) != "3" {
+		t.Fatalf("version 5 reads unchanged: %q %v", compare, err)
+	}
+}
+
+// TestLayoutUpgradeFromVersion2 reads a layout from before a back line's
+// drop and end legs could be moved: its bends read as they were.
+func TestLayoutUpgradeFromVersion2(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.LayoutFormat()); err != nil {
+		t.Fatal(err)
+	}
+	key := workflow.LineKey(id(1), workflow.OutputNext)
+	old := `{"boxes":{},"lines":{"` + key + `":{"to":"` + id(2).String() + `","depth":-40}}}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.LayoutFormatName, Version: 2, ID: id(9), Name: "Old", Revision: 0, Data: json.RawMessage(old),
+	})
+	if err != nil || !changed || upgraded.Version != workflow.LayoutFormatVersion {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	flow, err := workflow.New(id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.Insert([]workflow.Node{node(t, 2, workflow.KindWait, ids.ULID{})}, nil,
+		[]workflow.Link{{From: id(1), Output: workflow.OutputNext, To: id(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.DecodeLayout(upgraded.Data); err != nil {
+		t.Fatal(err)
+	}
+	bend, ok := flow.Bend(id(1), workflow.OutputNext)
+	if !ok || bend.Depth == nil || *bend.Depth != -40 || bend.Lane != nil || bend.End != nil {
+		t.Fatalf("the bend reads as it was: %+v %v", bend, ok)
+	}
+}
+
+// TestTints colours a node, an outcome and a line: the tints are saved with
+// the layout and round-trip, go when their node goes, are taken away by an
+// empty name, and setting the previous tints undoes a change.
+func TestTints(t *testing.T) {
+	t.Parallel()
+	flow, err := workflow.New(id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := flow.Insert([]workflow.Node{node(t, 2, workflow.KindWait, ids.ULID{})}, nil,
+		[]workflow.Link{{From: id(1), Output: workflow.OutputNext, To: id(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	if layout, _ := flow.EncodeLayout(); strings.Contains(string(layout), `"tints"`) {
+		t.Fatalf("no tints are saved until one is set: %s", layout)
+	}
+	key := workflow.LineKey(id(1), workflow.OutputNext)
+	previous, err := flow.SetTints(workflow.Tints{
+		Nodes: map[ids.ULID]string{id(2): "green"}, Outcomes: map[string]string{key: "amber"},
+		Lines: map[string]string{key: workflow.TintNone},
+	})
+	if err != nil || previous.Nodes[id(2)] != "" || previous.Outcomes[key] != "" || previous.Lines[key] != "" {
+		t.Fatalf("set tints: %+v %v", previous, err)
+	}
+	tints := flow.Tints()
+	if tints.Nodes[id(2)] != "green" || tints.Outcomes[key] != "amber" || tints.Lines[key] != workflow.TintNone {
+		t.Fatalf("the tints apply: %+v", tints)
+	}
+	layout, err := flow.EncodeLayout()
+	if err != nil || !strings.Contains(string(layout), `"tints"`) {
+		t.Fatalf("the layout holds the tints: %s %v", layout, err)
+	}
+	reread := flow.Clone()
+	if err := reread.DecodeLayout(layout); err != nil || !reread.Equal(flow) {
+		t.Fatalf("the tints round-trip: %v", err)
+	}
+	if _, err := flow.SetTints(workflow.Tints{Nodes: map[ids.ULID]string{id(9): "green"}, Outcomes: nil, Lines: nil}); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("a node that does not exist is refused: %v", err)
+	}
+	if _, err := flow.SetTints(workflow.Tints{Nodes: nil, Outcomes: nil, Lines: map[string]string{"nonsense": "green"}}); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("a key that names no line is refused: %v", err)
+	}
+	if _, err := flow.SetTints(previous); err != nil {
+		t.Fatal(err)
+	}
+	if !flow.Tints().Empty() {
+		t.Fatalf("setting the previous tints undoes them: %+v", flow.Tints())
+	}
+	if _, err := flow.SetTints(workflow.Tints{Nodes: map[ids.ULID]string{id(2): "teal"}, Outcomes: nil, Lines: nil}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := flow.Remove([]ids.ULID{id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if !flow.Tints().Empty() {
+		t.Fatalf("a removed node's tint goes with it: %+v", flow.Tints())
 	}
 }
 

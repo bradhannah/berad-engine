@@ -3,6 +3,8 @@ package workflowview
 import (
 	"encoding/json"
 	"image"
+	"image/color"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -29,43 +32,60 @@ import (
 // type: an integer or text to type, false or true, or one of a list's
 // choices.
 const (
-	maxValueSearch = 200
-	// Row IDs: a value's row is its reference, encoded; a heading's starts
-	// with valueHeading; a row that declares a value starts with
-	// declarePrefix and encodes where.
-	valueHeading  = "values:"
-	declarePrefix = "declare:"
-	// locateValue names a chooser row for input scripts, "valuerow:<path>",
-	// and locateDeclare a row that declares one, "declare:<path>".
-	locateValue   = "valuerow"
-	locateDeclare = "declare"
+	// locateValue names a picker's row for input scripts, "valuerow:<path>",
+	// and locateDeclare where a value can be declared, "declare:<path>".
+	locateValue   = valuepicker.LocateValue
+	locateDeclare = valuepicker.LocateDeclare
 	// valueBoxPrefix names a value parameter's box, "ui:pick-<param>".
 	valueBoxPrefix = "pick-"
 	operandPrefix  = "operand-"
+	// textShown bounds text shown on a node, in characters.
+	textShown = 24
 )
 
 // Problems the value nodes can have.
 const (
-	problemNoValue        = "No value chosen yet."
-	problemValueGone      = "Its value was deleted. Choose another, or undo the delete."
-	problemReadOnly       = "It can read another NPC's or zone's values, but never set them."
-	problemNPCValue       = "An NPC value cannot be set or checked here."
-	problemOperand        = "Choose what it sets the value to, or compares it with."
-	problemAddInteger     = "Only an integer can be added to."
-	problemCompareInteger = "Only an integer can be at least, below or at a limit."
-	problemNoKeep         = "Choose a local NPC value to keep what it finds in."
-	problemWhere          = "Only an NPC's own value can be looked for."
-	problemOwnerGone      = "Its NPC or zone was deleted."
-	problemFoundGone      = "The local value holding its NPC was deleted."
+	problemNoValue    = "No value chosen yet."
+	problemValueGone  = "Its value was deleted. Choose another, or undo the delete."
+	problemReadOnly   = "It can read another NPC's or zone's values, but never set them."
+	problemNPCValue   = "An NPC value cannot be set or checked here."
+	problemOperand    = "Choose what it sets the value to, or compares it with."
+	problemAddInteger = "Only an integer can be added to."
+	problemNoKeep     = "Choose a local NPC value to keep what it finds in."
+	problemWhere      = "Only an NPC's own value can be looked for."
+	problemOwnerGone  = "Its NPC or zone was deleted."
+	problemFoundGone  = "The local value holding its NPC was deleted."
 )
 
 // valueOption is one value a parameter can choose: its reference, path and
-// declaration, under a heading.
+// declaration, and where it is listed.
 type valueOption struct {
 	ref      flow.ValueRef
 	path     string
 	declared worldstate.Declaration
-	heading  string
+	place
+}
+
+// place is where a value is listed: under a heading, in one of the
+// picker's scopes on its rail, and with the root its path starts from
+// there, so what its path has between the root and its own name is its
+// group.
+type place struct {
+	heading string
+	rail    string
+	root    string
+}
+
+// The picker's scopes beyond the scopes' own: every scope, other NPCs' and
+// zones' values.
+const (
+	railOthers = "others"
+	railZones  = "zones"
+)
+
+// scopePlace lists a value under a heading, in a scope of its own name.
+func scopePlace(heading string, scope worldstate.Scope) place {
+	return place{heading: heading, rail: string(scope), root: string(scope)}
 }
 
 // declareTarget is where a chooser's row declares a value: a scope, the
@@ -224,13 +244,13 @@ type options struct {
 	seen   map[string]bool
 }
 
-func (o *options) add(heading string, ref flow.ValueRef, path string, declared worldstate.Declaration) {
+func (o *options) add(where place, ref flow.ValueRef, path string, declared worldstate.Declaration) {
 	key := encodeRef(ref)
 	if o.seen[key] {
 		return
 	}
 	o.seen[key] = true
-	o.listed = append(o.listed, valueOption{ref: ref, path: path, declared: declared, heading: heading})
+	o.listed = append(o.listed, valueOption{ref: ref, path: path, declared: declared, place: where})
 }
 
 func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef {
@@ -246,7 +266,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	locals := s.workflow.Locals().Values()
 	for _, local := range locals {
 		if (role == roleKeep) == (local.Type == worldstate.TypeNPC) && role != roleWhere {
-			found.add("LOCAL", refTo(local, ids.ULID{}, ids.ULID{}), localPath(local), local)
+			found.add(scopePlace("LOCAL", worldstate.ScopeLocal), refTo(local, ids.ULID{}, ids.ULID{}), localPath(local),
+				local)
 		}
 	}
 	if role == roleKeep {
@@ -258,7 +279,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 		heading = "THE NPC IT FINDS"
 	}
 	for _, held := range s.npcValues(docs, catalog, role) {
-		found.add(heading, refTo(held.Declaration, ids.ULID{}, ids.ULID{}), held.Path, held.Declaration)
+		found.add(scopePlace(heading, worldstate.ScopeNPC), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
+			held.Path, held.Declaration)
 	}
 	if role == roleWhere {
 		return found.listed
@@ -268,10 +290,12 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 		zoneValues = append(zoneValues, catalog.Held(worldstate.ScopeZone, zone)...)
 	}
 	for _, held := range zoneValues {
-		found.add("THIS ZONE", refTo(held.Declaration, ids.ULID{}, ids.ULID{}), held.Path, held.Declaration)
+		found.add(scopePlace("THIS ZONE", worldstate.ScopeZone), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
+			held.Path, held.Declaration)
 	}
 	for _, held := range catalog.Held(worldstate.ScopeWorld, ids.ULID{}) {
-		found.add("WORLD", refTo(held.Declaration, ids.ULID{}, ids.ULID{}), held.Path, held.Declaration)
+		found.add(scopePlace("WORLD", worldstate.ScopeWorld), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
+			held.Path, held.Declaration)
 	}
 	if role == roleCheck {
 		s.othersOptions(found, catalog, locals)
@@ -308,20 +332,26 @@ func (s *State) othersOptions(found *options, catalog *worldstate.Catalog, local
 		if holder.Type != worldstate.TypeNPC {
 			continue
 		}
+		where := place{heading: "THE NPC IN " + localPath(holder), rail: railOthers, root: localPath(holder)}
 		for _, held := range shared {
-			found.add("THE NPC IN "+localPath(holder), refTo(held.Declaration, ids.ULID{}, holder.ID),
+			found.add(where, refTo(held.Declaration, ids.ULID{}, holder.ID),
 				localPath(holder)+strings.TrimPrefix(held.Path, string(worldstate.ScopeNPC)), held.Declaration)
 		}
 	}
 	for _, scope := range []worldstate.Scope{worldstate.ScopeNPC, worldstate.ScopeZone} {
+		rail := railOthers
+		if scope == worldstate.ScopeZone {
+			rail = railZones
+		}
 		for _, ownerID := range catalog.Owners(scope) {
 			owner, _ := catalog.Owner(ownerID)
 			if owner.Path == "" {
 				continue
 			}
+			where := place{heading: strings.ToUpper(owner.Name), rail: rail, root: string(scope) + "." + owner.Path}
 			for _, held := range catalog.Held(scope, ownerID) {
-				found.add(strings.ToUpper(owner.Name), refTo(held.Declaration, ownerID, ids.ULID{}),
-					worldstate.NamedPath(held.Path, owner.Path), held.Declaration)
+				found.add(where, refTo(held.Declaration, ownerID, ids.ULID{}), worldstate.NamedPath(held.Path, owner.Path),
+					held.Declaration)
 			}
 		}
 	}
@@ -348,62 +378,15 @@ func decodeRef(row string) (flow.ValueRef, bool) {
 
 // newValueControl makes a value parameter's widgets; the search box takes
 // part in focus only while the chooser shows it.
-func (s *State) newValueControl(made *control) {
-	made.search = ui.NewTextField("value-search", textedit.NewField("", false, maxValueSearch), false, s.theme)
-	made.search.Placeholder, made.search.Unmarked = "Find a value, or type a new name", true
-	made.list = &ui.List{ID: "values", Rect: ui.Zero(), Rows: nil, Selected: "", CanDrop: nil}
-	s.focus.Register(made.search)
-}
+func (s *State) newValueControl(*control) {}
 
-// layoutValue places the chosen value and, when open, the chooser down to
-// bottom. It returns where the next control goes.
-func (s *State) layoutValue(docs frame.Docs, made *control, node flow.Node, left, width, top, bottom int) int {
+// layoutValue places the chosen value's box, which opens the picker, with
+// a line under it for the value's type, limits and description. It returns
+// where the next control goes.
+func layoutValue(made *control, left, width, top int) int {
 	made.cueBox = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.search.Rect, made.list.Rect = ui.Zero(), ui.Zero()
-	if !made.open {
-		return top + fieldSpace
-	}
-	made.search.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.list.Rows = s.valueRows(docs, roleOf(node.Kind, made.param.Name), made.search.Field.Value())
-	made.list.Rect = image.Rect(left, top, left+width, max(top+ui.RowHeight, bottom-ui.Gap))
 
-	return made.list.Rect.Max.Y + fieldSpace
-}
-
-// valueRows lists the values a search matches under their headings, and
-// rows that declare a value named by the search where none has that name.
-func (s *State) valueRows(docs frame.Docs, role valueRole, query string) []ui.Row {
-	query = strings.ToLower(strings.TrimSpace(query))
-	var rows []ui.Row
-	heading := ""
-	taken := map[string]bool{}
-	for _, option := range s.valueOptions(docs, role) {
-		taken[option.path] = true
-		if query != "" && !strings.Contains(option.path, query) {
-			continue
-		}
-		if option.heading != heading {
-			heading = option.heading
-			rows = append(rows, ui.NewHeading(valueHeading+heading, heading))
-		}
-		row := ui.NewRow(encodeRef(option.ref), option.path)
-		row.Detail = option.declared.Type.Label()
-		rows = append(rows, row)
-	}
-	for _, target := range s.declareTargets(docs, role, query) {
-		if taken[target.Path] {
-			continue
-		}
-		label := "Declare " + target.Path
-		if target.For != "" {
-			label += " for " + s.ownerName(docs, target.Document)
-		}
-		rows = append(rows, ui.NewRow(declarePrefix+encodeTarget(target), label))
-	}
-
-	return rows
+	return top + ui.ButtonH + ui.LineHeight + fieldSpace
 }
 
 // ownerName is an NPC's display name.
@@ -484,25 +467,6 @@ func (s *State) ownedTargets(docs frame.Docs, target declareTarget, names []stri
 	return targets
 }
 
-func encodeTarget(target declareTarget) string {
-	data, err := json.Marshal(target)
-	if err != nil {
-		return ""
-	}
-
-	return string(data)
-}
-
-func decodeTarget(row string) (declareTarget, bool) {
-	var target declareTarget
-	encoded, declaring := strings.CutPrefix(row, declarePrefix)
-	if !declaring || json.Unmarshal([]byte(encoded), &target) != nil {
-		return target, false
-	}
-
-	return target, true
-}
-
 // declareScopes are the scopes a chooser can declare a new value in.
 func declareScopes(role valueRole) []worldstate.Scope {
 	switch role {
@@ -516,41 +480,38 @@ func declareScopes(role valueRole) []worldstate.Scope {
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
 }
 
-// updateValue opens and closes the chooser and chooses or declares the
-// value clicked.
-func (s *State) updateValue(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
+// updateValue opens the picker when the value's box is clicked.
+func (s *State) updateValue(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		if made.open {
-			s.closeChooser(made)
+		s.openValueBox(node, made)
+	}
+}
+
+// openValueBox opens the picker for a value's box: locked to NPC values for
+// one to keep an NPC in.
+func (s *State) openValueBox(node flow.Node, made *control) {
+	only := worldstate.Type("")
+	if roleOf(node.Kind, made.param.Name) == roleKeep {
+		only = worldstate.TypeNPC
+	}
+	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
+}
+
+// openFirstBox opens the picker for the selected node's first value box.
+// The inspector's boxes take no keyboard focus, so Enter with a value node
+// selected stands for Enter on its box.
+func (s *State) openFirstBox() {
+	node, selected := s.selectedNode()
+	if !selected || s.form == nil {
+		return
+	}
+	for index := range s.form.controls {
+		if made := &s.form.controls[index]; made.param.Type == flow.TypeValue && !made.cueBox.Empty() {
+			s.openValueBox(node, made)
 
 			return
 		}
-		made.open = true
-		if ref, err := node.Ref(made.param.Name); err == nil {
-			made.list.Selected = encodeRef(ref)
-		}
-		s.focus.Set(made.search)
-
-		return
-	}
-	if !made.open {
-		return
-	}
-	row, _ := rowAt(made.list, input.Cursor)
-	pressed := input.Pressed
-	made.list.Update(input)
-	if !pressed || row == "" {
-		return
-	}
-	s.closeChooser(made)
-	if target, declaring := decodeTarget(row); declaring {
-		s.declareValue(ctx, node.ID, made.param.Name, target)
-
-		return
-	}
-	if ref, ok := decodeRef(row); ok {
-		s.chooseValue(ctx, ctx.Docs, node, made.param.Name, ref)
 	}
 }
 
@@ -589,27 +550,35 @@ func operandOfValue(kind, param string) string {
 	return ""
 }
 
-// declareValue declares a value where a chooser's row says, with the
-// groups its name needs, then chooses it. A value to keep an NPC in is an
-// NPC; any other starts as an integer.
-func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, target declareTarget) {
-	node, ok := s.currentNode(ctx.Docs, nodeID)
-	if !ok {
+// declaring is a value to declare from the picker: where, its type and what
+// it starts at, nil for its type's own; operand is set when it is then
+// chosen as an operand's reference rather than as a value parameter.
+type declaring struct {
+	target  declareTarget
+	kind    worldstate.Type
+	start   json.RawMessage
+	operand bool
+}
+
+// declareValue declares a value where the picker says, with the groups its
+// name needs, then chooses it for a node's parameter.
+func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, made declaring) {
+	if _, ok := s.currentNode(ctx.Docs, nodeID); !ok {
 		return
 	}
-	kind := worldstate.TypeInteger
-	if roleOf(node.Kind, param) == roleKeep {
-		kind = worldstate.TypeNPC
-	}
+	target := made.target
 	list, listed := s.declareList(ctx.Docs, target)
 	if !listed {
 		return
 	}
-	change, err := valuetree.Declare(list.Values, target.Scope, target.Parent, target.Name, kind)
+	change, err := valuetree.Declare(list.Values, target.Scope, target.Parent, target.Name, made.kind)
 	if err != nil {
 		ctx.Frame.Status(strings.TrimPrefix(err.Error(), valuetree.ErrName.Error()+": "))
 
 		return
+	}
+	if made.start != nil {
+		change.Add[len(change.Add)-1].Default = made.start
 	}
 	data, err := json.Marshal(change)
 	if err != nil {
@@ -624,11 +593,19 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 
 			return
 		}
-		if current, found := s.currentNode(ctx.Docs, nodeID); found {
-			ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
+		// A local is declared in this workflow, so it is read again before
+		// the value is chosen and its operand started at it.
+		s.load(ctx.Docs)
+		current, found := s.currentNode(ctx.Docs, nodeID)
+		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
+		switch {
+		case !found:
+		case made.operand:
+			s.saveParam(ctx, current, param, flow.RefOperand(ref))
+		default:
 			s.chooseValue(ctx, ctx.Docs, current, param, ref)
 		}
-		ctx.Frame.Status("Declared " + target.Path + ". Change its type in " + declaredWhere(target.Scope) + ".")
+		ctx.Frame.Status("Declared " + target.Path + ". Change it in " + declaredWhere(target.Scope) + ".")
 	})
 }
 
@@ -726,11 +703,20 @@ func (s *State) newOperandControl(made *control, node flow.Node, declared worlds
 	}
 }
 
-// setSavedOperand shows an operand's saved value.
+// setSavedOperand shows an operand's saved value: a field's text, the
+// button or buttons on, and whether an integer's is a number or another
+// value. A choice's Among with nothing in it shows the one choice an older
+// is compared with.
 func setSavedOperand(made *control, node flow.Node) {
 	saved, err := node.Operand(made.param.Name)
 	if err != nil {
 		return
+	}
+	if made.param.Name == flow.ParamAmong && flow.IsNoOperand(saved) {
+		saved = savedOperand(node, flow.ParamAgainst)
+	}
+	if len(made.sources) == ui.Half {
+		made.sources[0].On, made.sources[1].On = !made.picksValue(), made.picksValue()
 	}
 	if made.field != nil {
 		var integer int
@@ -742,15 +728,26 @@ func setSavedOperand(made *control, node flow.Node) {
 			made.field.Field.SetSaved(strconv.Itoa(integer))
 		}
 	}
+	items := flow.Operands(saved)
 	for index, button := range made.choices {
-		button.On = index < len(made.operands) && string(made.operands[index]) == string(saved)
+		button.On = index < len(made.operands) && slices.ContainsFunc(items, func(item json.RawMessage) bool {
+			return string(item) == string(made.operands[index])
+		})
 	}
 }
 
-// layoutOperand places an operand's field or buttons, or leaves room for a
-// note while its value is not chosen. It returns where the next control
-// goes.
-func layoutOperand(made *control, left, width, top int) int {
+// layoutOperand places an operand's field or buttons, with A number and
+// Another value over an integer's and the chooser when it refers to a
+// value, or leaves room for a note while its value is not chosen. It
+// returns where the next control goes.
+func (s *State) layoutOperand(made *control, left, width, top int) int {
+	made.clearRects()
+	if len(made.sources) > 0 {
+		top = s.layoutButtonRows(made.sources, left, width, top)
+	}
+	if made.picksValue() {
+		return layoutValue(made, left, width, top)
+	}
 	if made.field != nil {
 		made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 
@@ -775,10 +772,30 @@ func layoutOperand(made *control, left, width, top int) int {
 }
 
 // updateOperand saves an operand's false, true or choice when its button is
-// clicked.
+// clicked, ticks a choice in a list, and handles A number, Another value
+// and the chooser of an integer's operand.
 func (s *State) updateOperand(input *ui.Input, ctx *frame.Context, made *control, node flow.Node) {
+	if s.updateOperandSource(input, ctx, made, node) {
+		return
+	}
+	if made.picksValue() {
+		s.updateOperandChooser(input, ctx, made, node)
+
+		return
+	}
 	for index, button := range made.choices {
-		if button.Update(input) && !button.On && index < len(made.operands) {
+		if !button.Update(input) || index >= len(made.operands) {
+			continue
+		}
+		switch {
+		case made.param.Name == flow.ParamAmong:
+			s.saveAmong(ctx, node, made, index)
+
+			return
+		case button.On:
+		case node.Kind == flow.KindCheckValue && made.param.Name == flow.ParamAgainst:
+			s.saveAgainst(ctx, node, made, made.operands[index])
+		default:
 			s.saveParam(ctx, node, made.param.Name, made.operands[index])
 		}
 	}
@@ -800,45 +817,64 @@ func parseOperand(made *control, field *ui.TextField, value string) (any, bool, 
 // and the chooser when open.
 func (s *State) drawValue(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node) {
 	ref, err := node.Ref(made.param.Name)
-	label, ink := "?", ui.ColorWarn()
+	label, ink, detail := "?", ui.ColorWarn(), ""
 	if err == nil {
-		_, path, problem := s.resolve(docs, ref)
+		declared, path, problem := s.resolve(docs, ref)
 		switch {
 		case ref.IsZero() && roleOf(node.Kind, made.param.Name) == roleWhere:
 			label, ink = "Any NPC", ui.ColorInk()
 		case ref.IsZero():
-			label, ink = "Choose a value", ui.ColorMuted()
+			label, ink = chooseValueLabel, ui.ColorMuted()
 		case problem != "" && path == "":
 			label = "Broken: " + strings.ToLower(strings.TrimSuffix(problem, "."))
 		default:
-			label, ink = path, ui.ColorInk()
+			label, ink, detail = path, ui.ColorInk(), valueDetail(declared)
 		}
 	}
-	ui.Box(screen, made.cueBox, ui.ColorBackground())
-	if made.open {
-		ui.StrokeRound(screen, made.cueBox, ui.Radius, ui.Border, ui.ColorSelect())
+	open := s.values != nil && !s.values.operand && s.values.param == made.param.Name
+	s.drawPickBox(screen, made.cueBox, label, ink, open)
+	if detail != "" {
+		s.theme.DrawText(screen, s.clip(detail, made.cueBox.Dx()), made.cueBox.Min.X, made.cueBox.Max.Y+ui.Gap,
+			ui.ColorMuted())
 	}
-	textTop := made.cueBox.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
-	caret := image.Rect(made.cueBox.Max.X-textPad-caretWidth, made.cueBox.Min.Y, made.cueBox.Max.X-textPad,
-		made.cueBox.Max.Y)
-	ui.DrawTriangle(screen, caret, true, ui.ColorMuted())
-	s.theme.DrawMono(screen, s.clip(label, caret.Min.X-made.cueBox.Min.X-ui.Half*textPad), made.cueBox.Min.X+textPad,
-		textTop, ink)
-	if !made.open {
-		return
-	}
-	made.search.Draw(screen)
-	if len(made.list.Rows) == 0 {
-		s.theme.DrawText(screen, "No value matches. Type a name to declare one.", made.list.Rect.Min.X,
-			made.list.Rect.Min.Y, ui.ColorMuted())
-
-		return
-	}
-	made.list.Draw(screen, s.theme)
 }
 
+// drawPickBox draws a box that opens the picker: its label, a caret, and a
+// blue outline while the picker it opens is open.
+func (s *State) drawPickBox(screen *ebiten.Image, box image.Rectangle, label string, ink color.Color, open bool) {
+	ui.Box(screen, box, ui.ColorBackground())
+	if open {
+		ui.StrokeRound(screen, box, ui.Radius, ui.Border, ui.ColorSelect())
+	}
+	textTop := box.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
+	caret := image.Rect(box.Max.X-textPad-caretWidth, box.Min.Y, box.Max.X-textPad, box.Max.Y)
+	ui.DrawTriangle(screen, caret, true, ui.ColorMuted())
+	s.theme.DrawMono(screen, s.clip(label, caret.Min.X-box.Min.X-ui.Half*textPad), box.Min.X+textPad, textTop, ink)
+}
+
+// valueDetail is the one line shown under a chosen value: its type, an
+// integer's limits, and its description.
+func valueDetail(declared worldstate.Declaration) string {
+	if declared.Description == "" {
+		return typeDetail(declared)
+	}
+
+	return typeDetail(declared) + " · " + declared.Description
+}
+
+// typeDetail is a value's type and an integer's limits.
+func typeDetail(declared worldstate.Declaration) string { return valuepicker.TypeDetail(declared) }
+
 // drawOperand draws an operand's field or buttons, or says why it has none.
-func (s *State) drawOperand(screen *ebiten.Image, made *control, left int) {
+func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
+	for _, button := range made.sources {
+		button.Draw(screen, s.theme)
+	}
+	if made.picksValue() {
+		s.drawOperandChooser(screen, docs, made, node)
+
+		return
+	}
 	if made.field != nil {
 		made.field.Draw(screen)
 
@@ -875,7 +911,10 @@ func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
 	if missing := s.missing(docs, ref, path); missing != "" {
 		return missing
 	}
-	if !unlimited(node) && !operandFits(node, operandOfValue(node.Kind, flow.ParamValue), declared) {
+	if node.Kind == flow.KindCheckValue {
+		return s.checkProblem(docs, node, declared)
+	}
+	if !s.operandsFit(docs, node, declared) {
 		return problemOperand
 	}
 
@@ -894,10 +933,10 @@ func kindProblem(node flow.Node, ref flow.ValueRef, declared worldstate.Declarat
 		return problemNPCValue
 	case node.Kind == flow.KindSetValue && choiceOf(node, "how") == flow.HowAdd && declared.Type != worldstate.TypeInteger:
 		return problemAddInteger
-	case node.Kind != flow.KindCheckValue || compare == flow.CompareIs:
+	case node.Kind != flow.KindCheckValue:
 		return ""
-	case declared.Type != worldstate.TypeInteger:
-		return problemCompareInteger
+	case !flow.CanCompare(compare, declared.Type):
+		return "A " + declared.Type.Label() + " cannot be compared that way. Choose a comparison it takes."
 	case compare == flow.CompareMax && declared.Max == nil:
 		return "It has no maximum to be at. Give it one in the World state window."
 	case compare == flow.CompareMin && declared.Min == nil:
@@ -948,15 +987,27 @@ func operandFits(node flow.Node, operand string, declared worldstate.Declaration
 
 // compareWords says a Check value's comparison in words.
 func compareWords(node flow.Node) string {
-	switch choiceOf(node, "compare") {
+	switch choiceOf(node, flow.ParamCompare) {
+	case flow.CompareNot:
+		return "is not"
 	case flow.CompareLeast:
 		return "at least"
+	case flow.CompareMost:
+		return "at most"
+	case flow.CompareAbove:
+		return "above"
 	case flow.CompareBelow:
 		return "below"
+	case flow.CompareBetween:
+		return "between"
 	case flow.CompareMax:
 		return "at its maximum"
 	case flow.CompareMin:
 		return "at its minimum"
+	case flow.CompareAnyOf:
+		return "is any of"
+	case flow.CompareNoneOf:
+		return "is none of"
 	}
 
 	return "is"
@@ -990,11 +1041,12 @@ func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
 		if path(flow.ParamValue) == "" {
 			return "no value"
 		}
-		if unlimited(node) {
-			return path(flow.ParamValue) + " " + compareWords(node)
+		phrase, is := s.checkPhrase(docs, node)
+		if is {
+			phrase = "is " + phrase
 		}
 
-		return path(flow.ParamValue) + " " + compareWords(node) + " " + operand("against")
+		return path(flow.ParamValue) + " " + phrase
 	case flow.KindFindNPC:
 		return s.findSummary(node, path, operand)
 	}
@@ -1002,19 +1054,52 @@ func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
 	return ""
 }
 
-// operandLabel shows an operand as its value's type shows it, or "?".
+// operandLabel shows an operand as its value's type shows it: the value,
+// text in quotes, the path of a value it refers to, or a list's values
+// joined with commas; "?" for one that does not fit.
 func (s *State) operandLabel(docs frame.Docs, node flow.Node, param string) string {
 	declared, found := s.operandDeclaration(docs, node, param)
 	saved, err := node.Operand(param)
 	if !found || err != nil {
 		return "?"
 	}
-	value, err := declared.Parse(saved)
-	if err != nil {
+	if ref, refers := flow.OperandRef(saved); refers {
+		if _, path, problem := s.resolve(docs, ref); problem == "" {
+			return path
+		}
+
+		return "?"
+	}
+	var labels []string
+	for _, item := range flow.Operands(saved) {
+		value, parseErr := declared.Parse(item)
+		if parseErr != nil {
+			return "?"
+		}
+		label := declared.Label(value)
+		if declared.Type == worldstate.TypeText {
+			label = textLabel(value.Text)
+		}
+		labels = append(labels, label)
+	}
+	if len(labels) == 0 {
 		return "?"
 	}
 
-	return declared.Label(value)
+	return strings.Join(labels, ", ")
+}
+
+// textLabel shows text on a node as it was typed, in curly quotes, cut
+// with an ellipsis when long; empty text reads as empty.
+func textLabel(text string) string {
+	if text == "" {
+		return "empty"
+	}
+	if runes := []rune(text); len(runes) > textShown {
+		text = string(runes[:textShown-1]) + "…"
+	}
+
+	return "“" + text + "”"
 }
 
 func (s *State) findSummary(node flow.Node, path, operand func(string) string) string {
@@ -1033,32 +1118,16 @@ func (s *State) findSummary(node flow.Node, path, operand func(string) string) s
 	return written
 }
 
-// locateValueRow finds an open value chooser's row, "valuerow:<path>", or
-// a row that declares a value, "declare:<path>" or, for one NPC's own,
-// "declare:<path> for <its path name>", for input scripts.
-func (s *State) locateValueRow(kind, value string) (image.Point, bool) {
-	made, open := s.openChooser()
-	if !open || made.param.Type != flow.TypeValue {
-		return image.Pt(0, 0), false
-	}
-	for index, row := range made.list.Rows {
-		rect := made.list.RowRect(index)
-		if row.Heading || !rect.In(made.list.Rect) {
-			continue
-		}
-		target, declaring := decodeTarget(row.ID)
-		if (kind == locateValue && row.Label == value) || (kind == locateDeclare && declaring && target.located() == value) {
-			return image.Pt(rect.Min.X+textPad, ui.Center(rect).Y), true
-		}
-	}
-
-	return image.Pt(0, 0), false
-}
-
 // hasValueState answers "value:<param>=<path>" for the selected node's
 // value parameter, "operand:<param>=<saved>" for its operand and
 // "title:<kind>:<n>=<title>" for the nth value node of a kind's title.
 func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
+	if found, handled := s.hasPickerState(state, docs); handled {
+		return found, true
+	}
+	if found, handled := s.hasOperandState(state, docs); handled {
+		return found, true
+	}
 	node, selected := s.selectedNode()
 	switch {
 	case strings.HasPrefix(state, "title:"):
@@ -1109,12 +1178,10 @@ func (s *State) valueTitle(node flow.Node, docs frame.Docs) string {
 		return "Find NPC within " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	case path == "":
 		return kind.Label + " · no value"
-	case node.Kind == flow.KindCheckValue && unlimited(node):
-		return "Is " + path + " " + compareWords(node) + "?"
-	case node.Kind == flow.KindCheckValue && choiceOf(node, "compare") == flow.CompareIs:
-		return "Is " + path + " " + operand + "?"
 	case node.Kind == flow.KindCheckValue:
-		return "Is " + path + " " + compareWords(node) + " " + operand + "?"
+		phrase, _ := s.checkPhrase(docs, node)
+
+		return "Is " + path + " " + phrase + "?"
 	case choiceOf(node, "how") == flow.HowAdd:
 		return "Add " + operand + " to " + path
 	}

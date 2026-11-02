@@ -11,15 +11,18 @@ import (
 
 // Bend is where an author moved a line by hand, kept with the layout. A
 // line that goes forward turns in an upright part Lane pixels right of the
-// output it leaves; a line that goes back runs level Depth pixels below its
-// output, or above when Depth is negative. Both are measured from the
-// output, so the line keeps its shape when its nodes move. To is the node
-// the line led to when it was moved: if the line now leads elsewhere, the
-// bend no longer applies.
+// output it leaves. A line that goes back drops Lane pixels right of its
+// output, runs level Depth pixels below its output, or above when Depth is
+// negative, and comes back up End pixels left of the entry it goes into,
+// End being negative. Lane and Depth are measured from the output and End
+// from the entry, so the line keeps its shape when either node moves. To is
+// the node the line led to when it was moved: if the line now leads
+// elsewhere, the bend no longer applies.
 type Bend struct {
 	To    ids.ULID `json:"to"`
 	Lane  *int     `json:"lane,omitempty"`
 	Depth *int     `json:"depth,omitempty"`
+	End   *int     `json:"end,omitempty"`
 }
 
 // LineKey names the line that leaves a node by an output, for its bend.
@@ -41,11 +44,11 @@ func SplitLineKey(key string) (ids.ULID, string, bool) {
 func (w *Workflow) Bend(from ids.ULID, output string) (Bend, bool) {
 	bend, ok := w.bends[LineKey(from, output)]
 	if !ok {
-		return Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, false
+		return Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}, false
 	}
 	index := w.index(from)
 	if index < 0 || w.nodes[index].Next[output] != bend.To || bend.To.IsZero() {
-		return Bend{To: ids.ULID{}, Lane: nil, Depth: nil}, false
+		return Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}, false
 	}
 
 	return bend, true
@@ -78,7 +81,7 @@ func (w *Workflow) SetBends(bends map[string]Bend) (map[string]Bend, error) {
 		}
 		old, had := w.bends[key]
 		if !had {
-			old = Bend{To: ids.ULID{}, Lane: nil, Depth: nil}
+			old = Bend{To: ids.ULID{}, Lane: nil, Depth: nil, End: nil}
 		}
 		previous[key] = old
 	}
@@ -97,7 +100,7 @@ func (w *Workflow) SetBends(bends map[string]Bend) (map[string]Bend, error) {
 // bendsEqual reports whether two sets of bends are the same.
 func bendsEqual(a, b map[string]Bend) bool {
 	return maps.EqualFunc(a, b, func(x, y Bend) bool {
-		return x.To == y.To && sameOffset(x.Lane, y.Lane) && sameOffset(x.Depth, y.Depth)
+		return x.To == y.To && sameOffset(x.Lane, y.Lane) && sameOffset(x.Depth, y.Depth) && sameOffset(x.End, y.End)
 	})
 }
 

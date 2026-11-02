@@ -38,3 +38,7 @@ accepted it.
 | [14. Launch](increments/0014-launch.md) | Launch: playing the project in a Play tab with sprites and sounds, the player start, ambient and zone sounds, one wall sprite | Built |
 | [15. Values and sensing](increments/0015-values-and-sensing.md) | Values and sensing: declared values in four scopes, Set and Check value, and finding an NPC nearby | Built |
 | [16. Templates](increments/0016-templates.md) | Templates: discouraged and not-allowed pixels and guides to draw to, chosen per sprite and edited in a Template editor | Built |
+| [17. Reading the graph](increments/0017-reading-the-graph.md) | Reading the graph: a handle on every leg of a line, the status bar naming a line and a legend, colours on nodes, containers, outcomes and lines, the outcome's name at a long line's arrowhead | Built |
+| [18. Comparisons by type](increments/0018-comparisons.md) | Comparisons by type: symbols for integers against a number or another value, true or false for a bool, any of or none of a list for a choice, is or is not for text | Built |
+| [19. The value picker](increments/0019-value-picker.md) | The value picker: a dialog over the window with search, type chips, a scope rail, folding groups and declaring, opened by every chooser | Built |
+| [20. Moving and finding values](increments/0020-moving-and-finding.md) | Moving and finding values: a right-click and dragging move a value into a group, asking first when it is used; Find a value opens the picker over World state to show or declare one; text on a node in curly quotes | Built |

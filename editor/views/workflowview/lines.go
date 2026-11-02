@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -74,35 +75,118 @@ func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 		}
 	}
 	drawArrowhead(area, s.toScreen(corners[len(corners)-1]), ink)
+	if text, far := s.farLabel(link.key); far {
+		s.drawFarLabel(area, corners, text, link.key, lit)
+	}
 	if link.key == s.hoverLink || link.key == s.selectedLink {
 		s.drawGrip(area, corners)
 	}
 }
 
-// drawGrip draws a small handle across the middle of a line's draggable
-// part, showing it can be moved.
-func (s *State) drawGrip(area *ebiten.Image, corners []image.Point) {
-	start, end, ok := middleOf(corners)
-	if !ok {
-		return
+// farLabelRun is how long a line is, in canvas pixels, before it repeats
+// its outcome's name near its arrowhead, where the outcome's own row is far
+// out of view.
+const farLabelRun = 200
+
+// farLabel is the outcome's name a long line repeats near its arrowhead:
+// only when the node it leaves has several outputs, so the name tells
+// something, and the line runs farLabelRun or more.
+func (s *State) farLabel(key routeKey) (string, bool) {
+	from, ok := s.workflow.Node(key.from)
+	outputs := flow.Outputs(from)
+	if !ok || len(outputs) < ui.Half || key.output == flow.OutputInside {
+		return "", false
 	}
-	centre := s.toScreen(image.Pt((start.X+end.X)/ui.Half, (start.Y+end.Y)/ui.Half))
-	half := image.Pt(gripLength, gripWidth)
-	if start.Y == end.Y {
-		half = image.Pt(gripWidth, gripLength)
+	corners, length := s.routes[key], 0
+	for index := 1; index < len(corners); index++ {
+		length += abs(corners[index].X-corners[index-1].X) + abs(corners[index].Y-corners[index-1].Y)
 	}
-	grip := image.Rectangle{Min: centre.Sub(half), Max: centre.Add(half)}
-	ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
-	ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
+	if length < farLabelRun {
+		return "", false
+	}
+
+	return outputLabel(outputs, key.output), true
 }
 
-// lineInk is a line's colour: blue when lit, grey for a time switch's
-// "otherwise", ink otherwise; faint where it was while it is being moved.
+// drawFarLabel draws the name small above the line's last stretch, ending
+// short of the arrowhead, in the line's tint, muted without one, blue when
+// lit, as the free-output labels are drawn.
+func (s *State) drawFarLabel(area *ebiten.Image, corners []image.Point, text string, key routeKey, lit bool) {
+	ink := ui.ColorMuted()
+	if coloured, ok := s.lineTint(key); ok {
+		ink = coloured.ink
+	}
+	if lit {
+		ink = ui.ColorSelect()
+	}
+	tip := s.toScreen(corners[len(corners)-1])
+	left, top := tip.X-arrowSize-freeLabelGap-s.theme.SmallWidth(text), tip.Y-ui.LabelSize-freeLabelGap/ui.Half
+	s.theme.DrawSmall(area, text, left, top, ink)
+}
+
+// drawGrip draws a small handle across the middle of each part of a line
+// that can be dragged, showing it can be moved.
+func (s *State) drawGrip(area *ebiten.Image, corners []image.Point) {
+	for _, moved := range legsOf(corners) {
+		centre := s.toScreen(image.Pt((moved.from.X+moved.to.X)/ui.Half, (moved.from.Y+moved.to.Y)/ui.Half))
+		half := image.Pt(gripLength, gripWidth)
+		if moved.from.Y == moved.to.Y {
+			half = image.Pt(gripWidth, gripLength)
+		}
+		grip := image.Rectangle{Min: centre.Sub(half), Max: centre.Add(half)}
+		ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
+		ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
+	}
+}
+
+// describeLine says where a line goes, for the status bar: the node it
+// leaves and, when that node has several outputs, by which, the node it
+// enters, whether it loops back and whether it was moved by hand.
+func (s *State) describeLine(key routeKey, docs frame.Docs) string {
+	from, ok := s.workflow.Node(key.from)
+	to, linked := s.targetOf(key)
+	target, found := s.workflow.Node(to)
+	if !ok || !linked || !found {
+		return ""
+	}
+	text := s.nodeLabel(from, docs)
+	if outputs := flow.Outputs(from); len(outputs) > 1 {
+		text += " · " + outputLabel(outputs, key.output)
+	}
+	text += " → " + s.nodeLabel(target, docs)
+	if s.loops[key] {
+		text += " · loops back"
+	}
+	if _, bent := s.workflow.Bend(key.from, key.output); bent {
+		text += " · moved by hand"
+	}
+
+	return text
+}
+
+// outputLabel is the label of a node's output, or its name when the node
+// does not declare it.
+func outputLabel(outputs []flow.Output, name string) string {
+	for _, declared := range outputs {
+		if declared.Name == name {
+			return declared.Label
+		}
+	}
+
+	return name
+}
+
+// lineInk is a line's colour: blue when lit, its tint's ink when it or its
+// outcome has one, grey for a time switch's "otherwise", ink otherwise;
+// faint where it was while it is being moved.
 func (s *State) lineInk(link line, lit bool) color.Color {
 	base := ui.ColorInk()
 	if from, ok := s.workflow.Node(link.key.from); ok && from.Kind == flow.KindTimeSwitch &&
 		link.key.output == flow.OutputOtherwise {
 		base = ui.ColorMuted()
+	}
+	if coloured, ok := s.lineTint(link.key); ok {
+		base = coloured.ink
 	}
 	if lit {
 		base = ui.ColorSelect()

@@ -89,6 +89,20 @@ type control struct {
 	operands    []json.RawMessage
 	operandType worldstate.Type
 	unneeded    bool
+	// values are what each of a choice's buttons sets, in order. A hidden
+	// control takes no room and is not drawn: Check value's comparison for
+	// a type with nothing to choose, and an operand its comparison has no
+	// use for. note marks an integer's comparison row, drawn as symbols,
+	// for the words under it; sources are A number and Another value over
+	// an integer's operand, and refers is set while it is another value.
+	values  []string
+	hidden  bool
+	note    bool
+	sources []*ui.Button
+	refers  bool
+	// another is set once Another value is clicked, until a value is picked
+	// or A number is clicked, so the box to pick from shows meanwhile.
+	another bool
 }
 
 // form is the inspector for the selected node. rows counts a time switch's
@@ -101,6 +115,8 @@ type form struct {
 	shape    string
 	controls []control
 	remove   *ui.Button
+	// bottom is where the last control ends, where the colour rows go.
+	bottom int
 }
 
 // syncForm keeps the inspector built for the selected node and showing its
@@ -159,6 +175,10 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 			declared, found := s.operandDeclaration(docs, node, param.Name)
 			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
+	}
+	if node.Kind == flow.KindCheckValue {
+		_, refers := flow.OperandRef(savedOperand(node, flow.ParamAgainst))
+		shape.WriteString("compare=" + choiceOf(node, flow.ParamCompare) + ";refers=" + strconv.FormatBool(refers) + ";")
 	}
 
 	return shape.String()
@@ -262,7 +282,7 @@ func rowCount(node flow.Node) int {
 // buildForm makes a control for each of a node's parameters.
 func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
-	built := &form{node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, remove: nil}
+	built := &form{node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, remove: nil, bottom: 0}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
@@ -277,14 +297,12 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 		made := control{param: param, label: 0, field: nil, from: nil, to: nil, rows: nil, addRange: nil, pick: nil,
 			clear: nil, anchor: ui.Zero(), choices: nil, units: nil, clocks: nil, options: nil, addOption: nil,
 			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil, operandType: "",
-			unneeded: false}
+			unneeded: false, values: nil, hidden: false, note: false, sources: nil, refers: false, another: false}
 		switch param.Type {
 		case flow.TypeTiles:
 			made.field = text("param-"+param.Name, false)
 		case flow.TypeChoice:
-			for _, choice := range param.Choices {
-				made.choices = append(made.choices, ui.NewButton(param.Name+"-"+choice.Value, choice.Label))
-			}
+			s.newChoiceControl(docs, node, &made)
 		case flow.TypeDuration:
 			made.field = text("param-"+param.Name, false)
 			made.units, made.clocks = durationButtons(param.Name)
@@ -332,6 +350,9 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 	case flow.TypeOperand:
 		declared, found := s.operandDeclaration(docs, node, made.param.Name)
 		s.newOperandControl(made, node, declared, found)
+		if node.Kind == flow.KindCheckValue {
+			s.shapeCheckOperand(node, made, declared, found)
+		}
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges:
 	}
@@ -414,22 +435,26 @@ func (s *State) notesTop(panel image.Rectangle, width int) int {
 }
 
 // layoutForm places the inspector's fields and buttons.
-func (s *State) layoutForm(docs frame.Docs) {
+func (s *State) layoutForm(_ frame.Docs) {
 	if s.form == nil {
 		return
 	}
-	node, _ := s.selectedNode()
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	top := panel.Min.Y + formTop
 	footer := s.notesTop(panel, width)
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
+		if made.hidden {
+			made.clearRects()
+
+			continue
+		}
 		made.label = top
 		top += ui.LineHeight
 		switch made.param.Type {
 		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
-			top = layoutChoices(made, left, width, top)
+			top = s.layoutChoices(made, left, width, top)
 		case flow.TypeTiles, flow.TypeText:
 			height := ui.ButtonH
 			if made.field.Multiline {
@@ -449,16 +474,17 @@ func (s *State) layoutForm(docs frame.Docs) {
 			made.addRange.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 			top += ui.ButtonH + fieldSpace
 		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
-			top = s.layoutReference(docs, made, node, image.Rect(left, top, left+width, footer))
+			top = s.layoutReference(made, image.Rect(left, top, left+width, footer))
 		}
 	}
+	s.form.bottom = top
 	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
 }
 
 // layoutReference places a parameter that refers to something, from the
 // top of room down to no lower than its bottom, and returns where the next
 // control goes.
-func (s *State) layoutReference(docs frame.Docs, made *control, node flow.Node, room image.Rectangle) int {
+func (s *State) layoutReference(made *control, room image.Rectangle) int {
 	left, width, top := room.Min.X, room.Dx(), room.Min.Y
 	switch made.param.Type {
 	case flow.TypeAnchor:
@@ -472,9 +498,9 @@ func (s *State) layoutReference(docs frame.Docs, made *control, node flow.Node, 
 	case flow.TypeCue:
 		return s.layoutCue(made, left, width, top, room.Max.Y)
 	case flow.TypeValue:
-		return s.layoutValue(docs, made, node, left, width, top, room.Max.Y)
+		return layoutValue(made, left, width, top)
 	case flow.TypeOperand:
-		return layoutOperand(made, left, width, top)
+		return s.layoutOperand(made, left, width, top)
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges:
 	}
