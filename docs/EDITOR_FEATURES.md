@@ -410,7 +410,7 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   names a way out; renaming it keeps its callers' lines. A local's role is
   Local, Input or Output, and **place** joins the types for locals, so Go
   to can go to a place value. A Call that no longer fits is flagged on the
-  node and in Problems, and Watch shows the path down through the calls.
+  node, and Watch shows the path down through the calls.
   [Increment 21](increments/0021-flow-modules.md) builds it.
 - **Agreed:** custom behaviours compose logic, randomness and built-in
   behaviours such as wandering.

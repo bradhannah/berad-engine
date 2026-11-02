@@ -25,7 +25,7 @@ import (
 // module's inputs, given a value, a place picked on a map or another value,
 // or left to start as it does; and each of its outputs, kept in a value or
 // left. Locate names: "ui:call-workflow", the box that lists the workflows
-// as "menu:workflow:<id>"; "ui:call-open"; an input's "ui:input-<name>"
+// as "menu:workflow:<id>" or "menu:workflow-named:<name>"; "ui:call-open"; an input's "ui:input-<name>"
 // field, "ui:input-<name>-<value>" buttons, "ui:input-<name>-pick",
 // "ui:input-<name>-another", "ui:input-<name>-value" box and
 // "ui:input-<name>-clear"; an output's "ui:keep-<name>" box and
@@ -233,7 +233,8 @@ func (s *State) layoutInput(row *inputRow, left, width, top int) int {
 		row.field.Rect = main
 	}
 	if row.pick != nil {
-		row.pick.Rect = image.Rect(main.Min.X, main.Min.Y, main.Min.X+main.Dx()/ui.Half, main.Max.Y)
+		row.pick.Rect = main
+		top += ui.LineHeight
 	}
 	if len(row.choices) > 0 {
 		top = s.layoutButtonRows(row.choices, main.Min.X, main.Dx(), top) - rowSpace
@@ -521,6 +522,20 @@ func (s *State) chooseModule(ctx *frame.Context, chosen string) {
 	s.command(ctx, workflowplugin.ReplaceEdit, "", workflowplugin.ReplaceArgs{Node: changed}, nil)
 }
 
+// locateMenuItem finds an item of the open menu, a workflow to call also by
+// its name, as "menu:workflow-named:<name>", since scripts do not know IDs.
+func (s *State) locateMenuItem(value string) (image.Point, bool) {
+	if name, named := strings.CutPrefix(value, "workflow-named:"); named {
+		for _, item := range s.contextMenu.Items {
+			if item.Label == name && strings.HasPrefix(item.ID, menuWorkflow) {
+				return s.contextMenu.Locate(item.ID)
+			}
+		}
+	}
+
+	return s.contextMenu.Locate(value)
+}
+
 // drawCall draws the Call's inspector.
 func (s *State) drawCall(screen *ebiten.Image, docs frame.Docs, node flow.Node, left int) {
 	panel := s.form.call
@@ -585,8 +600,8 @@ func (s *State) drawInput(screen *ebiten.Image, docs frame.Docs, row inputRow, g
 		} else {
 			label = "starts as " + label
 		}
-		s.theme.DrawText(screen, s.clip(label, row.another.Rect.Min.X-row.pick.Rect.Max.X-ui.Inset),
-			row.pick.Rect.Max.X+ui.Gap, row.pick.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
+		s.theme.DrawText(screen, s.clip(label, row.another.Rect.Max.X-row.pick.Rect.Min.X), row.pick.Rect.Min.X,
+			row.pick.Rect.Max.Y+ui.Half, ui.ColorMuted())
 	}
 }
 

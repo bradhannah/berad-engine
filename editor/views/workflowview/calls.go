@@ -48,10 +48,11 @@ func (s *State) loadModules(docs frame.Docs, called []ids.ULID) string {
 				made.workflow, made.revision = workflowDoc.Workflow.Clone(), document.Revision
 			}
 		})
+		revision := "-"
 		if made.workflow != nil {
-			s.modules[target] = made
+			s.modules[target], revision = made, strconv.FormatUint(made.revision, 10)
 		}
-		parts = append(parts, target.String()+":"+strconv.FormatUint(made.revision, 10))
+		parts = append(parts, target.String()+":"+revision)
 	}
 
 	return strings.Join(parts, "|")

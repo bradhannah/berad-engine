@@ -69,6 +69,9 @@ type previewRun struct {
 	// turn, at the revisions last seen, so an edit to one restarts the NPCs
 	// inside it.
 	modules map[ids.ULID]moduleCopy
+	// anchors names the anchors of the zone's floors, for the watched
+	// NPC's place values.
+	anchors map[ids.ULID]string
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -161,7 +164,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
-			declared: "", modules: map[ids.ULID]moduleCopy{},
+			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{},
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)

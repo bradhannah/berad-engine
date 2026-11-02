@@ -193,6 +193,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 		s.refreshWorkflow(ctx, run)
 	}
 	s.refreshModules(ctx, runners)
+	s.nameAnchors(ctx.Docs)
 	zone := docsZone{floors: s.floors, docs: ctx.Docs}
 	s.declareValues(ctx.Docs)
 	ticks := 1
@@ -423,6 +424,9 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 			label := declared.Label(value)
 			if declared.Type == worldstate.TypeNPC && !value.NPC.IsZero() {
 				label = s.names.Name(value.NPC, label)
+			}
+			if name, named := s.preview.anchors[value.Place.Anchor]; declared.Type == worldstate.TypePlace && named {
+				label = name
 			}
 			shown = append(shown, protocol.PreviewValue{Path: string(worldstate.ScopeLocal) + "." + declared.Name, Value: label})
 		}

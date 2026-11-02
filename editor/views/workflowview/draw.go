@@ -919,7 +919,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "ui":
 		return s.locateWidget(value)
 	case locateMenu:
-		return s.contextMenu.Locate(value)
+		return s.locateMenuItem(value)
 	case localPrefix:
 		return s.locateLocal(value)
 	default:
