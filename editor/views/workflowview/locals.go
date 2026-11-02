@@ -84,7 +84,7 @@ func (s *State) syncLocals(ctx *frame.Context) {
 
 		return
 	}
-	panel.form.PlaceName = s.placeName(ctx, value)
+	panel.form.PlaceName, panel.form.Locked = s.placeName(ctx, value), s.lockLocal(value)
 	if panel.form.Show(value, value.Name) || !panel.registered {
 		s.focus = ui.Focus{}
 		s.focus.Register(panel.form.Fields()...)
@@ -167,7 +167,9 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 			func(protocol.Result) { ctx.Frame.Status(localPath(changed) + " deleted. Undo brings it back.") })
 	case valueform.ChangePickPlace:
 		s.pickPlace(ctx, changed)
-	case valueform.ChangeNone, valueform.ChangeDeclareNew:
+	case valueform.ChangeDeclareNew:
+		s.addLocal(ctx)
+	case valueform.ChangeNone:
 	}
 }
 

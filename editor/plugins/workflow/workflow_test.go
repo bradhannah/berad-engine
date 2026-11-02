@@ -317,3 +317,29 @@ func TestReferencesListValuesAndNPCs(t *testing.T) {
 		t.Fatalf("a value node refers to its world-state value and the NPC it names, not its locals: %+v", references)
 	}
 }
+
+// TestReferencesListCalls lists the workflow a Call calls, as the call
+// item, and the world-state values it gives and keeps, not its locals.
+func TestReferencesListCalls(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	call := newNode(t, flow.KindCall, 3, ids.ULID{})
+	world := flow.ValueRef{Scope: worldstate.ScopeWorld, Value: id(20), Owner: ids.ULID{}, Found: ids.ULID{}}
+	local := flow.ValueRef{Scope: worldstate.ScopeLocal, Value: id(22), Owner: ids.ULID{}, Found: ids.ULID{}}
+	call, err := call.WithParam(flow.ParamWorkflow, id(30).String())
+	if err == nil {
+		call, err = call.WithParam(flow.ParamInputs, map[ids.ULID]json.RawMessage{id(31): flow.RefOperand(world)})
+	}
+	if err == nil {
+		call, err = call.WithParam(flow.ParamKeep, map[ids.ULID]flow.ValueRef{id(32): local})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{call}, Boxes: nil, Links: nil}))
+	references := document.References()
+	if len(references) != 2 || references[0].Document != id(30) || references[0].Item != workflow.CallItem ||
+		references[1].Document != worldstate.ID() || references[1].Item != id(20).String() {
+		t.Fatalf("a Call refers to what it calls and the world value it gives: %+v", references)
+	}
+}

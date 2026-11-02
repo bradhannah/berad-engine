@@ -68,6 +68,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.layoutWidgets(docs)
 	screen.Fill(ui.ColorBackground())
 	s.drawZoomed(screen, docs)
+	s.drawCallers(screen)
 	if s.workflow != nil {
 		s.zoomCard.draw(screen, s.theme)
 		s.drawLegend(screen)
@@ -578,6 +579,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	}
 	if found, handled := s.hasCallState(state); handled {
 		return found, true
+	}
+	if line, asked := strings.CutPrefix(state, "calledby="); asked {
+		return s.callersLine() == line, true
 	}
 
 	return false, false

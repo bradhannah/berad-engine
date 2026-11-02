@@ -33,8 +33,8 @@ type module struct {
 	revision uint64
 }
 
-// calledBy lists the workflows this one's Calls name, each once.
-func calledBy(workflow *flow.Workflow) []ids.ULID {
+// callees lists the workflows this one's Calls name, each once.
+func callees(workflow *flow.Workflow) []ids.ULID {
 	var called []ids.ULID
 	for _, node := range workflow.Nodes() {
 		if target, ok := node.Called(); node.Kind == flow.KindCall && ok && !slices.Contains(called, target) {
@@ -123,7 +123,7 @@ func (s *State) watchCalls(ctx *frame.Context) {
 	if s.workflow == nil {
 		return
 	}
-	for _, target := range calledBy(s.workflow) {
+	for _, target := range callees(s.workflow) {
 		s.subscribe(target, ctx)
 	}
 }
