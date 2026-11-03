@@ -121,7 +121,8 @@ func (s *State) newInputRow(input worldstate.Declaration) inputRow {
 		row.choices, row.values = valueButtons(prefix, input)
 	case worldstate.TypePlace:
 		row.pick = ui.NewButton(prefix+"-pick", "Pick on map")
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return row

@@ -136,7 +136,8 @@ func giveAnew(kind worldstate.Type) string {
 		return "Choose one of its choices"
 	case worldstate.TypePlace:
 		return "Pick a place on a map"
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return "Clear it"

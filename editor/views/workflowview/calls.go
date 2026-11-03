@@ -246,7 +246,8 @@ func (s *State) givenLabel(docs frame.Docs, input worldstate.Declaration, raw []
 	case worldstate.TypeText:
 		return textLabel(value.Text)
 	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC,
-		worldstate.TypeGroup, worldstate.TypeTemplate:
+		worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return input.Label(value)

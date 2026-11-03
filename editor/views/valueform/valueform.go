@@ -273,7 +273,8 @@ func (f *Form) setSaved() {
 			button.On = choice.ID == current.Choice
 			f.defaults = append(f.defaults, button)
 		}
-	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 }
 
@@ -297,7 +298,8 @@ func (f *Form) Fields() []*ui.TextField {
 	case worldstate.TypeText:
 		fields = append(fields, f.text)
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return append(fields, f.description)
@@ -447,7 +449,8 @@ func (f *Form) layoutValue(left, top, width int) int {
 		f.high.Rect = image.Rect(left+width/ui.Half+rowSpace/ui.Half, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
 	case worldstate.TypeBool, worldstate.TypeText, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 	if f.shown.Type == worldstate.TypeNPC {
 		return top
@@ -462,7 +465,8 @@ func (f *Form) layoutValue(left, top, width int) int {
 	case worldstate.TypeText:
 		f.text.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
-	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		top = buttonRows(f.defaults, left, top, width, choicesPerLine)
 	}
 
@@ -656,7 +660,8 @@ func (f *Form) Typed() (worldstate.Declaration, string, *ui.TextField, string) {
 		text.Type, text.Text = worldstate.TypeText, f.text.Field.Value()
 		declared.Default = text.Encode()
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return declared, dotted, nil, ""

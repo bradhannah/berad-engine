@@ -326,7 +326,7 @@ func TestCatalog(t *testing.T) {
 	for _, held := range catalog.Held(worldstate.ScopeNPC, shop.guard) {
 		paths = append(paths, held.Path)
 	}
-	if len(paths) != 2 || paths[0] != "npc.name" || paths[1] != "npc.guards.how_many_arrested" {
+	if len(paths) != 5 || paths[0] != "npc.name" || paths[4] != "npc.guards.how_many_arrested" {
 		t.Fatalf("the guard holds %v", paths)
 	}
 }
@@ -349,7 +349,7 @@ func TestStore(t *testing.T) {
 		t.Fatalf("a value of the wrong type is refused: %v", err)
 	}
 	shown := store.Show(worldstate.ScopeNPC, shop.guard)
-	if len(shown) != 2 || shown[1].Path != "npc.guards.how_many_arrested" || shown[1].Value != "3" {
+	if len(shown) != 5 || shown[4].Path != "npc.guards.how_many_arrested" || shown[4].Value != "3" {
 		t.Fatalf("shown %+v", shown)
 	}
 	if world := store.Show(worldstate.ScopeWorld, ids.ULID{}); len(world) != 1 || world[0].Value != "false" {

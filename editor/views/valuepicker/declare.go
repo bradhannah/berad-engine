@@ -100,7 +100,8 @@ func (d *declarePanel) setKind(index int) {
 	case worldstate.TypeText:
 		d.start.Field.SetSaved("")
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 }
 
@@ -195,7 +196,8 @@ func (p *Picker) layoutDeclare(area image.Rectangle) {
 	case worldstate.TypeBool:
 		p.buttonRows(panel.truth, left, min(width, startFieldWidth), panel.startTop)
 	case worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 }
 
@@ -298,7 +300,8 @@ func (d *declarePanel) startValue() (json.RawMessage, string) {
 	case worldstate.TypeBool:
 		value.Bool = d.truthOn
 	case worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		return nil, ""
 	}
 
@@ -344,7 +347,8 @@ func startNote(kind worldstate.Type, setIn string) string {
 	switch kind {
 	case worldstate.TypeChoice:
 		return "It starts at the first of two choices, named in " + setIn + "."
-	case worldstate.TypeNPC:
+	case worldstate.TypeNPC,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		return "It starts as no NPC."
 	case worldstate.TypePlace:
 		return "It starts as no place; pick its place in " + setIn + "."

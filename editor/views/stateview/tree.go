@@ -271,7 +271,10 @@ func ownerName(owner worldstate.Owner, id ids.ULID) string {
 }
 
 func noOwner() worldstate.Owner {
-	return worldstate.Owner{Scope: "", Path: "", Name: "", Owned: worldstate.NewOwned(worldstate.ScopeNPC)}
+	return worldstate.Owner{
+		Scope: "", Path: "", Name: "", Owned: worldstate.NewOwned(worldstate.ScopeNPC), Zone: ids.ULID{},
+		Behaviour: ids.ULID{}, Sprite: ids.ULID{},
+	}
 }
 
 // detail says what a declaration is: a value's type, limits and default, a
@@ -293,7 +296,8 @@ func detail(declared worldstate.Declaration, catalog *worldstate.Catalog) string
 
 		return "template · on " + strconv.Itoa(applied)
 	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText, worldstate.TypeNPC,
-		worldstate.TypePlace:
+		worldstate.TypePlace,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 	written := declared.Type.Label()
 	if declared.Min != nil || declared.Max != nil {

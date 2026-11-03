@@ -9,12 +9,16 @@ import (
 )
 
 // Owner is one NPC or zone as values see it: its scope, its path name, an
-// NPC's display name, and what it owns.
+// NPC's display name, and what it owns; and an NPC's zone, behaviour and
+// sprite, which its built-in values start as.
 type Owner struct {
-	Scope Scope
-	Path  string
-	Name  string
-	Owned Owned
+	Scope     Scope
+	Path      string
+	Name      string
+	Owned     Owned
+	Zone      ids.ULID
+	Behaviour ids.ULID
+	Sprite    ids.ULID
 }
 
 // Catalog is every declaration a game's values come from: the world
@@ -73,8 +77,8 @@ func (c *Catalog) Named(scope Scope, path string) (ids.ULID, bool) {
 }
 
 // Lookup returns the value an ID names for whoever it belongs to: for the
-// world, a world value; for an NPC or zone, the NPC's name, one of its own,
-// or one in a template applied to it.
+// world, a world value; for an NPC or zone, one of the NPC's built-in
+// values, one of its own, or one in a template applied to it.
 func (c *Catalog) Lookup(scope Scope, owner, value ids.ULID) (Declaration, bool) {
 	if scope == ScopeWorld {
 		declared, ok := c.world.Value(value)
@@ -85,8 +89,8 @@ func (c *Catalog) Lookup(scope Scope, owner, value ids.ULID) (Declaration, bool)
 	if !known || held.Scope != scope {
 		return New(ids.ULID{}, "", "", ""), false
 	}
-	if scope == ScopeNPC && value == NameID() {
-		return NameDeclaration(held.Name), true
+	if scope == ScopeNPC && IsBuiltIn(value) {
+		return builtInOf(held, value), true
 	}
 	if declared, ok := held.Owned.Values.Value(value); ok {
 		return declared, declared.Type.IsValue()
@@ -105,8 +109,13 @@ func (c *Catalog) Lookup(scope Scope, owner, value ids.ULID) (Declaration, bool)
 // a workflow names it by for its own NPC, zone or world, such as
 // npc.guards.how_many_arrested.
 func (c *Catalog) Declared(value ids.ULID) (Declaration, string, bool) {
-	if value == NameID() {
-		return NameDeclaration(""), string(ScopeNPC) + ".name", true
+	if IsBuiltIn(value) {
+		declared := builtInOf(Owner{
+			Scope: ScopeNPC, Path: "", Name: "", Owned: NewOwned(ScopeNPC), Zone: ids.ULID{}, Behaviour: ids.ULID{},
+			Sprite: ids.ULID{},
+		}, value)
+
+		return declared, string(ScopeNPC) + "." + declared.Name, true
 	}
 	if declared, ok := c.world.Value(value); ok {
 		return declared, c.world.Path(value), true
@@ -129,7 +138,8 @@ type Held struct {
 }
 
 // Held lists every value the world, an NPC or a zone has, as a tree reads:
-// an NPC's name, its own values, then each template's in the order applied.
+// an NPC's built-in values, its own, then each template's in the order
+// applied.
 func (c *Catalog) Held(scope Scope, owner ids.ULID) []Held {
 	if scope == ScopeWorld {
 		return walk(c.world, ScopeWorld, ids.ULID{}, nil)
@@ -140,7 +150,9 @@ func (c *Catalog) Held(scope Scope, owner ids.ULID) []Held {
 	}
 	var values []Held
 	if scope == ScopeNPC {
-		values = append(values, Held{Declaration: NameDeclaration(held.Name), Path: string(ScopeNPC) + ".name"})
+		for _, declared := range BuiltIns(held) {
+			values = append(values, Held{Declaration: declared, Path: string(ScopeNPC) + "." + declared.Name})
+		}
 	}
 	values = walk(held.Owned.Values, scope, ids.ULID{}, values)
 	for _, template := range held.Owned.Templates {

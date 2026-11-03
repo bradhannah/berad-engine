@@ -48,11 +48,11 @@ func (s *Store) values(declared Declaration, owner ids.ULID, create bool) map[id
 }
 
 // Get returns a value: the world's, or the NPC's or zone's whose ID is
-// owner. An NPC's name starts as that NPC's own display name, whichever
-// NPC's name declaration is given.
+// owner. An NPC's built-in values start as that NPC's own, its display
+// name, zone, behaviour and sprite, whichever NPC's declaration is given.
 func (s *Store) Get(declared Declaration, owner ids.ULID) Value {
-	if declared.ID == NameID() {
-		if own, ok := s.catalog.Lookup(ScopeNPC, owner, NameID()); ok {
+	if IsBuiltIn(declared.ID) {
+		if own, ok := s.catalog.Lookup(ScopeNPC, owner, declared.ID); ok {
 			declared = own
 		}
 	}

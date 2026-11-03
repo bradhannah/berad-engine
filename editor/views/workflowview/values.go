@@ -735,7 +735,8 @@ func (s *State) newOperandControl(made *control, node flow.Node, declared worlds
 			made.choices = append(made.choices, ui.NewButton(operandPrefix+made.param.Name+"-"+choice.ID, choice.Name))
 			made.operands = append(made.operands, value.Encode())
 		}
-	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 }
 
