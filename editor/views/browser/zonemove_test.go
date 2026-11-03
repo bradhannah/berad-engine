@@ -8,12 +8,12 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
-	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 var (
@@ -24,9 +24,10 @@ var (
 )
 
 // withMoves gives the fixture a second zone, Harbour, with its floor Quay;
-// Ada Clerk lives in Town, placed on Ground, and follows Clerk day, whose
-// Go to goes to Ground's Desk; Customer lives in Town too and follows Clerk
-// day as well.
+// Ada Clerk lives in Town, placed on Ground when placed, and follows Clerk
+// day, whose Go to goes to Ground's Desk, running in Town when Ada Clerk is
+// placed and in any zone when not; Customer lives in Town too and follows
+// Clerk day as well.
 func withMoves(t *testing.T, f *fixture, placed bool) {
 	t.Helper()
 	harbour := zoneplugin.NewDocument()
@@ -50,6 +51,9 @@ func withMoves(t *testing.T, f *fixture, placed bool) {
 		}
 	}
 	day := newWorkflow(t)
+	if placed {
+		day.SetRunsIn(zoneID)
+	}
 	goTo, err := flow.NewNode(flow.KindGoTo)
 	if err == nil {
 		goTo, err = goTo.WithParam("destination", floor.AnchorRef{Floor: floorID, Anchor: deskID})
@@ -104,33 +108,24 @@ func (f *fixture) chooseHarbour() {
 }
 
 // TestMovingAnNPCAsksFirst moves an NPC that is placed and whose behaviour
-// goes to a place in its old zone: the dialog says it comes off its map,
-// that its behaviour also runs for Customer, and lists the place it could
-// no longer go to; Move takes it off its map and into the new zone in one
-// undo step.
+// runs in its old zone: the dialog says it comes off its map and that its
+// behaviour runs in Town, so it is flagged; Move takes it off its map and
+// into the new zone in one undo step, and its details then flag it.
 func TestMovingAnNPCAsksFirst(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withMoves(t, f, true)
 	f.chooseHarbour()
-	if len(f.requests.RunnerAsks) != 1 || f.requests.RunnersOf[0] != dayID || f.has("dialog") {
-		t.Fatalf("the move asks who else runs Clerk day before asking: %v", f.requests.RunnersOf)
-	}
-	f.requests.RunnerAsks[0]([]protocol.Use{
-		{Document: clerkID, Name: "Ada Clerk", Format: npc.FormatName, Label: protocol.RunsAsBehaviour, Item: ""},
-		{Document: customerID, Name: "Customer", Format: npc.FormatName, Label: protocol.RunsAsBehaviour, Item: ""},
-	}, nil)
-	f.press("Shift")
 	for _, line := range []string{
-		"Town → Harbour", "Ada Clerk comes off Ground in Town.", "Clerk day also runs for Customer",
-		"Places Ada Clerk could no longer go:",
+		"Town → Harbour", "Ada Clerk comes off Ground in Town.", "Its behaviour, Clerk day, runs in Town.",
+		"Ada Clerk is flagged in its details until it follows one that runs in Harbour or in any zone.",
 	} {
 		if !f.has("dialog-line=" + line) {
 			t.Fatalf("the dialog says %q", line)
 		}
 	}
-	if !f.has("dialog-row=Desk") || len(f.requests.Of(npcplugin.SetZoneEdit)) != 0 {
-		t.Fatal("the dialog lists Desk and nothing moves before Move")
+	if len(f.requests.Of(npcplugin.SetZoneEdit)) != 0 {
+		t.Fatal("nothing moves before Move")
 	}
 	f.click("ui:zone-move", false)
 	removed, homed := f.requests.Of(tilefloor.RemovePlacementEdit), f.requests.Of(npcplugin.SetZoneEdit)
@@ -139,18 +134,23 @@ func TestMovingAnNPCAsksFirst(t *testing.T) {
 		removed[0].Command.Gesture == "" || removed[0].Command.Gesture != homed[0].Command.Gesture {
 		t.Fatalf("Move takes it off its map and into Harbour in one step: %+v %+v", removed, homed)
 	}
+	clerk := npcplugin.NewDocument()
+	clerk.NPC.Zone, clerk.NPC.Behaviour = harbourID, dayID
+	f.docs().Put(clerkID, "Ada Clerk", clerk)
+	f.press("Shift")
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	if !f.has("flag=Clerk day runs in Town, and Ada Clerk lives in Harbour.") {
+		t.Fatal("its details flag the behaviour that runs elsewhere")
+	}
 }
 
 // TestMovingAnNPCThatBreaksNothing moves an NPC placed nowhere whose
-// behaviour names no place outside the new zone at once, without asking.
+// behaviour runs in any zone at once, without asking.
 func TestMovingAnNPCThatBreaksNothing(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withMoves(t, f, false)
-	f.docs().Put(dayID, "Clerk day", &workflowplugin.Document{Workflow: newWorkflow(t)})
 	f.chooseHarbour()
-	f.requests.RunnerAsks[0](nil, nil)
-	f.press("Shift")
 	homed := f.requests.Of(npcplugin.SetZoneEdit)
 	if f.has("dialog") || len(homed) != 1 || len(f.requests.Of(tilefloor.RemovePlacementEdit)) != 0 {
 		t.Fatalf("a move that breaks nothing happens at once: %+v", homed)

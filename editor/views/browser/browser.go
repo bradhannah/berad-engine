@@ -149,9 +149,8 @@ type State struct {
 	zones       *zonepicker.Picker
 	zonesFor    ids.ULID
 	recentZones []ids.ULID
-	// moving is a move of an NPC to another zone gathering what it would
-	// break, and movingNPC and movingTo the move its dialog asks about.
-	moving    *zoneMove
+	// movingNPC and movingTo are the move of an NPC to another zone its
+	// dialog asks about.
 	movingNPC ids.ULID
 	movingTo  ids.ULID
 	// zoneNotes are a selected zone's private notes, for zoneNoted.
@@ -190,7 +189,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 		loop: newLoopPanel(), loopFor: ids.ULID{},
-		moving: nil, movingNPC: ids.ULID{}, movingTo: ids.ULID{},
+		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
@@ -410,12 +409,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.openContextMenu(ctx.Docs)
 }
 
-// sync keeps the inspector showing what is selected, and goes on with a
-// move of an NPC to another zone while it gathers what it would break.
+// sync keeps the inspector showing what is selected.
 func (s *State) sync(ctx *frame.Context) {
-	if s.moving != nil {
-		s.updateMove(ctx)
-	}
 	s.syncArt(ctx)
 	s.syncName(ctx.Docs)
 	s.syncSettings(ctx.Docs)
@@ -1163,8 +1158,12 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 // hasRowState answers a row's states: "row-detail:<name>=<detail>", the
 // detail of the row named, and "row-loop:<name>", a row showing a zone
-// loop.
+// loop; and "flag=<text>", a flag in the inspector holding the text, under
+// an NPC's behaviour or a zone's loop.
 func (s *State) hasRowState(state string) bool {
+	if text, isFlag := strings.CutPrefix(state, "flag="); isFlag {
+		return strings.Contains(strings.Join(append(slices.Clone(s.npc.flag), s.loop.flag...), " "), text)
+	}
 	if rest, isDetail := strings.CutPrefix(state, "row-detail:"); isDetail {
 		label, detail, _ := strings.Cut(rest, "=")
 

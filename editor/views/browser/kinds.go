@@ -33,11 +33,16 @@ type loopPanel struct {
 	box    image.Rectangle
 	choose *ui.Button
 	open   *ui.Button
+	// flag says why the zone's loop doesn't fit it, in lines under its
+	// buttons, and flagTop where they start.
+	flag    []string
+	flagTop int
 }
 
 func newLoopPanel() *loopPanel {
 	return &loopPanel{
 		top: 0, box: ui.Zero(), choose: ui.NewButton(chooseLoopID, chooseLoopText), open: ui.NewButton(openLoopID, "Open"),
+		flag: nil, flagTop: 0,
 	}
 }
 
@@ -124,7 +129,7 @@ func (s *State) workflowRows(docs frame.Docs, purpose flow.Purpose, home ids.ULI
 	return rows
 }
 
-// refusal says why a workflow chosen for an NPC or a zone living in home
+// refusal says why a workflow chosen for an NPC, or a zone, living in home
 // can't be taken, or returns "".
 func (s *State) refusal(docs frame.Docs, workflowID, home ids.ULID, who string) string {
 	runs := s.runsInOf(docs, workflowID)
@@ -132,6 +137,10 @@ func (s *State) refusal(docs frame.Docs, workflowID, home ids.ULID, who string) 
 		return ""
 	}
 	index := s.index(docs)
+	if workflowID == s.loopOf(docs, home) || index.Name(home, "") == who {
+		return index.Name(workflowID, "That workflow") + " runs in " + index.Name(runs, "another zone") + ", not in " +
+			who + ". Choose one that runs in " + who + " or in any zone."
+	}
 
 	return index.Name(workflowID, "That workflow") + " runs in " + index.Name(runs, "another zone") + ", and " + who +
 		" lives in " + index.Name(home, "its zone") + ". Choose one that runs there or in any zone."
@@ -162,8 +171,14 @@ func (s *State) layoutZoneLoop(docs frame.Docs, left, width, top int) int {
 		return top
 	}
 	panel.top = top + panelGap
+	rowY := layoutChoice(panel.top, left, width, &panel.box, panel.choose, panel.open)
+	panel.flag = nil
+	if misfit := s.refusal(docs, s.loopOf(docs, entry.ID), entry.ID, entry.Name); misfit != "" {
+		panel.flag, panel.flagTop = s.theme.Wrap(misfit, width), rowY-panelGap+ui.Gap
+		rowY += len(panel.flag) * ui.LineHeight
+	}
 
-	return layoutChoice(panel.top, left, width, &panel.box, panel.choose, panel.open)
+	return rowY
 }
 
 // drawZoneLoop draws a selected zone's Zone loop box.
@@ -183,6 +198,9 @@ func (s *State) drawZoneLoop(screen *ebiten.Image, docs frame.Docs, left int) {
 	s.theme.DrawTextIn(screen, label, panel.box, ink)
 	panel.choose.Draw(screen, s.theme)
 	panel.open.Draw(screen, s.theme)
+	for index, line := range panel.flag {
+		s.theme.DrawText(screen, line, left, panel.flagTop+index*ui.LineHeight, ui.ColorWarn())
+	}
 }
 
 // updateZoneLoop handles a selected zone's Zone loop buttons, reporting

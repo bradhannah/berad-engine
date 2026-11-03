@@ -75,25 +75,29 @@ func (s *State) reachKey(docs frame.Docs) string {
 	return strings.Join(parts, ",")
 }
 
-// reachProblem says why an NPC that runs the workflow cannot reach a
-// place: it is in another zone, or on a floor no stairs lead to from the
-// one the NPC is placed on. It names the first NPC that cannot, or returns
-// "".
+// reachProblem says why a fixed place does not fit the workflow: it is in
+// another zone than the workflow runs in, the workflow runs in any zone, or
+// it is on a floor no stairs lead to from the one an NPC following the
+// workflow is placed on, naming the first NPC that cannot reach it. It
+// returns "" for a place that fits.
 func (s *State) reachProblem(docs frame.Docs, ref floor.AnchorRef) string {
 	placeZone, known := places.ZoneOf(docs, ref.Floor)
-	if !known {
+	if !known || s.workflow == nil {
 		return ""
 	}
 	index := s.names(docs)
-	place := anchorName(docs, ref)
+	place, name, runs := anchorName(docs, ref), s.name(docs), s.runsIn(docs)
+	if runs.IsZero() {
+		return place + " is a fixed place, and " + name + " runs in any zone. Give it a place input or another " +
+			"value, or run it in " + index.Name(placeZone, "its zone") + "."
+	}
+	if placeZone != runs {
+		return place + " is in " + index.Name(placeZone, "another zone") + ", and " + name + " runs in " +
+			s.runsInName(docs) + ". Choose a place in " + s.runsInName(docs) + "."
+	}
 	for _, each := range s.runnersOf(docs) {
-		if each.zone.IsZero() {
+		if each.zone != runs {
 			continue
-		}
-		home := index.Name(each.zone, "another zone")
-		if placeZone != each.zone {
-			return place + " is in " + index.Name(placeZone, "another zone") + ", and " + each.name + " lives in " +
-				home + ". Choose a place in " + home + "."
 		}
 		from, placed := placedOn(docs, each.zone, each.npc)
 		if placed && !stairsLead(docs, zoneFloors(docs, each.zone), from, ref.Floor) {

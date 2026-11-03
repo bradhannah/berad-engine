@@ -87,20 +87,38 @@ func reachTown(t *testing.T) *fixture {
 	return f
 }
 
+// runIn makes the workflow run in a zone, or in any zone, as if it had been
+// set so.
+func (f *fixture) runIn(zoneID ids.ULID) {
+	f.t.Helper()
+	f.workflow().SetRunsIn(zoneID)
+	f.docs.Touch(workflowID)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+}
+
 // TestPlacesOutOfReach flags a Go to whose place is in another zone than
-// its NPC's, then on a floor no stairs lead to from the NPC's, and mends
-// each; with two NPCs sharing the behaviour, it names the one that cannot
-// go.
+// the workflow runs in, or is a fixed place while it runs in any zone, and
+// one on a floor no stairs lead to from where an NPC following it is
+// placed, naming that NPC; each mends.
 func TestPlacesOutOfReach(t *testing.T) {
 	t.Parallel()
 	f := reachTown(t)
-	f.living(map[ids.ULID]ids.ULID{clerkNPC: harbourID})
-	if !f.has("problem:go-to:1=Office desk 3 is in Town, and Clerk lives in Harbour. Choose a place in Harbour.") {
-		t.Fatal("a place in another zone than the NPC's is flagged")
+	if !f.has("runs-in=Town") || f.has("problem:go-to:1") {
+		t.Fatal("choosing the desk ties the workflow to Town, where it fits")
 	}
-	f.living(map[ids.ULID]ids.ULID{clerkNPC: townID})
+	f.runIn(harbourID)
+	if !f.has("problem:go-to:1=Office desk 3 is in Town, and Daily routine runs in Harbour. Choose a place in Harbour.") {
+		t.Fatal("a place in another zone than the workflow's is flagged")
+	}
+	f.runIn(ids.ULID{})
+	if !f.has("problem:go-to:1=Office desk 3 is a fixed place, and Daily routine runs in any zone. Give it a place " +
+		"input or another value, or run it in Town.") {
+		t.Fatal("a fixed place in a workflow running in any zone is flagged")
+	}
+	f.runIn(townID)
+	f.living(map[ids.ULID]ids.ULID{clerkNPC: townID, fisherNPC: townID})
 	if !f.has("problem:go-to:1=No stairs lead from Loft to Office, so Clerk can't reach Office desk 3.") {
-		t.Fatal("a floor no stairs lead to from the NPC's is flagged")
+		t.Fatal("a floor no stairs lead to from where Clerk is placed is flagged, naming Clerk of the two")
 	}
 	f.docs.View(loftID, func(document client.Document) {
 		if _, err := document.Model.(*tilefloor.Document).Floor.SetTop(4, 4, "stairs.down"); err != nil {
@@ -112,14 +130,11 @@ func TestPlacesOutOfReach(t *testing.T) {
 	if f.has("problem:go-to:1") {
 		t.Fatal("stairs down from the Loft mend it")
 	}
-	f.living(map[ids.ULID]ids.ULID{clerkNPC: townID, fisherNPC: harbourID})
-	if !f.has("problem:go-to:1=Office desk 3 is in Town, and Fisher lives in Harbour. Choose a place in Harbour.") {
-		t.Fatal("with two NPCs sharing the behaviour, the one that cannot go is named")
-	}
 }
 
 // TestCallsAndLocalsOutOfReach flags a Call that gives its module a place
-// in another zone, and a place local that starts in one.
+// in another zone than the workflow runs in, and a place local that starts
+// in one.
 func TestCallsAndLocalsOutOfReach(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -129,8 +144,9 @@ func TestCallsAndLocalsOutOfReach(t *testing.T) {
 		floor.Anchor{ID: frametest.ID(83), Name: "Dock", Col: 1, Row: 1})
 	f.click("ui:input-place-place")
 	f.click("place:Shelf")
-	f.living(map[ids.ULID]ids.ULID{clerkNPC: harbourID})
-	if !f.has("problem:call-workflow:1=Its place: Shelf is in Town, and Clerk lives in Harbour. Choose a place in Harbour.") {
+	f.runIn(harbourID)
+	if !f.has("problem:call-workflow:1=Its place: Shelf is in Town, and Daily routine runs in Harbour. Choose a " +
+		"place in Harbour.") {
 		t.Fatal("a Call giving a place in another zone is flagged")
 	}
 	f.keys("Escape")
@@ -146,6 +162,6 @@ func TestCallsAndLocalsOutOfReach(t *testing.T) {
 	f.click("place:Dock")
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if f.has("out-of-reach:" + f.local().Name) {
-		t.Fatal("a start in the NPC's zone mends it")
+		t.Fatal("a start in the workflow's zone mends it")
 	}
 }

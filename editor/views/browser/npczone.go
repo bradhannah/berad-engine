@@ -225,7 +225,7 @@ func (s *State) chooseZone(ctx *frame.Context, npcID, zoneID ids.ULID) {
 	case now == zoneID:
 		return
 	case !now.IsZero():
-		s.moveZone(npcID, zoneID)
+		s.askMove(ctx, npcID, zoneID)
 
 		return
 	}

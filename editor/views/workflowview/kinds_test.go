@@ -191,13 +191,11 @@ func TestAFixedPlaceTiesItsZone(t *testing.T) {
 	}
 }
 
-// TestACallOffersWhatFits lists, for a Call in a behaviour running in Town,
-// the behaviours running in Town or any zone, then, disabled, one running in
-// Harbour, and no zone loop; running in any zone, it offers only those
-// running in any zone.
-func TestACallOffersWhatFits(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t)
+// withOthers adds Town, Harbour and other workflows: Errand running in
+// Town, Roam in any zone, Harbour errand in Harbour, and Market day, a zone
+// loop running in Town, by name.
+func (f *fixture) withOthers() map[string]ids.ULID {
+	f.t.Helper()
 	f.withTown()
 	town, harbour := frametest.ID(87), frametest.ID(84)
 	f.withZone(harbour, "Harbour", frametest.ID(85), "Quay",
@@ -206,6 +204,7 @@ func TestACallOffersWhatFits(t *testing.T) {
 	f.docs.View(project.IndexID(), func(document client.Document) {
 		entries = document.Model.(*project.Index).Entries()
 	})
+	made := map[string]ids.ULID{}
 	for index, each := range []struct {
 		name    string
 		purpose flow.Purpose
@@ -214,18 +213,69 @@ func TestACallOffersWhatFits(t *testing.T) {
 		{"Errand", flow.PurposeBehaviour, town}, {"Roam", flow.PurposeBehaviour, ids.ULID{}},
 		{"Harbour errand", flow.PurposeBehaviour, harbour}, {"Market day", flow.PurposeZoneLoop, town},
 	} {
-		made, err := flow.NewFor(frametest.ID(60), each.purpose)
+		workflow, err := flow.NewFor(frametest.ID(60), each.purpose)
 		if err != nil {
-			t.Fatal(err)
+			f.t.Fatal(err)
 		}
-		made.SetRunsIn(each.runs)
-		documentID := frametest.ID(byte(70 + index))
-		f.docs.Put(documentID, each.name, &workflowplugin.Document{Workflow: made})
+		workflow.SetRunsIn(each.runs)
+		made[each.name] = frametest.ID(byte(70 + index))
+		f.docs.Put(made[each.name], each.name, &workflowplugin.Document{Workflow: workflow})
 		entries = append(entries, project.Entry{
-			ID: documentID, Name: each.name, Format: flow.FormatName, Folder: "", Tags: nil, Kind: string(each.purpose),
+			ID: made[each.name], Name: each.name, Format: flow.FormatName, Folder: "", Tags: nil,
+			Kind: string(each.purpose),
 		})
 	}
 	f.docs.Put(project.IndexID(), "Project", project.NewIndex(entries))
+
+	return made
+}
+
+// TestCallsThatDoNotFit flags a Call in a behaviour running in Town to one
+// running in Harbour, and to a zone loop.
+func TestCallsThatDoNotFit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	made := f.withOthers()
+	f.workflow().SetRunsIn(frametest.ID(87))
+	f.docs.Touch(workflowID)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindCall)
+	f.click("ui:call-workflow")
+	f.click("menu:workflow:" + made["Roam"].String())
+	if f.has("problem:call-workflow:1") {
+		t.Fatal("a behaviour running in any zone fits")
+	}
+	for name, want := range map[string]string{
+		"Harbour errand": "Harbour errand runs in Harbour, and Daily routine runs in Town. Call one that runs there " +
+			"or in any zone.",
+		"Market day": "Market day is a zone loop, and Daily routine an NPC behaviour. Call one of its own kind.",
+	} {
+		call := f.nth(flow.KindCall, 1)
+		call, err := call.WithParam(flow.ParamWorkflow, made[name].String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.workflow().Replace(call); err != nil {
+			t.Fatal(err)
+		}
+		f.docs.Touch(workflowID)
+		f.frame(ui.NewInput(image.Pt(0, 0)))
+		f.frame(ui.NewInput(image.Pt(0, 0)))
+		if !f.has("problem:call-workflow:1=" + want) {
+			t.Fatalf("calling %s is flagged", name)
+		}
+	}
+}
+
+// TestACallOffersWhatFits lists, for a Call in a behaviour running in Town,
+// the behaviours running in Town or any zone, then, disabled, one running in
+// Harbour, and no zone loop; running in any zone, it offers only those
+// running in any zone.
+func TestACallOffersWhatFits(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withOthers()
+	town := frametest.ID(87)
 	f.workflow().SetRunsIn(town)
 	f.docs.Touch(workflowID)
 	f.click("node:start:1")
