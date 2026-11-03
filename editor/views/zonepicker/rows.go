@@ -90,11 +90,11 @@ func (p *Picker) rows(zones []Zone) []ui.Row {
 		row.Icon = ui.IconZone
 		switch {
 		case each.ID == p.config.Now:
-			row.Detail = "now"
+			row.Aside = "now"
 		case each.Refused != "":
-			row.Detail = each.Refused
+			row.Aside = each.Refused
 		case each.Folder != "":
-			row.Detail = each.Folder
+			row.Aside = each.Folder
 		}
 		rows = append(rows, row)
 	}

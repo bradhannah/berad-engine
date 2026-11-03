@@ -119,7 +119,8 @@ func (s *State) subscribeNPCs(ctx *frame.Context) {
 	}
 }
 
-// refreshHomes finds where each NPC the window has loaded lives.
+// refreshHomes finds where each NPC the window has loaded lives; one whose
+// zone was deleted lives nowhere.
 func (s *State) refreshHomes(docs frame.Docs) {
 	s.homes = map[ids.ULID]ids.ULID{}
 	for _, entry := range s.names.OfFormat(npc.FormatName) {
@@ -128,6 +129,11 @@ func (s *State) refreshHomes(docs frame.Docs) {
 				s.homes[entry.ID] = npcDoc.NPC.Zone
 			}
 		})
+		if home, loaded := s.homes[entry.ID]; loaded {
+			if _, exists := s.names.Entry(home); !exists {
+				s.homes[entry.ID] = ids.ULID{}
+			}
+		}
 	}
 }
 

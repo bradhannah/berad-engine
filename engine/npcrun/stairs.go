@@ -31,23 +31,29 @@ type stairsOn struct {
 	floor int
 }
 
-// stairsOf lists the stairs of each floor of a zone, by its index.
+// stairsOf lists the stairs of each floor of a zone, by its index. A
+// floor is read whole before the floor its stairs lead to, as a zone may
+// show one floor at a time.
 func stairsOf(zone play.Zone, floors []ids.ULID) [][]stairsOn {
 	all := make([][]stairsOn, len(floors))
 	for index, floorID := range floors {
+		var found []stairsOn
 		zone.Floor(floorID, func(floor *tilefloor.Floor) {
 			bounds := floor.Bounds()
 			for row := bounds.Min.Y; row < bounds.Max.Y; row++ {
 				for col := bounds.Min.X; col < bounds.Max.X; col++ {
 					top, _ := floor.Top(col, row) //nolint:errcheck // Inside the floor.
-					target := index + tiles.Climb(top)
-					cell := image.Pt(col, row)
-					if target != index && target >= 0 && target < len(floors) && play.CanStand(zone, floors[target], cell) {
-						all[index] = append(all[index], stairsOn{cell: cell, floor: target})
+					if target := index + tiles.Climb(top); target != index && target >= 0 && target < len(floors) {
+						found = append(found, stairsOn{cell: image.Pt(col, row), floor: target})
 					}
 				}
 			}
 		})
+		for _, flight := range found {
+			if play.CanStand(zone, floors[flight.floor], flight.cell) {
+				all[index] = append(all[index], flight)
+			}
+		}
 	}
 
 	return all

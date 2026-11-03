@@ -65,7 +65,7 @@ func (p *Picker) HasState(window image.Rectangle, offer Offer, state string) (bo
 	case strings.HasPrefix(key, "zone-detail:"):
 		for _, row := range p.list.Rows {
 			if row.Label == strings.TrimPrefix(key, "zone-detail:") {
-				return row.Detail == want, true
+				return row.Aside == want, true
 			}
 		}
 

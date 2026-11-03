@@ -38,9 +38,13 @@ type placed struct {
 	cell             image.Point
 }
 
-// zoneOfNPC returns the zone an NPC lives in, zero for none.
+// zoneOfNPC returns the zone an NPC lives in, zero for none or for a zone
+// since deleted.
 func (s *State) zoneOfNPC(docs frame.Docs, npcID ids.ULID) ids.ULID {
 	found, _ := s.npcOf(docs, npcID)
+	if _, exists := s.index(docs).Entry(found.Zone); !exists {
+		return ids.ULID{}
+	}
 
 	return found.Zone
 }

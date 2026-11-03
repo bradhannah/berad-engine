@@ -201,3 +201,23 @@ func TestPlacingInItsZone(t *testing.T) {
 		t.Fatalf("status %q", f.status())
 	}
 }
+
+// TestPlacingAnNPCWhoseZoneWasDeleted places an NPC whose zone is gone as
+// one that lives nowhere: it takes the map's zone.
+func TestPlacingAnNPCWhoseZoneWasDeleted(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withClerk(f)
+	clerk := npcplugin.NewDocument()
+	clerk.NPC.Zone = frametest.ID(98)
+	f.docs.Put(clerkID, "Ada Clerk", clerk)
+	f.keys("N")
+	f.click("npc:Ada Clerk")
+	f.click("cell:3,3")
+	f.answerUses(nil)
+	homed := f.requests.Of(npcplugin.SetZoneEdit)
+	var home npcplugin.SetZoneArgs
+	if len(homed) != 1 || homed[0].Decode(&home) != nil || home.Zone != zoneID {
+		t.Fatalf("an NPC whose zone was deleted takes the map's zone: %+v %q", homed, f.status())
+	}
+}

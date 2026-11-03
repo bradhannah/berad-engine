@@ -331,8 +331,7 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 		if way := s.wayLine(docs, entity); way != "" {
 			now += " · " + way
 		}
-		where := fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
-			s.name(docs, entity.Floor, "a floor"))
+		where := s.whereLine(docs, entity)
 		label, path := s.way(docs, entity)
 		column := ui.Inset + max(s.theme.LabelWidth(labelStep), s.theme.LabelWidth(labelLast)) + ui.Inset
 		rows := []struct{ label, text string }{
@@ -432,7 +431,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):
 		return watching && s.nodeKind(docs, entity) == strings.TrimPrefix(state, "live:")
-	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"), strings.HasPrefix(state, "way="):
+	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"), strings.HasPrefix(state, "way="),
+		strings.HasPrefix(state, "at="):
 		return s.hasCallState(state, docs, entity, watching)
 	case strings.HasPrefix(state, "value:"):
 		return s.state != nil && slices.ContainsFunc(s.state.Values, func(value protocol.PreviewValue) bool {
@@ -474,4 +474,10 @@ func (s *State) wayLine(docs frame.Docs, entity protocol.PreviewEntity) string {
 	}
 
 	return strings.Join(parts, " → ")
+}
+
+// whereLine says where a watched NPC stands, as "cell 2, 0 on Upper floor".
+func (s *State) whereLine(docs frame.Docs, entity protocol.PreviewEntity) string {
+	return fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
+		s.name(docs, entity.Floor, "a floor"))
 }

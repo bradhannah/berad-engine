@@ -58,9 +58,11 @@ func (s *State) askRunners(ctx *frame.Context) {
 	}
 }
 
-// runnersOf lists the NPCs that run the workflow, with where each lives.
+// runnersOf lists the NPCs that run the workflow, with where each lives;
+// one whose zone was deleted lives nowhere.
 func (s *State) runnersOf(docs frame.Docs) []runner {
 	found := make([]runner, 0, len(s.runs.uses))
+	index := s.names(docs)
 	for _, use := range s.runs.uses {
 		each := runner{npc: use.Document, name: use.Name, zone: ids.ULID{}, behaviour: use.Label == protocol.RunsAsBehaviour}
 		docs.View(use.Document, func(document client.Document) {
@@ -68,6 +70,9 @@ func (s *State) runnersOf(docs frame.Docs) []runner {
 				each.zone = npcDoc.NPC.Zone
 			}
 		})
+		if _, exists := index.Entry(each.zone); !exists {
+			each.zone = ids.ULID{}
+		}
 		found = append(found, each)
 	}
 

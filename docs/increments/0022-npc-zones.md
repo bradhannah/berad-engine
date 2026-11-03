@@ -1,6 +1,6 @@
 # Increment 22: NPCs live in one zone
 
-**Status:** Building
+**Status:** Built
 
 The twenty-second increment gives each NPC the zone it lives in. Today an
 NPC's zone is only where it happens to be placed, the place lists offer
@@ -127,7 +127,7 @@ Chosen while planning, for its author to check:
 | 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Built |
 | 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Built |
 | 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Built |
-| 10. Checks | `make check` and the real-window suite; a real-window test moves an NPC to another zone, mends its flagged place there, and watches it take the stairs to it | The checks pass with no lint findings | Planned |
+| 10. Checks | `make check` and the real-window suite; a real-window test moves an NPC to another zone, mends its flagged place there, and watches it take the stairs to it | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -253,6 +253,72 @@ Chosen while planning, for its author to check:
   took the stairs there, as it follows the player. Verified: a view test
   reads the floors on a watched NPC's way up and down again in Watch, and
   another finds the Map on the floor the watched NPC climbed to.
+- **Checks:** `make check` passes with no lint findings. Two real-window
+  tests are new. One makes a zone and moves the sample's customer into it
+  with the zone picker: the move dialog lists the counter and the door,
+  the customer's Go to is flagged once it lives in the new zone, and Undo
+  puts it back, the flag gone. The other adds a place on the sample
+  building's upper floor, gives it to the customer's first Go to, and
+  previews the zone: the customer walks to the stairs and up them, the
+  Map follows it to the upper floor, and Watch finds it at the new place.
+  That test found a deadlock: planning a route read the floor the stairs
+  lead to from inside the floor they are on, which a window's documents
+  do not allow; a floor's stairs are now read before the floors they lead
+  to. An NPC whose zone was deleted now lives nowhere, in the Project
+  window, the Map and a Workflow tab alike. The whole real-window suite,
+  50 tests, passed. In an earlier run of it, the test of a sprite on the
+  map failed four times in a row, its map tab already closed when the
+  glass was shot; every step's commit passed it when tried on its own, and
+  then it passed nine times running, on this code too, so the failures
+  were taken to be the machine's at the time, not this increment's.
+- **Short of the plan:** the real-window test mends the flagged Go to by
+  Undo, which moves the customer back, rather than by choosing a place in
+  the new zone; a view test chooses a place in an NPC's zone instead.
+
+## Changed while building, short of the wireframes
+
+- **The move dialog is a dialog of lines over a list:** its lines say
+  Market → Harbour, that the NPC comes off its map, which workflows other
+  NPCs share and that each place is flagged; the list of places comes
+  last, above the buttons. Cancel is the dialog's own, and Escape cancels.
+- **No Problems window:** the editor has none, as increment 21 found. A
+  place out of reach is a node's problem, its mark and its inspector
+  saying which NPC cannot go; a place local's start is marked out of reach
+  in the locals list and says why in its form.
+- **No problem for an NPC that lives nowhere:** an NPC placed nowhere
+  never runs, so its behaviour's places are not flagged for it.
+- **NPCs living elsewhere are not greyed** in the Place NPC tool: their
+  rows name the zone they live in where the others have a number key, and
+  placing one is refused with the status line.
+- **Watch adds the floors to its NOW line,** after what the NPC is doing,
+  rather than on a line of its own, as the footer has room for three.
+- **The zone picker's look draws the ground floor in its tiles' stand-in
+  colours,** a pixel a cell, without their sprites.
+
+Chosen while building these steps, for its author to check:
+
+- **An NPC refers to the zone it lives in,** so a zone's uses list the
+  NPCs living there; deleting a zone is not refused, and its NPCs then
+  live in a zone that is gone, as no zone.
+- **Opening a project gives placed NPCs their zone,** as an upgrade, saved
+  at the next save; the sample's NPCs are given theirs the same way.
+- **Who runs a workflow is asked of the orchestrator,** as who calls it
+  is: the NPCs whose behaviour it is, and those whose behaviour calls it
+  through any number of Calls.
+- **A module is a workflow no NPC has as its behaviour:** its place lists
+  list every place alike, though the NPCs that call it are still checked
+  for reach.
+- **Reach is checked from the floor an NPC is placed on,** floor by floor:
+  a floor is reached when any stairs on a floor reached lead to it. Where
+  the stairs are on the floor is the game's to find.
+- **A Move that steps onto stairs takes them too,** as every step does.
+- **A route never steps onto stairs it does not mean to take,** and is
+  planned once for each pair of stairs on a floor, which is quick for the
+  few flights a zone has.
+- **Recent lasts as long as the Project window,** the window that opens
+  the picker.
+- **Show on map selects the placement with the Place NPC tool,** on its
+  floor.
 
 ## Not in this increment
 
