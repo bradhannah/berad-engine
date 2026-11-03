@@ -398,6 +398,10 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 		if node.Kind == flow.KindCheckValue {
 			s.shapeCheckOperand(node, made, declared, found)
 		}
+		if node.Kind == flow.KindSetValue && found && declared.Type == worldstate.TypeText {
+			s.newOperandSources(made, node)
+			made.sources[0].Label = "Text"
+		}
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}

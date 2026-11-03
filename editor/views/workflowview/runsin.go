@@ -139,6 +139,14 @@ func (s *State) updateRunsIn(input *ui.Input, ctx *frame.Context) bool {
 		return false
 	}
 	input.ClearPointer()
+	s.zonesChose = func(ctx *frame.Context, choice zonepicker.Choice) {
+		target := ids.ULID{}
+		if !choice.None {
+			target = choice.Zone
+			s.rememberZone(target)
+		}
+		s.changeRunsIn(ctx, target)
+	}
 	s.zones = zonepicker.New(zonepicker.Config{
 		For: "for " + s.name(ctx.Docs) + " to run in", Now: s.runsIn(ctx.Docs), Recent: slices.Clone(s.recentZones),
 		NoZone: true, NoneLabel: anyZone, GoesOn: len(s.runs.uses) > 0 || len(s.placesByZone(ctx.Docs)) > 0,
@@ -220,17 +228,9 @@ func (s *State) updateZones(input *ui.Input, ctx *frame.Context) {
 	if !open {
 		s.zones = nil
 	}
-	if !chosen {
-		return
+	if chosen && s.zonesChose != nil {
+		s.zonesChose(ctx, choice)
 	}
-	target := ids.ULID{}
-	if !choice.None {
-		target = choice.Zone
-		s.recentZones = slices.DeleteFunc(s.recentZones, func(zoneID ids.ULID) bool { return zoneID == target })
-		s.recentZones = append([]ids.ULID{target}, s.recentZones...)
-		s.recentZones = s.recentZones[:min(len(s.recentZones), recentZones)]
-	}
-	s.changeRunsIn(ctx, target)
 }
 
 // changeRunsIn sets where the workflow runs, asking first when that breaks
@@ -409,7 +409,7 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	}
 	then := s.dialogThen
 	s.dialog, s.dialogThen = nil, nil
-	if choice == runsInChangeID && then != nil {
+	if choice != ui.DialogCancel && then != nil {
 		then(ctx, s.gesture())
 	}
 }
@@ -427,6 +427,13 @@ func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
 		}
 
 		return image.Pt(0, 0), found || value == "dialog"
+	}
+	if kind == "row" && s.dialog.List != nil {
+		for _, row := range s.dialog.List.Rows {
+			if row.Label == value {
+				value = row.ID
+			}
+		}
 	}
 
 	return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})

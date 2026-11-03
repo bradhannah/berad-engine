@@ -205,6 +205,7 @@ type State struct {
 	// runs; recentZones are the zones chosen in it lately; runsInBox is the
 	// Runs in box.
 	zones       *zonepicker.Picker
+	zonesChose  func(*frame.Context, zonepicker.Choice)
 	recentZones []ids.ULID
 	runsInBox   image.Rectangle
 	// dialog asks before a change that breaks something, and dialogThen
@@ -238,7 +239,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
-		zones: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
+		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false,
 	}
 	view.palette = paletteFor(flow.PurposeBehaviour)
