@@ -290,3 +290,62 @@ func TestAGameKeepsValuesAndSeesOtherNPCs(t *testing.T) {
 		t.Fatalf("a project that declares no values keeps none: %v", err)
 	}
 }
+
+// TestAZoneLoopRunsWithItsZone plays a zone whose loop counts the hours
+// and rings a bell: the loop runs as the game does, its bell heard; a loop
+// running in another zone, or a workflow that is no zone loop, does not.
+func TestAZoneLoopRunsWithItsZone(t *testing.T) {
+	t.Parallel()
+	hours := worldstate.New(id(42), "hours", worldstate.ScopeWorld, worldstate.TypeInteger)
+	world := worldstate.NewDeclarations(worldstate.HoldsWorldState)
+	if err := world.Insert(hours); err != nil {
+		t.Fatal(err)
+	}
+	loop, err := flow.NewFor(id(60), flow.PurposeZoneLoop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := flow.ValueRef{Scope: worldstate.ScopeWorld, Value: hours.ID, Owner: ids.ULID{}, Found: ids.ULID{}}
+	add := node(t, flow.KindSetValue, 61, map[string]any{flow.ParamValue: count, "how": flow.HowAdd,
+		"to": json.RawMessage("1")})
+	ring := node(t, flow.KindPlaySound, 62, map[string]any{"cue": "town/bell"})
+	rest := node(t, flow.KindWait, 63, map[string]any{
+		"duration": flow.Duration{Amount: 1, Unit: flow.UnitHours, Clock: flow.ClockGame},
+	})
+	if err := loop.Insert([]flow.Node{add, ring, rest}, nil, []flow.Link{
+		{From: id(60), Output: flow.OutputNext, To: add.ID}, {From: add.ID, Output: flow.OutputNext, To: ring.ID},
+		{From: ring.ID, Output: flow.OutputNext, To: rest.ID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	played := func(runs ids.ULID, workflow *flow.Workflow) (*game.Game, bool) {
+		project := town(t)
+		project.Values = worldstate.NewCatalog(world, nil)
+		project.Zone.Loop = id(70)
+		workflow = workflow.Clone()
+		workflow.SetRunsIn(runs)
+		project.Workflows[id(70)] = workflow
+		started, err := game.New(project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rang := false
+		for _, step := range walk(started, 0, 10) {
+			for _, cue := range step.Cues {
+				rang = rang || cue.Cue == "town/bell"
+			}
+		}
+
+		return started, rang
+	}
+	running, rang := played(id(zoneID), loop)
+	if running.Loop() == nil || !rang || running.Values().Get(hours, ids.ULID{}).Integer != 1 {
+		t.Fatal("the zone's loop runs as the game plays, counting and ringing")
+	}
+	if elsewhere, _ := played(id(90), loop); elsewhere.Loop() != nil {
+		t.Fatal("a loop running in another zone does not run here")
+	}
+	if behaviour, _ := played(ids.ULID{}, clerkDay(t)); behaviour.Loop() != nil {
+		t.Fatal("a workflow that is no zone loop does not run as one")
+	}
+}

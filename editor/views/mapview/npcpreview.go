@@ -17,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -165,6 +166,51 @@ func (s *State) refreshWorkflow(ctx *frame.Context, run *npcRun) {
 	})
 }
 
+// refreshLoop keeps the zone loop's copy of its workflow current, as
+// refreshWorkflow keeps an NPC's: an edit restarts it. A zone with no loop,
+// or with one that is no zone loop or runs in another zone, runs none.
+// Documents are read one at a time.
+func (s *State) refreshLoop(ctx *frame.Context) {
+	run := s.preview.loop
+	loopID := ids.ULID{}
+	ctx.Docs.View(s.zone, func(document client.Document) {
+		if zoneDoc, ok := document.Model.(*zoneplugin.Document); ok {
+			loopID = zoneDoc.Zone.Loop
+		}
+	})
+	if loopID.IsZero() || s.names.Name(loopID, "") == "" || !s.takeLoop(ctx, loopID) {
+		run.workflow, run.source = nil, ids.ULID{}
+	}
+}
+
+// takeLoop keeps the zone loop's copy of a loop current, reporting whether
+// the loop fits the zone: a zone loop running there or in any zone.
+func (s *State) takeLoop(ctx *frame.Context, loopID ids.ULID) bool {
+	run, fits := s.preview.loop, false
+	s.subscribe(loopID, ctx)
+	ctx.Docs.View(loopID, func(document client.Document) {
+		workflowDoc, ok := document.Model.(*workflowplugin.Document)
+		if !ok {
+			return
+		}
+		loop := workflowDoc.Workflow
+		fits = loop.Purpose() == flow.PurposeZoneLoop && (loop.RunsIn().IsZero() || loop.RunsIn() == s.zone)
+		if !fits || (loopID == run.source && document.Revision == run.revision && run.workflow != nil) {
+			return
+		}
+		restart := run.workflow != nil
+		run.workflow, run.source, run.revision = loop.Clone(), loopID, document.Revision
+		if restart {
+			run.npc.Restart()
+		}
+		if cues := cuesOf(run.workflow); len(cues) > 0 {
+			ctx.Sounds.Prepare(cues)
+		}
+	})
+
+	return fits
+}
+
 // cuesOf lists the cues a workflow's Play sounds play, so they can be
 // fetched before an NPC reaches them.
 func cuesOf(workflow *flow.Workflow) []string {
@@ -192,7 +238,8 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	for _, run := range runners {
 		s.refreshWorkflow(ctx, run)
 	}
-	s.refreshModules(ctx, runners)
+	s.refreshLoop(ctx)
+	s.refreshModules(ctx, append(slices.Clone(runners), s.preview.loop))
 	s.nameAnchors(ctx.Docs)
 	zone := docsZone{floors: s.floors, docs: ctx.Docs}
 	s.declareValues(ctx.Docs)
@@ -212,6 +259,13 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
+		}
+		if loop := s.preview.loop; loop.workflow != nil {
+			loop.npc.Step(npcrun.World{
+				Zone: zone, Workflow: loop.workflow, Behaviour: loop.source, Workflows: s.module, Clock: s.preview.clock,
+				Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
+			}, s.preview.run.Tick())
+			asked = append(asked, loop.npc.Sounds...)
 		}
 		if s.preview.stepping && s.stepped() {
 			s.hear(ctx, asked)

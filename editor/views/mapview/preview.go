@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -48,12 +49,15 @@ const (
 // views through the orchestrator. NPCs can be paused, or stepped until the
 // watched NPC changes node; step is the changes it made in the latest step.
 type previewRun struct {
-	id       ids.ULID
-	run      *play.Run
-	held     play.Direction
-	sent     *protocol.PreviewState
-	clock    *clock.Clock
-	npcs     map[ids.ULID]*npcRun
+	id    ids.ULID
+	run   *play.Run
+	held  play.Direction
+	sent  *protocol.PreviewState
+	clock *clock.Clock
+	npcs  map[ids.ULID]*npcRun
+	// loop runs the zone's loop, its workflow nil while the zone has none
+	// that fits it.
+	loop     *npcRun
 	watched  ids.ULID
 	paused   bool
 	stepping bool
@@ -162,6 +166,9 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
+			loop: &npcRun{
+				npc: npcrun.StartLoop(s.zone, seed(result.Created, s.zone)), workflow: nil, source: ids.ULID{}, revision: 0,
+			},
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
 			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{},

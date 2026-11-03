@@ -124,8 +124,8 @@ func (l *loader) zone(project *game.Project) {
 	}
 }
 
-// npcs reads the NPCs placed on the zone's floors, their behaviours and the
-// workflows those call, in turn.
+// npcs reads the NPCs placed on the zone's floors, their behaviours, the
+// zone's loop and the workflows those call, in turn.
 func (l *loader) npcs(project *game.Project) {
 	for _, placed := range project.Floors {
 		for _, placement := range placed.Placements() {
@@ -142,6 +142,9 @@ func (l *loader) npcs(project *game.Project) {
 	var waiting []ids.ULID
 	for _, definition := range project.NPCs {
 		waiting = append(waiting, definition.Behaviour)
+	}
+	if project.Zone != nil {
+		waiting = append(waiting, project.Zone.Loop)
 	}
 	for len(waiting) > 0 {
 		workflowID := waiting[0]

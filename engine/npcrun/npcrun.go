@@ -74,13 +74,17 @@ type World struct {
 	Others    []Other
 }
 
-// NPC is one NPC running in a zone.
+// NPC is one NPC running in a zone, or a zone's loop, which runs as an NPC
+// with no body would: it never moves, and its workflow has no node that
+// moves it.
 type NPC struct {
 	// Placement, NPC and Floor say which placement this is, of which NPC,
-	// and the floor it walks on.
+	// and the floor it walks on; all are zero for a zone loop.
 	Placement ids.ULID
 	NPC       ids.ULID
 	Floor     ids.ULID
+	// Loop is the zone a zone loop runs for; zero for an NPC.
+	Loop ids.ULID
 	// Cell is where it stands, or the cell a step is leaving; To is where the
 	// step goes, equal to Cell when it stands still.
 	Cell, To image.Point
@@ -174,7 +178,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 	cell := image.Pt(placement.Col, placement.Row)
 
 	return &NPC{
-		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Cell: cell, To: cell, Progress: 0,
+		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Loop: ids.ULID{}, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
 		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil, module: ids.ULID{},
@@ -182,6 +186,18 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
 }
+
+// StartLoop begins a zone's loop: a runner with no placement, no NPC and
+// no floor, which stays where it is. The seed fixes its random choices.
+func StartLoop(zone ids.ULID, seed uint64) *NPC {
+	loop := Start(tilefloor.Placement{ID: ids.ULID{}, NPC: ids.ULID{}, Col: 0, Row: 0}, ids.ULID{}, seed)
+	loop.Loop = zone
+
+	return loop
+}
+
+// IsLoop reports whether the runner is a zone's loop rather than an NPC.
+func (n *NPC) IsLoop() bool { return !n.Loop.IsZero() }
 
 // seedMix spreads one seed over the generator's two words.
 const seedMix = 0x9e3779b97f4a7c15
