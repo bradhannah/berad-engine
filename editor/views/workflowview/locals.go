@@ -84,6 +84,9 @@ func (s *State) syncLocals(ctx *frame.Context) {
 		if value.Type == worldstate.TypePlace {
 			row.Icon = ui.IconPlace
 		}
+		if _, out := s.localProblems[value.ID]; out {
+			row.Detail += " · out of reach"
+		}
 		panel.list.Rows = append(panel.list.Rows, row)
 	}
 	value, ok := s.selectedLocal()
@@ -98,6 +101,11 @@ func (s *State) syncLocals(ctx *frame.Context) {
 	if start := value.Zero().Place; value.Type == worldstate.TypePlace && !start.IsZero() {
 		panel.form.PlaceWhere = places.Where(ctx.Docs, start.Floor)
 	}
+	problem, out := s.localProblems[value.ID]
+	if out {
+		panel.form.PlaceWhere = problem
+	}
+	panel.form.PlaceWarn = out
 	if panel.form.Show(value, value.Name) || !panel.registered {
 		s.focus = ui.Focus{}
 		s.focus.Register(panel.form.Fields()...)

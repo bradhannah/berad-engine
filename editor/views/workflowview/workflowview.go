@@ -104,6 +104,9 @@ type State struct {
 	routes   map[routeKey][]image.Point
 	loops    map[routeKey]bool
 	problems map[ids.ULID]string
+	// localProblems say why a place local's start is out of the reach of
+	// the NPCs that run the workflow, by the local's ID.
+	localProblems map[ids.ULID]string
 	// laidOut is the workflow revision the shapes, routes and loops were
 	// worked out for, and problemKey what the problems were found from;
 	// layouts counts layouts, for tests.
@@ -204,7 +207,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
-		problems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false, layouts: 0, problemKey: "", watchFloors: false,
+		problems: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false,
+		layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
@@ -419,6 +423,7 @@ func coloursBottom(rows []colourRow) int {
 func (s *State) ask(ctx *frame.Context) {
 	s.askCallers(ctx)
 	s.askRunners(ctx)
+	s.subscribeHomes(ctx)
 	s.listAudio(ctx)
 }
 

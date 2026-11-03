@@ -124,7 +124,7 @@ Chosen while planning, for its author to check:
 | 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Built |
 | 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Built |
 | 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Built |
-| 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Planned |
+| 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Built |
 | 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Planned |
 | 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Planned |
 | 10. Checks | `make check` and the real-window suite; a real-window test moves an NPC to another zone, mends its flagged place there, and watches it take the stairs to it | The checks pass with no lint findings | Planned |
@@ -213,6 +213,23 @@ Chosen while planning, for its author to check:
   place alike. List rows can be muted, drawn grey. Verified: a view test
   reads the list for a behaviour, chooses a grey place, and reads it for
   a module.
+- **Reach problems:** a Workflow tab keeps loaded every zone, the NPCs
+  that run it, as their behaviour or by a call, and the floors of the
+  zones they live in. A Go to's place on a map, and each place a Call
+  gives its module's place inputs, is a problem when an NPC that runs the
+  workflow cannot reach it: Office desk 3 is in Town, and Clerk lives in
+  Harbour. Choose a place in Harbour; or, in its own zone, No stairs lead
+  from Loft to Office, so Clerk can't reach Office desk 3. A Call's reads
+  Its place: and the same. The first NPC that cannot go is named. Stairs
+  lead from a floor to the one above when it has any stairs up, and to
+  the one below when it has any stairs down, through any floors between;
+  the check starts from the floor the NPC is placed on. A place local, not
+  an input, that starts out of reach reads place · out of reach in the
+  locals list, and its form says why under its box, in red, cut to fit.
+  Verified: view tests flag a Go to in another zone, then on a floor no
+  stairs lead to, mend it with stairs down, name the NPC that cannot go
+  of two sharing the behaviour, flag a Call's place input and a place
+  local's start, and mend the start.
 
 ## Not in this increment
 

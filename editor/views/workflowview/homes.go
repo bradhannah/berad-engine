@@ -1,6 +1,7 @@
 package workflowview
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -83,7 +84,7 @@ func (s *State) home(docs frame.Docs) places.Home {
 			continue
 		}
 		who = append(who, each.name)
-		if !containsID(zones, each.zone) {
+		if !slices.Contains(zones, each.zone) {
 			zones = append(zones, each.zone)
 		}
 	}
@@ -99,14 +100,4 @@ func andList(names []string) string {
 	}
 
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-}
-
-func containsID(list []ids.ULID, wanted ids.ULID) bool {
-	for _, each := range list {
-		if each == wanted {
-			return true
-		}
-	}
-
-	return false
 }

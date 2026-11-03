@@ -51,7 +51,11 @@ func (s *State) callProblem(node flow.Node, docs frame.Docs) string {
 			", or choose another value."
 	}
 
-	return s.refProblem(node, docs, called.workflow)
+	if problem := s.refProblem(node, docs, called.workflow); problem != "" {
+		return problem
+	}
+
+	return s.callReachProblem(docs, node, called.workflow)
 }
 
 // refProblem says which input is given, or output kept in, another value

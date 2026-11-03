@@ -194,6 +194,15 @@ func (s *State) hasPlaceState(state string, docs frame.Docs) (bool, bool) {
 	case "hidden":
 		return !s.shown, true
 	}
+	if name, isLocal := strings.CutPrefix(state, "out-of-reach:"); isLocal {
+		for _, declared := range s.workflow.Locals().Values() {
+			if _, out := s.localProblems[declared.ID]; out && declared.Name == name {
+				return true, true
+			}
+		}
+
+		return false, true
+	}
 	if shown, isList := strings.CutPrefix(state, "places-list="); isList {
 		return s.places != nil && s.places.list.Shown(s.screen(), places.All(docs, func(ids.ULID) {})) == shown, true
 	}

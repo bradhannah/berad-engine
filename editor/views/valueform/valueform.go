@@ -121,6 +121,9 @@ type Form struct {
 	PlaceBox   image.Rectangle
 	PlaceName  string
 	PlaceWhere string
+	// PlaceWarn draws PlaceWhere as a warning, when it says the place is out
+	// of reach.
+	PlaceWarn  bool
 	PlaceLit   bool
 	PlaceOpen  bool
 	means      image.Point
@@ -146,8 +149,8 @@ func New(theme *ui.Theme) *Form {
 		heads: map[string]image.Point{}, hint: image.Pt(0, 0), Locked: "", lock: image.Pt(0, 0), lockLines: nil,
 		DeclareNew: ui.NewButton(declareNewID, "Declare a new value…"), roles: nil,
 		PickPlace: ui.NewButton(pickPlaceID, "Pick on map"), ClearPlace: ui.NewButton(clearPlaceID, "Clear"),
-		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceLit: false, PlaceOpen: false, means: image.Pt(0, 0),
-		meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
+		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceWarn: false, PlaceLit: false, PlaceOpen: false,
+		means: image.Pt(0, 0), meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
 	}
 	form.PickPlace.Primary = true
 	form.description.Placeholder = "What it is for, for whoever reads it next"
@@ -823,5 +826,10 @@ func (f *Form) drawPlace(screen *ebiten.Image) {
 		label, look = "No place yet", places.Empty
 	}
 	places.DrawBox(screen, f.theme, f.PlaceBox, label, look, f.PlaceLit, f.PlaceOpen)
-	f.theme.DrawText(screen, f.PlaceWhere, f.PlaceBox.Min.X, f.PlaceBox.Max.Y+ui.Gap, ui.ColorMuted())
+	whereInk := ui.ColorMuted()
+	if f.PlaceWarn {
+		whereInk = ui.ColorWarn()
+	}
+	f.theme.DrawText(screen, f.theme.FitText(f.PlaceWhere, f.PlaceBox.Dx()), f.PlaceBox.Min.X, f.PlaceBox.Max.Y+ui.Gap,
+		whereInk)
 }
