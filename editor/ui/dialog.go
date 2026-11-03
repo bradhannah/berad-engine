@@ -30,6 +30,9 @@ type Dialog struct {
 	List    *List
 	Buttons []*Button
 	rect    image.Rectangle
+	// wide is how wide each button's label needs it to be, as last drawn,
+	// so no label is cut off at its button's edges.
+	wide []int
 }
 
 // NewDialog returns a dialog. The first button is the primary one.
@@ -38,7 +41,7 @@ func NewDialog(title string, lines []string, buttons ...*Button) *Dialog {
 		buttons[0].Primary = true
 	}
 
-	return &Dialog{Title: title, Lines: lines, List: nil, Buttons: buttons, rect: image.Rect(0, 0, 0, 0)}
+	return &Dialog{Title: title, Lines: lines, List: nil, Buttons: buttons, rect: image.Rect(0, 0, 0, 0), wide: nil}
 }
 
 // DialogButton returns a button for a dialog.
@@ -61,9 +64,12 @@ func (d *Dialog) layout(window image.Rectangle) {
 	}
 	right := left + width - Inset
 	for index := len(d.Buttons) - 1; index >= 0; index-- {
-		button := d.Buttons[index]
-		button.Rect = image.Rect(right-buttonWidth, rowY, right, rowY+ButtonH)
-		right -= buttonWidth + buttonGap
+		button, width := d.Buttons[index], buttonWidth
+		if index < len(d.wide) {
+			width = max(width, d.wide[index])
+		}
+		button.Rect = image.Rect(right-width, rowY, right, rowY+ButtonH)
+		right -= width + buttonGap
 	}
 }
 
@@ -113,6 +119,10 @@ func (d *Dialog) Locate(name string, window image.Rectangle) (image.Point, bool)
 // Draw renders the dialog over a shaded window: a rounded box with an ink
 // outline and a soft shadow.
 func (d *Dialog) Draw(screen *ebiten.Image, theme *Theme) {
+	d.wide = d.wide[:0]
+	for _, button := range d.Buttons {
+		d.wide = append(d.wide, theme.TextWidth(button.Label)+Inset)
+	}
 	d.layout(screen.Bounds())
 	FillRect(screen, screen.Bounds(), ColorShade())
 	FillRound(screen, d.rect.Add(image.Pt(0, shadowDrop)), dialogRadius, HexAlpha(hexInk, shadowAlpha))

@@ -50,6 +50,7 @@ type placeList struct {
 func (s *State) newPlaceTarget(owner string, current floor.AnchorRef, what, label string,
 	set func(*frame.Context, floor.AnchorRef),
 ) placeTarget {
+	set = s.tying(set)
 	target := placeTarget{owner: owner, current: current, what: what, set: set, pick: nil}
 	target.pick = func(ctx *frame.Context) {
 		was := s.placeWas(ctx.Docs, current)
@@ -65,8 +66,11 @@ func (s *State) newPlaceTarget(owner string, current floor.AnchorRef, what, labe
 				return
 			}
 			s.subscribe(answer.Floor, ctx)
+			s.tied = false
 			set(ctx, floor.AnchorRef{Floor: answer.Floor, Anchor: anchor})
-			s.said(ctx, owner, "Picked", answer.Name, what, was)
+			if !s.tied {
+				s.said(ctx, owner, "Picked", answer.Name, what, was)
+			}
 		})
 	}
 
@@ -127,8 +131,11 @@ func (s *State) updatePlaces(input *ui.Input, ctx *frame.Context) {
 		}
 	}
 	was := s.placeWas(ctx.Docs, target.current)
+	s.tied = false
 	target.set(ctx, ref)
-	s.said(ctx, target.owner, "Chose", name, target.what, was)
+	if !s.tied {
+		s.said(ctx, target.owner, "Chose", name, target.what, was)
+	}
 }
 
 // drawPlaces draws the open list of places over the window.

@@ -207,6 +207,13 @@ type State struct {
 	zones       *zonepicker.Picker
 	recentZones []ids.ULID
 	runsInBox   image.Rectangle
+	// dialog asks before a change that breaks something, and dialogThen
+	// carries the change out, as one gesture; joining is a gesture the
+	// edits sent meanwhile join.
+	dialog     *ui.Dialog
+	dialogThen func(*frame.Context, string)
+	joining    string
+	tied       bool
 }
 
 // New returns the Workflow window for a workflow.
@@ -231,7 +238,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
-		zones: nil, recentZones: nil, runsInBox: ui.Zero(),
+		zones: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
+		tied: false,
 	}
 	view.palette = paletteFor(flow.PurposeBehaviour)
 
@@ -1163,6 +1171,9 @@ func (s *State) command(ctx *frame.Context, edit, gesture string, args any, done
 		ctx.Frame.Status(err.Error())
 
 		return
+	}
+	if gesture == "" {
+		gesture = s.joining
 	}
 	command := protocol.Command{Document: s.document, Edit: edit, Gesture: gesture, Args: data}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {

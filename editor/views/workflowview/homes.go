@@ -12,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
 // runners is who runs the workflow, as last asked: the NPCs whose behaviour
@@ -24,13 +25,14 @@ type runners struct {
 	wait   int
 }
 
-// runner is an NPC that runs the workflow, and the zone it lives in, zero
-// for none or not loaded yet.
+// runner is an NPC or a zone that runs the workflow, and the zone it lives
+// in, a zone's being itself, zero for none or not loaded yet; home is true
+// for the NPCs whose behaviour it is and the zones whose loop it is.
 type runner struct {
-	npc       ids.ULID
-	name      string
-	zone      ids.ULID
-	behaviour bool
+	npc  ids.ULID
+	name string
+	zone ids.ULID
+	home bool
 }
 
 // askRunners asks which NPCs run the workflow when it or the project has
@@ -64,7 +66,13 @@ func (s *State) runnersOf(docs frame.Docs) []runner {
 	found := make([]runner, 0, len(s.runs.uses))
 	index := s.names(docs)
 	for _, use := range s.runs.uses {
-		each := runner{npc: use.Document, name: use.Name, zone: ids.ULID{}, behaviour: use.Label == protocol.RunsAsBehaviour}
+		each := runner{
+			npc: use.Document, name: use.Name, zone: ids.ULID{},
+			home: use.Label == protocol.RunsAsBehaviour || use.Label == protocol.RunsAsLoop,
+		}
+		if use.Label == protocol.RunsAsLoop || use.Format == zone.FormatName {
+			each.zone = use.Document
+		}
 		docs.View(use.Document, func(document client.Document) {
 			if npcDoc, ok := document.Model.(*npcplugin.Document); ok {
 				each.zone = npcDoc.NPC.Zone
@@ -85,7 +93,7 @@ func (s *State) home(docs frame.Docs) places.Home {
 	var zones []ids.ULID
 	var who []string
 	for _, each := range s.runnersOf(docs) {
-		if !each.behaviour || each.zone.IsZero() {
+		if !each.home || each.zone.IsZero() {
 			continue
 		}
 		who = append(who, each.name)

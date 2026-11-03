@@ -3,6 +3,7 @@ package workflowview
 import (
 	"image"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -14,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -139,7 +141,8 @@ func (s *State) updateRunsIn(input *ui.Input, ctx *frame.Context) bool {
 	input.ClearPointer()
 	s.zones = zonepicker.New(zonepicker.Config{
 		For: "for " + s.name(ctx.Docs) + " to run in", Now: s.runsIn(ctx.Docs), Recent: slices.Clone(s.recentZones),
-		NoZone: true, NoneLabel: anyZone, GoesOn: false, Mine: s.placesByZone(ctx.Docs),
+		NoZone: true, NoneLabel: anyZone, GoesOn: len(s.runs.uses) > 0 || len(s.placesByZone(ctx.Docs)) > 0,
+		Mine: s.placesByZone(ctx.Docs),
 	}, s.theme)
 
 	return true
@@ -216,9 +219,15 @@ func (s *State) updateZones(input *ui.Input, ctx *frame.Context) {
 	s.changeRunsIn(ctx, target)
 }
 
-// changeRunsIn sets where the workflow runs.
+// changeRunsIn sets where the workflow runs, asking first when that breaks
+// anything.
 func (s *State) changeRunsIn(ctx *frame.Context, zoneID ids.ULID) {
 	if s.workflow == nil || zoneID == s.runsIn(ctx.Docs) {
+		return
+	}
+	if change := s.changeFor(ctx.Docs, zoneID); !change.empty() {
+		s.askRunsIn(ctx, change, func(ctx *frame.Context, gesture string) { s.applyRunsIn(ctx, zoneID, gesture) })
+
 		return
 	}
 	s.applyRunsIn(ctx, zoneID, s.gesture())
@@ -260,4 +269,184 @@ func (s *State) locateInZones(docs frame.Docs, kind, value string) (image.Point,
 	}
 
 	return s.zones.Locate(window, offer, name)
+}
+
+// runsInChangeID is the button of the dialog asking before changing where a
+// workflow runs, and dialogWidth how wide its lines wrap.
+const (
+	runsInChangeID = "runs-in-change"
+	dialogLineW    = 380
+)
+
+// runsInChange is what changing where the workflow runs would break: the
+// NPCs following it, or the zones looping it, that live elsewhere, and the
+// fixed places it names elsewhere.
+type runsInChange struct {
+	to      ids.ULID
+	runners []string
+	places  []flow.PlaceUse
+}
+
+// empty reports whether the change breaks nothing.
+func (c runsInChange) empty() bool { return len(c.runners) == 0 && len(c.places) == 0 }
+
+// changeFor works out what running in a zone, or in any zone, would break.
+// Running in any zone breaks no runner, but every fixed place.
+func (s *State) changeFor(docs frame.Docs, zoneID ids.ULID) runsInChange {
+	change := runsInChange{to: zoneID, runners: nil, places: nil}
+	if s.workflow == nil {
+		return change
+	}
+	if !zoneID.IsZero() {
+		for _, each := range s.runnersOf(docs) {
+			if each.home && !each.zone.IsZero() && each.zone != zoneID {
+				change.runners = append(change.runners, each.name)
+			}
+		}
+	}
+	for _, use := range flow.PlacesIn(s.workflow, s.loadedModule) {
+		if placeZone, known := places.ZoneOf(docs, use.Place.Floor); known && (zoneID.IsZero() || placeZone != zoneID) {
+			change.places = append(change.places, use)
+		}
+	}
+
+	return change
+}
+
+// askRunsIn asks before a change that breaks something, listing what, and
+// carries it out as one gesture when it is confirmed.
+func (s *State) askRunsIn(ctx *frame.Context, change runsInChange, then func(*frame.Context, string)) {
+	index := s.names(ctx.Docs)
+	going, from := anyZone, s.runsInName(ctx.Docs)
+	if !change.to.IsZero() {
+		going = index.Name(change.to, "the zone")
+	}
+	lines := []string{from + " → " + going}
+	if len(change.runners) > 0 {
+		who, several := andList(change.runners), len(change.runners) > 1
+		line := who + " lives elsewhere, and is flagged in its details until it follows a behaviour that runs " +
+			"where it lives, or in any zone."
+		if several {
+			line = who + " live elsewhere. Each is flagged in its details until it follows a behaviour that runs " +
+				"where it lives, or in any zone."
+		}
+		if s.workflow.Purpose() == flow.PurposeZoneLoop {
+			line = who + " runs it as its zone loop, and is flagged in its details until its loop runs there, or " +
+				"in any zone."
+			if several {
+				line = who + " run it as their zone loop. Each is flagged in its details until its loop runs there, " +
+					"or in any zone."
+			}
+		}
+		lines = append(lines, line)
+	}
+	if len(change.places) > 0 {
+		line := "Each place listed is flagged on its node until it is one in " + going + "."
+		if change.to.IsZero() {
+			line = "Each place listed is flagged on its node until it comes from an input or another value."
+		}
+		lines = append(lines, line)
+	}
+	wrapped := make([]string, 0, len(lines))
+	for _, line := range lines {
+		wrapped = append(wrapped, s.theme.Wrap(line, dialogLineW)...)
+	}
+	title, button := "Run "+s.name(ctx.Docs)+" in "+going+"?", "Run in "+going
+	if change.to.IsZero() {
+		title, button = "Run "+s.name(ctx.Docs)+" in any zone?", "Run in any zone"
+	}
+	s.dialog = ui.NewDialog(title, wrapped, ui.DialogButton(runsInChangeID, button),
+		ui.DialogButton(ui.DialogCancel, "Cancel"))
+	if len(change.places) > 0 {
+		s.dialog.List = s.placesLeft(ctx.Docs, change.places)
+	}
+	s.dialogThen = then
+}
+
+// placesLeft lists the places a change leaves behind, each with what names
+// it and its zone.
+func (s *State) placesLeft(docs frame.Docs, uses []flow.PlaceUse) *ui.List {
+	index := s.names(docs)
+	list := ui.NewList("places-left", "")
+	for number, use := range uses {
+		row := ui.NewRow("left-"+strconv.Itoa(number), anchorName(docs, use.Place))
+		row.Icon = ui.IconPlace
+		what := "Go to"
+		switch {
+		case use.Local != "":
+			what = "local " + use.Local
+		case !use.Called.IsZero():
+			what = "Call " + index.Name(use.Called, "a workflow") + " · " + use.Input
+		}
+		zoneID, _ := places.ZoneOf(docs, use.Place.Floor)
+		row.Detail = what + " · " + index.Name(zoneID, "")
+		list.Rows = append(list.Rows, row)
+	}
+
+	return list
+}
+
+// updateDialog runs the dialog asking before a change, carrying the change
+// out when it is confirmed.
+func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
+	choice := s.dialog.Update(input, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	if choice == "" {
+		return
+	}
+	then := s.dialogThen
+	s.dialog, s.dialogThen = nil, nil
+	if choice == runsInChangeID && then != nil {
+		then(ctx, s.gesture())
+	}
+}
+
+// locateInDialog finds a dialog button or list row, or answers
+// "dialog-line=<text>", a line of the dialog holding the text, and
+// "dialog-row=<name>", a row of its list.
+func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
+	if kind == locateState {
+		line, isLine := strings.CutPrefix(value, "dialog-line=")
+		row, isRow := strings.CutPrefix(value, "dialog-row=")
+		found := isLine && strings.Contains(strings.Join(s.dialog.Lines, " "), line)
+		if isRow && s.dialog.List != nil {
+			found = slices.ContainsFunc(s.dialog.List.Rows, func(listed ui.Row) bool { return listed.Label == row })
+		}
+
+		return image.Pt(0, 0), found || value == "dialog"
+	}
+
+	return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+}
+
+// tying wraps a place control's set, so a fixed place chosen in a workflow
+// that runs in any zone ties the workflow to the place's zone in the same
+// gesture, asking first when that breaks anything. It marks the window
+// tied, so the place's own status gives way to the tie's.
+func (s *State) tying(set func(*frame.Context, floor.AnchorRef)) func(*frame.Context, floor.AnchorRef) {
+	return func(ctx *frame.Context, ref floor.AnchorRef) {
+		zoneID, known := places.ZoneOf(ctx.Docs, ref.Floor)
+		if s.workflow == nil || !s.runsIn(ctx.Docs).IsZero() || !known {
+			set(ctx, ref)
+
+			return
+		}
+		s.tied = true
+		both := func(ctx *frame.Context, gesture string) {
+			s.joining = gesture
+			set(ctx, ref)
+			s.joining = ""
+			name, where := s.name(ctx.Docs), s.names(ctx.Docs).Name(zoneID, "its zone")
+			s.command(ctx, workflowplugin.SetRunsInEdit, gesture, workflowplugin.SetRunsInArgs{Zone: zoneID},
+				func(protocol.Result) {
+					ctx.Frame.Status(name + " runs in " + where + " now, the zone of the place chosen. Undo takes both " +
+						"back.")
+				})
+		}
+		if change := s.changeFor(ctx.Docs, zoneID); !change.empty() {
+			s.askRunsIn(ctx, change, both)
+
+			return
+		}
+		both(ctx, s.gesture())
+	}
 }

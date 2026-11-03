@@ -89,6 +89,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.drawValuePicker(screen, docs)
 	}
 	s.drawZones(screen, docs)
+	if s.dialog != nil {
+		s.dialog.Draw(screen, s.theme)
+	}
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -1078,6 +1081,10 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 		return point, found, true
 	case s.places != nil && kind != locateState:
 		point, found := s.locatePlaces(docs, kind, value)
+
+		return point, found, true
+	case s.dialog != nil:
+		point, found := s.locateInDialog(kind, value)
 
 		return point, found, true
 	case s.zones != nil:

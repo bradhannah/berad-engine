@@ -46,7 +46,8 @@ func (f *fixture) withTown() {
 
 // TestChoosingAPlaceByName chooses a Call's place input, a place local's
 // start and a Go to's place from the list each box opens, the status naming
-// the place and what Undo puts back; the list's last row picks on a map.
+// the place and what Undo puts back, the first tying the workflow to Town;
+// the list's last row picks on a map.
 func TestChoosingAPlaceByName(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -59,8 +60,8 @@ func TestChoosingAPlaceByName(t *testing.T) {
 		given != (worldstate.Place{Floor: floorID, Anchor: shelfID}) {
 		t.Fatalf("the input is given the shelf: %s", f.nth(flow.KindCall, 1).Inputs()[placeIn])
 	}
-	if got := f.status(); got != "Chose “Shelf” for place." {
-		t.Fatalf("the status names the place chosen: %q", got)
+	if got := f.status(); got != "Daily routine runs in Town now, the zone of the place chosen. Undo takes both back." {
+		t.Fatalf("the first fixed place ties the workflow, which ran in any zone, to Town: %q", got)
 	}
 	f.click("ui:input-place-place")
 	f.click("place:Office desk 3")
@@ -169,6 +170,7 @@ func TestPlacesWhereItsNPCsLive(t *testing.T) {
 		t.Fatal("the places where the workflow's NPC lives come first, the others grey")
 	}
 	behaviour.click("place:Dock")
+	behaviour.click("ui:runs-in-change")
 	if destination, err := behaviour.nth(flow.KindGoTo, 1).Anchor("destination"); err != nil ||
 		destination.Anchor != frametest.ID(83) {
 		t.Fatalf("a grey place can still be chosen: %+v %v", destination, err)

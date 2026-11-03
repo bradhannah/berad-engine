@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/client"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -97,8 +98,93 @@ func TestRunsIn(t *testing.T) {
 	}
 	f.click("ui:runs-in")
 	f.click("ui:" + zonepicker.NoneID)
+	f.click("ui:runs-in-change")
 	if set := f.requests.Of(workflowplugin.SetRunsInEdit); len(set) != 2 || set[1].Decode(&args) != nil ||
 		!args.Zone.IsZero() || !f.has("runs-in=Any zone") {
-		t.Fatalf("Any zone sets it back: %+v", set)
+		t.Fatalf("Any zone sets it back, once confirmed, as it leaves its place in Town: %+v", set)
+	}
+}
+
+// withDeskGoTo gives the workflow a Go to the desk in Town, running in
+// Town, that Ada Clerk, living in Town, follows; Harbour is another zone.
+func (f *fixture) withDeskGoTo() {
+	f.t.Helper()
+	f.withTown()
+	town := frametest.ID(87)
+	f.withZone(frametest.ID(84), "Harbour", frametest.ID(85), "Quay",
+		floor.Anchor{ID: frametest.ID(83), Name: "Dock", Col: 1, Row: 1})
+	ada := npcplugin.NewDocument()
+	ada.NPC.Path, ada.NPC.Behaviour, ada.NPC.Zone = "ada", workflowID, town
+	f.docs.Put(adaID, "Ada Clerk", ada)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindGoTo)
+	f.answerRunners([]protocol.Use{{
+		Document: adaID, Name: "Ada Clerk", Format: npc.FormatName, Label: protocol.RunsAsBehaviour, Item: "",
+	}})
+	goTo, err := f.workflow().Nodes()[1].WithParam("destination", floor.AnchorRef{Floor: floorID, Anchor: deskID})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if _, err := f.workflow().Replace(goTo); err != nil {
+		f.t.Fatal(err)
+	}
+	f.workflow().SetRunsIn(town)
+	f.docs.Touch(workflowID)
+	f.keys("Escape")
+}
+
+// TestChangingWhereItRunsAsks asks before running a behaviour in Harbour,
+// naming Ada Clerk, who lives in Town, and the desk left behind, and
+// changes it only once confirmed; Any zone asks about its places, and
+// Cancel leaves it.
+func TestChangingWhereItRunsAsks(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withDeskGoTo()
+	f.click("ui:runs-in")
+	f.click("zone:Harbour")
+	f.keys("Enter")
+	if !f.has("dialog") || !f.has("dialog-line=Town → Harbour") || !f.has("dialog-line=Ada Clerk lives elsewhere") ||
+		!f.has("dialog-row=Office desk 3") || len(f.requests.Of(workflowplugin.SetRunsInEdit)) != 0 {
+		t.Fatal("running it in Harbour asks first, naming who and what it breaks")
+	}
+	f.click("ui:" + "runs-in-change")
+	set := f.requests.Of(workflowplugin.SetRunsInEdit)
+	var args workflowplugin.SetRunsInArgs
+	if len(set) != 1 || set[0].Decode(&args) != nil || args.Zone != frametest.ID(84) || f.has("dialog") {
+		t.Fatalf("confirming runs it in Harbour: %+v", set)
+	}
+	f.click("ui:runs-in")
+	f.click("ui:" + zonepicker.NoneID)
+	if !f.has("dialog-line=until it comes from an input or another value") || f.has("dialog-line=lives elsewhere") {
+		t.Fatal("running it in any zone asks about its fixed places only")
+	}
+	f.keys("Escape")
+	if len(f.requests.Of(workflowplugin.SetRunsInEdit)) != 1 || f.has("dialog") || !f.has("runs-in=Harbour") {
+		t.Fatal("Cancel leaves it running in Harbour")
+	}
+}
+
+// TestAFixedPlaceTiesItsZone chooses a place in Town for a Go to in a
+// workflow running in any zone, which then runs in Town in the same undo
+// step; nobody follows it, so nothing asks.
+func TestAFixedPlaceTiesItsZone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withTown()
+	f.docs.Put(adaID, "Ada Clerk", npcplugin.NewDocument())
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindGoTo)
+	f.answerRunners(nil)
+	f.click("ui:place")
+	f.click("place:Shelf")
+	replaces, set := f.requests.Of(workflowplugin.ReplaceEdit), f.requests.Of(workflowplugin.SetRunsInEdit)
+	var args workflowplugin.SetRunsInArgs
+	if len(set) != 1 || set[0].Decode(&args) != nil || args.Zone != frametest.ID(87) || len(replaces) == 0 ||
+		set[0].Command.Gesture == "" || replaces[len(replaces)-1].Command.Gesture != set[0].Command.Gesture {
+		t.Fatalf("the place and Town are set in one gesture: %+v %+v", replaces, set)
+	}
+	if !f.has("runs-in=Town") || f.has("dialog") {
+		t.Fatal("it runs in Town, without asking")
 	}
 }
