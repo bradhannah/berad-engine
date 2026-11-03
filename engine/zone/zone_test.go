@@ -61,7 +61,7 @@ func TestEncodeDecode(t *testing.T) {
 	if err := z.Insert(0, floorID(4)); err != nil {
 		t.Fatal(err)
 	}
-	z.Path, z.Notes = "market", "The east-coast fishing town.\nNever shown to players."
+	z.Path, z.Notes, z.Loop = "market", "The east-coast fishing town.\nNever shown to players.", floorID(12)
 	crowded := worldstate.New(floorID(9), "crowded", worldstate.ScopeZone, worldstate.TypeBool)
 	if err := z.Owned.Values.Insert(crowded); err != nil {
 		t.Fatal(err)
@@ -98,8 +98,13 @@ func TestEncodeDecode(t *testing.T) {
 	if err := content.NewRegistry().Register(zone.Format()); err != nil {
 		t.Fatal(err)
 	}
-	if format := zone.Format(); format.Current != 5 || format.Migrations[4] == nil {
-		t.Fatalf("version 5 reads version 4 unchanged: %+v", format)
+	if format := zone.Format(); format.Current != 6 || format.Migrations[5] == nil {
+		t.Fatalf("version 6 reads version 5 unchanged, with no zone loop: %+v", format)
+	}
+	looped := z.Clone()
+	looped.Loop = floorID(13)
+	if looped.Equal(z) {
+		t.Fatal("zones with different loops differ")
 	}
 }
 

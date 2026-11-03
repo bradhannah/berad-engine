@@ -343,3 +343,41 @@ func TestReferencesListCalls(t *testing.T) {
 		t.Fatalf("a Call refers to what it calls and the world value it gives: %+v", references)
 	}
 }
+
+// TestAZoneLoopAndWhereItRuns makes a zone loop as the orchestrator does,
+// keeping its kind through preparing, refuses a Go to in it, and sets the
+// zone it runs in, which it then refers to, undoably.
+func TestAZoneLoopAndWhereItRuns(t *testing.T) {
+	t.Parallel()
+	registry, err := plugin.NewRegistry(workflow.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := workflow.Prepare(workflow.NewDataFor(flow.PurposeZoneLoop), func() (ids.ULID, error) { return id(1), nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := workflow.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, _ := decoded.(*workflow.Document)
+	if document.Workflow.Purpose() != flow.PurposeZoneLoop || !document.Workflow.RunsIn().IsZero() {
+		t.Fatal("a new zone loop keeps its kind and runs in any zone")
+	}
+	goTo := newNode(t, flow.KindGoTo, 2, ids.ULID{})
+	if _, err := (workflow.Add{}).Apply(document, encode(t, workflow.AddArgs{
+		Nodes: []flow.Node{goTo}, Boxes: nil, Links: nil,
+	})); !errors.Is(err, model.ErrArgs) {
+		t.Fatal("a zone loop refuses a Go to")
+	}
+	set := encode(t, workflow.SetRunsInArgs{Zone: id(40)})
+	if err := model.VerifyUndo(document, workflow.SetRunsIn{}, set, registry.Edit); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.SetRunsIn{}, set)
+	references := document.References()
+	if len(references) != 1 || references[0].Document != id(40) || references[0].Label != workflow.RunsHere {
+		t.Fatalf("a workflow refers to the zone it runs in: %+v", references)
+	}
+}

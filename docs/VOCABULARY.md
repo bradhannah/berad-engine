@@ -77,6 +77,9 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | --- | --- |
 | **Workflow** | Behaviour authored as typed nodes and the connections between them, starting at its start node |
 | **Node** | One step of a workflow; its kind declares its parameters and outputs |
+| **Kind of workflow** | What a workflow is for, chosen when it is made: an NPC behaviour or a zone loop. It decides the nodes the workflow offers and how the engine runs it; code calls it the workflow's purpose, as a node's kind is already its own |
+| **Runs in** | The zone a workflow runs in, or any zone; its places, the NPCs that follow it and the zones that loop it are checked against it |
+| **Zone loop** | A zone's own workflow, set in its details, running while the zone is alive to set its values and play its sounds; it has no body to move |
 | **Output** | One way out of a node, connected to the node it leads to; an output with nothing connected ends the branch |
 | **Entry** | One link coming into a node, shown as its own dot on the node's left edge; any number of links can come in. ("Input" is kept for the values passed into a reusable workflow.) |
 | **Time-bound container** | A group of nodes that repeats while its time lasts, then leaves by its exit |

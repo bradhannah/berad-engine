@@ -1,6 +1,7 @@
 // Package zone is the editor half of zones: the zone document and the edits
 // that add, remove and reorder its floors, list the palettes it uses, give it
-// a path name and notes, declare its own values and apply templates to it.
+// a path name and notes, choose its zone loop, declare its own values and
+// apply templates to it.
 package zone
 
 import (
@@ -34,6 +35,7 @@ const (
 
 	SetPathEdit  = "zone.path.set"
 	SetNotesEdit = "zone.notes.set"
+	SetLoopEdit  = "zone.loop.set"
 	// ChangeValuesEdit changes the zone's own values; ApplyTemplateEdit and
 	// UnapplyTemplateEdit put a template on it and take one off.
 	ChangeValuesEdit    = "zone.values.change"
@@ -50,7 +52,12 @@ const (
 	soundsItem   = "sounds"
 	pathItem     = "path"
 	notesItem    = "notes"
+	loopItem     = "loop"
 )
+
+// LoopLabel labels a zone's reference to its zone loop, so the loop's uses
+// say which zones run it.
+const LoopLabel = "zone loop"
 
 // ErrNotZone reports a document that is not a zone.
 var ErrNotZone = errors.New("document is not a zone")
@@ -90,10 +97,13 @@ func (d *Document) Parts() []ids.ULID { return d.Zone.Floors() }
 
 // References lists the zone's floors, the palettes it lists, so a palette a
 // zone lists is not deleted from under it, the cues it plays throughout and
-// the templates applied to it.
+// the templates applied to it and its zone loop.
 func (d *Document) References() []model.Reference {
 	floors, palettes, sounds := d.Zone.Floors(), d.Zone.Palettes(), d.Zone.Sounds()
 	references := stateplugin.TemplateReferences(d.Zone.Owned)
+	if !d.Zone.Loop.IsZero() {
+		references = append(references, model.Reference{Document: d.Zone.Loop, Item: "", Label: LoopLabel})
+	}
 	for index, floor := range floors {
 		references = append(references, model.Reference{
 			Document: floor, Item: "", Label: "floor " + strconv.Itoa(index+1) + " from the bottom",
@@ -382,9 +392,35 @@ func (SetNotes) Apply(document model.Document, args json.RawMessage) (model.Appl
 	})
 }
 
+// SetLoopArgs chooses a zone's zone loop; zero is none.
+type SetLoopArgs struct {
+	Loop ids.ULID `json:"loop"`
+}
+
+// SetLoop is the edit kind that chooses a zone's zone loop.
+type SetLoop struct{}
+
+// Name identifies the edit kind.
+func (SetLoop) Name() string { return SetLoopEdit }
+
+// Format names the document format the edit applies to.
+func (SetLoop) Format() string { return zone.FormatName }
+
+// Apply sets the loop; its inverse restores the previous one.
+func (SetLoop) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetLoopArgs
+
+	return changeText(document, args, &set, loopItem, func(changed *zone.Zone) (any, error) {
+		previous := SetLoopArgs{Loop: changed.Loop}
+		changed.Loop = set.Loop
+
+		return previous, nil
+	})
+}
+
 // changeText reads an edit's arguments into target and applies it to the
-// zone's path name or notes, whose previous text apply returns as the
-// inverse's arguments.
+// zone's path name, notes or loop, whose previous setting apply returns as
+// the inverse's arguments.
 func changeText(
 	document model.Document, args json.RawMessage, target any, item string, apply func(*zone.Zone) (any, error),
 ) (model.Applied, error) {
@@ -424,7 +460,7 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits: append([]model.EditKind{
 			InsertFloor{}, RemoveFloor{}, MoveFloor{}, InsertPalette{}, RemovePalette{}, InsertSound{}, RemoveSound{},
-			SetPath{}, SetNotes{},
+			SetPath{}, SetNotes{}, SetLoop{},
 		}, stateplugin.OwnerEdits("zone", zone.FormatName, owned)...),
 		Required: nil,
 	}
