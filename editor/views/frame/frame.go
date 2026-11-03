@@ -48,14 +48,24 @@ type Requests interface {
 	Undo(done func(protocol.Result, error))
 	Redo(done func(protocol.Result, error))
 	Subscribe(document ids.ULID, done func(error))
-	WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error))
 	// Publish sets session state every window shares under a topic, such as
 	// the time the next preview starts at; the other windows are told.
 	Publish(topic string, value any)
+	Questions
 	Windows
 	Picks
 	Previews
 	Audio
+}
+
+// Questions are the requests that need the whole project.
+type Questions interface {
+	// WhereUsed asks which documents refer to a document, or to one item in
+	// it.
+	WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error))
+	// Runners asks which NPCs run a workflow, as their behaviour or
+	// through Calls.
+	Runners(workflow ids.ULID, done func([]protocol.Use, error))
 }
 
 // Windows are the requests that open windows (D13).

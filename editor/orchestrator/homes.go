@@ -1,11 +1,15 @@
 package orchestrator
 
 import (
+	"cmp"
 	"errors"
+	"slices"
 
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -58,4 +62,40 @@ func (o *Orchestrator) SettleHomes() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// runners lists the NPCs that run a workflow, by name: those whose
+// behaviour it is, and those whose behaviour calls it through any number of
+// Calls.
+func (o *Orchestrator) runners(workflowID ids.ULID) []protocol.Use {
+	running := map[ids.ULID]bool{workflowID: true}
+	waiting := []ids.ULID{workflowID}
+	for len(waiting) > 0 {
+		called := waiting[0]
+		waiting = waiting[1:]
+		question := protocol.Query{Question: protocol.QuestionWhereUsed, Document: called, Item: workflowplugin.CallItem}
+		for _, use := range o.whereUsed(question) {
+			if !running[use.Document] {
+				running[use.Document] = true
+				waiting = append(waiting, use.Document)
+			}
+		}
+	}
+	runs := []protocol.Use{}
+	for documentID, entry := range o.docs {
+		npcDoc, isNPC := entry.document.(*npcplugin.Document)
+		if !isNPC || !running[npcDoc.NPC.Behaviour] {
+			continue
+		}
+		label := protocol.RunsByCall
+		if npcDoc.NPC.Behaviour == workflowID {
+			label = protocol.RunsAsBehaviour
+		}
+		runs = append(runs, protocol.Use{
+			Document: documentID, Name: entry.info.Name, Format: entry.info.Format, Label: label, Item: "",
+		})
+	}
+	slices.SortFunc(runs, func(a, b protocol.Use) int { return cmp.Compare(a.Name, b.Name) })
+
+	return runs
 }

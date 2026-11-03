@@ -438,6 +438,15 @@ func (h *host) WhereUsed(document ids.ULID, item string, done func([]protocol.Us
 	})
 }
 
+// Runners asks which NPCs run a workflow.
+func (h *host) Runners(workflow ids.ULID, done func([]protocol.Use, error)) {
+	h.background(func(ctx context.Context) func() {
+		uses, err := h.conn.Runners(ctx, workflow)
+
+		return func() { done(uses, err) }
+	})
+}
+
 // AudioLibrary asks for the project's audio library.
 func (h *host) AudioLibrary(done func(protocol.AudioLibrary, error)) {
 	h.background(func(ctx context.Context) func() {

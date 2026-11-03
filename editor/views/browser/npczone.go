@@ -213,10 +213,16 @@ func (s *State) updateZonePicker(input *ui.Input, ctx *frame.Context) {
 }
 
 // chooseZone gives an NPC the zone chosen. An NPC that lives nowhere yet
-// takes it at once, as nothing can break.
+// takes it at once, as nothing can break; one that lives in a zone moves,
+// asking first when anything changes but its zone.
 func (s *State) chooseZone(ctx *frame.Context, npcID, zoneID ids.ULID) {
 	now := s.zoneOfNPC(ctx.Docs, npcID)
-	if now == zoneID {
+	switch {
+	case now == zoneID:
+		return
+	case !now.IsZero():
+		s.moveZone(npcID, zoneID)
+
 		return
 	}
 	name, zoneName := s.index(ctx.Docs).Name(npcID, "The NPC"), s.index(ctx.Docs).Name(zoneID, "the zone")

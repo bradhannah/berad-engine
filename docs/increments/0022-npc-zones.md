@@ -122,7 +122,7 @@ Chosen while planning, for its author to check:
 | 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Built |
 | 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Built |
 | 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Built |
-| 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Planned |
+| 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Built |
 | 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Planned |
 | 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Planned |
 | 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Planned |
@@ -182,6 +182,26 @@ Chosen while planning, for its author to check:
   its zone in its details. Verified: a view test refuses an NPC living in
   another zone with the status line, and places one living nowhere,
   giving it the zone in one gesture.
+- **Moving zone:** choosing another zone for an NPC that lives in one
+  gathers what the move would change before asking. The workflows its
+  behaviour runs, through any number of Calls, are loaded, and the
+  orchestrator answers a new question, runners, with the NPCs that run
+  each, as their behaviour or by a call. A move that takes the NPC off no
+  map and breaks no place happens at once. Otherwise Move Clerk to
+  Harbour? says Market → Harbour; that the NPC comes off its floor and is
+  placed nowhere until put on a Harbour map; which of those workflows
+  also run for other NPCs living elsewhere, as Clerk day also runs for
+  Customer; that each place is flagged until it has one in Harbour; and
+  lists the places it could no longer go, each with the workflow, what
+  names it and its zone. Move to Harbour takes it off its map and into
+  the zone in one undo step; Cancel or Escape leaves it. The places a
+  workflow names, its Go to places on a map, the places its Calls give
+  their modules' place inputs and its place locals' starts, are listed by
+  the places package, which also finds a floor's zone. Verified: an
+  orchestrator test asks who runs a module, through two Calls and as a
+  behaviour; view tests move a placed NPC whose behaviour another NPC
+  shares, reading the dialog and the place listed, both edits sharing one
+  gesture, and move one that breaks nothing at once.
 
 ## Not in this increment
 

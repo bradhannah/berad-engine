@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,6 +85,7 @@ const (
 	dialogBehaviour
 	dialogSprite
 	dialogDeleteCue
+	dialogMoveZone
 )
 
 // State is the project browser.
@@ -142,6 +144,11 @@ type State struct {
 	zones       *zonepicker.Picker
 	zonesFor    ids.ULID
 	recentZones []ids.ULID
+	// moving is a move of an NPC to another zone gathering what it would
+	// break, and movingNPC and movingTo the move its dialog asks about.
+	moving    *zoneMove
+	movingNPC ids.ULID
+	movingTo  ids.ULID
 	// zoneNotes are a selected zone's private notes, for zoneNoted.
 	zoneNotes *ui.TextField
 	zoneNoted ids.ULID
@@ -173,6 +180,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
+		moving: nil, movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
@@ -377,12 +385,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.guardSelection(ctx)
-	s.syncArt(ctx)
-	s.syncName(ctx.Docs)
-	s.syncSettings(ctx.Docs)
-	s.syncNPC(ctx)
-	s.syncZoneNotes(ctx)
-	s.syncCueUses(ctx)
+	s.sync(ctx)
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -392,6 +395,20 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu(ctx.Docs)
+}
+
+// sync keeps the inspector showing what is selected, and goes on with a
+// move of an NPC to another zone while it gathers what it would break.
+func (s *State) sync(ctx *frame.Context) {
+	if s.moving != nil {
+		s.updateMove(ctx)
+	}
+	s.syncArt(ctx)
+	s.syncName(ctx.Docs)
+	s.syncSettings(ctx.Docs)
+	s.syncNPC(ctx)
+	s.syncZoneNotes(ctx)
+	s.syncCueUses(ctx)
 }
 
 // updateFields handles the text fields: Enter saves a name or tags, and the
@@ -1022,6 +1039,8 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		s.setSprite(ctx, list.Selected)
 	case kind == dialogDeleteCue && choice == "delete":
 		s.removeCue(ctx, s.audio.deleting)
+	case kind == dialogMoveZone && choice == zoneMoveID:
+		s.applyMove(ctx, s.movingNPC, s.movingTo)
 	}
 }
 
@@ -1154,8 +1173,20 @@ func (s *State) allButtons() []*ui.Button {
 	}, s.tagBns...)
 }
 
-// locateInDialog finds a dialog button, or a dialog list row by its name.
+// locateInDialog finds a dialog button, or a dialog list row by its name,
+// or answers "state:dialog-line=<text>", a line of the dialog holding the
+// text, and "state:dialog-row=<name>", a row of its list.
 func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
+	if kind == "state" {
+		line, isLine := strings.CutPrefix(value, "dialog-line=")
+		row, isRow := strings.CutPrefix(value, "dialog-row=")
+		found := isLine && strings.Contains(strings.Join(s.dialog.Lines, " "), line)
+		if isRow && s.dialog.List != nil {
+			found = slices.ContainsFunc(s.dialog.List.Rows, func(listed ui.Row) bool { return listed.Label == row })
+		}
+
+		return image.Pt(0, 0), found || value == "dialog"
+	}
 	if kind == "row" && s.dialog.List != nil {
 		for _, row := range s.dialog.List.Rows {
 			if row.Label == value {

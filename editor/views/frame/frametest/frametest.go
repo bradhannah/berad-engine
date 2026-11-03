@@ -93,7 +93,11 @@ type Requests struct {
 	Uses       []func([]protocol.Use, error)
 	// UsesOf are the document and item each where-used question in Uses
 	// asked about, in the same order.
-	UsesOf      []UsesQuestion
+	UsesOf []UsesQuestion
+	// RunnerAsks are questions of which NPCs run a workflow, waiting for
+	// the test to answer, and RunnersOf the workflows they asked about.
+	RunnerAsks  []func([]protocol.Use, error)
+	RunnersOf   []ids.ULID
 	PickAsks    []func([]protocol.PickMap, error)
 	PickStarts  []protocol.PickStart
 	PickAnswers []protocol.PickAnswer
@@ -326,6 +330,13 @@ type UsesQuestion struct {
 func (r *Requests) WhereUsed(document ids.ULID, item string, done func([]protocol.Use, error)) {
 	r.Uses = append(r.Uses, done)
 	r.UsesOf = append(r.UsesOf, UsesQuestion{Document: document, Item: item})
+}
+
+// Runners records a question of which NPCs run a workflow; the test
+// answers it.
+func (r *Requests) Runners(workflow ids.ULID, done func([]protocol.Use, error)) {
+	r.RunnerAsks = append(r.RunnerAsks, done)
+	r.RunnersOf = append(r.RunnersOf, workflow)
 }
 
 // PickAsk records a pick question; the test answers it.

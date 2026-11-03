@@ -228,6 +228,17 @@ type Host struct {
 // inside it.
 const QuestionWhereUsed = "where-used"
 
+// QuestionRunners asks which NPCs run a workflow: those whose behaviour it
+// is, labelled RunsAsBehaviour, and those whose behaviour calls it through
+// any number of Calls, labelled RunsByCall. The answer's uses are the NPCs.
+const QuestionRunners = "runners"
+
+// Labels of the NPCs that run a workflow.
+const (
+	RunsAsBehaviour = "behaviour"
+	RunsByCall      = "calls it"
+)
+
 // Query asks a question that needs the whole project.
 type Query struct {
 	Question string   `json:"question"`

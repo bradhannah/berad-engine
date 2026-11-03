@@ -13,6 +13,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -116,5 +117,47 @@ func TestPlacedNPCsGetTheirZone(t *testing.T) {
 	}
 	if file := readEnvelopeFile(t, onlyFile(t, dir, "npcs/wanderer--*.json")); strings.Contains(string(file.Data), "zone") {
 		t.Fatalf("an NPC placed nowhere lives nowhere: %s", file.Data)
+	}
+}
+
+// TestRunners asks which NPCs run a module: the NPC whose behaviour calls it
+// through another module, and the one whose behaviour it is, by name.
+func TestRunners(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	floorID := createProject(t, dir)
+	h := start(t, dir, nil)
+	browser := h.dialView(t, "browser", project.IndexID(), "", project.IndexID(), floorID)
+	fetch := createDocument(t, browser, flow.FormatName, "Fetch stock", ids.ULID{}, workflow.NewData(), "")
+	errand := createDocument(t, browser, flow.FormatName, "Errand", ids.ULID{}, workflow.NewData(), "")
+	day := createDocument(t, browser, flow.FormatName, "Shop day", ids.ULID{}, workflow.NewData(), "")
+	call := func(from, to ids.ULID) {
+		node, err := flow.NewNode(flow.KindCall)
+		if err == nil {
+			node, err = node.WithParam(flow.ParamWorkflow, to.String())
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustCommand(t, browser, from, workflow.AddEdit, "", workflow.AddArgs{Nodes: []flow.Node{node}, Boxes: nil,
+			Links: nil})
+	}
+	call(day, errand)
+	call(errand, fetch)
+	for name, behaviour := range map[string]ids.ULID{"Clerk": day, "Porter": fetch, "Idler": ids.ULID{}} {
+		made := createDocument(t, browser, npc.FormatName, name, ids.ULID{}, encodeDocument(t, npcplugin.NewDocument()), "")
+		if !behaviour.IsZero() {
+			mustCommand(t, browser, made, npcplugin.SetBehaviourEdit, "", npcplugin.SetBehaviourArgs{Behaviour: behaviour})
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	runs, err := browser.Runners(ctx, fetch)
+	if err != nil || len(runs) != 2 || runs[0].Name != "Clerk" || runs[0].Label != protocol.RunsByCall ||
+		runs[1].Name != "Porter" || runs[1].Label != protocol.RunsAsBehaviour {
+		t.Fatalf("Clerk runs Fetch stock through two calls and Porter as its behaviour: %+v %v", runs, err)
+	}
+	if runs, err := browser.Runners(ctx, day); err != nil || len(runs) != 1 || runs[0].Name != "Clerk" {
+		t.Fatalf("only Clerk runs Shop day: %+v %v", runs, err)
 	}
 }
