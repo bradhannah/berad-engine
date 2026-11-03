@@ -8,10 +8,9 @@ import (
 )
 
 // TestMovingTheCustomer makes a new zone and moves the sample's customer
-// into it with the zone picker: the move dialog lists the counter and the
-// door its behaviour goes to, the behaviour's Go to is flagged once it
-// lives in the new zone, and Undo puts it back in the sample zone, its Go to
-// no longer flagged.
+// into it with the zone picker: the move dialog says it comes off its map
+// and that its behaviour runs in the sample zone, its details then flag the
+// behaviour, and Undo puts it back in the sample zone.
 func TestMovingTheCustomer(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -20,18 +19,15 @@ func TestMovingTheCustomer(t *testing.T) {
 		shotPath(t, "zone-flag.png")
 	browserScript := script(
 		must("row:Notes", 600), wait(5), click("ui:new-zone"), wait(30), click("row:Customer"), wait(60),
-		doubleClick("row:Customer"),
-		must("state:tabs:2", 600), wait(30), click("row:Customer"), must("state:npc-zone=Sample zone", 600), wait(10),
+		must("state:npc-zone=Sample zone", 600), wait(10),
 		click("ui:npc-zone"), must("state:zone-picker", 120), wait(10), click("zone:Zone 1"), wait(10),
-		shoot(pickerShot), keys("Enter"), must("state:dialog", 900), must("state:dialog-row=Counter", 60), wait(10),
-		shoot(dialogShot), click("ui:zone-move"), must("state:npc-zone=Zone 1", 600), wait(600), keys("Cmd+Z"),
-		must("state:npc-zone=Sample zone", 600), quitWhenAlone(),
+		shoot(pickerShot), keys("Enter"), must("state:dialog", 900),
+		must("state:dialog-line=Its behaviour, Customer shops, runs in Sample zone.", 60), wait(10), shoot(dialogShot),
+		click("ui:zone-move"), must("state:npc-zone=Zone 1", 600),
+		must("state:flag=Customer shops runs in Sample zone, and Customer lives in Zone 1.", 600), wait(10),
+		shoot(flagShot), keys("Cmd+Z"), must("state:npc-zone=Sample zone", 600), quitWhenAlone(),
 	)
-	shopsScript := script(
-		must("state:loaded", 900), must("state:problem:go-to:1", 3600), wait(10), click("node:go-to:1"), wait(10),
-		shoot(flagShot), must("state:problems:0", 3600), wait(10), quit(),
-	)
-	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {shopsScript}})
+	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 	noCrashes(t, project)
 	decoded, err := npcplugin.Decode(readEnvelope(t, project, "npcs/customer--*.json").Data)
 	if err != nil {

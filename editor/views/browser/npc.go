@@ -48,10 +48,8 @@ type npcPanel struct {
 	sprite       image.Rectangle
 	top          int
 	spriteTop    int
-	// flag says why the NPC's behaviour doesn't fit it, in lines under its
-	// buttons, and flagTop where they start.
-	flag    []string
-	flagTop int
+	// flag says why the NPC's behaviour doesn't fit it, or is "".
+	flag string
 }
 
 func newNPCPanel(theme *ui.Theme) *npcPanel {
@@ -65,7 +63,7 @@ func newNPCPanel(theme *ui.Theme) *npcPanel {
 		open: ui.NewButton("open-behaviour", "Open"), chooseSprite: ui.NewButton("choose-sprite", "Choose…"),
 		openSprite: ui.NewButton("open-sprite", "Open"), behaviour: ui.Zero(), sprite: ui.Zero(), top: 0,
 		spriteTop: 0, zone: ui.Zero(), placedTop: 0, showOnMap: ui.NewButton(showOnMapID, "Show on map"),
-		behaviourTop: 0, flag: nil, flagTop: 0,
+		behaviourTop: 0, flag: "",
 	}
 }
 
@@ -130,12 +128,7 @@ func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel.behaviourTop = s.layoutZone(docs, npcID, left, width, top)
 	rowY := layoutChoice(panel.behaviourTop, left, width, &panel.behaviour, panel.choose, panel.open)
 	found, _ := s.npcOf(docs, npcID)
-	panel.flag = nil
-	name := s.index(docs).Name(npcID, "The NPC")
-	if misfit := s.refusal(docs, found.Behaviour, s.zoneOfNPC(docs, npcID), name); misfit != "" {
-		panel.flag, panel.flagTop = s.theme.Wrap(misfit, width), rowY-panelGap+ui.Gap
-		rowY += len(panel.flag) * ui.LineHeight
-	}
+	panel.flag = s.refusal(docs, found.Behaviour, s.zoneOfNPC(docs, npcID), s.index(docs).Name(npcID, "The NPC"))
 	panel.spriteTop = rowY
 	rowY = layoutChoice(rowY, left, width, &panel.sprite, panel.chooseSprite, panel.openSprite) + ui.LineHeight
 	panel.path.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
@@ -343,12 +336,12 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 	label, ink := "No behaviour yet", ui.ColorMuted()
 	if found, loaded := s.npcOf(docs, npcID); loaded && !found.Behaviour.IsZero() {
 		label, ink = s.index(docs).Name(found.Behaviour, "Broken: its workflow was deleted"), ui.ColorInk()
+		if panel.flag != "" {
+			label, ink = s.misfitLabel(docs, found.Behaviour, true)
+		}
 	}
 	s.theme.DrawTextIn(screen, label, panel.behaviour, ink)
 	panel.choose.Draw(screen, s.theme)
-	for index, line := range panel.flag {
-		s.theme.DrawText(screen, line, left, panel.flagTop+index*ui.LineHeight, ui.ColorWarn())
-	}
 	panel.open.Draw(screen, s.theme)
 	s.theme.Heading(screen, "SPRITE", left, panel.spriteTop)
 	ui.Box(screen, panel.sprite, ui.ColorBackground())

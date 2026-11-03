@@ -1162,7 +1162,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // an NPC's behaviour or a zone's loop.
 func (s *State) hasRowState(state string) bool {
 	if text, isFlag := strings.CutPrefix(state, "flag="); isFlag {
-		return strings.Contains(strings.Join(append(slices.Clone(s.npc.flag), s.loop.flag...), " "), text)
+		return strings.Contains(s.npc.flag+" "+s.loop.flag, text)
 	}
 	if rest, isDetail := strings.CutPrefix(state, "row-detail:"); isDetail {
 		label, detail, _ := strings.Cut(rest, "=")

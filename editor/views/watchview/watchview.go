@@ -226,12 +226,10 @@ func (s *State) drawValues(screen *ebiten.Image) {
 	}
 }
 
-// layout places the buttons in the footer.
+// layout places the buttons in the footer, each as wide as its label
+// needs, Watch zone loop only while the preview runs one.
 func (s *State) layout() {
 	bottom := s.size.Y - frame.StatusHeight - ui.Inset
-	s.pause.Rect = image.Rect(ui.Inset, bottom-ui.ButtonH, ui.Inset+buttonWidth, bottom)
-	s.step.Rect = image.Rect(ui.Inset+buttonWidth+buttonGap, bottom-ui.ButtonH, ui.Inset+ui.Half*buttonWidth+buttonGap,
-		bottom)
 	s.pause.Label, s.step.Label = "Pause NPCs", textStep
 	if s.state != nil && s.state.NPCsPaused {
 		s.pause.Label = "Resume NPCs"
@@ -241,10 +239,17 @@ func (s *State) layout() {
 		s.step.Label = textStepping
 	}
 	s.pause.Disabled, s.step.Disabled = s.state == nil, s.state == nil || s.state.Watched.IsZero() || stepping
+	left := ui.Inset
+	place := func(button *ui.Button) {
+		width := max(buttonWidth/ui.Half, s.theme.TextWidth(button.Label)+ui.Half*ui.Inset)
+		button.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
+		left += width + buttonGap
+	}
+	place(s.pause)
+	place(s.step)
 	s.watchLoop.Rect = ui.Zero()
 	if loop, runs := s.loop(); runs {
-		left := s.step.Rect.Max.X + buttonGap
-		s.watchLoop.Rect = image.Rect(left, bottom-ui.ButtonH, left+buttonWidth, bottom)
+		place(s.watchLoop)
 		s.watchLoop.Disabled = s.state.Watched.String() == loop.ID
 	}
 }

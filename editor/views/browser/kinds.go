@@ -3,6 +3,7 @@ package browser
 import (
 	"cmp"
 	"image"
+	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -33,16 +34,14 @@ type loopPanel struct {
 	box    image.Rectangle
 	choose *ui.Button
 	open   *ui.Button
-	// flag says why the zone's loop doesn't fit it, in lines under its
-	// buttons, and flagTop where they start.
-	flag    []string
-	flagTop int
+	// flag says why the zone's loop doesn't fit it, or is "".
+	flag string
 }
 
 func newLoopPanel() *loopPanel {
 	return &loopPanel{
 		top: 0, box: ui.Zero(), choose: ui.NewButton(chooseLoopID, chooseLoopText), open: ui.NewButton(openLoopID, "Open"),
-		flag: nil, flagTop: 0,
+		flag: "",
 	}
 }
 
@@ -171,14 +170,20 @@ func (s *State) layoutZoneLoop(docs frame.Docs, left, width, top int) int {
 		return top
 	}
 	panel.top = top + panelGap
-	rowY := layoutChoice(panel.top, left, width, &panel.box, panel.choose, panel.open)
-	panel.flag = nil
-	if misfit := s.refusal(docs, s.loopOf(docs, entry.ID), entry.ID, entry.Name); misfit != "" {
-		panel.flag, panel.flagTop = s.theme.Wrap(misfit, width), rowY-panelGap+ui.Gap
-		rowY += len(panel.flag) * ui.LineHeight
+	panel.flag = s.refusal(docs, s.loopOf(docs, entry.ID), entry.ID, entry.Name)
+
+	return layoutChoice(panel.top, left, width, &panel.box, panel.choose, panel.open)
+}
+
+// misfitLabel is a chosen workflow's name in a box, with where it runs when
+// that is not where it should: flagged in the warning ink.
+func (s *State) misfitLabel(docs frame.Docs, workflowID ids.ULID, flagged bool) (string, color.RGBA) {
+	name := s.index(docs).Name(workflowID, "a deleted workflow")
+	if !flagged {
+		return name, ui.ColorInk()
 	}
 
-	return rowY
+	return name + " · runs in " + s.index(docs).Name(s.runsInOf(docs, workflowID), "another zone"), ui.ColorWarn()
 }
 
 // drawZoneLoop draws a selected zone's Zone loop box.
@@ -192,15 +197,12 @@ func (s *State) drawZoneLoop(screen *ebiten.Image, docs frame.Docs, left int) {
 	label, ink := "No zone loop", ui.ColorMuted()
 	if entry, ok := s.selected(docs); ok {
 		if loop := s.loopOf(docs, entry.ID); !loop.IsZero() {
-			label, ink = s.index(docs).Name(loop, "a deleted workflow"), ui.ColorInk()
+			label, ink = s.misfitLabel(docs, loop, panel.flag != "")
 		}
 	}
 	s.theme.DrawTextIn(screen, label, panel.box, ink)
 	panel.choose.Draw(screen, s.theme)
 	panel.open.Draw(screen, s.theme)
-	for index, line := range panel.flag {
-		s.theme.DrawText(screen, line, left, panel.flagTop+index*ui.LineHeight, ui.ColorWarn())
-	}
 }
 
 // updateZoneLoop handles a selected zone's Zone loop buttons, reporting
