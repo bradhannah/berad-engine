@@ -3,6 +3,7 @@ package zone_test
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/model"
@@ -11,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
+	enginezone "github.com/bradhannah/berad-engine/engine/zone"
 )
 
 func floorID(seed byte) ids.ULID {
@@ -133,6 +135,7 @@ func TestPathAndValueEditsMeetUndoContract(t *testing.T) {
 		args json.RawMessage
 	}{
 		{zone.SetPath{}, encode(zone.SetPathArgs{Path: "market"})},
+		{zone.SetNotes{}, encode(zone.SetNotesArgs{Notes: "Busy on market days."})},
 		{edit(zone.ChangeValuesEdit), encode(stateplugin.ChangeArgs{Add: []worldstate.Declaration{crowded}, Set: nil, Remove: nil})},
 		{edit(zone.ApplyTemplateEdit), encode(stateplugin.TemplateArgs{Template: floorID(10), Index: 0})},
 	} {
@@ -143,11 +146,15 @@ func TestPathAndValueEditsMeetUndoContract(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if document.Zone.Path != "market" || document.Zone.Owned.Values.Len() != 1 || len(document.References()) != 1 {
+	if document.Zone.Path != "market" || document.Zone.Notes != "Busy on market days." || document.Zone.Owned.Values.Len() != 1 || len(document.References()) != 1 {
 		t.Fatalf("named, with a value and a template: %+v", document.Zone)
 	}
 	if _, err := (zone.SetPath{}).Apply(document, encode(zone.SetPathArgs{Path: "Market Square"})); !errors.Is(err, model.ErrArgs) {
 		t.Fatalf("a path name follows the rules for value names: %v", err)
+	}
+	long := encode(zone.SetNotesArgs{Notes: strings.Repeat("a", enginezone.MaxNotes+1)})
+	if _, err := (zone.SetNotes{}).Apply(document, long); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("notes too long: %v", err)
 	}
 }
 

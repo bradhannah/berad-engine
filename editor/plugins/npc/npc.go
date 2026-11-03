@@ -1,5 +1,5 @@
 // Package npc is the editor half of NPCs: the NPC document and the edits that
-// choose its behaviour workflow, give it a path name, change its private
+// choose the zone it lives in and its behaviour workflow, give it a path name, change its private
 // notes, declare its own values and apply templates to it.
 package npc
 
@@ -21,6 +21,7 @@ const PluginName = "npc"
 
 // Edit kind names.
 const (
+	SetZoneEdit      = "npc.zone.set"
 	SetBehaviourEdit = "npc.behaviour.set"
 	SetSpriteEdit    = "npc.sprite.set"
 	SetNotesEdit     = "npc.notes.set"
@@ -34,6 +35,7 @@ const (
 
 // Undo-clash items.
 const (
+	zoneItem      = "zone"
 	behaviourItem = "behaviour"
 	spriteItem    = "sprite"
 	notesItem     = "notes"
@@ -73,10 +75,16 @@ func (d *Document) Clone() model.Document {
 	return &Document{NPC: d.NPC.Clone()}
 }
 
-// References lists the NPC's behaviour workflow and its sprite, so deleting
-// either shows which NPCs use it, and the templates applied to it.
+// LivesHere labels an NPC's reference to the zone it lives in.
+const LivesHere = "lives here"
+
+// References lists the NPC's zone, behaviour workflow and sprite, so
+// deleting one shows which NPCs use it, and the templates applied to it.
 func (d *Document) References() []model.Reference {
 	references := stateplugin.TemplateReferences(d.NPC.Owned)
+	if !d.NPC.Zone.IsZero() {
+		references = append(references, model.Reference{Document: d.NPC.Zone, Item: "", Label: LivesHere})
+	}
 	if !d.NPC.Behaviour.IsZero() {
 		references = append(references, model.Reference{Document: d.NPC.Behaviour, Item: "", Label: "behaviour"})
 	}
@@ -97,6 +105,11 @@ func Decode(data json.RawMessage) (model.Document, error) {
 	}
 
 	return &Document{NPC: decoded}, nil
+}
+
+// SetZoneArgs chooses the zone the NPC lives in; zero is none.
+type SetZoneArgs struct {
+	Zone ids.ULID `json:"zone"`
 }
 
 // SetBehaviourArgs chooses the NPC's behaviour workflow; zero clears it.
@@ -138,6 +151,27 @@ func (SetPath) Apply(document model.Document, args json.RawMessage) (model.Appli
 		}
 		previous := SetPathArgs{Path: changed.Path}
 		changed.Path = set.Path
+
+		return previous, nil
+	})
+}
+
+// SetZone is the edit kind that chooses the zone an NPC lives in.
+type SetZone struct{}
+
+// Name identifies the edit kind.
+func (SetZone) Name() string { return SetZoneEdit }
+
+// Format names the document format the edit applies to.
+func (SetZone) Format() string { return npc.FormatName }
+
+// Apply sets the zone; its inverse restores the previous one.
+func (SetZone) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetZoneArgs
+
+	return change(document, args, &set, zoneItem, func(changed *npc.NPC) (any, error) {
+		previous := SetZoneArgs{Zone: changed.Zone}
+		changed.Zone = set.Zone
 
 		return previous, nil
 	})
@@ -246,7 +280,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: npc.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits: append([]model.EditKind{SetBehaviour{}, SetSprite{}, SetNotes{}, SetPath{}},
+		Edits: append([]model.EditKind{SetZone{}, SetBehaviour{}, SetSprite{}, SetNotes{}, SetPath{}},
 			stateplugin.OwnerEdits("npc", npc.FormatName, owned)...),
 		Required: nil,
 	}

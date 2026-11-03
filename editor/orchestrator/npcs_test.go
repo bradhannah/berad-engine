@@ -6,10 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bradhannah/berad-engine/editor/model"
+	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -56,5 +59,62 @@ func TestNPCsAndPlacements(t *testing.T) {
 	npcFile := readEnvelopeFile(t, onlyFile(t, dir, "npcs/ada-clerk--*.json"))
 	if !strings.Contains(string(npcFile.Data), routine.String()) {
 		t.Fatalf("the NPC file lacks its behaviour: %s", npcFile.Data)
+	}
+}
+
+// TestPlacedNPCsGetTheirZone opens a project saved before NPCs had zones:
+// an NPC placed on a floor of a zone lives there from then on, and one
+// placed nowhere still lives nowhere.
+func TestPlacedNPCsGetTheirZone(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	floorID := createProject(t, dir)
+	orch, err := orchestrator.New(baseConfig(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	market := zoneplugin.NewDocument()
+	if err := market.Zone.Insert(0, floorID); err != nil {
+		t.Fatal(err)
+	}
+	marketID, err := orch.CreateDocument("Market", market)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clerk, err := orch.CreateDocument("Clerk", npcplugin.NewDocument())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orch.CreateDocument("Wanderer", npcplugin.NewDocument()); err != nil {
+		t.Fatal(err)
+	}
+	placed := floor.Placement{ID: ids.ULID{}, NPC: clerk, Col: 2, Row: 3}
+	placed.ID[0], placed.ID[15] = 7, 7
+	if err := orch.ChangeDocument(floorID, func(document model.Document) error {
+		floorDoc, _ := document.(*tilefloor.Document) //nolint:errcheck // The project's own floor.
+
+		return floorDoc.Floor.InsertPlacement(0, placed)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if file := readEnvelopeFile(t, onlyFile(t, dir, "npcs/clerk--*.json")); strings.Contains(string(file.Data), "zone") {
+		t.Fatalf("saved before it had a zone: %s", file.Data)
+	}
+	reopened, err := orchestrator.New(baseConfig(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if file := readEnvelopeFile(t, onlyFile(t, dir, "npcs/clerk--*.json")); !strings.Contains(string(file.Data),
+		marketID.String()) {
+		t.Fatalf("the placed NPC lives in its placement's zone: %s", file.Data)
+	}
+	if file := readEnvelopeFile(t, onlyFile(t, dir, "npcs/wanderer--*.json")); strings.Contains(string(file.Data), "zone") {
+		t.Fatalf("an NPC placed nowhere lives nowhere: %s", file.Data)
 	}
 }

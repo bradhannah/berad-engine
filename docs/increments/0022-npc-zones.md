@@ -1,6 +1,6 @@
 # Increment 22: NPCs live in one zone
 
-**Status:** Planned
+**Status:** Building
 
 The twenty-second increment gives each NPC the zone it lives in. Today an
 NPC's zone is only where it happens to be placed, the place lists offer
@@ -118,7 +118,7 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. An NPC's zone | The zone in the NPC's file, its next format version; older projects giving placed NPCs their placement's zone; notes on a zone | Engine tests save, load and upgrade an NPC's zone and a zone's notes | Planned |
+| 1. An NPC's zone | The zone in the NPC's file, its next format version; older projects giving placed NPCs their placement's zone; notes on a zone | Engine tests save, load and upgrade an NPC's zone and a zone's notes | Built |
 | 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Planned |
 | 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Planned |
 | 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Planned |
@@ -131,7 +131,19 @@ Chosen while planning, for its author to check:
 
 ## Step results
 
-None yet.
+- **An NPC's zone:** an NPC names the zone it lives in, and NPCs are
+  version 5; a version 4 NPC reads unchanged, living in no zone. The NPC
+  refers to its zone, labelled lives here, so a zone's uses list the NPCs
+  that live in it. Zones keep notes, private to the author, and are
+  version 5. Opening a project gives each NPC that lives in no zone but is
+  placed on a zone's floor that zone, saved at the next save as an
+  upgrade is; an NPC placed nowhere keeps no zone. The sample's clerk and
+  customer live in the sample zone. Verified: engine tests save, read and
+  upgrade an NPC's zone and a zone's notes and refuse notes too long;
+  plug-in tests meet the undo contract for setting a zone and notes; an
+  orchestrator test reopens a project saved before NPCs had zones and
+  finds the placed NPC living in its zone and the other in none; the
+  headless sample test finds both NPCs in the sample zone.
 
 ## Not in this increment
 

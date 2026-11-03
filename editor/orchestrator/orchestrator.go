@@ -238,6 +238,7 @@ func (o *Orchestrator) load() error {
 	if err := o.replay(); err != nil {
 		return err
 	}
+	o.settleHomes()
 	o.buildIndex()
 
 	return nil

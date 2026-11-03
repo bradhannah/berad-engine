@@ -1,6 +1,6 @@
 // Package zone is the editor half of zones: the zone document and the edits
 // that add, remove and reorder its floors, list the palettes it uses, give it
-// a path name, declare its own values and apply templates to it.
+// a path name and notes, declare its own values and apply templates to it.
 package zone
 
 import (
@@ -32,7 +32,8 @@ const (
 	InsertSoundEdit = "zone.sound.insert"
 	RemoveSoundEdit = "zone.sound.remove"
 
-	SetPathEdit = "zone.path.set"
+	SetPathEdit  = "zone.path.set"
+	SetNotesEdit = "zone.notes.set"
 	// ChangeValuesEdit changes the zone's own values; ApplyTemplateEdit and
 	// UnapplyTemplateEdit put a template on it and take one off.
 	ChangeValuesEdit    = "zone.values.change"
@@ -41,13 +42,14 @@ const (
 )
 
 // floorsItem is the undo-clash item for the order of a zone's floors,
-// palettesItem for the palettes it lists, soundsItem for its sounds and
-// pathItem for its path name.
+// palettesItem for the palettes it lists, soundsItem for its sounds,
+// pathItem for its path name and notesItem for its notes.
 const (
 	floorsItem   = "floors"
 	palettesItem = "palettes"
 	soundsItem   = "sounds"
 	pathItem     = "path"
+	notesItem    = "notes"
 )
 
 // ErrNotZone reports a document that is not a zone.
@@ -338,24 +340,71 @@ func (SetPath) Format() string { return zone.FormatName }
 
 // Apply sets the path name; its inverse restores the previous one.
 func (SetPath) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetPathArgs
+
+	return changeText(document, args, &set, pathItem, func(changed *zone.Zone) (any, error) {
+		if err := zone.CheckPath(set.Path); err != nil {
+			return nil, fmt.Errorf("set path name: %w", err)
+		}
+		previous := SetPathArgs{Path: changed.Path}
+		changed.Path = set.Path
+
+		return previous, nil
+	})
+}
+
+// SetNotesArgs replaces a zone's notes.
+type SetNotesArgs struct {
+	Notes string `json:"notes"`
+}
+
+// SetNotes is the edit kind that changes a zone's notes.
+type SetNotes struct{}
+
+// Name identifies the edit kind.
+func (SetNotes) Name() string { return SetNotesEdit }
+
+// Format names the document format the edit applies to.
+func (SetNotes) Format() string { return zone.FormatName }
+
+// Apply sets the notes; its inverse restores the previous notes.
+func (SetNotes) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetNotesArgs
+
+	return changeText(document, args, &set, notesItem, func(changed *zone.Zone) (any, error) {
+		if err := zone.CheckNotes(set.Notes); err != nil {
+			return nil, fmt.Errorf("set notes: %w", err)
+		}
+		previous := SetNotesArgs{Notes: changed.Notes}
+		changed.Notes = set.Notes
+
+		return previous, nil
+	})
+}
+
+// changeText reads an edit's arguments into target and applies it to the
+// zone's path name or notes, whose previous text apply returns as the
+// inverse's arguments.
+func changeText(
+	document model.Document, args json.RawMessage, target any, item string, apply func(*zone.Zone) (any, error),
+) (model.Applied, error) {
 	zoneDoc, ok := document.(*Document)
 	if !ok {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrWrongDocument, ErrNotZone)
 	}
-	var set SetPathArgs
-	if err := json.Unmarshal(args, &set); err != nil {
+	if err := json.Unmarshal(args, target); err != nil {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
-	if err := zone.CheckPath(set.Path); err != nil {
+	inverse, err := apply(zoneDoc.Zone)
+	if err != nil {
 		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
-	inverse, err := json.Marshal(SetPathArgs{Path: zoneDoc.Zone.Path})
+	inverseArgs, err := json.Marshal(inverse)
 	if err != nil {
 		return model.Applied{}, fmt.Errorf("encode inverse: %w", err)
 	}
-	zoneDoc.Zone.Path = set.Path
 
-	return model.Applied{Inverse: inverse, InverseEdit: "", Touched: []string{pathItem}, Covers: nil}, nil
+	return model.Applied{Inverse: inverseArgs, InverseEdit: "", Touched: []string{item}, Covers: nil}, nil
 }
 
 // owned is what a zone document owns, for the edits that change it.
@@ -375,7 +424,7 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{Format: zone.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
 		Edits: append([]model.EditKind{
 			InsertFloor{}, RemoveFloor{}, MoveFloor{}, InsertPalette{}, RemovePalette{}, InsertSound{}, RemoveSound{},
-			SetPath{},
+			SetPath{}, SetNotes{},
 		}, stateplugin.OwnerEdits("zone", zone.FormatName, owned)...),
 		Required: nil,
 	}
