@@ -210,7 +210,7 @@ func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
 	case valueform.ChangePickPlace:
 		s.pickOrCancel(ctx, s.localTarget(ctx, changed))
 	case valueform.ChangeChoosePlace:
-		s.openPlaces(panel.form.PlaceBox, s.localTarget(ctx, changed))
+		s.openPlaces(ctx.Docs, panel.form.PlaceBox, s.localTarget(ctx, changed))
 	case valueform.ChangeDeclareNew:
 		s.addLocal(ctx)
 	case valueform.ChangeNone:

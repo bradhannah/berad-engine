@@ -2,6 +2,7 @@ package places
 
 import (
 	"image"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -9,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -26,11 +28,23 @@ const (
 	headID    = "head:"
 )
 
+// Home is where the NPCs that run a workflow live: the zones, and who, as
+// "Clerk and Customer", and whether that is several NPCs. With no zones,
+// every place is listed alike.
+type Home struct {
+	Zones   []ids.ULID
+	Who     string
+	Several bool
+}
+
 // List chooses a place by name: a search over every place, grouped by zone
 // and floor, with Pick on map last. It opens under the box it chooses for.
+// Given a home, the places in it come first and the others follow, grey,
+// as places the NPCs cannot go to.
 type List struct {
 	theme   *ui.Theme
 	under   image.Rectangle
+	home    Home
 	current string
 	search  *ui.TextField
 	focus   ui.Focus
@@ -39,12 +53,12 @@ type List struct {
 }
 
 // Open opens the list under a box, the current place marked chosen.
-func Open(theme *ui.Theme, under image.Rectangle, current floor.AnchorRef) *List {
+func Open(theme *ui.Theme, under image.Rectangle, current floor.AnchorRef, home Home) *List {
 	search := ui.NewTextField(SearchID, textedit.NewField("", false, maxSearch), false, theme)
 	search.Placeholder, search.Unmarked = "Find a place", true
 	made := &List{
-		theme: theme, under: under, current: "", search: search, focus: ui.Focus{}, list: ui.NewList("places", ""),
-		rect: ui.Zero(),
+		theme: theme, under: under, home: home, current: "", search: search, focus: ui.Focus{},
+		list: ui.NewList("places", ""), rect: ui.Zero(),
 	}
 	if !current.IsZero() {
 		made.current = ID(current)
@@ -111,26 +125,34 @@ func (l *List) Update(input *ui.Input, ctx *frame.Context, window image.Rectangl
 }
 
 // rows lists the places whose names hold the search, under a heading for
-// each zone and floor, then Pick on map.
+// each zone and floor, the home's first and the others grey after them,
+// then Pick on map.
 func (l *List) rows(all []Place) []ui.Row {
 	query := strings.ToLower(strings.TrimSpace(l.search.Field.Value()))
-	var rows []ui.Row
-	heading := ""
+	var home, away []Place
 	for _, place := range all {
 		if query != "" && !strings.Contains(strings.ToLower(place.Name), query) {
 			continue
 		}
-		if place.Where != heading {
-			heading = place.Where
-			rows = append(rows, headingRow(headID+heading, heading))
+		if len(l.home.Zones) == 0 || slices.Contains(l.home.Zones, place.Zone) {
+			home = append(home, place)
+		} else {
+			away = append(away, place)
 		}
-		row := ui.NewRow(ID(place.Ref), place.Name)
-		row.Icon = ui.IconPlace
-		if row.ID == l.current {
-			row.Detail = "chosen"
-		}
-		rows = append(rows, row)
 	}
+	var rows []ui.Row
+	if len(l.home.Zones) > 0 && len(home) > 0 {
+		verb := " lives"
+		if l.home.Several {
+			verb = " live"
+		}
+		rows = append(rows, headingRow(headID+"home", "Where "+l.home.Who+verb))
+	}
+	rows = l.grouped(rows, home, false)
+	if len(away) > 0 && len(l.home.Zones) > 0 {
+		rows = append(rows, headingRow(headID+"away", "Other zones: "+l.home.Who+" can't go there"))
+	}
+	rows = l.grouped(rows, away, len(l.home.Zones) > 0)
 	if len(rows) == 0 {
 		empty := "No place matches."
 		if len(all) == 0 {
@@ -142,6 +164,26 @@ func (l *List) rows(all []Place) []ui.Row {
 	pick.Strong = true
 
 	return append(rows, pick)
+}
+
+// grouped adds places to rows under a heading for each zone and floor,
+// grey when muted.
+func (l *List) grouped(rows []ui.Row, listed []Place, muted bool) []ui.Row {
+	heading := ""
+	for _, place := range listed {
+		if place.Where != heading {
+			heading = place.Where
+			rows = append(rows, headingRow(headID+heading, heading))
+		}
+		row := ui.NewRow(ID(place.Ref), place.Name)
+		row.Icon, row.Muted = ui.IconPlace, muted
+		if row.ID == l.current {
+			row.Detail = "chosen"
+		}
+		rows = append(rows, row)
+	}
+
+	return rows
 }
 
 // headingRow is a row that cannot be chosen.
@@ -190,4 +232,26 @@ func (l *List) Locate(name string, window image.Rectangle, all []Place) (image.P
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// Shown is the list as it reads, for input scripts: its rows in order, a
+// heading in brackets and a grey place in parentheses, as "[Where Clerk
+// lives] / [Town · Office] / Desk / [Other zones: Clerk can't go there] /
+// [Harbour · Quay] / (Dock)", without Pick on map.
+func (l *List) Shown(window image.Rectangle, all []Place) string {
+	l.layout(window)
+	var shown []string
+	for _, row := range l.rows(all) {
+		switch {
+		case row.ID == PickOnMap:
+		case row.Heading:
+			shown = append(shown, "["+row.Label+"]")
+		case row.Muted:
+			shown = append(shown, "("+row.Label+")")
+		default:
+			shown = append(shown, row.Label)
+		}
+	}
+
+	return strings.Join(shown, " / ")
 }

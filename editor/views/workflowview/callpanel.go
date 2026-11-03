@@ -351,7 +351,7 @@ func (s *State) updateInput(input *ui.Input, ctx *frame.Context, node flow.Node,
 
 			return
 		case input.Pressed && input.Cursor.In(row.place):
-			s.openPlaces(row.place, target)
+			s.openPlaces(ctx.Docs, row.place, target)
 
 			return
 		}

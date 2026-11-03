@@ -686,7 +686,7 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, made *control,
 	case s.pickUpdate(made.pick, target.owner, input):
 		s.pickOrCancel(ctx, target)
 	case input.Pressed && input.Cursor.In(made.anchor):
-		s.openPlaces(made.anchor, target)
+		s.openPlaces(ctx.Docs, made.anchor, target)
 	case made.clear.Update(input):
 		s.saveParam(ctx, node, made.param.Name, floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}})
 	}

@@ -186,8 +186,10 @@ type State struct {
 	modules     map[ids.ULID]module
 	callsKey    string
 	missingWays map[ids.ULID]map[string]bool
-	// callers is who calls this workflow, as last asked.
+	// callers is who calls this workflow, as last asked, and runs the NPCs
+	// that run it.
 	callers callers
+	runs    runners
 	// locals is the inspector's part for the workflow's local values, shown
 	// while no node or line is selected.
 	locals *localsPanel
@@ -216,6 +218,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
+		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
 	for _, kind := range flow.Kinds() {
@@ -411,6 +414,14 @@ func coloursBottom(rows []colourRow) int {
 	return bottom
 }
 
+// ask asks the orchestrator, when what it knew may have changed, who calls
+// the workflow, which NPCs run it and the project's audio.
+func (s *State) ask(ctx *frame.Context) {
+	s.askCallers(ctx)
+	s.askRunners(ctx)
+	s.listAudio(ctx)
+}
+
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.live != nil {
@@ -423,8 +434,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.sounds = ctx.Sounds
 	s.fade()
 	s.load(ctx.Docs)
-	s.askCallers(ctx)
-	s.listAudio(ctx)
+	s.ask(ctx)
 	if s.guard.Active() {
 		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discardForm)
 

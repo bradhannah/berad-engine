@@ -5,10 +5,14 @@ import (
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/client"
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -95,5 +99,82 @@ func TestGoToChoosesAPlace(t *testing.T) {
 	destination, err := f.nth(flow.KindGoTo, 1).Anchor("destination")
 	if err != nil || destination != (floor.AnchorRef{Floor: floorID, Anchor: shelfID}) {
 		t.Fatalf("Go to goes to the shelf: %+v %v", destination, err)
+	}
+}
+
+// withZone adds a zone with one floor holding one place.
+func (f *fixture) withZone(zoneID ids.ULID, zoneName string, floorOf ids.ULID, floorName string, place floor.Anchor) {
+	f.t.Helper()
+	made := zoneplugin.NewDocument()
+	if err := made.Zone.Insert(0, floorOf); err != nil {
+		f.t.Fatal(err)
+	}
+	ground, err := tilefloor.NewDocument(8, 8, "grass")
+	if err == nil {
+		err = ground.Floor.InsertAnchor(0, place)
+	}
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.docs.Put(zoneID, zoneName, made)
+	f.docs.Put(floorOf, floorName, ground)
+	var entries []project.Entry
+	f.docs.View(project.IndexID(), func(document client.Document) {
+		entries = document.Model.(*project.Index).Entries()
+	})
+	entries = append(entries, project.Entry{ID: zoneID, Name: zoneName, Format: zone.FormatName},
+		project.Entry{ID: floorOf, Name: floorName, Format: floor.FormatName})
+	f.docs.Put(project.IndexID(), "Project", project.NewIndex(entries))
+}
+
+// answerRunners answers every question of who runs the workflow still
+// waiting.
+func (f *fixture) answerRunners(uses []protocol.Use) {
+	for index, done := range f.requests.RunnerAsks {
+		if done != nil {
+			done(uses, nil)
+			f.requests.RunnerAsks[index] = nil
+		}
+	}
+}
+
+// placesFor opens a new Go to's list of places in a workflow Clerk, living
+// in Town, runs as its behaviour or by a call.
+func placesFor(t *testing.T, label string) *fixture {
+	t.Helper()
+	f := newFixture(t)
+	f.withTown()
+	clerk := frametest.ID(86)
+	f.withZone(frametest.ID(84), "Harbour", frametest.ID(85), "Quay",
+		floor.Anchor{ID: frametest.ID(83), Name: "Dock", Col: 1, Row: 1})
+	clerkDoc := npcplugin.NewDocument()
+	clerkDoc.NPC.Zone = frametest.ID(87)
+	f.docs.Put(clerk, "Clerk", clerkDoc)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindGoTo)
+	f.answerRunners([]protocol.Use{{Document: clerk, Name: "Clerk", Format: npc.FormatName, Label: label, Item: ""}})
+	f.click("ui:place")
+
+	return f
+}
+
+// TestPlacesWhereItsNPCsLive lists the places of the zone the workflow's
+// NPC lives in first, and the other zones' grey after them; a module, which
+// no NPC has as its behaviour, lists every place alike.
+func TestPlacesWhereItsNPCsLive(t *testing.T) {
+	t.Parallel()
+	behaviour := placesFor(t, protocol.RunsAsBehaviour)
+	if !behaviour.has("places-list=[Where Clerk lives] / [Town · Office] / Office desk 3 / Shelf / " +
+		"[Other zones: Clerk can't go there] / [Harbour · Quay] / (Dock)") {
+		t.Fatal("the places where the workflow's NPC lives come first, the others grey")
+	}
+	behaviour.click("place:Dock")
+	if destination, err := behaviour.nth(flow.KindGoTo, 1).Anchor("destination"); err != nil ||
+		destination.Anchor != frametest.ID(83) {
+		t.Fatalf("a grey place can still be chosen: %+v %v", destination, err)
+	}
+	module := placesFor(t, protocol.RunsByCall)
+	if !module.has("places-list=[Harbour · Quay] / Dock / [Town · Office] / Office desk 3 / Shelf") {
+		t.Fatal("a module lists every place alike")
 	}
 }

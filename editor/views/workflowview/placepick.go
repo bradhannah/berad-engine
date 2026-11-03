@@ -91,9 +91,10 @@ func (s *State) pickUpdate(button *ui.Button, owner string, input *ui.Input) boo
 	return button.Update(input)
 }
 
-// openPlaces opens the list of places under a control's box.
-func (s *State) openPlaces(box image.Rectangle, target placeTarget) {
-	s.places = &placeList{list: places.Open(s.theme, box, target.current), target: target}
+// openPlaces opens the list of places under a control's box, the places
+// where the workflow's NPCs live first.
+func (s *State) openPlaces(docs frame.Docs, box image.Rectangle, target placeTarget) {
+	s.places = &placeList{list: places.Open(s.theme, box, target.current, s.home(docs)), target: target}
 }
 
 // placesOpen reports whether the list of places is open for an owner.
@@ -192,6 +193,9 @@ func (s *State) hasPlaceState(state string, docs frame.Docs) (bool, bool) {
 		return s.shown, true
 	case "hidden":
 		return !s.shown, true
+	}
+	if shown, isList := strings.CutPrefix(state, "places-list="); isList {
+		return s.places != nil && s.places.list.Shown(s.screen(), places.All(docs, func(ids.ULID) {})) == shown, true
 	}
 	rest, ok := strings.CutPrefix(state, "given:")
 	if !ok {

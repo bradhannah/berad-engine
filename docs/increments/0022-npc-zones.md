@@ -123,7 +123,7 @@ Chosen while planning, for its author to check:
 | 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Built |
 | 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Built |
 | 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Built |
-| 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Planned |
+| 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Built |
 | 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Planned |
 | 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Planned |
 | 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Planned |
@@ -202,6 +202,17 @@ Chosen while planning, for its author to check:
   behaviour; view tests move a placed NPC whose behaviour another NPC
   shares, reading the dialog and the place listed, both edits sharing one
   gesture, and move one that breaks nothing at once.
+- **Places by zone:** a Workflow tab asks who runs it, when it or the
+  project changes and every two seconds besides, as it asks who calls it,
+  and keeps those NPCs loaded to know where each lives. When it is some
+  NPC's behaviour, every place list it opens, a Go to's, a Call input's
+  and a place local's start, heads with Where Clerk lives, or Where Clerk
+  and Customer live, over a group for each floor of their zones, then
+  Other zones: Clerk can't go there over the rest, grey and still
+  choosable. A module, which no NPC has as its behaviour, lists every
+  place alike. List rows can be muted, drawn grey. Verified: a view test
+  reads the list for a behaviour, chooses a grey place, and reads it for
+  a module.
 
 ## Not in this increment
 
