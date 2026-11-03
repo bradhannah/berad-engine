@@ -64,7 +64,7 @@ func (o *Orchestrator) indexNow() *projectindex.Index {
 		if !isIndex(id) {
 			entries = append(entries, projectindex.Entry{
 				ID: id, Name: entry.info.Name, Format: entry.info.Format, Folder: entry.info.Folder,
-				Tags: entry.info.Tags,
+				Tags: entry.info.Tags, Kind: model.KindOf(entry.document),
 			})
 		}
 	}

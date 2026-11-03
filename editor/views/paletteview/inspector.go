@@ -872,7 +872,7 @@ func (s *State) newPalette(ctx *frame.Context, palette *art.Palette) {
 	name := uniqueDocumentName(ctx.Docs, newPaletteAs)
 	args := project.DocumentArgs{
 		ID: ids.ULID{}, Format: art.PaletteFormatName, Name: name, Version: 0, Revision: 0, Scope: ids.ULID{},
-		Folder: "", Tags: nil, Data: data, Layout: nil,
+		Folder: "", Tags: nil, Kind: "", Data: data, Layout: nil,
 	}
 	count := len(s.picked)
 	s.command(ctx, project.IndexID(), project.CreateEdit, "", args, func(result protocol.Result) {

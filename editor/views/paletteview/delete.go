@@ -246,7 +246,7 @@ func (s *State) deletePalette(ctx *frame.Context) {
 	name := s.paletteName(ctx.Docs)
 	args := project.DocumentArgs{
 		ID: s.target, Format: "", Name: "", Version: 0, Revision: 0, Scope: ids.ULID{}, Folder: "", Tags: nil,
-		Data: nil, Layout: nil,
+		Kind: "", Data: nil, Layout: nil,
 	}
 	s.command(ctx, project.IndexID(), project.DeleteEdit, "", args, func(protocol.Result) {
 		s.deleting = nil

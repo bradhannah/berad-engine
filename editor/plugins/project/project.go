@@ -60,6 +60,9 @@ type Entry struct {
 	Format string   `json:"format"`
 	Folder string   `json:"folder,omitempty"`
 	Tags   []string `json:"tags,omitempty"`
+	// Kind is the document's kind within its format, such as a workflow's
+	// kind, as model.KindOf gives it; "" for a format with no kinds.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Index lists a project's documents, ordered by ID, and the folders of each
@@ -205,7 +208,10 @@ type DocumentArgs struct {
 	Scope    ids.ULID        `json:"scope"`
 	Folder   string          `json:"folder,omitempty"`
 	Tags     []string        `json:"tags,omitempty"`
-	Data     json.RawMessage `json:"data,omitempty"`
+	// Kind is the document's kind, which the orchestrator reads from its
+	// data when preparing the edit.
+	Kind string          `json:"kind,omitempty"`
+	Data json.RawMessage `json:"data,omitempty"`
 	// Layout is the document's layout, for documents that keep one (D17).
 	Layout json.RawMessage `json:"layout,omitempty"`
 }
@@ -251,7 +257,7 @@ func (Create) Apply(document model.Document, args json.RawMessage) (model.Applie
 	}
 	entry := Entry{
 		ID: created.ID, Name: created.Name, Format: created.Format, Folder: created.Folder,
-		Tags: slices.Clone(created.Tags),
+		Tags: slices.Clone(created.Tags), Kind: created.Kind,
 	}
 	index.entries = slices.Insert(index.entries, position, entry)
 

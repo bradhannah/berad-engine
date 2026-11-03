@@ -102,6 +102,10 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
 }
 
+// zoneLoopLacks says, under a zone loop's palette, which nodes it has not.
+const zoneLoopLacks = "Not in a zone loop: Go to, Move and Find NPC nearby. A zone has no body to move, or to look " +
+	"around from."
+
 func (s *State) drawPalette(screen *ebiten.Image) {
 	content := frame.Content(s.size)
 	ui.Divider(screen, image.Pt(PaletteWidth-ui.Outline, toolbarHeight), image.Pt(PaletteWidth-ui.Outline, content.Max.Y))
@@ -122,6 +126,12 @@ func (s *State) drawPalette(screen *ebiten.Image) {
 			ui.StrokeRound(screen, entry.rect, paletteRadius, ui.Border, ui.ColorInk())
 		}
 		s.theme.DrawTextIn(screen, entry.kind.Label, entry.rect, ui.ColorInk())
+	}
+	if s.workflow != nil && s.workflow.Purpose() == flow.PurposeZoneLoop && len(s.palette) > 0 {
+		top := s.palette[len(s.palette)-1].rect.Max.Y + groupSpace
+		for index, line := range s.theme.Wrap(zoneLoopLacks, PaletteWidth-ui.Inset*ui.Half) {
+			s.theme.DrawText(screen, line, ui.Inset, top+index*ui.LineHeight, ui.ColorMuted())
+		}
 	}
 	if s.adding != nil && !s.adding.at.In(frame.Content(s.size).Intersect(image.Rect(0, 0, PaletteWidth, s.size.Y))) {
 		corner := s.adding.at.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half))

@@ -42,6 +42,20 @@ type kind struct {
 	open  string
 }
 
+// kindOfEntry is kindOf for a document, naming a workflow's kind.
+func kindOfEntry(entry project.Entry) kind {
+	about := kindOf(entry.Format)
+	if entry.Format == flow.FormatName {
+		purpose := flow.Purpose(entry.Kind)
+		about.label = purpose.Label()
+		if purpose == flow.PurposeZoneLoop {
+			about.icon = ui.IconZoneLoop
+		}
+	}
+
+	return about
+}
+
 func kindOf(format string) kind {
 	switch format {
 	case zone.FormatName:
@@ -394,7 +408,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
-	about := kindOf(entry.Format)
+	about := kindOfEntry(entry)
 	s.drawHeader(screen, about.icon, about.label, entry.Name, left)
 	s.theme.Heading(screen, "NAME", left, nameFieldTop-ui.LineHeight)
 	if s.name.Rect.Empty() {

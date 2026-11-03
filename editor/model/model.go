@@ -142,6 +142,23 @@ type Reference struct {
 // ID ever equals it.
 func AudioLibraryID() ids.ULID { return ids.MustParse("00000000000000000000000001") }
 
+// Kinded is implemented by documents made as one kind of their format,
+// which never changes, such as a workflow made as an NPC behaviour or a zone
+// loop; the project index lists each document's kind.
+type Kinded interface {
+	Kind() string
+}
+
+// KindOf returns a document's kind, or "" for a document of a format with
+// no kinds.
+func KindOf(document Document) string {
+	if kinded, ok := document.(Kinded); ok {
+		return kinded.Kind()
+	}
+
+	return ""
+}
+
 // Referencer is implemented by documents that refer to others, so deleting
 // something can show where it is used.
 type Referencer interface {

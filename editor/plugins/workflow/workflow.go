@@ -80,6 +80,9 @@ type wireWorkflow struct {
 // Format names the document format.
 func (d *Document) Format() string { return flow.FormatName }
 
+// Kind is the workflow's kind, as the project index lists it.
+func (d *Document) Kind() string { return string(d.Workflow.Purpose()) }
+
 // Encode returns the workflow's logic.
 func (d *Document) Encode() (json.RawMessage, error) {
 	data, err := d.Workflow.Encode()

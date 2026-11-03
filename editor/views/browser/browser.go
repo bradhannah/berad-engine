@@ -73,6 +73,7 @@ const (
 	newZone     = "new-zone"
 	newFloor    = "new-floor"
 	newWorkflow = "new-workflow"
+	newZoneLoop = "new-zone-loop"
 	newNPC      = "new-npc"
 	newText     = "new-text"
 )
@@ -197,7 +198,10 @@ func menuItems() []ui.MenuItem {
 	return []ui.MenuItem{
 		{ID: newZone, Label: "Zone", Icon: ui.IconZone, Disabled: false, Danger: false, Rule: false},
 		{ID: newFloor, Label: "Floor in the selected zone", Icon: ui.IconFloor, Disabled: false, Danger: false, Rule: false},
-		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false, Danger: false, Rule: false},
+		{ID: newWorkflow, Label: flow.PurposeBehaviour.Label(), Icon: ui.IconWorkflow, Disabled: false, Danger: false,
+			Rule: false},
+		{ID: newZoneLoop, Label: flow.PurposeZoneLoop.Label(), Icon: ui.IconZoneLoop, Disabled: false, Danger: false,
+			Rule: false},
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
 		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
@@ -620,7 +624,9 @@ func (s *State) create(ctx *frame.Context, item string) {
 	case newFloor:
 		s.createFloor(ctx)
 	case newWorkflow:
-		s.createWorkflow(ctx)
+		s.createWorkflow(ctx, flow.PurposeBehaviour)
+	case newZoneLoop:
+		s.createWorkflow(ctx, flow.PurposeZoneLoop)
 	case newNPC:
 		s.createNPC(ctx)
 	case newText:
@@ -696,7 +702,7 @@ func names(entries []project.Entry) []string {
 func newDocument(format, name string, scope ids.ULID, data json.RawMessage) documentArgs {
 	return documentArgs{project.DocumentArgs{
 		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Folder: "", Tags: nil,
-		Data: data, Layout: nil,
+		Kind: "", Data: data, Layout: nil,
 	}}
 }
 
@@ -828,10 +834,14 @@ func (s *State) createText(ctx *frame.Context) {
 	}, nil)
 }
 
-// createWorkflow creates a workflow holding only its start node.
-func (s *State) createWorkflow(ctx *frame.Context) {
-	name := uniqueName("Workflow", names(s.entries(ctx.Docs, flow.FormatName)))
-	args := newDocument(flow.FormatName, name, ids.ULID{}, workflowplugin.NewData())
+// createWorkflow creates a workflow of a kind, holding only its start node.
+func (s *State) createWorkflow(ctx *frame.Context, purpose flow.Purpose) {
+	base := "Workflow"
+	if purpose == flow.PurposeZoneLoop {
+		base = purpose.Label()
+	}
+	name := uniqueName(base, names(s.entries(ctx.Docs, flow.FormatName)))
+	args := newDocument(flow.FormatName, name, ids.ULID{}, workflowplugin.NewDataFor(purpose))
 	args.Folder = s.targetFolder(ctx.Docs, flow.FormatName)
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
@@ -1111,12 +1121,33 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "ui":
 		return s.locateWidget(value)
 	case "state":
-		found, _ := s.hasZoneState(docs, value)
+		found, answered := s.hasZoneState(docs, value)
+		if !answered {
+			found = s.hasRowState(value)
+		}
 
 		return image.Pt(0, 0), found
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// hasRowState answers a row's states: "row-detail:<name>=<detail>", the
+// detail of the row named, and "row-loop:<name>", a row showing a zone
+// loop.
+func (s *State) hasRowState(state string) bool {
+	if rest, isDetail := strings.CutPrefix(state, "row-detail:"); isDetail {
+		label, detail, _ := strings.Cut(rest, "=")
+
+		return slices.ContainsFunc(s.list.Rows, func(row ui.Row) bool { return row.Label == label && row.Detail == detail })
+	}
+	if label, isLoop := strings.CutPrefix(state, "row-loop:"); isLoop {
+		return slices.ContainsFunc(s.list.Rows, func(row ui.Row) bool {
+			return row.Label == label && row.Icon == ui.IconZoneLoop
+		})
+	}
+
+	return false
 }
 
 // locateRow finds a document row by its name, or its disclosure triangle.

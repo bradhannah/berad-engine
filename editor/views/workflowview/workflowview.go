@@ -225,13 +225,22 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
-	for _, kind := range flow.Kinds() {
+	view.palette = paletteFor(flow.PurposeBehaviour)
+
+	return view
+}
+
+// paletteFor lists the node kinds a kind of workflow offers, in palette
+// order.
+func paletteFor(purpose flow.Purpose) []paletteEntry {
+	var entries []paletteEntry
+	for _, kind := range flow.KindsFor(purpose) {
 		if kind.Group != "" {
-			view.palette = append(view.palette, paletteEntry{kind: kind, rect: ui.Zero(), group: false})
+			entries = append(entries, paletteEntry{kind: kind, rect: ui.Zero(), group: false})
 		}
 	}
 
-	return view
+	return entries
 }
 
 // Title is the window title.
@@ -311,6 +320,7 @@ func (s *State) load(docs frame.Docs) {
 		docs.View(s.document, func(document client.Document) {
 			if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
 				s.workflow = workflowDoc.Workflow.Clone()
+				s.palette = paletteFor(s.workflow.Purpose())
 			}
 		})
 		s.callsKey = calls
