@@ -93,6 +93,8 @@ func (p *Picker) rows(zones []Zone) []ui.Row {
 			row.Aside = "now"
 		case each.Refused != "":
 			row.Aside = each.Refused
+		case p.config.Mine[each.ID] > 0:
+			row.Aside = mine(p.config.Mine[each.ID])
 		case each.Folder != "":
 			row.Aside = each.Folder
 		}
@@ -100,6 +102,15 @@ func (p *Picker) rows(zones []Zone) []ui.Row {
 	}
 
 	return rows
+}
+
+// mine says how many of the asker's places are in a zone.
+func mine(count int) string {
+	if count == 1 {
+		return "1 of its places"
+	}
+
+	return strconv.Itoa(count) + " of its places"
 }
 
 // layoutRail places the rail: All zones, Recent, then each folder, indented

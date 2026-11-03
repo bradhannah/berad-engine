@@ -79,6 +79,8 @@ func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
 		s.updateValuePicker(input, ctx)
 	case s.places != nil:
 		s.updatePlaces(input, ctx)
+	case s.zones != nil:
+		s.updateZones(input, ctx)
 	case s.contextMenu.IsOpen():
 		s.chooseFromContext(ctx, s.contextMenu.Update(input))
 	default:

@@ -179,7 +179,7 @@ func (s *State) openZonePicker(ctx *frame.Context, npcID ids.ULID) {
 	now := s.zoneOfNPC(ctx.Docs, npcID)
 	s.zones = zonepicker.New(zonepicker.Config{
 		For: "for " + s.index(ctx.Docs).Name(npcID, "the NPC") + " to live in", Now: now,
-		Recent: slices.Clone(s.recentZones), NoZone: false, GoesOn: !now.IsZero(),
+		Recent: slices.Clone(s.recentZones), NoZone: false, NoneLabel: "", GoesOn: !now.IsZero(), Mine: nil,
 	}, s.theme)
 	s.zonesFor = npcID
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/picker"
+	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -200,6 +201,12 @@ type State struct {
 	// right-click waiting in context has settled the selection.
 	contextMenu ui.Menu
 	context     contextClick
+	// zones is the zone picker while it is open, asking where the workflow
+	// runs; recentZones are the zones chosen in it lately; runsInBox is the
+	// Runs in box.
+	zones       *zonepicker.Picker
+	recentZones []ids.ULID
+	runsInBox   image.Rectangle
 }
 
 // New returns the Workflow window for a workflow.
@@ -224,6 +231,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
+		zones: nil, recentZones: nil, runsInBox: ui.Zero(),
 	}
 	view.palette = paletteFor(flow.PurposeBehaviour)
 

@@ -69,7 +69,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.layoutWidgets(docs)
 	screen.Fill(ui.ColorBackground())
 	s.drawZoomed(screen, docs)
-	s.drawCallers(screen)
+	s.drawStrip(screen, docs)
 	if s.workflow != nil {
 		s.zoomCard.draw(screen, s.theme)
 		s.drawLegend(screen)
@@ -88,6 +88,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.values != nil {
 		s.drawValuePicker(screen, docs)
 	}
+	s.drawZones(screen, docs)
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -552,7 +553,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		return
 	}
 	if s.localsActive() {
-		s.drawLocals(screen)
+		s.drawLocals(screen, docs)
 
 		return
 	}
@@ -946,14 +947,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 	switch kind {
 	case locateState:
-		if found, handled := s.hasPlaceState(value, docs); handled {
-			return image.Pt(0, 0), found
-		}
-		if found, handled := s.hasValueState(value, docs); handled {
-			return image.Pt(0, 0), found
-		}
-
-		return image.Pt(0, 0), s.hasState(value)
+		return image.Pt(0, 0), s.hasAnyState(value, docs)
 	case locateValue, locateDeclare:
 		return image.Pt(0, 0), false
 	case locateCue, locatePlay:
@@ -1086,12 +1080,31 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 		point, found := s.locatePlaces(docs, kind, value)
 
 		return point, found, true
+	case s.zones != nil:
+		point, found := s.locateInZones(docs, kind, value)
+
+		return point, found, true
 	default:
 		return image.Pt(0, 0), false, false
 	}
 }
 
+// hasAnyState answers every state the window has, those of where it runs,
+// its places and its values as well as the rest.
+func (s *State) hasAnyState(state string, docs frame.Docs) bool {
+	for _, has := range []func(string, frame.Docs) (bool, bool){s.hasRunsInState, s.hasPlaceState, s.hasValueState} {
+		if found, handled := has(state, docs); handled {
+			return found
+		}
+	}
+
+	return s.hasState(state)
+}
+
 func (s *State) locateWidget(widget string) (image.Point, bool) {
+	if widget == runsInID && !s.runsInBox.Empty() {
+		return ui.Center(s.runsInBox), true
+	}
 	if rest, isSwatch := strings.CutPrefix(widget, "swatch:"); isSwatch {
 		return s.locateSwatch(rest)
 	}

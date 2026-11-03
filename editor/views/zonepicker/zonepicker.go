@@ -14,6 +14,7 @@
 package zonepicker
 
 import (
+	"cmp"
 	"image"
 	"slices"
 	"strings"
@@ -62,14 +63,18 @@ const (
 
 // Config is what a picker is for: what the zone is for, as "for Clerk to
 // live in"; the zone it is now, marked, or none; the zones chosen last,
-// most recent first; whether No zone is offered; and whether choosing goes
-// on to ask something more, so its button ends in an ellipsis.
+// most recent first; whether No zone is offered, and what it is called, as
+// Any zone, "" being No zone; whether choosing goes on to ask something
+// more, so its button ends in an ellipsis; and how many of the asker's own
+// places are in each zone, shown beside it.
 type Config struct {
-	For    string
-	Now    ids.ULID
-	Recent []ids.ULID
-	NoZone bool
-	GoesOn bool
+	For       string
+	Now       ids.ULID
+	Recent    []ids.ULID
+	NoZone    bool
+	NoneLabel string
+	GoesOn    bool
+	Mine      map[ids.ULID]int
 }
 
 // Offer is what a picker lists: the zones, as Gather finds them with the
@@ -132,7 +137,7 @@ func New(config Config, theme *ui.Theme) *Picker {
 		config: config, theme: theme, search: search, focus: ui.Focus{}, list: ui.NewList("zones", selected),
 		tags: nil, rail: nil, scope: railAll, counts: map[string]int{}, shown: nil, hover: ids.ULID{}, note: "",
 		looks: newLooks(), choose: ui.NewButton(ChooseID, "Choose"), cancel: ui.NewButton(ui.DialogCancel, "Cancel"),
-		none: ui.NewButton(NoneID, "No zone"), box: ui.Zero(), look: ui.Zero(), closed: false,
+		none: ui.NewButton(NoneID, cmp.Or(config.NoneLabel, "No zone")), box: ui.Zero(), look: ui.Zero(), closed: false,
 		chosen: Choice{Zone: ids.ULID{}, None: false},
 	}
 	picker.choose.Primary = true

@@ -87,9 +87,9 @@ func (s *State) callersLine() string {
 	return strings.Join(parts, " · ")
 }
 
-// drawCallers draws the strip along the top of the canvas.
-func (s *State) drawCallers(screen *ebiten.Image) {
-	line := s.callersLine()
+// drawStrip draws the strip along the top of the canvas.
+func (s *State) drawStrip(screen *ebiten.Image, docs frame.Docs) {
+	line := s.stripLine(docs)
 	if line == "" {
 		return
 	}
