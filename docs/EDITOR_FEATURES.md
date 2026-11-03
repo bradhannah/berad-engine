@@ -400,6 +400,26 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   **Tentative:** changes to a shared workflow apply to every NPC using it; a
   derived workflow inherits parent steps it has not overridden. **Candidate:**
   showing which NPCs use a workflow, and duplicating one (an independent copy).
+- **Agreed (2026-11-02):** any workflow can be called from another by a
+  **Call workflow** node in the Flow palette, which shows the module's name
+  and inputs and has one output per way out, then done. Its inspector
+  chooses the workflow, with Open, fills each input with a fixed value,
+  Pick on map or another value, and keeps each output in a value chosen
+  with the picker, or leaves it; a double-click opens the module's tab,
+  whose strip names who calls it. A **Return** node at a module's top level
+  names a way out; renaming it keeps its callers' lines. A local's role is
+  Local, Input or Output, and **place** joins the types for locals, so Go
+  to can go to a place value. A Call that no longer fits is flagged on the
+  node, and Watch shows the path down through the calls.
+  [Increment 21](increments/0021-flow-modules.md) builds it.
+- **Agreed (2026-11-02):** a place is an anchor on a map, marked wherever
+  it appears by the ring the map draws for one. Every place control is
+  one box naming the place, its zone and floor, which opens a list of
+  every place by name, with Pick on map; picking makes the map a mode of
+  its own, saying what the place is for and what it is now, and brings the
+  asking tab back with the place. [Increment
+  21](increments/0021-flow-modules.md) builds it, after its author tried
+  picking.
 - **Agreed:** custom behaviours compose logic, randomness and built-in
   behaviours such as wandering.
 - **Agreed:** editing flow matters more than arranging boxes: layout should mostly

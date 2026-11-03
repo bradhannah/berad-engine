@@ -203,12 +203,16 @@ func checkSamplePlays(t *testing.T, project string, ground *floor.Floor, sampleZ
 		t.Fatalf("the clerk follows the clerk's day, a node of every kind: %v", err)
 	}
 	kinds := map[string]bool{}
-	for _, node := range routine.Nodes() {
+	fetch, err := flow.Decode(readEnvelope(t, project, "workflows/fetch-stock--????????.json").Data)
+	if err != nil || len(fetch.Inputs()) != 1 || len(fetch.WaysOut()) != 2 {
+		t.Fatalf("the clerk's day calls Fetch stock, which takes a place and has two ways out: %v", err)
+	}
+	for _, node := range append(routine.Nodes(), fetch.Nodes()...) {
 		kinds[node.Kind] = true
 	}
 	for _, kind := range flow.Kinds() {
 		if !kinds[kind.Name] {
-			t.Fatalf("the clerk's day has no %s", kind.Name)
+			t.Fatalf("the clerk's day and Fetch stock have no %s", kind.Name)
 		}
 	}
 	if placed, found := ground.PlacementAt(-4, -1); !found || placed.NPC.IsZero() {

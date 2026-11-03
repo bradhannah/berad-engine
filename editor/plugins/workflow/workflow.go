@@ -100,8 +100,9 @@ func (d *Document) Clone() model.Document {
 }
 
 // References lists the anchors the workflow's Go to nodes lead to, the
-// cues its Play sound nodes play, and the world-state values and NPCs its
-// value nodes use.
+// cues its Play sound nodes play, the world-state values and NPCs its
+// value nodes use, and the workflows its Calls call, as CallItem, with the
+// values they give and keep.
 func (d *Document) References() []model.Reference {
 	var references []model.Reference
 	for _, node := range d.Workflow.Nodes() {
@@ -124,6 +125,8 @@ func (d *Document) References() []model.Reference {
 			})
 		case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
 			references = append(references, valueReferences(node)...)
+		case flow.KindCall:
+			references = append(references, callReferences(node)...)
 		}
 	}
 
@@ -471,6 +474,37 @@ func valueReferences(node flow.Node) []model.Reference {
 		}
 		ref, err := node.Ref(param.Name)
 		if err != nil || ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
+			continue
+		}
+		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})
+		if !ref.Owner.IsZero() {
+			references = append(references, model.Reference{Document: ref.Owner, Item: "", Label: label})
+		}
+	}
+
+	return references
+}
+
+// CallItem is the item a Call's reference to the workflow it calls names,
+// so asking where a workflow is used for it finds only its callers.
+const CallItem = "call"
+
+// callReferences lists the workflow a Call calls and the values outside the
+// workflow it gives its inputs or keeps its outputs in.
+func callReferences(node flow.Node) []model.Reference {
+	const label = "a Call workflow node"
+	var references []model.Reference
+	if called, ok := node.Called(); ok {
+		references = append(references, model.Reference{Document: called, Item: CallItem, Label: label})
+	}
+	refs := slices.Collect(maps.Values(node.Keeps()))
+	for _, given := range node.Inputs() {
+		if ref, refers := flow.OperandRef(given); refers {
+			refs = append(refs, ref)
+		}
+	}
+	for _, ref := range refs {
+		if ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
 			continue
 		}
 		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})

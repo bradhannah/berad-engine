@@ -35,6 +35,8 @@ const (
 	IconPlay
 	// IconTemplate is a template: a frame round a clear middle.
 	IconTemplate
+	// IconPlace is a place: the ring a map draws for an anchor.
+	IconPlace
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -92,6 +94,8 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorLive()
 	case IconSprite, IconPalette, IconTemplate:
 		return ColorArt()
+	case IconPlace:
+		return ColorSelect()
 	case IconNone, IconProject, IconClock, IconSettings:
 	}
 
@@ -101,7 +105,11 @@ func IconColor(icon Icon) color.RGBA {
 // DrawIcon draws an icon in its type's colour with its top-left corner at a
 // point.
 func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
-	ink := IconColor(icon)
+	DrawIconInk(screen, icon, corner, IconColor(icon))
+}
+
+// DrawIconInk draws an icon in an ink of its own, as on a filled button.
+func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.RGBA) {
 	box := image.Rect(corner.X, corner.Y, corner.X+IconSize, corner.Y+IconSize)
 	left, top := float32(corner.X), float32(corner.Y)
 	switch icon {
@@ -144,10 +152,20 @@ func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
 		drawWindowIcon(screen, icon, left, top, ink)
 	case IconSprite, IconPalette, IconSettings, IconTemplate:
 		drawArtIcon(screen, icon, left, top, ink)
-	case IconPlay:
-		drawPlay(screen, left, top, ink)
+	case IconPlay, IconPlace:
+		drawMark(screen, icon, corner, ink)
 	case IconNone:
 	}
+}
+
+// drawMark draws Play's triangle or a place's ring.
+func drawMark(screen *ebiten.Image, icon Icon, corner image.Point, ink color.RGBA) {
+	if icon == IconPlace {
+		DrawRing(screen, image.Pt(corner.X+IconSize/Half, corner.Y+IconSize/Half), ink, false)
+
+		return
+	}
+	drawPlay(screen, float32(corner.X), float32(corner.Y), ink)
 }
 
 // drawPlay draws Play: a triangle pointing right.
@@ -182,7 +200,7 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 	case IconWatch:
 		drawEye(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings, IconPlay, IconTemplate:
+		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace:
 	}
 }
 
@@ -199,8 +217,24 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 	case IconTemplate:
 		drawFrame(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch, IconPlay:
+		IconClock, IconWatch, IconPlay, IconPlace:
 	}
+}
+
+// ringRadius is a place's ring, drawn as the map draws an anchor's.
+const (
+	ringRadius = 4.5
+	ringStroke = 2
+)
+
+// DrawRing draws a place's ring round a centre, filled when it is the place
+// chosen now.
+func DrawRing(screen *ebiten.Image, centre image.Point, ink color.RGBA, filled bool) {
+	x, y := float32(centre.X), float32(centre.Y)
+	if filled {
+		vector.FillCircle(screen, x, y, ringRadius, ink, true)
+	}
+	vector.StrokeCircle(screen, x, y, ringRadius, ringStroke, ink, true)
 }
 
 // drawFrame draws a template: a square frame round a clear middle, with a

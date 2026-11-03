@@ -121,6 +121,9 @@ func (v *valueSource) Pick(ctx *frame.Context, option valuepicker.Option) {
 	if !found || !refers {
 		return
 	}
+	if v.state.chooseForCall(ctx, node, v.param, ref) {
+		return
+	}
 	if v.operand {
 		v.state.saveParam(ctx, node, v.param, flow.RefOperand(ref))
 
@@ -160,17 +163,17 @@ func pickerRail(role valueRole) []valuepicker.RailEntry {
 	everywhere := valuepicker.RailEntry{ID: valuepicker.Everywhere, Label: "Everywhere"}
 	local := valuepicker.RailEntry{ID: string(worldstate.ScopeLocal), Label: "Local"}
 	switch role {
-	case roleKeep:
+	case roleKeep, rolePlace:
 		return []valuepicker.RailEntry{everywhere, local}
 	case roleWhere:
 		return []valuepicker.RailEntry{everywhere, {ID: string(worldstate.ScopeNPC), Label: "The NPC it finds"}}
-	case roleSet, roleCheck:
+	case roleSet, roleCheck, roleGive, roleKept:
 	}
 	rail := []valuepicker.RailEntry{
 		everywhere, local, {ID: string(worldstate.ScopeNPC), Label: "This NPC"},
 		{ID: string(worldstate.ScopeZone), Label: "This zone"}, {ID: string(worldstate.ScopeWorld), Label: "World"},
 	}
-	if role == roleCheck {
+	if role == roleCheck || role == roleGive {
 		rail = append(rail, valuepicker.RailEntry{ID: railOthers, Label: "Other NPCs"},
 			valuepicker.RailEntry{ID: railZones, Label: "Zones"})
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/loudness"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -68,6 +69,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.layoutWidgets(docs)
 	screen.Fill(ui.ColorBackground())
 	s.drawZoomed(screen, docs)
+	s.drawCallers(screen)
 	if s.workflow != nil {
 		s.zoomCard.draw(screen, s.theme)
 		s.drawLegend(screen)
@@ -79,6 +81,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		dialog.Draw(screen, s.theme)
 	}
 	s.contextMenu.Draw(screen, s.theme)
+	if s.places != nil {
+		s.drawPlaces(screen)
+	}
 	s.guard.Draw(screen, s.theme)
 	if s.values != nil {
 		s.drawValuePicker(screen, docs)
@@ -278,6 +283,12 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 		}
 		s.drawOutputRows(area, drawn)
+	case flow.KindCall:
+		s.drawCallNode(area, drawn, docs)
+	case flow.KindReturn:
+		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+		s.theme.DrawStrong(area, s.clip(wayLabel(drawn.node), drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
+			rect.Min.Y+titleDrop, ui.ColorInk())
 	case flow.KindCheckValue, flow.KindFindNPC:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		s.theme.DrawText(area, s.clip(s.valueTitle(drawn.node, docs), drawn.rect.Dx()-ui.Half*textPad),
@@ -285,6 +296,9 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	default:
 		s.theme.DrawLabel(area, kind.Group, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+		if s.drawGoToTitle(area, drawn, docs) {
+			break
+		}
 		title := kind.Label + " · " + s.summary(drawn.node, docs)
 		if drawn.node.Kind == flow.KindSetValue {
 			title = s.valueTitle(drawn.node, docs)
@@ -293,6 +307,26 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}
 	s.drawMark(area, drawn)
+}
+
+// drawGoToTitle writes a Go to's title with the ring before its place, and
+// reports whether the node is a Go to that has one.
+func (s *State) drawGoToTitle(area *ebiten.Image, drawn shape, docs frame.Docs) bool {
+	if drawn.node.Kind != flow.KindGoTo || s.destinationProblem(drawn.node, docs) != "" {
+		return false
+	}
+	rect := s.screenRect(drawn.rect)
+	kind, _ := flow.KindOf(drawn.node.Kind)
+	lead := kind.Label + " · "
+	left := rect.Min.X + textPad
+	s.theme.DrawText(area, lead, left, rect.Min.Y+titleDrop, ui.ColorInk())
+	left += s.theme.TextWidth(lead)
+	ui.DrawIcon(area, ui.IconPlace, image.Pt(left, rect.Min.Y+titleDrop+(ui.TextSize-ui.IconSize)/ui.Half+1))
+	left += ui.IconSize + ui.Gap
+	place := s.clip(s.summary(drawn.node, docs), rect.Max.X-textPad-left)
+	s.theme.DrawText(area, place, left, rect.Min.Y+titleDrop, ui.ColorInk())
+
+	return true
 }
 
 // drawOutputRows lists a time switch's times or a random choice's options,
@@ -308,7 +342,12 @@ func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
 		ui.FillRect(area, image.Rect(row.Min.X+ui.Hairline, row.Min.Y, row.Max.X-ui.Hairline, row.Min.Y+ui.Hairline),
 			ui.ColorRule())
 		label, ink := out.output.Label, ui.ColorInk()
-		if drawn.node.Kind == flow.KindTimeSwitch && out.output.Name == flow.OutputOtherwise {
+		missing := s.missingWays[drawn.node.ID][out.output.Name]
+		switch {
+		case missing:
+			ink = ui.ColorWarn()
+		case drawn.node.Kind == flow.KindTimeSwitch && out.output.Name == flow.OutputOtherwise,
+			drawn.node.Kind == flow.KindCall && out.output.Name == flow.OutputDone:
 			ink = ui.ColorMuted()
 		}
 		textY := row.Min.Y + (outputRow-ui.MonoSize)/ui.Half - 1
@@ -323,6 +362,11 @@ func (s *State) drawOutputRows(area *ebiten.Image, drawn shape) {
 			s.theme.DrawMono(area, share, shareX, textY, ui.ColorInk())
 		default:
 			s.theme.DrawText(area, label, row.Min.X+textPad, row.Min.Y+(outputRow-ui.TextSize)/ui.Half-1, ink)
+		}
+		if missing {
+			middle := row.Min.Y + outputRow/ui.Half
+			ui.FillRect(area, image.Rect(row.Min.X+textPad, middle, row.Min.X+textPad+s.theme.TextWidth(label),
+				middle+ui.Hairline), ink)
 		}
 	}
 	if drawn.node.Kind == flow.KindRandom {
@@ -370,6 +414,9 @@ func (s *State) drawAddOption(area *ebiten.Image, drawn shape) {
 func (s *State) summary(node flow.Node, docs frame.Docs) string {
 	switch node.Kind {
 	case flow.KindGoTo:
+		if choiceOf(node, flow.ParamGoes) == flow.GoesToValue {
+			return s.placeValueLabel(node, docs)
+		}
 		destination, err := node.Anchor("destination")
 		if err != nil {
 			return "?"
@@ -397,6 +444,10 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
 	case flow.KindPlaySound:
 		return s.playSummary(node)
+	case flow.KindReturn:
+		return wayLabel(node)
+	case flow.KindCall:
+		return s.callTitle(node, docs)
 	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
 		return s.valueSummary(node, docs)
 	default:
@@ -509,9 +560,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, s.form.kind.Label, left, top+ui.LineHeight, ui.ColorInk())
 	s.theme.DrawText(screen, "("+group+")", left+s.titleWidth(s.form.kind.Label)+ui.Gap*ui.Half,
 		top+ui.LineHeight+ui.Half, ui.ColorMuted())
-	for index := range s.form.controls {
-		s.drawControl(screen, docs, &s.form.controls[index], node, left)
-	}
+	s.drawControls(screen, docs, node, left)
 	s.drawColours(screen)
 	if s.form.remove != nil {
 		s.form.remove.Draw(screen, s.theme)
@@ -555,6 +604,12 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if strings.HasPrefix(state, localState) {
 		return s.hasLocal(state), true
 	}
+	if found, handled := s.hasCallState(state); handled {
+		return found, true
+	}
+	if line, asked := strings.CutPrefix(state, "calledby="); asked {
+		return s.callersLine() == line, true
+	}
 
 	return false, false
 }
@@ -586,10 +641,11 @@ func (s *State) hasLineState(state string) (bool, bool) {
 	case strings.HasPrefix(state, "problems:"):
 		return strconv.Itoa(len(s.problems)) == strings.TrimPrefix(state, "problems:"), true
 	case strings.HasPrefix(state, "problem:"):
-		drawn, ok := s.nthNode(strings.TrimPrefix(state, "problem:"))
-		_, problem := s.problems[drawn.node.ID]
+		which, says, saying := strings.Cut(strings.TrimPrefix(state, "problem:"), "=")
+		drawn, ok := s.nthNode(which)
+		problem, marked := s.problems[drawn.node.ID]
 
-		return ok && problem, true
+		return ok && marked && (!saying || problem == says), true
 	default:
 		return false, false
 	}
@@ -672,29 +728,54 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		}
 		made.addRange.Draw(screen, s.theme)
 	case flow.TypeAnchor:
-		destination, err := node.Anchor(made.param.Name)
-		if err != nil {
-			destination = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
-		}
-		name, detail := s.anchorLabel(docs, destination)
-		ui.Box(screen, made.anchor, ui.ColorBackground())
-		centre := image.Pt(made.anchor.Min.X+textPad+anchorDot, made.anchor.Min.Y+made.anchor.Dy()/ui.Half)
-		vector.StrokeCircle(screen, float32(centre.X), float32(centre.Y), anchorDot, anchorRing, ui.ColorSelect(), true)
-		ink := ui.ColorInk()
-		if destination.IsZero() || strings.HasPrefix(name, "Broken") {
-			ink = ui.ColorMuted()
-		}
-		s.theme.DrawText(screen, name, centre.X+anchorDot+textPad, made.anchor.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ink)
-		s.theme.DrawText(screen, detail, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
-		made.pick.Draw(screen, s.theme)
-		made.clear.Draw(screen, s.theme)
+		s.drawAnchor(screen, docs, made, node, left)
 	case flow.TypeCue:
 		s.drawCue(screen, made, node)
 	case flow.TypeValue:
 		s.drawValue(screen, docs, made, node)
 	case flow.TypeOperand:
 		s.drawOperand(screen, docs, made, node, left)
+	case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
+}
+
+// drawControls draws the selected node's parameters, and a Call's own part.
+func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.Node, left int) {
+	for index := range s.form.controls {
+		s.drawControl(screen, docs, &s.form.controls[index], node, left)
+	}
+	if s.form.call != nil {
+		s.drawCall(screen, docs, node, left)
+	}
+}
+
+// drawAnchor draws an anchor parameter: its place's box, the zone and floor
+// it is on, and Pick on map and Clear.
+func (s *State) drawAnchor(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
+	destination, err := node.Anchor(made.param.Name)
+	if err != nil {
+		destination = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
+	}
+	owner := anchorOwner(node.ID, made.param.Name)
+	label, look, where := s.placeShown(docs, destination)
+	places.DrawBox(screen, s.theme, made.anchor, label, look, s.isLit(owner), s.placesOpen(owner))
+	s.theme.DrawText(screen, where, left, made.anchor.Max.Y+ui.Gap, ui.ColorMuted())
+	made.pick.Draw(screen, s.theme)
+	made.clear.Draw(screen, s.theme)
+}
+
+// placeShown is how a place box shows a place: its name, and the zone and
+// floor it is on, or No place yet, or what is wrong with it.
+func (s *State) placeShown(docs frame.Docs, ref floor.AnchorRef) (string, places.Look, string) {
+	if ref.IsZero() {
+		return "No place yet", places.Empty, ""
+	}
+	name, detail := s.anchorLabel(docs, ref)
+	if detail == "" || strings.HasPrefix(name, "Broken") {
+		return name, places.Falling, detail
+	}
+
+	return name, places.Chosen, places.Where(docs, ref.Floor)
 }
 
 // drawUnit writes a field's unit, faintly, at its right end.
@@ -732,7 +813,8 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 			s.drawCompareNote(screen, made, node)
 		}
 	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
-		flow.TypeCue, flow.TypeValue, flow.TypeOperand:
+		flow.TypeCue, flow.TypeValue, flow.TypeOperand,
+		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
 }
 
@@ -763,13 +845,17 @@ func hintFor(kind string) string {
 			"shows what that works out to.",
 		flow.KindContainer: "Repeats what is inside while its time lasts, then leaves by its exit, even partway " +
 			"through a step.",
-		flow.KindGoTo: "Walks to the anchor.",
+		flow.KindGoTo: "Walks to the anchor picked on a map, or to the place a place value holds as it starts.",
 		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
 		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
 			"ignores it.",
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindCall: "Runs another workflow, then carries on from the output named for the way out it took, " +
+			"or done. Its inputs are read once, as the call starts.",
+		flow.KindReturn: "Goes back to whatever called this workflow, out of the Call's output of this name. " +
+			"Two Returns with one name are one way out. Run as a behaviour, it starts again.",
 		flow.KindSetValue: "Sets one of this workflow's own values: its NPC's, its zone's, the world's or a " +
 			"local one. Add counts a number up, or down with a minus.",
 		flow.KindCheckValue: "Takes “yes” when the value compares as asked, and “otherwise” when not. It can " +
@@ -849,7 +935,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return point, found
 	}
 	switch kind {
-	case "state":
+	case locateState:
+		if found, handled := s.hasPlaceState(value, docs); handled {
+			return image.Pt(0, 0), found
+		}
 		if found, handled := s.hasValueState(value, docs); handled {
 			return image.Pt(0, 0), found
 		}
@@ -868,7 +957,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "ui":
 		return s.locateWidget(value)
 	case locateMenu:
-		return s.contextMenu.Locate(value)
+		return s.locateMenuItem(value)
 	case localPrefix:
 		return s.locateLocal(value)
 	default:
@@ -963,6 +1052,9 @@ func (s *State) nthNode(value string) (shape, bool) {
 	return noShape(), false
 }
 
+// locateState is the locate kind that asks after a state, not a part.
+const locateState = "state"
+
 // locateInOverlay finds a part of whatever is over the window and takes its
 // input: the guard's dialog, the map picker's dialog or the value picker;
 // states are still the window's own. It reports whether one was open.
@@ -976,8 +1068,12 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 		point, found := s.picker.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 
 		return point, found, true
-	case s.values != nil && kind != "state":
+	case s.values != nil && kind != locateState:
 		point, found := s.locateInPicker(docs, kind, value)
+
+		return point, found, true
+	case s.places != nil && kind != locateState:
+		point, found := s.locatePlaces(docs, kind, value)
 
 		return point, found, true
 	default:
@@ -1007,6 +1103,11 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	if s.form == nil {
 		return image.Pt(0, 0), false
 	}
+	if s.form.call != nil {
+		if point, found := s.form.call.locate(widget); found {
+			return point, true
+		}
+	}
 	if s.form.remove != nil && widget == s.form.remove.ID {
 		return ui.Center(s.form.remove.Rect), true
 	}
@@ -1022,9 +1123,12 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// locate finds one of a control's fields or buttons, its cue as "cue", or
-// a value parameter's box as "pick-<param>".
+// locate finds one of a control's fields or buttons, its cue as "cue", a
+// value parameter's box as "pick-<param>", or a place's box as "place".
 func (made control) locate(widget string) (image.Point, bool) {
+	if widget == "place" && !made.anchor.Empty() {
+		return ui.Center(made.anchor), true
+	}
 	fields, buttons := made.widgets()
 	for _, field := range fields {
 		if field != nil && field.ID == widget && !field.Rect.Empty() {
@@ -1067,7 +1171,8 @@ func (made control) widgets() ([]*ui.TextField, []*ui.Button) {
 // the selected Go to has one, "entries:<kind>:<n>=C" when C links come into
 // the nth node of a kind, "line-selected" while a line is selected,
 // "lit:<kind>:<n>:<output>" while that line is drawn blue,
-// "problems:N" when N nodes have problems and "problem:<kind>:<n>" when the
+// "problems:N" when N nodes have problems and "problem:<kind>:<n>", or
+// "problem:<kind>:<n>=<problem>" for what it says, when the
 // nth node of a kind has one.
 func (s *State) hasState(state string) bool {
 	if found, handled := s.hasPartState(state); handled {

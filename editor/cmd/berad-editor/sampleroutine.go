@@ -16,16 +16,20 @@ import (
 )
 
 // The clerk's day, the sample's behaviour workflow: it shows each kind of
-// node at work. A time switch sends the clerk to the shop from 08:00 to
-// 18:00 and to the door otherwise. Shop hours are a time-bound container:
-// at the desk the clerk rings the chime and looks for a customer waiting
-// at the counter, serving one for 20 game minutes, then mostly tidies the
-// shelf and now and then stretches. At night the clerk stops serving, if
-// closing came mid-serve, and waits by the door an hour at a time. A note
-// sums it up under the rest. It is placeholder behaviour for trying the
-// editor, not game content.
+// node at work, with Fetch stock, a workflow it calls, for a Return. A time
+// switch sends the clerk to the shop from 08:00 to 18:00 and to the door
+// otherwise. Shop hours are a time-bound container: at the desk the clerk
+// rings the chime and looks for a customer waiting at the counter, serving
+// one for 20 game minutes, then mostly calls Fetch stock to fetch from the
+// shelf, tidying it when there is stock, and now and then stretches. At
+// night the clerk stops serving, if closing came mid-serve, and waits by
+// the door an hour at a time. A note sums it up under the rest. It is
+// placeholder behaviour for trying the editor, not game content.
 const (
 	routineName  = "Clerk's day"
+	fetchName    = "Fetch stock"
+	stockShare   = 3
+	noneShare    = 1
 	openMinute   = 8 * 60
 	closeMinute  = 18 * 60
 	serveMinutes = 20
@@ -39,7 +43,10 @@ const (
 	// paramDestination is a Go to's destination.
 	paramDestination = "destination"
 	routineNote      = "The clerk's day: the shop from 08:00 to 18:00, serving whoever waits at the counter, " +
-		"mostly tidying, sometimes stretching; the door at night."
+		"mostly fetching stock and tidying, sometimes stretching; the door at night."
+	// Fetch stock's ways out.
+	portFetched = "w1"
+	portNone    = "w2"
 )
 
 // sampleAnchors are the anchors the clerk's day goes to, on the ground floor.
@@ -122,8 +129,61 @@ func (b *routineBuilder) serving(parent ids.ULID, values shopValues, serving str
 	return b.node(flow.KindSetValue, parent, setTo(npcValue(values.serving), serving))
 }
 
-// clerksDay builds the clerk's day from its start node.
-func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors, values shopValues) (*flow.Workflow, error) {
+// fetchStock is the workflow the clerk's day calls: the clerk goes to the
+// place it is given, the shelf to start with, and finds stock there three
+// times in four, going back by Fetched or Out of stock.
+func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Workflow, ids.ULID, error) {
+	start, err := orch.NewID()
+	if err != nil {
+		return nil, ids.ULID{}, fmt.Errorf("sample routine: %w", err)
+	}
+	made := &routineBuilder{orch: orch, nodes: nil, links: nil, locals: nil, err: nil}
+	place := made.local("place", worldstate.TypePlace)
+	none := ids.ULID{}
+	walk := made.node(flow.KindGoTo, none, map[string]any{
+		flow.ParamGoes: flow.GoesToValue, flow.ParamPlace: localValue(place),
+	})
+	stock := made.node(flow.KindRandom, none, map[string]any{"options": []flow.Share{
+		{Port: "o1", Label: "in stock", Share: stockShare}, {Port: "o2", Label: "out of stock", Share: noneShare},
+	}})
+	fetched := made.wayOut("Fetched", portFetched)
+	out := made.wayOut("Out of stock", portNone)
+	made.link(start, flow.OutputNext, walk)
+	made.link(walk, flow.OutputNext, stock)
+	made.link(stock, "o1", fetched)
+	made.link(stock, "o2", out)
+	if made.err != nil {
+		return nil, ids.ULID{}, made.err
+	}
+	shelf := worldstate.NoValue()
+	shelf.Type, shelf.Place = worldstate.TypePlace, worldstate.Place{Floor: anchors.floor, Anchor: anchors.shelf}
+	made.locals[0].Role, made.locals[0].Default = worldstate.RoleInput, shelf.Encode()
+	workflow, err := arrangedRoutine(start, made, ids.ULID{})
+
+	return workflow, place, err
+}
+
+// wayOut is a Return at the top level.
+func (b *routineBuilder) wayOut(label, port string) ids.ULID {
+	return b.node(flow.KindReturn, ids.ULID{}, map[string]any{flow.ParamWayName: label, flow.ParamWayPort: port})
+}
+
+// fetchCall is the clerk's day's Call of Fetch stock, giving it the shelf.
+func (b *routineBuilder) fetchCall(parent, fetch, place ids.ULID, at sampleAnchors) ids.ULID {
+	shelf := worldstate.NoValue()
+	shelf.Type, shelf.Place = worldstate.TypePlace, worldstate.Place{Floor: at.floor, Anchor: at.shelf}
+
+	return b.node(flow.KindCall, parent, map[string]any{
+		flow.ParamWorkflow: fetch.String(), flow.ParamInputs: map[ids.ULID]json.RawMessage{place: shelf.Encode()},
+		flow.ParamWays: []flow.WayOut{{Port: portFetched, Label: "Fetched"}, {Port: portNone, Label: "Out of stock"}},
+	})
+}
+
+// clerksDay builds the clerk's day from its start node, calling Fetch
+// stock, whose place input is place.
+func clerksDay(
+	orch *orchestrator.Orchestrator, anchors sampleAnchors, values shopValues, fetch, place ids.ULID,
+) (*flow.Workflow, error) {
 	start, err := orch.NewID()
 	if err != nil {
 		return nil, fmt.Errorf("sample routine: %w", err)
@@ -153,7 +213,7 @@ func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors, values sh
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
 		{Port: "o1", Label: "tidy the shelf", Share: tidyShare}, {Port: "o2", Label: "stretch", Share: stretchShare},
 	}})
-	toShelf, tidy := made.goTo(shop, anchors, anchors.shelf), made.wait(shop, tidyMinutes, flow.UnitMinutes)
+	toShelf, tidy := made.fetchCall(shop, fetch, place, anchors), made.wait(shop, tidyMinutes, flow.UnitMinutes)
 	down := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionDown, "tiles": stretchCells})
 	rise := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionUp, "tiles": stretchCells})
 	note := made.node(flow.KindNote, none, map[string]any{"text": routineNote})
@@ -169,7 +229,8 @@ func clerksDay(orch *orchestrator.Orchestrator, anchors sampleAnchors, values sh
 		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, find},
 		{find, flow.OutputFound, open}, {find, flow.OutputNone, choose},
 		{open, flow.OutputNext, serve}, {serve, flow.OutputNext, done}, {done, flow.OutputNext, choose},
-		{choose, "o1", toShelf}, {toShelf, flow.OutputNext, tidy}, {tidy, flow.OutputNext, toDesk},
+		{choose, "o1", toShelf}, {toShelf, portFetched, tidy}, {toShelf, portNone, toDesk},
+		{toShelf, flow.OutputDone, toDesk}, {tidy, flow.OutputNext, toDesk},
 		{choose, "o2", down}, {down, flow.OutputNext, rise}, {rise, flow.OutputNext, toDesk},
 	} {
 		made.link(joined.from, joined.output, joined.to)
@@ -201,7 +262,7 @@ func arrangedRoutine(start ids.ULID, made *routineBuilder, note ids.ULID) (*flow
 	for _, box := range boxes {
 		bottom = max(bottom, box.Y+max(box.H, noteHeight))
 	}
-	if first, placed := boxes[start]; placed {
+	if first, placed := boxes[start]; placed && !note.IsZero() {
 		boxes[note] = flow.Box{X: first.X, Y: bottom + noteHeight/2, W: 0, H: 0}
 	}
 	if _, err := workflow.Move(boxes); err != nil {
@@ -211,10 +272,18 @@ func arrangedRoutine(start ids.ULID, made *routineBuilder, note ids.ULID) (*flow
 	return workflow, nil
 }
 
-// sampleRoutine makes the clerk's day and gives it to the clerk, with the
-// shop's values.
-func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, at sampleAnchors, values shopValues) error {
-	workflow, err := clerksDay(orch, at, values)
+// sampleRoutine makes Fetch stock and the clerk's day, which calls it, and
+// gives the day to the clerk, with the shop's values.
+func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, anchors sampleAnchors, values shopValues) error {
+	fetch, place, err := fetchStock(orch, anchors)
+	if err != nil {
+		return err
+	}
+	fetchID, err := orch.CreateDocument(fetchName, &workflowplugin.Document{Workflow: fetch})
+	if err != nil {
+		return fmt.Errorf("sample routine: %w", err)
+	}
+	workflow, err := clerksDay(orch, anchors, values, fetchID, place)
 	if err != nil {
 		return err
 	}

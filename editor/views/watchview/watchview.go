@@ -73,6 +73,12 @@ type State struct {
 	shown  ids.ULID
 	pause  *ui.Button
 	step   *ui.Button
+	// chosen is the workflow of the path clicked, by its place and ID,
+	// -1 to follow the NPC; parts are where each workflow of the path is
+	// drawn.
+	chosen     int
+	chosenFlow ids.ULID
+	parts      []image.Rectangle
 }
 
 // New returns the Watch window for a zone.
@@ -80,7 +86,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, zone: zone, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, run: ids.ULID{},
 		tick: 0, state: nil, flow: nil, shown: ids.ULID{},
-		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep),
+		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep), chosen: -1,
+		chosenFlow: ids.ULID{}, parts: nil,
 	}
 }
 
@@ -211,18 +218,27 @@ func (s *State) layout() {
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout()
-	entity, ok := s.watched()
+	entity, watching := s.watched()
+	if watching {
+		s.updatePath(input, entity)
+	}
+	shown, following := s.shownLevel(entity)
 	switch {
-	case !ok || entity.Workflow.IsZero():
+	case !watching || shown.workflow.IsZero():
 		s.flow, s.shown = nil, ids.ULID{}
-	case entity.Workflow != s.shown:
-		s.subscribe(entity.Workflow, ctx)
-		s.flow, s.shown = workflowview.NewLive(s.window, entity.Workflow, s.theme), entity.Workflow
+	case shown.workflow != s.shown:
+		s.subscribe(shown.workflow, ctx)
+		s.flow, s.shown = workflowview.NewLive(s.window, shown.workflow, s.theme), shown.workflow
 	}
 	if s.flow != nil {
 		s.flow.SetArea(s.canvas())
-		s.flow.SetLive(entity.Node, entity.Last.From, entity.Last.Output, entity.Changes)
-		s.flow.SetStep(s.state.Step)
+		if following {
+			s.flow.SetLive(entity.Node, entity.Last.From, entity.Last.Output, entity.Changes)
+			s.flow.SetStep(s.state.Step)
+		} else {
+			s.flow.SetLive(shown.node, ids.ULID{}, "", entity.Changes)
+			s.flow.SetStep(nil)
+		}
 		s.flow.Update(input, ctx)
 	}
 	frame.CommonKeys(input, ctx)
@@ -280,7 +296,9 @@ func (s *State) drawHeader(screen *ebiten.Image, docs frame.Docs, entity protoco
 	s.theme.DrawLabel(screen, "WATCH", ui.Inset, (headerHeight-ui.LabelSize)/ui.Half-1, ui.ColorMuted())
 	nameX := ui.Inset + s.theme.LabelWidth("WATCH") + ui.Inset
 	if watching {
-		s.theme.DrawStrong(screen, s.name(docs, entity.NPC, "Deleted NPC"), nameX, textY, ui.ColorInk())
+		name := s.name(docs, entity.NPC, "Deleted NPC")
+		s.theme.DrawStrong(screen, name, nameX, textY, ui.ColorInk())
+		s.drawPath(screen, docs, entity, nameX+s.theme.StrongWidth(name)+ui.Inset)
 	}
 	if s.state != nil {
 		clockText := "LIVE  " + clock.Format(s.state.Clock) + " · " + clock.RateLabel(clock.Rate(s.state.Rate))
@@ -379,6 +397,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 				return ui.Center(button.Rect), true
 			}
 		}
+
+		return s.locatePart(value)
 	case "state":
 		return image.Pt(0, 0), s.hasState(value, docs)
 	}
@@ -390,7 +410,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // "watching:<name>" while the named NPC is watched, "live:<kind>" while it is
 // on a node of that kind, "paused" while its NPCs are paused, and "stepped"
 // while they are paused after a step that changed node, and
-// "value:<path>=<value>" while the watched NPC's value is that.
+// "value:<path>=<value>" while the watched NPC's value is that,
+// "path=<path>" while the path down through its calls reads so, and
+// "showing:<workflow>" while that workflow is drawn.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	entity, watching := s.watched()
 	switch {
@@ -404,6 +426,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):
 		return watching && s.nodeKind(docs, entity) == strings.TrimPrefix(state, "live:")
+	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"):
+		return s.hasCallState(state, docs, entity, watching)
 	case strings.HasPrefix(state, "value:"):
 		return s.state != nil && slices.ContainsFunc(s.state.Values, func(value protocol.PreviewValue) bool {
 			return value.Path+"="+value.Value == strings.TrimPrefix(state, "value:")

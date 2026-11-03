@@ -85,7 +85,7 @@ func Comparisons(kind worldstate.Type) []string {
 		return []string{CompareAnyOf, CompareNoneOf}
 	case worldstate.TypeText:
 		return []string{CompareIs, CompareNot}
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
 	}
 
 	return nil
@@ -198,9 +198,14 @@ func OperandList(items []json.RawMessage) json.RawMessage {
 	return mustJSON(items)
 }
 
+// noRef is a value parameter before its value is chosen.
+func noRef() ValueRef {
+	return ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}}
+}
+
 // valueKinds declares Set value, Check value and Find NPC nearby.
 func valueKinds(next []Output) []Kind {
-	none := mustJSON(ValueRef{Scope: "", Value: ids.ULID{}, Owner: ids.ULID{}, Found: ids.ULID{}})
+	none := mustJSON(noRef())
 
 	return []Kind{
 		{
@@ -277,8 +282,8 @@ func checkRef(value json.RawMessage) error {
 }
 
 // checkOperand reads an operand: null, an integer, true or false, a string
-// no longer than text can be, a list of those, or a reference to another
-// value.
+// no longer than text can be, a list of those, a place, or a reference to
+// another value.
 func checkOperand(value json.RawMessage) error {
 	if IsNoOperand(value) {
 		return nil
@@ -297,6 +302,11 @@ func checkOperand(value json.RawMessage) error {
 
 		return nil
 	case map[string]any:
+		if _, floor := read["floor"]; floor && read["ref"] == nil {
+			var place worldstate.Place
+
+			return json.Unmarshal(value, &place) //nolint:wrapcheck // Wrapped by the caller.
+		}
 		ref, err := json.Marshal(read["ref"])
 		if err != nil || read["ref"] == nil {
 			return fmt.Errorf("%w: %s is not a reference to a value", ErrNode, value)

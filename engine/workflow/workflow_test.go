@@ -802,3 +802,34 @@ func TestValueNodes(t *testing.T) {
 		t.Fatalf("an object is not an operand: %v", err)
 	}
 }
+
+// TestUpgradeFromVersion6 gives a Go to from before place values its
+// anchor as where it goes, and no place value.
+func TestUpgradeFromVersion6(t *testing.T) {
+	t.Parallel()
+	registry := content.NewRegistry()
+	if err := registry.Register(workflow.Format()); err != nil {
+		t.Fatal(err)
+	}
+	six := `{"start":"` + id(1).String() + `","nodes":[{"id":"` + id(1).String() + `","kind":"start","next":{"next":"` +
+		id(2).String() + `"}},{"id":"` + id(2).String() + `","kind":"go-to","params":{"destination":{"floor":"` +
+		id(30).String() + `","anchor":"` + id(31).String() + `"}}}]}`
+	upgraded, changed, err := registry.Upgrade(content.Envelope{
+		Format: workflow.FormatName, Version: 6, ID: id(9), Name: "Old", Revision: 1, Data: json.RawMessage(six),
+	})
+	if err != nil || !changed {
+		t.Fatalf("upgrade %v %v", changed, err)
+	}
+	read, err := workflow.Decode(upgraded.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goTo, _ := read.Node(id(2))
+	goes, err := goTo.Choice(workflow.ParamGoes)
+	destination, anchorErr := goTo.Anchor("destination")
+	place, refErr := goTo.Ref(workflow.ParamPlace)
+	if err != nil || anchorErr != nil || refErr != nil || goes != workflow.GoesToMap || destination.Anchor != id(31) ||
+		!place.IsZero() {
+		t.Fatalf("a Go to keeps its anchor and has no place value: %q %v %v", goes, destination, place)
+	}
+}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -37,8 +38,10 @@ const (
 // "ui:value-default" for an integer's or text's default,
 // "ui:value-default-<choice id, true or false>", "ui:value-min",
 // "ui:value-max", "ui:value-choice-<n>", "ui:value-choice-<n>-remove",
-// "ui:value-add-choice", "ui:value-description", "ui:value-declare-new" and
-// "ui:value-delete".
+// "ui:value-add-choice", "ui:value-description", "ui:value-declare-new",
+// a local's "ui:value-role-local", "ui:value-role-input" and
+// "ui:value-role-output", a place's "ui:value-place" box,
+// "ui:value-pick-place" and "ui:value-clear-place", and "ui:value-delete".
 const (
 	nameID        = "value-name"
 	defaultID     = "value-default"
@@ -51,6 +54,18 @@ const (
 	addChoiceID   = "value-add-choice"
 	deleteID      = "value-delete"
 	declareNewID  = "value-declare-new"
+	rolePrefix    = "value-role-"
+	pickPlaceID   = "value-pick-place"
+	placeBoxID    = "value-place"
+	clearPlaceID  = "value-clear-place"
+)
+
+// What each role means, under its buttons.
+const (
+	inputMeans = "An input is filled by whatever calls this workflow, read once as the call starts. Where " +
+		"a caller leaves it unfilled, or it runs as a behaviour of its own, it starts as below."
+	outputMeans = "An output is handed back when the call returns, by any way out, to the value the Call " +
+		"keeps it in."
 )
 
 // Headings.
@@ -79,6 +94,7 @@ type Form struct {
 	// text for a text value's default.
 	name, number, text, low, high, description *ui.TextField
 	types                                      []*ui.Button
+	roles                                      []*ui.Button
 	defaults                                   []*ui.Button
 	choices                                    []choiceRow
 	addChoice                                  *ui.Button
@@ -95,6 +111,23 @@ type Form struct {
 	lock       image.Point
 	lockLines  []string
 	DeclareNew *ui.Button
+	// PickPlace picks a place value's default on a map and ClearPlace
+	// clears it; PlaceBox shows it and opens the window's list of places.
+	// The window sets PlaceName, PlaceWhere, its zone and floor, PlaceLit,
+	// just picked, and PlaceOpen, while the list is open. means is where what
+	// a role means goes, in lines.
+	PickPlace  *ui.Button
+	ClearPlace *ui.Button
+	PlaceBox   image.Rectangle
+	PlaceName  string
+	PlaceWhere string
+	PlaceLit   bool
+	PlaceOpen  bool
+	means      image.Point
+	meansLines []string
+	// placeAt is where what a place is goes, in placeLines.
+	placeAt    image.Point
+	placeLines []string
 }
 
 // New returns an empty form.
@@ -111,8 +144,12 @@ func New(theme *ui.Theme) *Form {
 		high: field(maxID, false, maxNumberText), description: field(descriptionID, true, worldstate.MaxDescription),
 		types: nil, defaults: nil, choices: nil, addChoice: ui.NewButton(addChoiceID, "Add choice"), Delete: remove,
 		heads: map[string]image.Point{}, hint: image.Pt(0, 0), Locked: "", lock: image.Pt(0, 0), lockLines: nil,
-		DeclareNew: ui.NewButton(declareNewID, "Declare a new value…"),
+		DeclareNew: ui.NewButton(declareNewID, "Declare a new value…"), roles: nil,
+		PickPlace: ui.NewButton(pickPlaceID, "Pick on map"), ClearPlace: ui.NewButton(clearPlaceID, "Clear"),
+		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceLit: false, PlaceOpen: false, means: image.Pt(0, 0),
+		meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
 	}
+	form.PickPlace.Primary = true
 	form.description.Placeholder = "What it is for, for whoever reads it next"
 	form.low.Placeholder, form.high.Placeholder = "No minimum", "No maximum"
 
@@ -167,10 +204,19 @@ func (f *Form) build(declared worldstate.Declaration) {
 			field.Field.Revert()
 		}
 	}
-	f.types = nil
+	f.types, f.roles = nil, nil
 	if declared.Type.IsValue() {
 		for _, kind := range worldstate.Types(declared.Scope) {
-			f.types = append(f.types, ui.NewButton(typePrefix+string(kind), kind.Label()))
+			button := ui.NewButton(typePrefix+string(kind), kind.Label())
+			if kind == worldstate.TypePlace {
+				button.Icon = ui.IconPlace
+			}
+			f.types = append(f.types, button)
+		}
+	}
+	if declared.Type.IsValue() && declared.Scope == worldstate.ScopeLocal {
+		for _, role := range worldstate.Roles() {
+			f.roles = append(f.roles, ui.NewButton(rolePrefix+strings.ToLower(role.Label()), role.Label()))
 		}
 	}
 	f.choices = nil
@@ -191,6 +237,9 @@ func (f *Form) setSaved() {
 	f.description.Field.SetSaved(declared.Description)
 	for index, button := range f.types {
 		button.On = typePrefix+string(declared.Type) == button.ID && index >= 0
+	}
+	for _, button := range f.roles {
+		button.On = button.ID == rolePrefix+strings.ToLower(declared.Role.Label())
 	}
 	for index, choice := range declared.Choices {
 		if index < len(f.choices) {
@@ -221,7 +270,7 @@ func (f *Form) setSaved() {
 			button.On = choice.ID == current.Choice
 			f.defaults = append(f.defaults, button)
 		}
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
 	}
 }
 
@@ -244,7 +293,8 @@ func (f *Form) Fields() []*ui.TextField {
 		fields = append(fields, f.number, f.low, f.high)
 	case worldstate.TypeText:
 		fields = append(fields, f.text)
-	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
+		worldstate.TypeTemplate:
 	}
 
 	return append(fields, f.description)
@@ -307,17 +357,50 @@ func (f *Form) Layout(left, top, width int) int {
 		f.hint = image.Pt(left, top-rowSpace)
 		top += ui.LineHeight
 	}
-	f.DeclareNew.Rect, f.lockLines = ui.Zero(), nil
+	f.DeclareNew.Rect, f.lockLines, f.meansLines, f.PickPlace.Rect = ui.Zero(), nil, nil, ui.Zero()
+	f.PlaceBox, f.ClearPlace.Rect = ui.Zero(), ui.Zero()
+	if len(f.roles) > 0 {
+		head("ROLE")
+		top = buttonRows(f.roles, left, top, width, len(f.roles))
+		top = f.layoutMeans(left, top, width)
+	}
 	if f.shown.Type.IsValue() {
 		head("TYPE")
-		top = buttonRows(f.types, left, top, width, len(f.types))
+		top = f.fitRows(f.types, left, top, width)
 		top = f.layoutLock(left, top, width)
+		top = f.layoutPlaceLine(left, top, width)
 		top = f.layoutValue(left, top, width)
 	}
 	head(headDescription)
 	place(f.description, descHeight)
 
 	return top
+}
+
+// layoutMeans places what an input or an output means, under the roles.
+func (f *Form) layoutMeans(left, top, width int) int {
+	means := map[worldstate.Role]string{worldstate.RoleInput: inputMeans, worldstate.RoleOutput: outputMeans}[f.shown.Role]
+	if means == "" {
+		return top
+	}
+	f.means, f.meansLines = image.Pt(left, top-rowSpace), f.theme.Wrap(means, width)
+
+	return top + len(f.meansLines)*ui.LineHeight + fieldSpace - rowSpace
+}
+
+// placeLine says what a place is, under the type buttons.
+const placeLine = "A place is an anchor on a map: one of the blue rings put down with the Anchors tool."
+
+// layoutPlaceLine places what a place is under the types, for a place
+// whose type can still change; one in use shows its ring and place below.
+func (f *Form) layoutPlaceLine(left, top, width int) int {
+	f.placeLines = nil
+	if f.shown.Type != worldstate.TypePlace || f.Locked != "" {
+		return top
+	}
+	f.placeAt, f.placeLines = image.Pt(left, top-rowSpace), f.theme.Wrap(placeLine, width)
+
+	return top + len(f.placeLines)*ui.LineHeight + fieldSpace - rowSpace
 }
 
 // layoutLock greys the types a locked value cannot change to, and places
@@ -360,13 +443,16 @@ func (f *Form) layoutValue(left, top, width int) int {
 		f.low.Rect = image.Rect(left, top, left+width/ui.Half-rowSpace/ui.Half, top+ui.ButtonH)
 		f.high.Rect = image.Rect(left+width/ui.Half+rowSpace/ui.Half, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
-	case worldstate.TypeBool, worldstate.TypeText, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeBool, worldstate.TypeText, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
+		worldstate.TypeTemplate:
 	}
 	if f.shown.Type == worldstate.TypeNPC {
 		return top
 	}
 	headAt("DEFAULT")
 	switch f.shown.Type {
+	case worldstate.TypePlace:
+		top = f.layoutPlace(left, top, width)
 	case worldstate.TypeInteger:
 		f.number.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
@@ -397,16 +483,40 @@ func buttonRows(buttons []*ui.Button, left, top, width, perRow int) int {
 	return top + fieldSpace - rowSpace
 }
 
+// fitRows places buttons at the width their labels and icons need, as many
+// to a row as fit, and returns where the next part goes.
+func (f *Form) fitRows(buttons []*ui.Button, left, top, width int) int {
+	across := left
+	for _, button := range buttons {
+		need := f.theme.TextWidth(button.Label) + ui.Half*ui.Inset
+		if button.Icon != ui.IconNone {
+			need += ui.IconSize + ui.Gap
+		}
+		if across > left && across+need > left+width {
+			across, top = left, top+ui.ButtonH+rowSpace
+		}
+		button.Rect = image.Rect(across, top, across+need, top+ui.ButtonH)
+		across += need + rowSpace
+	}
+
+	return top + ui.ButtonH + fieldSpace
+}
+
 // Change is what a click on the form asks for.
 type Change int
 
 // Changes: nothing, a changed declaration to save, deleting it, or
-// declaring a new value instead of changing a locked one's type.
+// declaring a new value instead of changing a locked one's type; for a
+// place, picking its default on a map or choosing it from a list.
 const (
 	ChangeNone Change = iota
 	ChangeValue
 	ChangeDelete
 	ChangeDeclareNew
+	// ChangePickPlace asks the window to pick a place value's default on a
+	// map, and ChangeChoosePlace to open its list of places.
+	ChangePickPlace
+	ChangeChoosePlace
 )
 
 // Update handles the form's buttons. A changed declaration is returned for
@@ -418,6 +528,20 @@ func (f *Form) Update(input *ui.Input) (worldstate.Declaration, Change) {
 	}
 	if f.DeclareNew.Update(input) {
 		return declared, ChangeDeclareNew
+	}
+	if change := f.updatePlace(input); change != ChangeNone {
+		if change == ChangeValue {
+			declared.Default = declared.Empty().Encode()
+		}
+
+		return declared, change
+	}
+	for index, button := range f.roles {
+		if button.Update(input) && !button.On && index < len(worldstate.Roles()) {
+			declared.Role = worldstate.Roles()[index]
+
+			return declared, ChangeValue
+		}
 	}
 	for _, button := range f.types {
 		kind := worldstate.Type(strings.TrimPrefix(button.ID, typePrefix))
@@ -482,7 +606,7 @@ func (f *Form) updateChoices(input *ui.Input, declared worldstate.Declaration) (
 // retype changes a value's type, starting it at the new type's own default.
 func retype(declared worldstate.Declaration, kind worldstate.Type) worldstate.Declaration {
 	made := worldstate.New(declared.ID, declared.Name, declared.Scope, kind)
-	made.Parent, made.Description = declared.Parent, declared.Description
+	made.Parent, made.Description, made.Role = declared.Parent, declared.Description, declared.Role
 
 	return made
 }
@@ -528,7 +652,8 @@ func (f *Form) Typed() (worldstate.Declaration, string, *ui.TextField, string) {
 		text := worldstate.NoValue()
 		text.Type, text.Text = worldstate.TypeText, f.text.Field.Value()
 		declared.Default = text.Encode()
-	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
+		worldstate.TypeTemplate:
 	}
 
 	return declared, dotted, nil, ""
@@ -599,12 +724,12 @@ func checkChoiceNames(declared worldstate.Declaration) string {
 
 // Buttons lists the form's buttons, for input scripts.
 func (f *Form) Buttons() []*ui.Button {
-	buttons := append(append([]*ui.Button{}, f.types...), f.defaults...)
+	buttons := slices.Concat(f.roles, f.types, f.defaults)
 	for _, row := range f.choices {
 		buttons = append(buttons, row.remove)
 	}
 
-	return append(buttons, f.addChoice, f.DeclareNew, f.Delete)
+	return append(buttons, f.addChoice, f.DeclareNew, f.PickPlace, f.ClearPlace, f.Delete)
 }
 
 // Locate finds a field or button by its ID.
@@ -618,6 +743,9 @@ func (f *Form) Locate(widget string) (image.Point, bool) {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
+	}
+	if widget == placeBoxID && !f.PlaceBox.Empty() {
+		return ui.Center(f.PlaceBox), true
 	}
 
 	return image.Pt(0, 0), false
@@ -645,8 +773,55 @@ func (f *Form) Draw(screen *ebiten.Image) {
 	for index, line := range f.lockLines {
 		f.theme.DrawText(screen, line, f.lock.X, f.lock.Y+index*ui.LineHeight, ui.ColorMuted())
 	}
+	for index, line := range f.meansLines {
+		f.theme.DrawText(screen, line, f.means.X, f.means.Y+index*ui.LineHeight, ui.ColorMuted())
+	}
+	for index, line := range f.placeLines {
+		f.theme.DrawText(screen, line, f.placeAt.X, f.placeAt.Y+index*ui.LineHeight, ui.ColorMuted())
+	}
+	if !f.PlaceBox.Empty() {
+		f.drawPlace(screen)
+	}
 	if f.shown.Type == worldstate.TypeNPC {
 		at := f.heads[headDescription]
 		f.theme.DrawText(screen, "Starts as no NPC.", at.X, at.Y-ui.LineHeight-rowSpace, ui.ColorMuted())
 	}
+}
+
+// updatePlace handles a place's default: Pick on map, its box, which opens
+// the list of places, and Clear, which changes the value.
+func (f *Form) updatePlace(input *ui.Input) Change {
+	switch {
+	case f.PickPlace.Update(input):
+		return ChangePickPlace
+	case input.Pressed && input.Cursor.In(f.PlaceBox):
+		return ChangeChoosePlace
+	case f.ClearPlace.Update(input):
+		return ChangeValue
+	}
+
+	return ChangeNone
+}
+
+// layoutPlace places a place's default: its box, the line naming its zone
+// and floor, then Pick on map and Clear.
+func (f *Form) layoutPlace(left, top, width int) int {
+	f.PlaceBox = image.Rect(left, top, left+width, top+ui.ButtonH)
+	top += ui.ButtonH + ui.LineHeight
+	f.PickPlace.Rect = image.Rect(left, top, left+width/ui.Half-rowSpace/ui.Half, top+ui.ButtonH)
+	if f.PlaceName != "" {
+		f.ClearPlace.Rect = image.Rect(left+width/ui.Half+rowSpace/ui.Half, top, left+width, top+ui.ButtonH)
+	}
+
+	return top + ui.ButtonH + fieldSpace
+}
+
+// drawPlace draws a place's default in its box, and its zone and floor.
+func (f *Form) drawPlace(screen *ebiten.Image) {
+	label, look := f.PlaceName, places.Chosen
+	if label == "" {
+		label, look = "No place yet", places.Empty
+	}
+	places.DrawBox(screen, f.theme, f.PlaceBox, label, look, f.PlaceLit, f.PlaceOpen)
+	f.theme.DrawText(screen, f.PlaceWhere, f.PlaceBox.Min.X, f.PlaceBox.Max.Y+ui.Gap, ui.ColorMuted())
 }

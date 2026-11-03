@@ -110,7 +110,8 @@ drawn back to either only repeats what the rule already does.
   behaviour serves every NPC with the template. Every NPC has a `name`
   value, text that starts as its display name.
 - **Agreed (2026-11-01): the types are integer, with an optional minimum
-  and maximum that a change is held at, bool, choice and text,** with NPC
+  and maximum that a change is held at, bool, choice and text,** with NPC,
+  and from [increment 21](increments/0021-flow-modules.md) place,
   for local values only.
 - **Agreed: a workflow sets only its own values,** its NPC's, its zone's,
   the world's and its locals. It can read the values of an NPC it found, but
@@ -194,21 +195,28 @@ drawn back to either only repeats what the rule already does.
 
 - **Agreed:** a workflow can use another, reusable one, as a module holding
   a flow with inputs and outputs known ahead of time.
-- **Candidate: a module declares an interface:** its inputs; its
-  **outcomes**, the named ways out, made with the same exit nodes as a
-  container's, placed at its top level; and its value outputs. A **Call
-  workflow** node names the module, fills its inputs as any node's
-  parameters are filled, has one output per outcome, and maps each value
-  output to this run or to the character, or leaves it.
+- **Agreed (2026-11-02): a module declares an interface:** its inputs and
+  value outputs, each a local value given the role Input or Output; and its
+  named ways out, each made by a **Return** node at its top level, two
+  Returns of one name being one way out. Any workflow can be called. A
+  **Call workflow** node names the module, fills its inputs with a fixed
+  value, a place picked on the map or another value, has one output per
+  way out and done, and keeps each value output in a value of the caller's
+  or leaves it. A module's locals are fresh on each call. A place is a new
+  type for locals, and Go to can go to a place value. [Increment
+  21](increments/0021-flow-modules.md) builds it.
 - **Candidate: where a module can be used is worked out** from the nodes in
   it and shown, such as "usable in NPC behaviour and conversations"; a
   module with a Go to cannot be used in a sprite workflow.
 - **Candidate:** the agreed reusable workflows assigned to many NPCs become
   calls: an NPC's behaviour is a module with its inputs filled in for that
   NPC.
-- **Candidate:** a module that calls itself, directly or through others, is
-  refused and flagged; changing a module's inputs or outcomes flags the
-  calls it breaks; a module can be run on its own with chosen inputs, a test
+- **Agreed (2026-11-02):** a module that calls itself, directly or through
+  others, is flagged, and so is a way out a Call uses that the module no
+  longer has, an input whose value no longer fits its type, and a Call
+  with no workflow chosen; the game carries on past such a Call by done.
+  An input's or output's type is locked while a Call uses it.
+- **Candidate:** a module can be run on its own with chosen inputs, a test
   NPC and a test profile, as a conversation can.
 
 ## Conversations

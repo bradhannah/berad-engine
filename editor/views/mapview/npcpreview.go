@@ -192,6 +192,8 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	for _, run := range runners {
 		s.refreshWorkflow(ctx, run)
 	}
+	s.refreshModules(ctx, runners)
+	s.nameAnchors(ctx.Docs)
 	zone := docsZone{floors: s.floors, docs: ctx.Docs}
 	s.declareValues(ctx.Docs)
 	ticks := 1
@@ -205,8 +207,8 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 		others := othersOf(runners)
 		for _, run := range runners {
 			world := npcrun.World{
-				Zone: zone, Workflow: run.workflow, Clock: s.preview.clock, Passed: passed, State: s.preview.values,
-				Here: s.zone, Others: others,
+				Zone: zone, Workflow: run.workflow, Behaviour: run.source, Workflows: s.module, Clock: s.preview.clock,
+				Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
 			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
@@ -325,14 +327,32 @@ func previewChange(change npcrun.Change) protocol.PreviewChange {
 }
 
 // npcEntity is an NPC as the preview's state carries it.
-func npcEntity(run *npcRun) protocol.PreviewEntity {
-	x, y := run.npc.At()
+func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
+	across, down := run.npc.At()
+
+	workflow := run.source
+	if module := run.npc.Module(); !module.IsZero() {
+		workflow = module
+	}
+	callers := run.npc.Callers()
+	calls := make([]protocol.PreviewCall, 0, len(callers))
+	for _, call := range callers {
+		caller := call.Workflow
+		if caller.IsZero() {
+			caller = run.source
+		}
+		calls = append(calls, protocol.PreviewCall{Workflow: caller, Call: call.Call})
+	}
+
+	if len(calls) == 0 {
+		calls = nil
+	}
 
 	return protocol.PreviewEntity{
-		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: x, Y: y,
-		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: run.source,
-		Node: run.npc.Node, Activity: run.npc.Activity(run.workflow), Status: run.npc.Status,
-		Last: previewChange(run.npc.Last), Changes: run.npc.Changes,
+		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
+		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
+		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
+		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls,
 	}
 }
 
@@ -342,7 +362,7 @@ func (s *State) previewState() protocol.PreviewState {
 	entities := make([]protocol.PreviewEntity, 0, 1+len(runners))
 	entities = append(entities, entityOf(s.preview.run.Player()))
 	for _, run := range runners {
-		entities = append(entities, npcEntity(run))
+		entities = append(entities, s.npcEntity(run))
 	}
 	game := s.preview.clock
 
@@ -394,9 +414,9 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 		return nil
 	}
 	var shown []protocol.PreviewValue
-	if run.workflow != nil {
+	if running := s.running(run); running != nil {
 		locals := run.npc.Locals()
-		for _, declared := range run.workflow.Locals().Values() {
+		for _, declared := range running.Locals().Values() {
 			value, set := locals[declared.ID]
 			if !set || !declared.Fits(value) {
 				value = declared.Zero()
@@ -404,6 +424,9 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 			label := declared.Label(value)
 			if declared.Type == worldstate.TypeNPC && !value.NPC.IsZero() {
 				label = s.names.Name(value.NPC, label)
+			}
+			if name, named := s.preview.anchors[value.Place.Anchor]; declared.Type == worldstate.TypePlace && named {
+				label = name
 			}
 			shown = append(shown, protocol.PreviewValue{Path: string(worldstate.ScopeLocal) + "." + declared.Name, Value: label})
 		}

@@ -13,8 +13,10 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
@@ -35,15 +37,19 @@ type localsPanel struct {
 	add  *ui.Button
 	form *valueform.Form
 	// top is where the panel's heading goes; registered is whether the
-	// form's fields take part in focus.
+	// form's fields take part in focus. A form taller than the room above
+	// the save bar scrolls by scroll pixels inside shown.
 	top        int
 	registered bool
+	scroll     int
+	shown      image.Rectangle
 }
 
 func newLocalsPanel(theme *ui.Theme) *localsPanel {
 	return &localsPanel{
 		list: ui.NewList("locals", ""),
 		add:  ui.NewButton("add-local", "Add local"), form: valueform.New(theme), top: 0, registered: false,
+		scroll: 0, shown: ui.Zero(),
 	}
 }
 
@@ -64,7 +70,7 @@ func (s *State) selectedLocal() (worldstate.Declaration, bool) {
 
 // syncLocals lists the local values and keeps the form on the selected one,
 // its fields taking part in focus.
-func (s *State) syncLocals() {
+func (s *State) syncLocals(ctx *frame.Context) {
 	panel := s.locals
 	if !s.localsActive() {
 		panel.registered = false
@@ -75,6 +81,9 @@ func (s *State) syncLocals() {
 	for _, value := range s.workflow.Locals().Values() {
 		row := ui.NewRow(value.ID.String(), localPath(value))
 		row.Detail = value.Type.Label()
+		if value.Type == worldstate.TypePlace {
+			row.Icon = ui.IconPlace
+		}
 		panel.list.Rows = append(panel.list.Rows, row)
 	}
 	value, ok := s.selectedLocal()
@@ -82,6 +91,12 @@ func (s *State) syncLocals() {
 		panel.list.Selected, panel.registered = "", false
 
 		return
+	}
+	panel.form.PlaceName, panel.form.Locked = s.placeName(ctx, value), s.lockLocal(value)
+	panel.form.PlaceWhere, panel.form.PlaceLit, panel.form.PlaceOpen = "", s.isLit(localOwner(value.ID)),
+		s.placesOpen(localOwner(value.ID))
+	if start := value.Zero().Place; value.Type == worldstate.TypePlace && !start.IsZero() {
+		panel.form.PlaceWhere = places.Where(ctx.Docs, start.Floor)
 	}
 	if panel.form.Show(value, value.Name) || !panel.registered {
 		s.focus = ui.Focus{}
@@ -111,11 +126,29 @@ func (s *State) layoutLocals() {
 	if _, ok := s.selectedLocal(); !ok {
 		return
 	}
-	panel.form.Layout(left, top, width)
 	bottom := inspector.Max.Y - ui.Inset
 	panel.form.Delete.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 	bottom = panel.form.Delete.Rect.Min.Y - ui.Half*ui.Gap
 	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
+	panel.shown = image.Rect(inspector.Min.X, top-ui.Gap, inspector.Max.X, s.save.Rect.Min.Y-ui.Gap)
+	tall := panel.form.Layout(left, top, width) - top
+	panel.scroll = max(0, min(panel.scroll, tall-panel.shown.Dy()+ui.Gap))
+	if panel.scroll > 0 {
+		panel.form.Layout(left, top-panel.scroll, width)
+	}
+}
+
+// scrollLocal scrolls a form taller than its room under the pointer, and
+// reports whether a press falls outside the room, where the form is hidden,
+// other than on Delete value below it.
+func (s *State) scrollLocal(input *ui.Input) bool {
+	panel := s.locals
+	if input.Cursor.In(panel.shown) && input.WheelY != 0 {
+		panel.scroll -= int(input.WheelY * ui.RowHeight)
+		s.layoutLocals()
+	}
+
+	return input.Pressed && !input.Cursor.In(panel.shown) && !input.Cursor.In(panel.form.Delete.Rect)
 }
 
 // updateLocals handles the local values' list, Add local and the form's
@@ -153,7 +186,18 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	if _, ok := s.selectedLocal(); !ok {
+	s.updateLocalForm(input, ctx)
+}
+
+// updateLocalForm handles the selected local's form.
+func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
+	panel := s.locals
+	declared, ok := s.selectedLocal()
+	if !ok {
+		return
+	}
+	panel.form.PickPlace.Label = s.picker.Label(localOwner(declared.ID))
+	if s.scrollLocal(input) {
 		return
 	}
 	switch changed, change := panel.form.Update(input); change {
@@ -163,8 +207,47 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 		removal := localChange(nil, worldstate.New(ids.ULID{}, "", "", ""), changed.ID)
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", removal,
 			func(protocol.Result) { ctx.Frame.Status(localPath(changed) + " deleted. Undo brings it back.") })
-	case valueform.ChangeNone, valueform.ChangeDeclareNew:
+	case valueform.ChangePickPlace:
+		s.pickOrCancel(ctx, s.localTarget(ctx, changed))
+	case valueform.ChangeChoosePlace:
+		s.openPlaces(panel.form.PlaceBox, s.localTarget(ctx, changed))
+	case valueform.ChangeDeclareNew:
+		s.addLocal(ctx)
+	case valueform.ChangeNone:
 	}
+}
+
+// placeName names a place local's start, its anchor's name, loading its
+// floor; "" is no place yet.
+func (s *State) placeName(ctx *frame.Context, declared worldstate.Declaration) string {
+	start := declared.Zero()
+	if declared.Type != worldstate.TypePlace || start.Place.IsZero() {
+		return ""
+	}
+	s.subscribe(start.Place.Floor, ctx)
+	name, _ := s.anchorLabel(ctx.Docs, floor.AnchorRef{Floor: start.Place.Floor, Anchor: start.Place.Anchor})
+
+	return name
+}
+
+// localTarget is a place local's start, as a place control.
+func (s *State) localTarget(ctx *frame.Context, declared worldstate.Declaration) placeTarget {
+	start := declared.Zero().Place
+	current := floor.AnchorRef{Floor: start.Floor, Anchor: start.Anchor}
+	label := localPath(declared) + " in “" + s.name(ctx.Docs) + "”"
+	localID := declared.ID
+
+	return s.newPlaceTarget(localOwner(localID), current, localPath(declared), label,
+		func(ctx *frame.Context, ref floor.AnchorRef) {
+			now, ok := s.workflow.Locals().Value(localID)
+			if !ok {
+				return
+			}
+			value := worldstate.NoValue()
+			value.Type, value.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
+			now.Default = value.Encode()
+			s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, now, ids.ULID{}), nil)
+		})
 }
 
 // localPath is how a workflow names a local value, such as local.clerk.
@@ -270,7 +353,9 @@ func (s *State) drawLocals(screen *ebiten.Image) {
 
 		return
 	}
-	panel.form.Draw(screen)
+	if shown, ok := screen.SubImage(panel.shown).(*ebiten.Image); ok && !panel.shown.Empty() {
+		panel.form.Draw(shown)
+	}
 	s.save.Draw(screen, s.theme)
 	panel.form.Delete.Draw(screen, s.theme)
 }

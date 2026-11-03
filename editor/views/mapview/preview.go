@@ -65,6 +65,13 @@ type previewRun struct {
 	// of the world state, the NPCs and the zones they were last given.
 	values   *worldstate.Store
 	declared string
+	// modules are copies of the workflows the NPCs' behaviours call, in
+	// turn, at the revisions last seen, so an edit to one restarts the NPCs
+	// inside it.
+	modules map[ids.ULID]moduleCopy
+	// anchors names the anchors of the zone's floors, for the watched
+	// NPC's place values.
+	anchors map[ids.ULID]string
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -157,7 +164,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
-			declared: "",
+			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{},
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)
@@ -273,6 +280,14 @@ func (s *State) follow(player play.Player) {
 	s.camera.pan(delta)
 }
 
+// sameEntity reports whether an entity is as it was sent.
+func sameEntity(sent, now protocol.PreviewEntity) bool {
+	return slices.Equal(sent.Calls, now.Calls) && sent.ID == now.ID && sent.Floor == now.Floor && sent.X == now.X &&
+		sent.Y == now.Y && sent.Face == now.Face && sent.NPC == now.NPC && sent.Workflow == now.Workflow &&
+		sent.Node == now.Node && sent.Activity == now.Activity && sent.Status == now.Status && sent.Last == now.Last &&
+		sent.Changes == now.Changes
+}
+
 // sendState sends the preview's state, the player, the NPCs and the clock,
 // to the zone's other views, at most every streamTicks ticks and only when
 // it has changed.
@@ -281,7 +296,8 @@ func (s *State) sendState(ctx *frame.Context) {
 		return
 	}
 	state := s.previewState()
-	if sent := s.preview.sent; sent != nil && slices.Equal(sent.Entities, state.Entities) && sent.Clock == state.Clock &&
+	if sent := s.preview.sent; sent != nil && slices.EqualFunc(sent.Entities, state.Entities, sameEntity) &&
+		sent.Clock == state.Clock &&
 		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
 		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) {
 		return
@@ -297,6 +313,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
 		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""}, Changes: 0,
+		Calls: nil,
 	}
 }
 

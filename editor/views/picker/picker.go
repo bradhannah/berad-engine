@@ -20,6 +20,9 @@ import (
 
 const shortID = 6
 
+// reasonTakenOver is why a pick ends when another control starts one.
+const reasonTakenOver = "another pick started"
+
 type choice int
 
 const (
@@ -28,34 +31,71 @@ const (
 	choosingZone
 )
 
-// Picker runs one window's picks, one at a time.
+// Picker runs one window's picks, one at a time. Each pick has an owner,
+// the control that started it, so only that control offers to cancel it.
 type Picker struct {
 	window   ids.ULID
 	picking  string
+	owner    string
 	count    int
 	dialog   *ui.Dialog
 	choosing choice
 	label    string
+	now      protocol.PickNow
 	done     func(protocol.PickAnswer, *frame.Context)
 }
 
 // New returns the picker for a window.
 func New(window ids.ULID) *Picker {
 	return &Picker{
-		window: window, picking: "", count: 0, dialog: nil, choosing: choosingNothing, label: "", done: nil,
+		window: window, picking: "", owner: "", count: 0, dialog: nil, choosing: choosingNothing, label: "",
+		now: protocol.PickNow{Floor: ids.ULID{}, Item: "", Name: ""}, done: nil,
 	}
 }
 
 // Picking reports whether a pick is in progress.
 func (p *Picker) Picking() bool { return p.picking != "" }
 
+// PickingFor reports whether the pick in progress is the owner's.
+func (p *Picker) PickingFor(owner string) bool { return p.picking != "" && p.owner == owner }
+
+// Label is an owner's pick button: Cancel pick while its pick runs, Pick on
+// map otherwise.
+func (p *Picker) Label(owner string) string {
+	if p.PickingFor(owner) {
+		return "Cancel pick"
+	}
+
+	return "Pick on map"
+}
+
+// Toggle cancels the owner's pick in progress, or starts one for it, taking
+// over any other pick, with reason saying where a cancel came from.
+func (p *Picker) Toggle(ctx *frame.Context, owner, reason, label string, now protocol.PickNow,
+	done func(protocol.PickAnswer, *frame.Context),
+) {
+	if p.PickingFor(owner) {
+		p.Cancel(ctx, reason)
+
+		return
+	}
+	p.Start(ctx, owner, label, now, done)
+}
+
 // Dialog returns the dialog choosing a map or zone, or nil.
 func (p *Picker) Dialog() *ui.Dialog { return p.dialog }
 
-// Start begins picking an anchor. label says what it is for, shown in the
-// Map window; done receives the answer.
-func (p *Picker) Start(ctx *frame.Context, label string, done func(protocol.PickAnswer, *frame.Context)) {
-	p.label, p.done = label, done
+// Start begins picking an anchor for an owner, taking over a pick in
+// progress. label says what it is for and now what it would replace, both
+// shown in the Map window; done receives the answer.
+func (p *Picker) Start(ctx *frame.Context, owner, label string, now protocol.PickNow,
+	done func(protocol.PickAnswer, *frame.Context),
+) {
+	if p.picking != "" {
+		ctx.Requests.PickCancel(protocol.PickCancel{Pick: p.picking, Reason: reasonTakenOver})
+		p.picking = ""
+	}
+	p.owner, p.label, p.now, p.done = owner, label, now, done
 	ctx.Requests.PickAsk(protocol.PickAnchor, func(maps []protocol.PickMap, err error) {
 		if err != nil {
 			ctx.Frame.Status(err.Error())
@@ -68,6 +108,7 @@ func (p *Picker) Start(ctx *frame.Context, label string, done func(protocol.Pick
 		case 1:
 			p.begin(ctx, protocol.PickStart{
 				Pick: "", What: "", Label: "", Window: maps[0].Window, Zone: maps[0].Zone, From: ids.ULID{},
+				Now: p.now,
 			})
 		default:
 			p.chooseMap(ctx, maps)
@@ -119,7 +160,9 @@ func (p *Picker) UpdateDialog(input *ui.Input, ctx *frame.Context, window image.
 	if err != nil {
 		return
 	}
-	start := protocol.PickStart{Pick: "", What: "", Label: "", Window: ids.ULID{}, Zone: ids.ULID{}, From: ids.ULID{}}
+	start := protocol.PickStart{
+		Pick: "", What: "", Label: "", Window: ids.ULID{}, Zone: ids.ULID{}, From: ids.ULID{}, Now: p.now,
+	}
 	if kind == choosingZone {
 		start.Zone = target
 	} else {
@@ -148,7 +191,7 @@ func (p *Picker) begin(ctx *frame.Context, start protocol.PickStart) {
 	p.count++
 	start.Pick = p.window.String() + "-" + strconv.Itoa(p.count)
 	start.What = protocol.PickAnchor
-	start.Label = p.label
+	start.Label, start.Now = p.label, p.now
 	p.picking = start.Pick
 	ctx.Requests.PickStart(start, func(result protocol.Result, err error) {
 		if err != nil {

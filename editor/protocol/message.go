@@ -269,8 +269,8 @@ type PickAsk struct {
 }
 
 // PickStart starts a pick. The requesting window names an open Map window, or
-// a zone for the orchestrator to open one on. The orchestrator forwards it to
-// the Map window with From set.
+// a zone for the orchestrator to open one on, and what the pick would
+// replace. The orchestrator forwards it to the Map window with From set.
 type PickStart struct {
 	Pick   string   `json:"pick"`
 	What   string   `json:"what"`
@@ -278,14 +278,24 @@ type PickStart struct {
 	Window ids.ULID `json:"window,omitzero"`
 	Zone   ids.ULID `json:"zone,omitzero"`
 	From   ids.ULID `json:"from,omitzero"`
+	Now    PickNow  `json:"now,omitzero"`
 }
 
-// PickAnswer reports what was picked; the requesting window then makes an
-// ordinary edit.
+// PickNow is what a pick would replace, so the Map window can mark it: the
+// floor and item, and its name; zero when nothing is there yet.
+type PickNow struct {
+	Floor ids.ULID `json:"floor,omitzero"`
+	Item  string   `json:"item,omitempty"`
+	Name  string   `json:"name,omitempty"`
+}
+
+// PickAnswer reports what was picked, and its name; the requesting window
+// then makes an ordinary edit.
 type PickAnswer struct {
 	Pick  string   `json:"pick"`
 	Floor ids.ULID `json:"floor"`
 	Item  string   `json:"item"`
+	Name  string   `json:"name,omitempty"`
 }
 
 // PickCancel ends a pick without an answer, from either side.
@@ -317,9 +327,11 @@ type PreviewEntity struct {
 	Y     float64  `json:"y"`
 	// Face is the direction the entity faces, one cell.
 	Face [2]int `json:"face"`
-	// An NPC also says which NPC it is, the workflow it follows, the node it
-	// is on, what it is doing there, what keeps it from following its
-	// workflow, its latest change of node and how many changes it has made.
+	// An NPC also says which NPC it is, the workflow it follows now, its
+	// behaviour or a workflow it called, the node it is on, what it is
+	// doing there, what keeps it from following its workflow, its latest
+	// change of node and how many changes it has made. Calls are the calls
+	// it is inside, its behaviour's first.
 	NPC      ids.ULID      `json:"npc,omitzero"`
 	Workflow ids.ULID      `json:"workflow,omitzero"`
 	Node     ids.ULID      `json:"node,omitzero"`
@@ -327,6 +339,14 @@ type PreviewEntity struct {
 	Status   string        `json:"status,omitempty"`
 	Last     PreviewChange `json:"last,omitzero"`
 	Changes  uint64        `json:"changes,omitempty"`
+	Calls    []PreviewCall `json:"calls,omitempty"`
+}
+
+// PreviewCall is a call an NPC is inside: the workflow that called and its
+// Call workflow node.
+type PreviewCall struct {
+	Workflow ids.ULID `json:"workflow"`
+	Call     ids.ULID `json:"call"`
 }
 
 // PreviewChange is an NPC's change from one node to another: the output it

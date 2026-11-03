@@ -158,11 +158,18 @@ type State struct {
 	// opened in one, opened again in the next.
 	values    *valuePicker
 	lastGroup string
-	form      *form
-	save      *ui.SaveBar
-	guard     frame.Guard
-	focus     ui.Focus
-	picker    *picker.Picker
+	// places is the list of places while it is open; lit is the place
+	// control whose box glows, its place just set, for litLeft frames more.
+	places  *placeList
+	lit     string
+	litLeft int
+	// shown is whether this view's tab is in front, as the window says.
+	shown  bool
+	form   *form
+	save   *ui.SaveBar
+	guard  frame.Guard
+	focus  ui.Focus
+	picker *picker.Picker
 	// live is set for a read-only view of an NPC's workflow in the Watch
 	// window.
 	live *live
@@ -173,6 +180,14 @@ type State struct {
 	audioRevision int
 	audioAsking   bool
 	sounds        frame.Sounds
+	// modules are the workflows its Calls name, as last loaded, callsKey
+	// what they were loaded from, and missingWays each Call's ways out its
+	// module no longer has.
+	modules     map[ids.ULID]module
+	callsKey    string
+	missingWays map[ids.ULID]map[string]bool
+	// callers is who calls this workflow, as last asked.
+	callers callers
 	// locals is the inspector's part for the workflow's local values, shown
 	// while no node or line is selected.
 	locals *localsPanel
@@ -197,7 +212,10 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
+		places: nil, lit: "", litLeft: 0, shown: true,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
+		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
+		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 	}
 	for _, kind := range flow.Kinds() {
@@ -228,8 +246,11 @@ func (s *State) name(docs frame.Docs) string {
 // Focused returns the focused text field.
 // While the value picker is open, it is the picker's.
 func (s *State) Focused() *ui.TextField {
-	if s.values != nil {
+	switch {
+	case s.values != nil:
 		return s.values.picker.Focused()
+	case s.places != nil:
+		return s.places.list.Focused()
 	}
 
 	return s.focus.Current()
@@ -269,16 +290,25 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 // anything they depend on has changed.
 func (s *State) load(docs frame.Docs) {
 	revision, found := uint64(0), false
+	var called []ids.ULID
 	docs.View(s.document, func(document client.Document) {
 		workflowDoc, ok := document.Model.(*workflowplugin.Document)
 		if !ok {
 			return
 		}
-		found, revision = true, document.Revision
-		if !s.hasLayout || revision != s.laidOut {
-			s.workflow = workflowDoc.Workflow.Clone()
-		}
+		found, revision, called = true, document.Revision, callees(workflowDoc.Workflow)
 	})
+	calls := s.loadModules(docs, called)
+	changed := !s.hasLayout || revision != s.laidOut || calls != s.callsKey
+	if found && changed {
+		docs.View(s.document, func(document client.Document) {
+			if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
+				s.workflow = workflowDoc.Workflow.Clone()
+			}
+		})
+		s.callsKey = calls
+		s.showWays()
+	}
 	if !found {
 		s.workflow, s.hasLayout = nil, false
 		s.shapes, s.routes, s.loops = map[ids.ULID]shape{}, map[routeKey][]image.Point{}, map[routeKey]bool{}
@@ -286,7 +316,7 @@ func (s *State) load(docs frame.Docs) {
 
 		return
 	}
-	if !s.hasLayout || revision != s.laidOut {
+	if changed {
 		s.shapes = shapes(s.workflow, s.noteHeight)
 		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
 		s.tints = s.workflow.Tints()
@@ -391,7 +421,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.sounds = ctx.Sounds
+	s.fade()
 	s.load(ctx.Docs)
+	s.askCallers(ctx)
 	s.listAudio(ctx)
 	if s.guard.Active() {
 		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discardForm)
@@ -400,7 +432,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.syncForm(ctx)
-	s.syncLocals()
+	s.syncLocals(ctx)
 	s.layoutWidgets(ctx.Docs)
 	if s.updateOverlay(input, ctx) {
 		return
@@ -473,6 +505,7 @@ func (s *State) listAudio(ctx *frame.Context) {
 		s.askAudio(ctx)
 	}
 	s.watchValues(ctx)
+	s.watchCalls(ctx)
 }
 
 // keys handles the window's own keys while no text field has focus. Escape
@@ -487,7 +520,7 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	}
 	switch {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
-		s.picker.Cancel(ctx, "cancelled in the workflow")
+		s.picker.Cancel(ctx, cancelledHere)
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
 	case input.Consume(ui.KeyEqual, ui.Cmd()):
@@ -581,7 +614,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
 		s.rightClick(point, input.Cursor)
 	case input.Pressed && input.Cursor.In(canvas):
-		s.press(ctx, point)
+		s.pressOrOpen(ctx, point, input.DoubleClick)
 	}
 }
 
@@ -982,6 +1015,9 @@ func (s *State) add(ctx *frame.Context, kind string, place image.Point, parent i
 		return
 	}
 	node.Parent = parent
+	if kind == flow.KindReturn {
+		node = s.freshReturn(node)
+	}
 	box := newBox(kind, place)
 	gesture := s.gesture()
 	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}

@@ -52,6 +52,7 @@ func everyMessage(t *testing.T) []protocol.Message {
 				ID: testID.String(), Floor: testID, X: 3, Y: 4, Face: [2]int{0, 1}, NPC: testID, Workflow: testID,
 				Node: testID, Activity: "Wait 1 s of 2 s (game time)", Status: "s",
 				Last: protocol.PreviewChange{From: testID, Output: "next", To: testID, Tick: 9, Status: "b"}, Changes: 3,
+				Calls: []protocol.PreviewCall{{Workflow: testID, Call: testID}},
 			},
 		}, Clock: 8 * 3600, Rate: 60, ClockStopped: true, NPCsPaused: true, Watched: testID, Stepping: true,
 			Step: []protocol.PreviewChange{{From: testID, Output: "o1", To: testID, Tick: 9, Status: "b"}}},

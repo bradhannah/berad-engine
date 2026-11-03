@@ -109,8 +109,10 @@ func (s Scope) Owned() bool { return s == ScopeNPC || s == ScopeZone }
 // holding other declarations.
 type Type string
 
-// Types. An NPC value names an NPC, or none, and is for local values only:
-// keeping an NPC in a saved value waits until saves are designed. A group
+// Types. An NPC value names an NPC, or none, and a place value a spot on a
+// map, or none; both are for local values only: keeping an NPC in a saved
+// value waits until saves are designed, and places elsewhere until they
+// are needed. A group
 // holds values and other groups; a template, an NPC or zone scope's own kind
 // of group, is applied to NPCs or zones.
 const (
@@ -119,6 +121,7 @@ const (
 	TypeChoice   Type = "choice"
 	TypeText     Type = "text"
 	TypeNPC      Type = "npc"
+	TypePlace    Type = "place"
 	TypeGroup    Type = "group"
 	TypeTemplate Type = "template"
 )
@@ -127,7 +130,7 @@ const (
 // windows offer them.
 func Types(scope Scope) []Type {
 	if scope == ScopeLocal {
-		return []Type{TypeInteger, TypeBool, TypeChoice, TypeText, TypeNPC}
+		return []Type{TypeInteger, TypeBool, TypeChoice, TypeText, TypeNPC, TypePlace}
 	}
 
 	return []Type{TypeInteger, TypeBool, TypeChoice, TypeText}
@@ -136,6 +139,43 @@ func Types(scope Scope) []Type {
 // IsValue reports whether a declaration of the type holds a value, rather
 // than other declarations.
 func (t Type) IsValue() bool { return t != TypeGroup && t != TypeTemplate }
+
+// Role is what a workflow's local value is to whatever calls the workflow:
+// a local of its own, an input the caller fills or an output handed back.
+type Role string
+
+// Roles. Only a local value has one other than RoleLocal.
+const (
+	RoleLocal  Role = ""
+	RoleInput  Role = "input"
+	RoleOutput Role = "output"
+)
+
+// Roles returns the roles a local value can have, in the order windows
+// offer them.
+func Roles() []Role { return []Role{RoleLocal, RoleInput, RoleOutput} }
+
+// Label names a role for people.
+func (r Role) Label() string {
+	switch r {
+	case RoleInput:
+		return "Input"
+	case RoleOutput:
+		return "Output"
+	case RoleLocal:
+	}
+
+	return "Local"
+}
+
+// Place is a spot on a map: an anchor of a floor. Zero is none.
+type Place struct {
+	Floor  ids.ULID `json:"floor"`
+	Anchor ids.ULID `json:"anchor"`
+}
+
+// IsZero reports a place that is none.
+func (p Place) IsZero() bool { return p.Floor.IsZero() && p.Anchor.IsZero() }
 
 // Label names a type for people.
 func (t Type) Label() string {
@@ -259,6 +299,8 @@ type Declaration struct {
 	// writes it; a group or template has none.
 	Default     json.RawMessage `json:"default,omitempty"`
 	Description string          `json:"description,omitempty"`
+	// Role is a local value's role to a caller of its workflow.
+	Role Role `json:"role,omitempty"`
 }
 
 // Clone returns an independent copy.
@@ -287,7 +329,8 @@ func (d Declaration) Equal(other Declaration) bool {
 	return d.ID == other.ID && d.Name == other.Name && d.Scope == other.Scope && d.Type == other.Type &&
 		d.Parent == other.Parent && slices.Equal(d.Choices, other.Choices) &&
 		limitsEqual(d.Min, other.Min) && limitsEqual(d.Max, other.Max) &&
-		bytes.Equal(compact(d.Default), compact(other.Default)) && d.Description == other.Description
+		bytes.Equal(compact(d.Default), compact(other.Default)) && d.Description == other.Description &&
+		d.Role == other.Role
 }
 
 func limitsEqual(a, b *int) bool {
@@ -359,7 +402,7 @@ func (d Declaration) Empty() Value {
 		if len(d.Choices) > 0 {
 			empty.Choice = d.Choices[0].ID
 		}
-	case TypeBool, TypeText, TypeNPC, TypeGroup, TypeTemplate:
+	case TypeBool, TypeText, TypeNPC, TypePlace, TypeGroup, TypeTemplate:
 	}
 
 	return empty
@@ -370,7 +413,7 @@ func (d Declaration) Empty() Value {
 func New(id ids.ULID, name string, scope Scope, kind Type) Declaration {
 	declared := Declaration{
 		ID: id, Name: name, Scope: scope, Type: kind, Parent: ids.ULID{}, Choices: nil, Min: nil, Max: nil,
-		Default: nil, Description: "",
+		Default: nil, Description: "", Role: RoleLocal,
 	}
 	if kind == TypeChoice {
 		declared.Choices = []Choice{{ID: "c1", Name: "first"}, {ID: "c2", Name: "second"}}
@@ -393,6 +436,9 @@ func (d Declaration) Check() error {
 	}
 	if utf8.RuneCountInString(d.Description) > MaxDescription {
 		return fmt.Errorf("%w: a description is at most %d characters", ErrValue, MaxDescription)
+	}
+	if d.Role != RoleLocal && (d.Scope != ScopeLocal || !slices.Contains(Roles(), d.Role)) {
+		return fmt.Errorf("%w: only a local value is an input or an output", ErrValue)
 	}
 	if !d.Type.IsValue() {
 		return d.checkContainer()
@@ -491,7 +537,7 @@ func (d Declaration) Fits(value Value) bool {
 		_, found := d.Choice(value.Choice)
 
 		return found
-	case TypeBool, TypeText, TypeNPC, TypeGroup, TypeTemplate:
+	case TypeBool, TypeText, TypeNPC, TypePlace, TypeGroup, TypeTemplate:
 	}
 
 	return true
@@ -519,18 +565,22 @@ type Value struct {
 	Text   string
 	// NPC is an NPC's ID; zero is none.
 	NPC ids.ULID
+	// Place is a spot on a map; zero is none.
+	Place Place
 }
 
 // NoValue returns a value of no type.
 func NoValue() Value {
-	return Value{Type: "", Integer: 0, Bool: false, Choice: "", Text: "", NPC: ids.ULID{}}
+	return Value{Type: "", Integer: 0, Bool: false, Choice: "", Text: "", NPC: ids.ULID{},
+		Place: Place{Floor: ids.ULID{}, Anchor: ids.ULID{}},
+	}
 }
 
 // Equal reports whether two values are the same.
 func (v Value) Equal(other Value) bool { return v == other }
 
 // Encode writes a value as saved: an integer, true or false, a choice's ID,
-// text, or an NPC's ID with "" for none.
+// text, an NPC's ID with "" for none, or a place's floor and anchor.
 func (v Value) Encode() json.RawMessage {
 	var encoded []byte
 	switch v.Type {
@@ -548,10 +598,22 @@ func (v Value) Encode() json.RawMessage {
 			npc = v.NPC.String()
 		}
 		encoded = quoted(npc)
+	case TypePlace:
+		encoded = encodePlace(v.Place)
 	case TypeGroup, TypeTemplate:
 	}
 
 	return encoded
+}
+
+// encodePlace writes a place as its floor and anchor.
+func encodePlace(place Place) []byte {
+	data, err := json.Marshal(place)
+	if err != nil {
+		return []byte("null")
+	}
+
+	return data
 }
 
 func quoted(text string) []byte {
@@ -596,6 +658,8 @@ func (d Declaration) parseInto(raw json.RawMessage, value *Value) error {
 		return parseText(raw, &value.Text)
 	case TypeNPC:
 		return parseNPC(raw, &value.NPC)
+	case TypePlace:
+		return json.Unmarshal(raw, &value.Place)
 	case TypeGroup, TypeTemplate:
 		return fmt.Errorf("%w: a %s has no value", ErrValue, d.Type.Label())
 	default:
@@ -663,6 +727,12 @@ func (d Declaration) Label(value Value) string {
 		}
 
 		return value.NPC.String()
+	case TypePlace:
+		if value.Place.IsZero() {
+			return "no place yet"
+		}
+
+		return "a place"
 	case TypeGroup, TypeTemplate:
 	}
 

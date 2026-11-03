@@ -75,7 +75,7 @@ func tools() []toolInfo {
 		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family."},
 		{ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup."},
 		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
-		{ToolAnchor, "Anchors", "A", "Click to add an anchor; drag one to move it."},
+		{ToolAnchor, "Anchors", "A", "Click to add an anchor, a place NPCs go to; drag one to move it."},
 		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left; drag one to move it."},
 		{ToolSelect, "Select walls", "S", "Click a wall for its run, double-click a room, or drag an area."},
 		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor."},
@@ -178,6 +178,7 @@ type State struct {
 	menu       *cellMenu
 	openLoaded ids.ULID
 	pick       *protocol.PickStart
+	picking    pickParts
 	wheel      float64
 	lastPan    image.Point
 	panning    bool
@@ -239,7 +240,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{}, floorsOf: 0,
 		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
 		menu: nil, openLoaded: ids.ULID{},
-		pick: nil, wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
+		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
 		toolList:  ui.NewList("tools", string(ToolGround)),
@@ -266,6 +267,9 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	for _, info := range tools() {
 		row := ui.NewRow(string(info.tool), info.label)
 		row.Detail = string(info.key)
+		if info.tool == ToolAnchor {
+			row.Icon = ui.IconPlace
+		}
 		view.toolList.Rows = append(view.toolList.Rows, row)
 	}
 
@@ -337,7 +341,8 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		start := *update.PickStart
 		s.pick = &start
 		s.stroke.active, s.choosing = false, false
-		ctx.Frame.Status("Pick an anchor for " + labelOr(start.Label, "another tab") + ". Escape cancels.")
+		ctx.Frame.Status("Choose a place for " + labelOr(start.Label, "another tab") +
+			": click a ring or a name on the right. Escape cancels.")
 	case update.PickCancel != nil && s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
 		s.pick = nil
 		ctx.Frame.Status("Pick cancelled: " + labelOr(update.PickCancel.Reason, "no reason given"))
@@ -572,6 +577,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.cursor = input.Cursor
 	s.layoutWidgets(ctx.Docs)
 	if s.updateOver(input, ctx) {
+		return
+	}
+	if s.pick != nil {
+		s.updatePicking(input, ctx)
+
 		return
 	}
 	s.guardAnchor()
@@ -1364,9 +1374,7 @@ func (s *State) replaceFamily(ctx *frame.Context, fromFamily, toFamily string, f
 
 func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
 	if input.Consume(ui.KeyEscape, ui.Plain()) {
-		ctx.Requests.PickCancel(protocol.PickCancel{Pick: s.pick.Pick, Reason: "cancelled in the map"})
-		s.pick = nil
-		ctx.Frame.Status("Pick cancelled")
+		s.cancelPick(ctx)
 
 		return
 	}
@@ -1375,13 +1383,11 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 	}
 	anchor, found := floorData.AnchorAt(cell.X, cell.Y)
 	if !found {
-		ctx.Frame.Status("Click one of the marked anchors, or press Escape")
+		ctx.Frame.Status("Click one of the rings, or a name on the right, or press Escape")
 
 		return
 	}
-	ctx.Requests.PickAnswer(protocol.PickAnswer{Pick: s.pick.Pick, Floor: s.floor, Item: anchor.ID.String()})
-	s.pick = nil
-	ctx.Frame.Status("Picked “" + anchor.Name + "”")
+	s.answerPick(ctx, anchor)
 }
 
 // Locate finds a named part of the window for input scripts: "cell:C,R",
@@ -1393,6 +1399,9 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layoutWidgets(docs)
 	kind, value, _ := strings.Cut(name, ":")
+	if point, found := s.locatePicking(docs, kind, value); found {
+		return point, true
+	}
 	if point, found, over := s.locateOver(kind, value); over {
 		return point, found
 	}
@@ -1434,6 +1443,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 // hasState answers input scripts waiting for the window: "loaded" once the
 // current floor has arrived and is in view, "picking" while answering a pick,
+// "pick-now=Name" while the pick would replace the named place,
 // "floor:N" when the Nth floor from the bottom is shown,
 // "bounds:C,R,W,H" when the current floor has those bounds, "zoom:N" when
 // the zoom control shows N%, "sprite:…" and "art:…" for the art sprites
@@ -1444,6 +1454,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	simple := map[string]bool{"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen()}
+	if s.pick != nil {
+		simple["pick-now="+s.pick.Now.Name] = true
+	}
 	if value, isSimple := simple[state]; isSimple {
 		return value
 	}

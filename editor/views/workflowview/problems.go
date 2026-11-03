@@ -34,7 +34,7 @@ const (
 // project's names or a destination floor has changed. Floors are read one at
 // a time, never one inside another.
 func (s *State) refreshProblems(docs frame.Docs) {
-	parts := []string{strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision)}
+	parts := []string{strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision), "calls:" + s.callsKey}
 	docs.View(project.IndexID(), func(document client.Document) {
 		parts = append(parts, "index:"+strconv.FormatUint(document.Revision, 10))
 	})
@@ -82,6 +82,14 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := s.valueProblem(node, docs); problem != "" {
 			return problem
 		}
+	case flow.KindReturn:
+		if problem := returnProblem(node); problem != "" {
+			return problem
+		}
+	case flow.KindCall:
+		if problem := s.callProblem(node, docs); problem != "" {
+			return problem
+		}
 	}
 	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {
 		return problemUnreached
@@ -93,6 +101,9 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 // destinationProblem says what is wrong with a Go to's destination. A floor
 // not loaded yet is not a problem until it arrives.
 func (s *State) destinationProblem(node flow.Node, docs frame.Docs) string {
+	if choiceOf(node, flow.ParamGoes) == flow.GoesToValue {
+		return s.placeValueProblem(node, docs)
+	}
 	destination, err := node.Anchor("destination")
 	if err != nil || destination.IsZero() {
 		return problemNoDestination

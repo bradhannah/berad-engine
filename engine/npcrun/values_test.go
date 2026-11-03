@@ -503,3 +503,33 @@ func TestLimitsAndTemplates(t *testing.T) {
 		t.Fatal("it read the office's count by name, set its own template value and renamed itself, and only itself")
 	}
 }
+
+// TestGoToAPlaceValue goes to where a place local starts, and carries on
+// when it holds no place.
+func TestGoToAPlaceValue(t *testing.T) {
+	t.Parallel()
+	goTo := node(t, 2, flow.KindGoTo, map[string]any{
+		flow.ParamGoes: flow.GoesToValue, flow.ParamPlace: ref(worldstate.ScopeLocal, 20),
+	})
+	waits := node(t, 3, flow.KindWait, map[string]any{"duration": waitFor(1, flow.UnitHours, flow.ClockGame)})
+	workflow := workflowOf(t, []flow.Node{goTo, waits}, link(1, flow.OutputNext, 2), link(2, flow.OutputNext, 3))
+	place := worldstate.New(id(20), "place", worldstate.ScopeLocal, worldstate.TypePlace)
+	start := worldstate.NoValue()
+	start.Type, start.Place = worldstate.TypePlace, worldstate.Place{Floor: id(groundID), Anchor: id(deskID)}
+	place.Default = start.Encode()
+	if err := workflow.Locals().Insert(place); err != nil {
+		t.Fatal(err)
+	}
+	r := newRunner(t, workflow, image.Pt(2, 1), eight, clock.Real)
+	r.run(40 * play.StepTicks)
+	if r.npc.Cell != image.Pt(8, 1) || r.npc.Node != id(3) {
+		t.Fatalf("went to the desk the place holds: %v on %v (%q)", r.npc.Cell, r.npc.Node, r.npc.Status)
+	}
+	empty := workflowOf(t, []flow.Node{goTo, waits}, link(1, flow.OutputNext, 2), link(2, flow.OutputNext, 3))
+	withLocal(t, empty, 20, "place", worldstate.TypePlace)
+	r = newRunner(t, empty, image.Pt(2, 1), eight, clock.Real)
+	r.run(1)
+	if r.npc.Node != id(3) || r.npc.Last.Status != npcrun.StatusNoAnchor {
+		t.Fatalf("with no place it carries on: %v %q", r.npc.Node, r.npc.Last.Status)
+	}
+}

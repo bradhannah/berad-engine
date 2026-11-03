@@ -36,7 +36,7 @@ import (
 // tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 6
+	FormatVersion       = 7
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 3
 )
@@ -411,9 +411,38 @@ func Format() content.Format {
 	return content.Format{
 		Name: FormatName, Current: FormatVersion,
 		Migrations: map[int]content.Migration{
-			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5,
+			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5, 6: upgradeFrom6,
 		},
 	}
+}
+
+// upgradeFrom6 gives every Go to the anchor it had as where it goes, and no
+// place value: version 7 let a Go to go to a place value instead, and added
+// Return and Call workflow, roles and place locals, which it has none of.
+func upgradeFrom6(data json.RawMessage) (json.RawMessage, error) {
+	var wire wireWorkflow
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	for index, node := range wire.Nodes {
+		if node.Kind != KindGoTo {
+			continue
+		}
+		upgraded, err := node.WithParam(ParamGoes, GoesToMap)
+		if err == nil {
+			upgraded, err = upgraded.WithParam(ParamPlace, noRef())
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: upgrade %s: %w", ErrData, node.ID, err)
+		}
+		wire.Nodes[index] = upgraded
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade workflow: %w", err)
+	}
+
+	return encoded, nil
 }
 
 // upgradeFrom5 reads a version 5 workflow unchanged: version 6 added

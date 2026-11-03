@@ -208,6 +208,9 @@ func Kinds() []Kind {
 			Outputs: []Output{{Name: OutputOtherwise, Label: "otherwise"}},
 		},
 		randomKind(),
+	}
+	kinds = append(kinds, callKinds()...)
+	kinds = append(kinds, []Kind{
 		{
 			Name: KindContainer, Label: "Time-bound container", Group: GroupFlow,
 			Params: []Param{
@@ -219,14 +222,7 @@ func Kinds() []Kind {
 			},
 			Outputs: []Output{{Name: OutputInside, Label: "first step"}, {Name: OutputExit, Label: "exit"}},
 		},
-		{
-			Name: KindGoTo, Label: "Go to", Group: GroupMovement,
-			Params: []Param{{
-				Name: "destination", Label: "Destination", Type: TypeAnchor,
-				Default: mustJSON(tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}), Choices: nil,
-			}},
-			Outputs: next,
-		},
+		goToKind(next),
 		moveKind(next),
 		{
 			Name: KindWait, Label: "Wait", Group: GroupAction,
@@ -237,7 +233,7 @@ func Kinds() []Kind {
 			Outputs: next,
 		},
 		playSoundKind(next),
-	}
+	}...)
 	kinds = append(kinds, valueKinds(next)...)
 
 	return append(kinds, Kind{
@@ -282,6 +278,35 @@ func playSoundKind(next []Output) Kind {
 			{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil},
 			{Name: "loudness", Label: "Loudness this time", Type: TypeChoice, Default: mustJSON(LoudnessAsCue),
 				Choices: choices},
+		},
+		Outputs: next,
+	}
+}
+
+// Where a Go to goes: an anchor picked on a map, or the place a value
+// holds.
+const (
+	GoesToMap   = "map"
+	GoesToValue = "value"
+	ParamGoes   = "goes"
+	ParamPlace  = "place"
+)
+
+// goToKind declares Go to: where it goes, chosen as an anchor on a map or a
+// place value.
+func goToKind(next []Output) Kind {
+	return Kind{
+		Name: KindGoTo, Label: "Go to", Group: GroupMovement,
+		Params: []Param{
+			{
+				Name: ParamGoes, Label: "Destination", Type: TypeChoice, Default: mustJSON(GoesToMap),
+				Choices: []Choice{{Value: GoesToMap, Label: "A place on a map"}, {Value: GoesToValue, Label: "A place value"}},
+			},
+			{
+				Name: "destination", Label: "On the map", Type: TypeAnchor,
+				Default: mustJSON(tilefloor.AnchorRef{Floor: [16]byte{}, Anchor: [16]byte{}}), Choices: nil,
+			},
+			{Name: ParamPlace, Label: "Place value", Type: TypeValue, Default: mustJSON(noRef()), Choices: nil},
 		},
 		Outputs: next,
 	}
@@ -341,6 +366,9 @@ func Outputs(node Node) []Output {
 	declared, ok := KindOf(node.Kind)
 	if !ok {
 		return nil
+	}
+	if node.Kind == KindCall {
+		return callOutputs(node)
 	}
 	if node.Kind == KindRandom {
 		options, err := node.Shares("options")
@@ -415,12 +443,7 @@ func checkValue(param Param, value json.RawMessage) error {
 	case TypeShares:
 		return checkShares(value)
 	case TypeTimeRange:
-		var span TimeRange
-		if err := json.Unmarshal(value, &span); err != nil {
-			return err //nolint:wrapcheck // Wrapped by the caller.
-		}
-
-		return checkRange(span)
+		return checkSpan(value)
 	case TypeTimeRanges:
 		return checkRanges(value)
 	case TypeText, TypeCue:
@@ -429,9 +452,21 @@ func checkValue(param Param, value json.RawMessage) error {
 		return checkRef(value)
 	case TypeOperand:
 		return checkOperand(value)
+	case TypeWorkflow, TypeInputs, TypeKeeps, TypeWays, TypePort:
+		return checkCallValue(param, value)
 	default:
 		return fmt.Errorf("%w: unknown parameter type %q", ErrNode, param.Type)
 	}
+}
+
+// checkSpan reads a time range.
+func checkSpan(value json.RawMessage) error {
+	var span TimeRange
+	if err := json.Unmarshal(value, &span); err != nil {
+		return err //nolint:wrapcheck // Wrapped by the caller.
+	}
+
+	return checkRange(span)
 }
 
 // textLimit is how long a text or a cue's ID can be.
