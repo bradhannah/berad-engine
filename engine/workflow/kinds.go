@@ -240,7 +240,7 @@ func Kinds() []Kind {
 		Name: KindNote, Label: "Note", Group: GroupAnnotate,
 		Params:  []Param{{Name: "text", Label: "Note", Type: TypeText, Default: mustJSON(""), Choices: nil}},
 		Outputs: nil,
-	})
+	}, logKind(next))
 }
 
 // randomKind declares Random choice: two even options to start with, and an
@@ -448,10 +448,8 @@ func checkValue(param Param, value json.RawMessage) error {
 		return checkRanges(value)
 	case TypeText, TypeCue:
 		return checkText(value, textLimit(param.Type))
-	case TypeValue:
-		return checkRef(value)
-	case TypeOperand:
-		return checkOperand(value)
+	case TypeValue, TypeOperand, TypeMessage:
+		return checkValues(param.Type, value)
 	case TypeWorkflow, TypeInputs, TypeKeeps, TypeWays, TypePort:
 		return checkCallValue(param, value)
 	default:

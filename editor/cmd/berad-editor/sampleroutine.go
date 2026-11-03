@@ -129,6 +129,13 @@ func (b *routineBuilder) serving(parent ids.ULID, values shopValues, serving str
 	return b.node(flow.KindSetValue, parent, setTo(npcValue(values.serving), serving))
 }
 
+// logServing writes to Watch whom the clerk serves.
+func (b *routineBuilder) logServing(parent ids.ULID, customer flow.ValueRef) ids.ULID {
+	return b.node(flow.KindLog, parent, map[string]any{flow.ParamMessage: []flow.Segment{
+		{Text: "Serving ", Ref: nil}, {Text: "", Ref: &customer},
+	}})
+}
+
 // fetchStock is the workflow the clerk's day calls: the clerk goes to the
 // place it is given, the shelf to start with, and finds stock there three
 // times in four, going back by Fetched or Out of stock.
@@ -203,11 +210,11 @@ func clerksDay(
 	toDoor, sleep := made.goTo(none, anchors, anchors.door), made.wait(none, nightHours, flow.UnitHours)
 	toDesk := made.goTo(shop, anchors, anchors.desk)
 	chime := made.node(flow.KindPlaySound, shop, map[string]any{"cue": chimeCue, "loudness": flow.LoudnessAsCue})
+	customer := localValue(made.local("customer", worldstate.TypeNPC))
 	find := made.node(flow.KindFindNPC, shop, map[string]any{
-		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes),
-		"into": localValue(made.local("customer", worldstate.TypeNPC)),
+		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes), "into": customer,
 	})
-	open := made.serving(shop, values, shopYes)
+	serving, open := made.logServing(shop, customer), made.serving(shop, values, shopYes)
 	serve := made.wait(shop, serveMinutes, flow.UnitMinutes)
 	done := made.serving(shop, values, shopNo)
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
@@ -227,7 +234,7 @@ func clerksDay(
 		{toDoor, flow.OutputNext, sleep}, {sleep, flow.OutputNext, hours},
 		{shop, flow.OutputInside, toDesk}, {shop, flow.OutputExit, hours},
 		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, find},
-		{find, flow.OutputFound, open}, {find, flow.OutputNone, choose},
+		{find, flow.OutputFound, serving}, {serving, flow.OutputNext, open}, {find, flow.OutputNone, choose},
 		{open, flow.OutputNext, serve}, {serve, flow.OutputNext, done}, {done, flow.OutputNext, choose},
 		{choose, "o1", toShelf}, {toShelf, portFetched, tidy}, {toShelf, portNone, toDesk},
 		{toShelf, flow.OutputDone, toDesk}, {tidy, flow.OutputNext, toDesk},

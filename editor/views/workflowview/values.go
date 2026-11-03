@@ -225,9 +225,9 @@ const (
 	roleCheck
 	roleWhere
 	roleKeep
-	// roleGive is another value a Call gives an input, and roleKept a
-	// value it keeps an output in: of any type, an NPC or a place among
-	// them.
+	// roleGive is another value a Call gives an input, or a value a Log
+	// writes, and roleKept a value a Call keeps an output in: of any type,
+	// an NPC or a place among them.
 	roleGive
 	roleKept
 	// rolePlace is a Go to's place value: a place local.
@@ -240,6 +240,8 @@ func roleOf(kind, param string) valueRole {
 		return roleGive
 	case kind == flow.KindCall:
 		return roleKept
+	case kind == flow.KindLog:
+		return roleGive
 	case kind == flow.KindGoTo:
 		return rolePlace
 	case kind == flow.KindCheckValue:
@@ -665,7 +667,7 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 		current, found := s.currentNode(ctx.Docs, nodeID)
 		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
 		switch {
-		case !found, s.chooseForCall(ctx, current, param, ref):
+		case !found, s.chooseForCall(ctx, current, param, ref), s.insertForLog(ctx, current, ref):
 		case made.operand:
 			s.saveParam(ctx, current, param, flow.RefOperand(ref))
 		default:
@@ -974,8 +976,11 @@ func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control
 // valueProblem says what is wrong with a Set value, Check value or Find NPC
 // nearby.
 func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
-	if node.Kind == flow.KindFindNPC {
+	switch node.Kind {
+	case flow.KindFindNPC:
 		return s.findProblem(node, docs)
+	case flow.KindLog:
+		return s.logProblem(node, docs)
 	}
 	ref, err := node.Ref(flow.ParamValue)
 	if err != nil {
@@ -1097,6 +1102,9 @@ func compareWords(node flow.Node) string {
 
 // valueSummary describes a value node in a few words.
 func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
+	if node.Kind == flow.KindLog {
+		return s.logSummary(docs, node)
+	}
 	path := func(param string) string {
 		ref, err := node.Ref(param)
 		if err != nil || ref.IsZero() {

@@ -81,7 +81,7 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := s.cueProblem(node); problem != "" {
 			return problem
 		}
-	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog:
 		if problem := s.valueProblem(node, docs); problem != "" {
 			return problem
 		}

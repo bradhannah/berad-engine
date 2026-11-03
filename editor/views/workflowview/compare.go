@@ -204,7 +204,7 @@ func (made control) isBox(widget string) bool {
 		return widget == "cue"
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTiles,
 		flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays,
-		flow.TypePort:
+		flow.TypePort, flow.TypeMessage:
 	}
 
 	return false

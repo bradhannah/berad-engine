@@ -344,6 +344,27 @@ func TestReferencesListCalls(t *testing.T) {
 	}
 }
 
+// TestReferencesListLogValues lists the world-state values a Log writes,
+// and the NPC it names, not its locals.
+func TestReferencesListLogValues(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	named := flow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(20), Owner: id(21), Found: ids.ULID{}}
+	local := flow.ValueRef{Scope: worldstate.ScopeLocal, Value: id(22), Owner: ids.ULID{}, Found: ids.ULID{}}
+	logged, err := newNode(t, flow.KindLog, 3, ids.ULID{}).WithParam(flow.ParamMessage, []flow.Segment{
+		{Text: "", Ref: &named}, {Text: " has ", Ref: nil}, {Text: "", Ref: &local},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{logged}, Boxes: nil, Links: nil}))
+	references := document.References()
+	if len(references) != 2 || references[0].Document != worldstate.ID() || references[0].Item != id(20).String() ||
+		references[1].Document != id(21) || references[1].Label != "a Log node" {
+		t.Fatalf("a Log refers to the world-state value it writes and its NPC: %+v", references)
+	}
+}
+
 // TestAZoneLoopAndWhereItRuns makes a zone loop as the orchestrator does,
 // keeping its kind through preparing, refuses a Go to in it, and sets the
 // zone it runs in, which it then refers to, undoably.

@@ -96,6 +96,7 @@ type town struct {
 	clock     *clock.Clock
 	tick      uint64
 	names     npcrun.Names
+	behaviour ids.ULID
 }
 
 func newTown(t *testing.T, state *worldstate.Store) *town {
@@ -103,7 +104,7 @@ func newTown(t *testing.T, state *worldstate.Store) *town {
 
 	return &town{
 		npcs: nil, workflows: nil, state: state, zone: play.Levels{{ID: id(groundID), Floor: office(t)}},
-		clock: clock.New(eight, clock.MinutePerSecond), tick: 0, names: nil,
+		clock: clock.New(eight, clock.MinutePerSecond), tick: 0, names: nil, behaviour: ids.ULID{},
 	}
 }
 
@@ -126,8 +127,8 @@ func (w *town) run(ticks int) {
 		}
 		for index, each := range w.npcs {
 			each.Step(npcrun.World{
-				Names: w.names, Zone: w.zone, Workflow: w.workflows[index], Clock: w.clock, Passed: passed, State: w.state,
-				Here: id(zoneID), Others: others,
+				Names: w.names, Zone: w.zone, Workflow: w.workflows[index], Behaviour: w.behaviour, Clock: w.clock,
+				Passed: passed, State: w.state, Here: id(zoneID), Others: others,
 			}, w.tick)
 		}
 	}

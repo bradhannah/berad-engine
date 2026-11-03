@@ -121,8 +121,8 @@ func (d *Document) Clone() model.Document {
 
 // References lists the anchors the workflow's Go to nodes lead to, the
 // cues its Play sound nodes play, the world-state values and NPCs its
-// value nodes use, the workflows its Calls call, as CallItem, with the
-// values they give and keep, and the zone it runs in.
+// value nodes use and its Logs write, the workflows its Calls call, as
+// CallItem, with the values they give and keep, and the zone it runs in.
 func (d *Document) References() []model.Reference {
 	var references []model.Reference
 	if zone := d.Workflow.RunsIn(); !zone.IsZero() {
@@ -150,6 +150,8 @@ func (d *Document) References() []model.Reference {
 			references = append(references, valueReferences(node)...)
 		case flow.KindCall:
 			references = append(references, callReferences(node)...)
+		case flow.KindLog:
+			references = append(references, logReferences(node)...)
 		}
 	}
 
@@ -549,6 +551,30 @@ func callReferences(node flow.Node) []model.Reference {
 			refs = append(refs, ref)
 		}
 	}
+
+	return append(references, refReferences(refs, label)...)
+}
+
+// logReferences lists the values outside the workflow a Log writes.
+func logReferences(node flow.Node) []model.Reference {
+	segments, err := node.Message()
+	if err != nil {
+		return nil
+	}
+	var refs []flow.ValueRef
+	for _, segment := range segments {
+		if segment.Ref != nil {
+			refs = append(refs, *segment.Ref)
+		}
+	}
+
+	return refReferences(refs, "a Log node")
+}
+
+// refReferences lists values outside the workflow by ID under the world
+// state, and any NPC or zone they name.
+func refReferences(refs []flow.ValueRef, label string) []model.Reference {
+	var references []model.Reference
 	for _, ref := range refs {
 		if ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
 			continue

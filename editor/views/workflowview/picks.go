@@ -137,7 +137,7 @@ func (v *valueSource) Pick(ctx *frame.Context, option valuepicker.Option) {
 	if !found || !refers {
 		return
 	}
-	if v.state.chooseForCall(ctx, node, v.param, ref) {
+	if v.state.chooseForCall(ctx, node, v.param, ref) || v.state.insertForLog(ctx, node, ref) {
 		return
 	}
 	if v.operand {
