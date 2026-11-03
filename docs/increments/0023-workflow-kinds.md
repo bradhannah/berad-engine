@@ -1,6 +1,6 @@
 # Increment 23: Kinds of workflow, and where they run
 
-**Status:** Planned
+**Status:** Built
 
 The twenty-third increment gives every workflow a kind and a zone. Today
 every workflow is an NPC's, and whether its places can be reached is
@@ -170,7 +170,7 @@ Chosen while planning, for its author to check:
 | 7. What doesn't fit | Problems for a place outside the workflow's zone, a Call to a workflow of another kind or zone, an NPC whose behaviour runs elsewhere and a zone whose loop does; stairs still checked for each NPC; increment 22's move dialog saying whether the behaviour fits | View tests raise and mend each problem, and move an NPC whose behaviour runs only where it lived | Built |
 | 8. Running a zone loop | The runner running a loop with no body: values, waits, time switches, containers, calls, and sounds across the zone; the Map's preview and the Play tab running a zone's loop while the zone is alive | Runner tests run a loop that sets a zone value by the clock and plays a sound; a headless game test starts a loop with its zone and stops it on leaving | Built |
 | 9. Watching a zone loop | Watch listing a zone's loop first, under its name, with its path, what it is doing and its values | A view test watches a loop and reads its values | Built |
-| 10. Checks | `make check` and the real-window suite; a real-window test makes a zone loop for the sample zone, previews it and finds its value in Watch; another changes where the customer's behaviour runs and undoes it | The checks pass with no lint findings | Planned |
+| 10. Checks | `make check` and the real-window suite; a real-window test makes a zone loop for the sample zone, previews it and finds its value in Watch; another changes where the customer's behaviour runs and undoes it | The checks pass with no lint findings | Built |
 
 ## Step results
 
@@ -270,6 +270,16 @@ Chosen while planning, for its author to check:
   Verified: a view test watches a loop and reads its node and values; a
   map test carries the loop in its state, watches it and steps it past its
   Wait.
+- **Checks:** `make check` passes with no lint findings. Two real-window
+  tests are new. One makes a zone loop from New ▾, sets world.rings to 1 in
+  it, makes it the sample zone's loop from the zone's details and previews
+  the zone: Watch zone loop watches it as Sample zone, and its values show
+  world.rings = 1. The other runs the customer's behaviour in a new zone
+  from the Runs in box: the question names the customer and the counter
+  and door, the Go to is flagged, and so is the customer's Behaviour box;
+  Undo runs it in the sample zone again, the flags gone. Increment 22's
+  move test now reads the new move dialog and the customer's flag. The
+  whole real-window suite, 52 tests, passed.
 
 ## Changed while building, short of the wireframes
 
