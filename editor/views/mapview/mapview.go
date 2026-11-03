@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -168,7 +169,10 @@ type State struct {
 	// and floorsOf how many floors in the project place the selected
 	// placement's NPC, as asked for floorsFor: an NPC is placed once in the
 	// whole project.
-	zoneNPCs     map[ids.ULID]int
+	zoneNPCs map[ids.ULID]int
+	// homes are the zones the project's NPCs live in, zero for none, as far
+	// as the window has them loaded.
+	homes        map[ids.ULID]ids.ULID
 	floorsOf     int
 	floorsFor    ids.ULID
 	floorsAsking bool
@@ -237,7 +241,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		outside: false,
 		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
-		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{}, floorsOf: 0,
+		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
+		homes: map[ids.ULID]ids.ULID{}, floorsOf: 0,
 		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
 		menu: nil, openLoaded: ids.ULID{},
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
@@ -636,6 +641,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updatePanels(input, ctx)
 	s.subscribeNPC(ctx)
+	s.subscribeNPCs(ctx)
 	s.askPlacing(ctx)
 	s.openWhenLoaded(ctx)
 	if s.preview != nil {
@@ -769,7 +775,7 @@ func (s *State) toolAndTileKeys(input *ui.Input, ctx *frame.Context) {
 	}
 	for number := 1; number <= numberedTiles; number++ {
 		if input.Consume(ui.Key(strconv.Itoa(number)), ui.Plain()) {
-			offered := s.tileRows()
+			offered := slices.DeleteFunc(s.tileRows(), func(row ui.Row) bool { return row.Heading })
 			if number <= len(offered) {
 				s.chooseTile(offered[number-1].ID, ctx)
 			}

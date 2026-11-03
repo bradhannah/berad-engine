@@ -121,7 +121,7 @@ Chosen while planning, for its author to check:
 | 1. An NPC's zone | The zone in the NPC's file, its next format version; older projects giving placed NPCs their placement's zone; notes on a zone | Engine tests save, load and upgrade an NPC's zone and a zone's notes | Built |
 | 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Built |
 | 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Built |
-| 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Planned |
+| 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Built |
 | 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Planned |
 | 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Planned |
 | 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Planned |
@@ -172,6 +172,16 @@ Chosen while planning, for its author to check:
   palettes, saved with Save as an NPC's are. Verified: view tests choose
   a first zone from the picker, read the zone and Placed on, open the map
   at the placement and save a zone's notes.
+- **Placing in its zone:** the Place NPC tool lists the NPCs under Live
+  in Town, No zone yet and Live elsewhere, the last with the zone each
+  lives in where the others have their number key; the number keys count
+  only the first two groups. The map keeps every NPC loaded to know where
+  each lives. Placing one that lives nowhere gives it the map's zone in
+  the same undo step, the status saying it lives there now; one that lives
+  elsewhere is refused, the status saying where it lives and to change
+  its zone in its details. Verified: a view test refuses an NPC living in
+  another zone with the status line, and places one living nowhere,
+  giving it the zone in one gesture.
 
 ## Not in this increment
 

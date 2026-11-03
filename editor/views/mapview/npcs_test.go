@@ -161,3 +161,43 @@ func TestOnePlacementPerZone(t *testing.T) {
 		t.Fatalf("status %q", f.status())
 	}
 }
+
+// TestPlacingInItsZone places an NPC that lives nowhere, which then lives
+// in the map's zone, in one undo step, and refuses one that lives in
+// another zone, saying where to change it.
+func TestPlacingInItsZone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withClerk(f)
+	harbourID, customerID := frametest.ID(81), frametest.ID(82)
+	customer := npcplugin.NewDocument()
+	customer.NPC.Zone = harbourID
+	f.docs.Put(customerID, "Customer", customer)
+	f.docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
+		{ID: zoneID, Name: "Town", Format: "zone"}, {ID: groundID, Name: "Ground", Format: floor.FormatName},
+		{ID: upperID, Name: "Upper", Format: floor.FormatName}, {ID: clerkID, Name: "Ada Clerk", Format: npc.FormatName},
+		{ID: customerID, Name: "Customer", Format: npc.FormatName}, {ID: harbourID, Name: "Harbour", Format: "zone"},
+		{ID: routineID, Name: "Clerk day", Format: flow.FormatName},
+	}))
+	f.keys("N")
+	f.click("npc:Customer")
+	f.click("cell:3,3")
+	if added := f.requests.Of(tilefloor.AddPlacementEdit); len(added) != 0 ||
+		f.status() != "Customer lives in Harbour. To place it here, change its zone in its details." {
+		t.Fatalf("an NPC living elsewhere is refused: %d sent, %q", len(added), f.status())
+	}
+	f.click("npc:Ada Clerk")
+	f.click("cell:3,3")
+	f.answerUses(nil)
+	added, homed := f.requests.Of(tilefloor.AddPlacementEdit), f.requests.Of(npcplugin.SetZoneEdit)
+	var home npcplugin.SetZoneArgs
+	if len(added) != 1 || len(homed) != 1 || homed[0].Decode(&home) != nil || home.Zone != zoneID ||
+		homed[0].Command.Document != clerkID || added[0].Command.Gesture == "" ||
+		added[0].Command.Gesture != homed[0].Command.Gesture {
+		t.Fatalf("placing an NPC that lives nowhere gives it the zone, in one step: %+v %+v", added, homed)
+	}
+	added[0].Succeed(placedID)
+	if f.status() != "Placed Ada Clerk at 3, 3. It lives in Town now." {
+		t.Fatalf("status %q", f.status())
+	}
+}
