@@ -42,7 +42,8 @@ const (
 	StatusBlocked     = "Blocked, so it carried on"
 	StatusNoRoute     = "No way there, so it carried on"
 	StatusNoAnchor    = "No destination, so it carried on"
-	StatusOtherFloor  = "Can't reach it: the destination is on another floor"
+	StatusOtherFloor  = "Can't reach it: no stairs lead to its floor"
+	StatusOtherZone   = "Can't reach it: the destination is in another zone"
 	StatusNoCue       = "No sound chosen, so it carried on"
 )
 
@@ -127,9 +128,10 @@ type work struct {
 	movesLeft, movesTotal int
 	direction             image.Point
 	way                   string
-	// route is the cells a Go to still walks, goal the anchor's name and
-	// target its cell.
+	// route is the cells a Go to still walks, across floors, climbs the
+	// stairs it still takes, goal the anchor's name and target its cell.
 	route  []image.Point
+	climbs []Climb
 	goal   string
 	target image.Point
 }
@@ -138,7 +140,7 @@ type work struct {
 func idle() work {
 	return work{
 		started: false, waiting: false, skipped: "", waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0, movesTotal: 0,
-		direction: image.Pt(0, 0), way: "", route: nil, goal: "", target: image.Pt(0, 0),
+		direction: image.Pt(0, 0), way: "", route: nil, climbs: nil, goal: "", target: image.Pt(0, 0),
 	}
 }
 
@@ -208,7 +210,7 @@ func (n *NPC) Step(world World, tick uint64) {
 	n.Taken, n.Sounds = n.Taken[:0], n.Sounds[:0]
 	if world.Workflow == nil {
 		n.Node, n.Container, n.Status = ids.ULID{}, ids.ULID{}, StatusNoBehaviour
-		n.walk()
+		n.walk(world.Zone)
 
 		return
 	}
@@ -224,21 +226,37 @@ func (n *NPC) Step(world World, tick uint64) {
 	}
 	n.timeUp(world, tick)
 	n.wait(world)
-	n.walk()
+	n.walk(world.Zone)
 	if n.Moving() {
 		return
 	}
 	n.follow(world, tick)
 }
 
-// walk advances a step between cells.
-func (n *NPC) walk() {
+// walk advances a step between cells. A step onto stairs takes them, to
+// the same cell of the floor above or below, as the player's does.
+func (n *NPC) walk(zone play.Zone) {
 	if !n.Moving() {
 		return
 	}
 	n.Progress++
 	if n.Progress >= play.StepTicks {
 		n.Cell, n.Progress = n.To, 0
+		n.climb(zone)
+	}
+}
+
+// climb takes the stairs on the cell the NPC has just stepped onto, if any
+// lead somewhere it can stand.
+func (n *NPC) climb(zone play.Zone) {
+	floors := zone.Floors()
+	target := climbAt(zone, floors, n.Floor, n.Cell)
+	if target < 0 {
+		return
+	}
+	n.Floor = floors[target]
+	if len(n.work.climbs) > 0 && n.work.climbs[0].At == n.Cell {
+		n.work.climbs = n.work.climbs[1:]
 	}
 }
 

@@ -125,7 +125,7 @@ Chosen while planning, for its author to check:
 | 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Built |
 | 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Built |
 | 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Built |
-| 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Planned |
+| 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Built |
 | 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Planned |
 | 10. Checks | `make check` and the real-window suite; a real-window test moves an NPC to another zone, mends its flagged place there, and watches it take the stairs to it | The checks pass with no lint findings | Planned |
 
@@ -230,6 +230,20 @@ Chosen while planning, for its author to check:
   stairs lead to, mend it with stairs down, name the NPC that cannot go
   of two sharing the behaviour, flag a Call's place input and a place
   local's start, and mend the start.
+- **Taking the stairs:** an NPC that steps onto stairs takes them, to the
+  same cell of the floor above or below, when the zone has that floor and
+  the cell there can be stood on, as the player does; this holds for a
+  Move as for a Go to. A Go to finds its way to a place on any floor of
+  the NPC's zone: a cheapest route across floors, each floor walked by the
+  player's steps and never onto stairs it does not mean to take, changing
+  floor at the stairs it does. Its route is planned when it starts and
+  again when something comes into its way. An NPC's Way lists the stairs
+  it still has to take. A place on a floor no stairs lead to carries on
+  by its output, saying no stairs lead to its floor; one in another zone
+  says so. Verified: runner tests go up the nearer of two stairs, saying
+  them on the way, and back down the only stairs down, walking around
+  stairs up below the wall; and fall down a hole to a desk below, then
+  carry on, as no stairs lead back up.
 
 ## Not in this increment
 
