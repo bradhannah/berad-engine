@@ -228,14 +228,17 @@ type Host struct {
 // inside it.
 const QuestionWhereUsed = "where-used"
 
-// QuestionRunners asks which NPCs run a workflow: those whose behaviour it
-// is, labelled RunsAsBehaviour, and those whose behaviour calls it through
-// any number of Calls, labelled RunsByCall. The answer's uses are the NPCs.
+// QuestionRunners asks which NPCs and zones run a workflow: the NPCs whose
+// behaviour it is, labelled RunsAsBehaviour, the zones whose loop it is,
+// labelled RunsAsLoop, and those whose behaviour or loop calls it through
+// any number of Calls, labelled RunsByCall. The answer's uses are the NPCs
+// and zones.
 const QuestionRunners = "runners"
 
-// Labels of the NPCs that run a workflow.
+// Labels of the NPCs and zones that run a workflow.
 const (
 	RunsAsBehaviour = "behaviour"
+	RunsAsLoop      = "zone loop"
 	RunsByCall      = "calls it"
 )
 

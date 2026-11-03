@@ -50,23 +50,25 @@ func (o *Orchestrator) settleHomes() []*documentEntry {
 }
 
 // SettleHomes gives each NPC placed on a zone's floor that lives in no zone
-// yet that zone, as opening a project does, and saves them, for content
-// made before Run, such as a sample project's. Call before Run.
+// yet that zone, and each workflow running in any zone the zone it belongs
+// in, as opening a project made before they had zones does, and saves
+// them, for content made before Run, such as a sample project's. Call
+// before Run.
 func (o *Orchestrator) SettleHomes() error {
 	if o.running.Load() {
 		return ErrRunning
 	}
 	var errs []error
-	for _, entry := range o.settleHomes() {
+	for _, entry := range append(o.settleHomes(), o.settleRunsIn(o.workflows())...) {
 		errs = append(errs, o.save(entry))
 	}
 
 	return errors.Join(errs...)
 }
 
-// runners lists the NPCs that run a workflow, by name: those whose
-// behaviour it is, and those whose behaviour calls it through any number of
-// Calls.
+// runners lists the NPCs and zones that run a workflow, by name: those
+// whose behaviour or loop it is, and those whose behaviour or loop calls it
+// through any number of Calls.
 func (o *Orchestrator) runners(workflowID ids.ULID) []protocol.Use {
 	running := map[ids.ULID]bool{workflowID: true}
 	waiting := []ids.ULID{workflowID}
@@ -81,21 +83,30 @@ func (o *Orchestrator) runners(workflowID ids.ULID) []protocol.Use {
 			}
 		}
 	}
-	runs := []protocol.Use{}
+	runners := []protocol.Use{}
 	for documentID, entry := range o.docs {
-		npcDoc, isNPC := entry.document.(*npcplugin.Document)
-		if !isNPC || !running[npcDoc.NPC.Behaviour] {
+		var runs ids.ULID
+		var own string
+		switch held := entry.document.(type) {
+		case *npcplugin.Document:
+			runs, own = held.NPC.Behaviour, protocol.RunsAsBehaviour
+		case *zoneplugin.Document:
+			runs, own = held.Zone.Loop, protocol.RunsAsLoop
+		default:
+			continue
+		}
+		if runs.IsZero() || !running[runs] {
 			continue
 		}
 		label := protocol.RunsByCall
-		if npcDoc.NPC.Behaviour == workflowID {
-			label = protocol.RunsAsBehaviour
+		if runs == workflowID {
+			label = own
 		}
-		runs = append(runs, protocol.Use{
+		runners = append(runners, protocol.Use{
 			Document: documentID, Name: entry.info.Name, Format: entry.info.Format, Label: label, Item: "",
 		})
 	}
-	slices.SortFunc(runs, func(a, b protocol.Use) int { return cmp.Compare(a.Name, b.Name) })
+	slices.SortFunc(runners, func(a, b protocol.Use) int { return cmp.Compare(a.Name, b.Name) })
 
-	return runs
+	return runners
 }

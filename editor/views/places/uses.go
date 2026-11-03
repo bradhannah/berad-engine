@@ -9,7 +9,6 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
-	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
@@ -23,68 +22,25 @@ type Use struct {
 }
 
 // Modules finds a workflow a Call calls, when the window has it.
-type Modules func(ids.ULID) (*flow.Workflow, bool)
+type Modules = flow.Modules
 
-// UsesIn lists the places a workflow names itself: each Go to's place on a
-// map, each place a Call gives its module's place inputs, and each place
-// local's start. A place reached through a place value is its local's
-// start, listed once; a module's own places are the module's.
+// UsesIn lists the places a workflow names itself, as flow.PlacesIn does,
+// each saying what names it.
 func UsesIn(workflow *flow.Workflow, modules Modules, names func(ids.ULID) string) []Use {
-	var uses []Use
-	for _, node := range workflow.Nodes() {
-		switch node.Kind {
-		case flow.KindGoTo:
-			goes, err := node.Choice(flow.ParamGoes)
-			if err == nil && goes == flow.GoesToValue {
-				continue
-			}
-			if destination, err := node.Anchor("destination"); err == nil && !destination.IsZero() {
-				uses = append(uses, Use{Node: node.ID, What: "Go to", Ref: destination})
-			}
-		case flow.KindCall:
-			uses = append(uses, callUses(node, modules, names)...)
+	found := flow.PlacesIn(workflow, modules)
+	uses := make([]Use, 0, len(found))
+	for _, each := range found {
+		what := "Go to"
+		switch {
+		case each.Local != "":
+			what = "local " + each.Local
+		case !each.Called.IsZero():
+			what = "Call " + names(each.Called) + " · " + each.Input
 		}
-	}
-	for _, declared := range workflow.Locals().Values() {
-		if ref, isPlace := placeOf(declared, declared.Default); isPlace {
-			uses = append(uses, Use{Node: ids.ULID{}, What: "local " + declared.Name, Ref: ref})
-		}
+		uses = append(uses, Use{Node: each.Node, What: what, Ref: each.Place})
 	}
 
 	return uses
-}
-
-// callUses lists the places a Call gives its module's place inputs.
-func callUses(node flow.Node, modules Modules, names func(ids.ULID) string) []Use {
-	called, named := node.Called()
-	if !named {
-		return nil
-	}
-	module, loaded := modules(called)
-	if !loaded {
-		return nil
-	}
-	var uses []Use
-	for _, input := range module.Inputs() {
-		if ref, isPlace := placeOf(input, node.Inputs()[input.ID]); isPlace {
-			uses = append(uses, Use{Node: node.ID, What: "Call " + names(called) + " · " + input.Name, Ref: ref})
-		}
-	}
-
-	return uses
-}
-
-// placeOf reads a place a declaration of the place type holds or is given.
-func placeOf(declared worldstate.Declaration, raw []byte) (floor.AnchorRef, bool) {
-	if declared.Type != worldstate.TypePlace || len(raw) == 0 {
-		return floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}, false
-	}
-	value, err := declared.Parse(raw)
-	if err != nil || value.Place.IsZero() {
-		return floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}, false
-	}
-
-	return floor.AnchorRef{Floor: value.Place.Floor, Anchor: value.Place.Anchor}, true
 }
 
 // ZoneOf returns the zone listing a floor, among the zones the window has.

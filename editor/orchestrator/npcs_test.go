@@ -160,4 +160,12 @@ func TestRunners(t *testing.T) {
 	if runs, err := browser.Runners(ctx, day); err != nil || len(runs) != 1 || runs[0].Name != "Clerk" {
 		t.Fatalf("only Clerk runs Shop day: %+v %v", runs, err)
 	}
+	loop := createDocument(t, browser, flow.FormatName, "Market day", ids.ULID{},
+		workflow.NewDataFor(flow.PurposeZoneLoop), "")
+	market := createDocument(t, browser, "zone", "Market", ids.ULID{}, encodeDocument(t, zoneplugin.NewDocument()), "")
+	mustCommand(t, browser, market, zoneplugin.SetLoopEdit, "", zoneplugin.SetLoopArgs{Loop: loop})
+	if runs, err := browser.Runners(ctx, loop); err != nil || len(runs) != 1 || runs[0].Name != "Market" ||
+		runs[0].Label != protocol.RunsAsLoop {
+		t.Fatalf("Market runs Market day as its loop: %+v %v", runs, err)
+	}
 }
