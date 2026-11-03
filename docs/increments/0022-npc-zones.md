@@ -119,7 +119,7 @@ Chosen while planning, for its author to check:
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
 | 1. An NPC's zone | The zone in the NPC's file, its next format version; older projects giving placed NPCs their placement's zone; notes on a zone | Engine tests save, load and upgrade an NPC's zone and a zone's notes | Built |
-| 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Planned |
+| 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Built |
 | 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Planned |
 | 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Planned |
 | 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Planned |
@@ -144,6 +144,22 @@ Chosen while planning, for its author to check:
   orchestrator test reopens a project saved before NPCs had zones and
   finds the placed NPC living in its zone and the other in none; the
   headless sample test finds both NPCs in the sample zone.
+- **The zone picker:** `editor/views/zonepicker` opens over the window
+  with Choose a zone and what it is for and now; a search by a zone's
+  name, folder or tag, the project's zone tags as chips that narrow to
+  the zones carrying them; a rail of All zones, Recent and the zone
+  folders, a folder holding the folders inside it, each with how many
+  match; the zones with their folder, or now, or why they can't be chosen,
+  and their floors, NPCs and places in columns; and a look at the zone
+  under the cursor, else the one selected: its ground floor drawn a pixel
+  a cell in its tiles' stand-in colours, its floors, size, who lives
+  there, its places, tags and notes. A click selects, and a double-click,
+  Enter or Choose chooses, the button naming the zone, with an ellipsis
+  when choosing goes on to ask more. A refused zone stays, its reason at
+  the foot. No zone shows only when the asker offers it. Verified: view
+  tests search by name, folder and tag, narrow by a folder and a tag
+  chip, read the look, mark the zone it is now, refuse a zone with its
+  reason, choose by Enter, choose No zone and close with Escape.
 
 ## Not in this increment
 
