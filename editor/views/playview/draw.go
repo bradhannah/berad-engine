@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // Drawing, in tile pixels: a character without a sprite is a disc this much
@@ -203,6 +204,27 @@ type figure struct {
 	player bool
 }
 
+// spriteOf is the key of the art an NPC shows now: the sprite in its
+// details, or the one its workflows set its sprite to; "" for none.
+func (s *State) spriteOf(npcID ids.ULID) string {
+	values := s.game.Values()
+	if values == nil {
+		return npcKey(npcID)
+	}
+	declared, known := values.Catalog().Lookup(worldstate.ScopeNPC, npcID, worldstate.SpriteID())
+	if !known {
+		return npcKey(npcID)
+	}
+	switch now := values.Get(declared, npcID).Ref; {
+	case now == s.npcSprites[npcID]:
+		return npcKey(npcID)
+	case now.IsZero():
+		return ""
+	default:
+		return spriteKey(now)
+	}
+}
+
 // drawCharacters draws the NPCs on the player's floor and the player.
 func (s *State) drawCharacters(view game.View) {
 	player := s.game.Player()
@@ -210,7 +232,7 @@ func (s *State) drawCharacters(view game.View) {
 	figures := []figure{{key: art.Player, x: playerX, y: playerY, player: true}}
 	for _, character := range s.game.Characters() {
 		if character.Floor == view.Floor {
-			figures = append(figures, figure{key: npcKey(character.NPC), x: character.X, y: character.Y, player: false})
+			figures = append(figures, figure{key: s.spriteOf(character.NPC), x: character.X, y: character.Y, player: false})
 		}
 	}
 	slices.SortStableFunc(figures, func(a, b figure) int {

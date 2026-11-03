@@ -21,6 +21,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -248,22 +249,23 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 		ticks = stepBudget
 	}
 	var asked []npcrun.Sound
+	names := places.NewNames(ctx.Docs)
 	for range ticks {
 		passed := s.preview.clock.Advance()
 		asked = asked[:0]
 		others := othersOf(runners)
 		for _, run := range runners {
 			world := npcrun.World{
-				Zone: zone, Workflow: run.workflow, Behaviour: run.source, Workflows: s.module, Clock: s.preview.clock,
-				Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
+				Names: names, Zone: zone, Workflow: run.workflow, Behaviour: run.source, Workflows: s.module,
+				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
 			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
 		}
 		if loop := s.preview.loop; loop.workflow != nil {
 			loop.npc.Step(npcrun.World{
-				Zone: zone, Workflow: loop.workflow, Behaviour: loop.source, Workflows: s.module, Clock: s.preview.clock,
-				Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
+				Names: names, Zone: zone, Workflow: loop.workflow, Behaviour: loop.source, Workflows: s.module,
+				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
 			}, s.preview.run.Tick())
 			asked = append(asked, loop.npc.Sounds...)
 		}
@@ -415,7 +417,20 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
 		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
+		Sprite: s.spriteNow(run.npc.NPC),
 	}
+}
+
+// spriteNow is the sprite an NPC shows in the preview now: its sprite value,
+// which starts as the sprite in its details and its workflows can change.
+func (s *State) spriteNow(npcID ids.ULID) ids.ULID {
+	values := s.preview.values
+	declared, known := values.Catalog().Lookup(worldstate.ScopeNPC, npcID, worldstate.SpriteID())
+	if npcID.IsZero() || !known {
+		return ids.ULID{}
+	}
+
+	return values.Get(declared, npcID).Ref
 }
 
 // loopEntity is the zone's loop as the preview's state carries it: an

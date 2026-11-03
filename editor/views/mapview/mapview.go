@@ -1511,8 +1511,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return !s.floor.IsZero() && s.framed && docs.View(s.floor, func(client.Document) {})
 	case strings.HasPrefix(state, "bounds:"):
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
-	case strings.HasPrefix(state, "sprite:"), strings.HasPrefix(state, "art:"):
-		return s.hasArt(state)
+	case strings.HasPrefix(state, "sprite:"), strings.HasPrefix(state, "art:"), strings.HasPrefix(state, "npc-sprite:"):
+		return s.hasArt(state, docs)
 	case strings.HasPrefix(state, "zoom:"):
 		s.zoom.layout(s.Grid(), s.camera)
 

@@ -105,9 +105,10 @@ func (n *NPC) read(world World, ref flow.ValueRef) (worldstate.Declaration, worl
 }
 
 // write sets one of the workflow's own values: a local one, its NPC's, its
-// zone's or the world's. It never sets another NPC's or zone's.
+// zone's or the world's. It never sets another NPC's or zone's, nor its
+// NPC's zone or behaviour, which are set in its details.
 func (n *NPC) write(world World, ref flow.ValueRef, value worldstate.Value) bool {
-	if !ref.Writable() {
+	if !ref.Writable() || worldstate.ReadOnly(ref.Value) {
 		return false
 	}
 	declared, owner, ok := n.lookup(world, ref)
@@ -135,6 +136,37 @@ func operand(node flow.Node, name string, declared worldstate.Declaration) (worl
 	value, err := declared.Parse(raw)
 
 	return value, err == nil
+}
+
+// setTo reads what a Set value sets its value to: the value saved in it,
+// or another value it refers to, read now, of the same type or, for a text
+// value, of any type, as its text form.
+func (n *NPC) setTo(world World, node flow.Node, declared worldstate.Declaration) (worldstate.Value, bool) {
+	raw, err := node.Operand("to")
+	if err != nil {
+		return worldstate.NoValue(), false
+	}
+	ref, refers := flow.OperandRef(raw)
+	if !refers {
+		return operand(node, "to", declared)
+	}
+	other, value, readable := n.read(world, ref)
+	switch {
+	case !readable:
+		return worldstate.NoValue(), false
+	case other.Type == declared.Type:
+		return value, true
+	case declared.Type == worldstate.TypeText:
+		text := declared.Empty()
+		text.Text = worldstate.Text(other, value, namer{names: world.Names, state: world.State})
+		if runes := []rune(text.Text); len(runes) > worldstate.MaxText {
+			text.Text = string(runes[:worldstate.MaxText])
+		}
+
+		return text, true
+	}
+
+	return worldstate.NoValue(), false
 }
 
 // operandOf reads a Check value's operand as a value of the declaration's
@@ -171,7 +203,7 @@ func (n *NPC) actSet(world World, node flow.Node) {
 
 		return
 	}
-	given, fits := operand(node, "to", declared)
+	given, fits := n.setTo(world, node, declared)
 	if !fits {
 		n.work.skipped = StatusNoOperand
 

@@ -42,6 +42,9 @@ type Project struct {
 	Seconds float64
 	// Seed fixes the NPCs' random choices, so a run repeats.
 	Seed uint64
+	// Names names documents and places for values' text forms; nil leaves
+	// them as IDs.
+	Names npcrun.Names
 }
 
 // Game is a project being played: the player at the start, the NPCs on
@@ -65,6 +68,7 @@ type Game struct {
 	loop     *npcrun.NPC
 	loopFlow *flow.Workflow
 	loopID   ids.ULID
+	names    npcrun.Names
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -121,7 +125,7 @@ func New(project Project) (*Game, error) {
 		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
-		loop: nil, loopFlow: nil, loopID: ids.ULID{},
+		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names,
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -188,7 +192,7 @@ func (g *Game) Step(input play.Input) Step {
 	var cues []npcrun.Sound
 	for _, character := range g.npcs {
 		world := npcrun.World{
-			Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
+			Names: g.names, Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
 			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
 			Others: others,
 		}
@@ -197,7 +201,7 @@ func (g *Game) Step(input play.Input) Step {
 	}
 	if g.loop != nil {
 		g.loop.Step(npcrun.World{
-			Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
+			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
 			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others,
 		}, g.run.Tick())
 		cues = heard(cues, g.loop.Sounds)

@@ -63,6 +63,9 @@ type Change struct {
 // of the world, the zones and the NPCs, the zone it is in, and the zone's
 // other NPCs as the tick began, in placement order.
 type World struct {
+	// Names names zones, workflows, sprites and places for values' text
+	// forms; nil leaves them as IDs.
+	Names     Names
 	Zone      play.Zone
 	Workflow  *flow.Workflow
 	Behaviour ids.ULID

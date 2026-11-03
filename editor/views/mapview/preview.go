@@ -320,7 +320,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
 		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""}, Changes: 0,
-		Calls: nil, Way: nil, Loop: ids.ULID{},
+		Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{},
 	}
 }
 
