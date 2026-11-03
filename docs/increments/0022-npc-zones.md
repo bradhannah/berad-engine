@@ -120,7 +120,7 @@ Chosen while planning, for its author to check:
 | --- | --- | --- | --- |
 | 1. An NPC's zone | The zone in the NPC's file, its next format version; older projects giving placed NPCs their placement's zone; notes on a zone | Engine tests save, load and upgrade an NPC's zone and a zone's notes | Built |
 | 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Built |
-| 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Planned |
+| 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Built |
 | 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Planned |
 | 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Planned |
 | 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Planned |
@@ -160,6 +160,18 @@ Chosen while planning, for its author to check:
   tests search by name, folder and tag, narrow by a folder and a tag
   chip, read the look, mark the zone it is now, refuse a zone with its
   reason, choose by Enter, choose No zone and close with Escape.
+- **The Zone box:** an NPC's details open with ZONE: a box with the zone
+  icon and the zone's name in bold, or No zone yet, grey, and Choose… at
+  its right. A click opens the zone picker, for the NPC to live in, the
+  zone it lives in now marked. Under the box, Placed on names the floor
+  and cell, as Placed on Ground floor, at 9, 8, found on its zone's
+  floors, with Show on map, which opens the zone's map on that floor with
+  the placement selected; or Placed nowhere yet. Choosing a zone for an
+  NPC that lives nowhere sets it at once, the status saying it lives
+  there and Undo takes it back. A zone's inspector has NOTES under its
+  palettes, saved with Save as an NPC's are. Verified: view tests choose
+  a first zone from the picker, read the zone and Placed on, open the map
+  at the placement and save a zone's notes.
 
 ## Not in this increment
 

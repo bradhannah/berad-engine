@@ -30,10 +30,15 @@ const (
 	noSprite    = "none"
 )
 
-// npcPanel is the inspector's part for a selected NPC: its behaviour, the
-// sprite it shows, its path name and its private notes.
+// npcPanel is the inspector's part for a selected NPC: the zone it lives in
+// and where it is placed, its behaviour, the sprite it shows, its path name
+// and its private notes.
 type npcPanel struct {
 	npc          ids.ULID
+	zone         image.Rectangle
+	placedTop    int
+	showOnMap    *ui.Button
+	behaviourTop int
 	path         *ui.TextField
 	notes        *ui.TextField
 	choose       *ui.Button
@@ -56,7 +61,8 @@ func newNPCPanel(theme *ui.Theme) *npcPanel {
 		npc: ids.ULID{}, path: path, notes: notes, choose: ui.NewButton("choose-behaviour", "Choose…"),
 		open: ui.NewButton("open-behaviour", "Open"), chooseSprite: ui.NewButton("choose-sprite", "Choose…"),
 		openSprite: ui.NewButton("open-sprite", "Open"), behaviour: ui.Zero(), sprite: ui.Zero(), top: 0,
-		spriteTop: 0,
+		spriteTop: 0, zone: ui.Zero(), placedTop: 0, showOnMap: ui.NewButton(showOnMapID, "Show on map"),
+		behaviourTop: 0,
 	}
 }
 
@@ -98,6 +104,7 @@ func (s *State) syncNPC(ctx *frame.Context) {
 		s.npc.npc = npcID
 	}
 	s.subscribe(npcID, ctx)
+	s.subscribeHome(ctx, npcID)
 	if found, loaded := s.npcOf(ctx.Docs, npcID); loaded {
 		s.npc.path.Field.SetSaved(found.Path)
 		s.npc.notes.Field.SetSaved(found.Notes)
@@ -111,12 +118,14 @@ func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel := s.npc
 	panel.behaviour, panel.notes.Rect, panel.choose.Rect, panel.open.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	panel.sprite, panel.chooseSprite.Rect, panel.openSprite.Rect = ui.Zero(), ui.Zero(), ui.Zero()
-	panel.path.Rect = ui.Zero()
-	if _, ok := s.selectedNPC(docs); !ok {
+	panel.path.Rect, panel.zone, panel.showOnMap.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	npcID, ok := s.selectedNPC(docs)
+	if !ok {
 		return
 	}
 	panel.top = top
-	rowY := layoutChoice(panel.top, left, width, &panel.behaviour, panel.choose, panel.open)
+	panel.behaviourTop = s.layoutZone(docs, npcID, left, width, top)
+	rowY := layoutChoice(panel.behaviourTop, left, width, &panel.behaviour, panel.choose, panel.open)
 	panel.spriteTop = rowY
 	rowY = layoutChoice(rowY, left, width, &panel.sprite, panel.chooseSprite, panel.openSprite) + ui.LineHeight
 	panel.path.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
@@ -141,6 +150,9 @@ func layoutChoice(top, left, width int, box *image.Rectangle, choose, open *ui.B
 func (s *State) updateNPC(input *ui.Input, ctx *frame.Context) {
 	npcID, ok := s.selectedNPC(ctx.Docs)
 	if !ok {
+		return
+	}
+	if s.updateZone(input, ctx, npcID) {
 		return
 	}
 	found, loaded := s.npcOf(ctx.Docs, npcID)
@@ -334,7 +346,8 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 		return
 	}
 	panel := s.npc
-	s.theme.Heading(screen, "BEHAVIOUR", left, panel.top)
+	s.drawZone(screen, docs, npcID, left)
+	s.theme.Heading(screen, "BEHAVIOUR", left, panel.behaviourTop)
 	ui.Box(screen, panel.behaviour, ui.ColorBackground())
 	label, ink := "No behaviour yet", ui.ColorMuted()
 	if found, loaded := s.npcOf(docs, npcID); loaded && !found.Behaviour.IsZero() {

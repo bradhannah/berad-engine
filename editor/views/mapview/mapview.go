@@ -337,18 +337,54 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		if err := json.Unmarshal(update.Session.Value, &start); err == nil {
 			s.start = start.Seconds
 		}
+	case update.PickStart != nil, update.PickCancel != nil:
+		s.pickChanged(update, ctx)
+	case update.Snapshot != nil && *update.Snapshot == s.zone, update.Event != nil && update.Event.Document == s.zone:
+		s.syncZone(ctx)
+	default:
+		s.attend(update, ctx)
+	}
+}
+
+// pickChanged starts a pick, or ends the one running when it is
+// cancelled.
+func (s *State) pickChanged(update client.Update, ctx *frame.Context) {
+	switch {
 	case update.PickStart != nil:
 		start := *update.PickStart
 		s.pick = &start
 		s.stroke.active, s.choosing = false, false
 		ctx.Frame.Status("Choose a place for " + labelOr(start.Label, "another tab") +
 			": click a ring or a name on the right. Escape cancels.")
-	case update.PickCancel != nil && s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
+	case s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
 		s.pick = nil
 		ctx.Frame.Status("Pick cancelled: " + labelOr(update.PickCancel.Reason, "no reason given"))
-	case update.Snapshot != nil && *update.Snapshot == s.zone, update.Event != nil && update.Event.Document == s.zone:
-		s.syncZone(ctx)
 	}
+}
+
+// attend shows what the window is opened to show: a placement.
+func (s *State) attend(update client.Update, ctx *frame.Context) {
+	if update.Attention && strings.HasPrefix(update.Item, PlacementItem) {
+		s.showPlacement(update.Item, ctx)
+	}
+}
+
+// PlacementItem prefixes the item a map is opened to show a placement by,
+// as "placement:<floor>:<placement>".
+const PlacementItem = "placement:"
+
+// showPlacement shows the floor a placement is on and selects it, with the
+// Place NPC tool.
+func (s *State) showPlacement(item string, ctx *frame.Context) {
+	floorPart, placementPart, _ := strings.Cut(strings.TrimPrefix(item, PlacementItem), ":")
+	floorID, floorErr := ids.Parse(floorPart)
+	placementID, placementErr := ids.Parse(placementPart)
+	if floorErr != nil || placementErr != nil || indexOf(s.floors, floorID) < 0 {
+		return
+	}
+	s.switchFloor(floorID, ctx)
+	s.setTool(ToolNPC)
+	s.selectPlacement(placementID)
 }
 
 func labelOr(value, fallback string) string {

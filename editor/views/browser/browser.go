@@ -29,6 +29,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
+	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -136,6 +137,14 @@ type State struct {
 	// palettes a selected sprite's tile is painted with.
 	zonePalettes   *zonepalettes.List
 	spritePalettes []spritePalette
+	// zones is the zone picker while it is open, choosing for zonesFor;
+	// recentZones are the zones chosen in it lately, most recent first.
+	zones       *zonepicker.Picker
+	zonesFor    ids.ULID
+	recentZones []ids.ULID
+	// zoneNotes are a selected zone's private notes, for zoneNoted.
+	zoneNotes *ui.TextField
+	zoneNoted ids.ULID
 }
 
 // New returns the project browser.
@@ -163,12 +172,13 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		npc: newNPCPanel(theme), audio: newAudioState(),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
+		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
-	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.tileSize,
+	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.zoneNotes, view.tileSize,
 		view.screenCols, view.screenRows)
 
 	return view
@@ -207,7 +217,13 @@ func menuItems() []ui.MenuItem {
 func (s *State) Title(frame.Docs) string { return "Project" }
 
 // Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+func (s *State) Focused() *ui.TextField {
+	if s.zones != nil {
+		return s.zones.Focused()
+	}
+
+	return s.focus.Current()
+}
 
 // Start subscribes to the project index, the art and game settings and the
 // world state, and lists the audio library.
@@ -337,6 +353,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.updateDialog(input, ctx)
 
 		return
+	case s.zones != nil:
+		s.updateZonePicker(input, ctx)
+
+		return
 	case s.menu.IsOpen():
 		s.create(ctx, s.menu.Update(input))
 
@@ -361,6 +381,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.syncName(ctx.Docs)
 	s.syncSettings(ctx.Docs)
 	s.syncNPC(ctx)
+	s.syncZoneNotes(ctx)
 	s.syncCueUses(ctx)
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
@@ -1052,6 +1073,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.guard.Locate(value, s.size)
 	case s.dialog != nil:
 		return s.locateInDialog(kind, value)
+	case s.zones != nil:
+		return s.locateZonePicker(name, docs)
 	case s.menu.IsOpen():
 		return s.menu.Locate(value)
 	case s.contextMenu.IsOpen():
@@ -1068,6 +1091,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.list.Locate(sectionPrefix + value)
 	case "ui":
 		return s.locateWidget(value)
+	case "state":
+		found, _ := s.hasZoneState(docs, value)
+
+		return image.Pt(0, 0), found
 	}
 
 	return image.Pt(0, 0), false
@@ -1098,7 +1125,12 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	fields := []*ui.TextField{s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.tileSize, s.screenCols, s.screenRows}
+	if widget == zoneBoxID && !s.npc.zone.Empty() {
+		return ui.Center(s.npc.zone), true
+	}
+	fields := []*ui.TextField{
+		s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.zoneNotes, s.tileSize, s.screenCols, s.screenRows,
+	}
 	for _, field := range fields {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
@@ -1117,7 +1149,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
-		s.npc.chooseSprite, s.npc.openSprite,
+		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap,
 		s.audio.open,
 	}, s.tagBns...)
 }
@@ -1153,5 +1185,6 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	s.drawZonePicker(screen, docs)
 	s.guard.Draw(screen, s.theme)
 }
