@@ -112,7 +112,9 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 	})...)
 	uses := s.uses(docs, index)
 	rows = append(rows, s.typeRows(sectionWorkflows, "Workflows", index, match.entry,
-		func(entry project.Entry, depth int) []ui.Row { return []ui.Row{workflowRow(entry, uses[entry.ID], depth)} })...)
+		func(entry project.Entry, depth int) []ui.Row {
+			return []ui.Row{workflowRow(entry, uses[entry.ID], depth)}
+		})...)
 	rows = append(rows, s.typeRows(sectionNPCs, "NPCs", index, match.entry, func(entry project.Entry, depth int) []ui.Row {
 		return []ui.Row{item(entry, ui.IconNPC, s.follows(docs, index, entry.ID), depth)}
 	})...)

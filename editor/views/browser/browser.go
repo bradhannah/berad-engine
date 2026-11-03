@@ -157,8 +157,8 @@ type State struct {
 	zoneNotes *ui.TextField
 	// loop is a selected zone's Zone loop box, and loopFor the zone its
 	// dialog chooses a loop for.
-	loop    *loopPanel
-	loopFor ids.ULID
+	loop      *loopPanel
+	loopFor   ids.ULID
 	zoneNoted ids.ULID
 }
 

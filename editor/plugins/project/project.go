@@ -200,14 +200,14 @@ func CheckName(name string) error {
 // adds the rest, so the inverse can recreate exactly what was deleted, in
 // its folder and with its tags.
 type DocumentArgs struct {
-	ID       ids.ULID        `json:"id"`
-	Format   string          `json:"format"`
-	Name     string          `json:"name"`
-	Version  int             `json:"version,omitempty"`
-	Revision uint64          `json:"revision,omitempty"`
-	Scope    ids.ULID        `json:"scope"`
-	Folder   string          `json:"folder,omitempty"`
-	Tags     []string        `json:"tags,omitempty"`
+	ID       ids.ULID `json:"id"`
+	Format   string   `json:"format"`
+	Name     string   `json:"name"`
+	Version  int      `json:"version,omitempty"`
+	Revision uint64   `json:"revision,omitempty"`
+	Scope    ids.ULID `json:"scope"`
+	Folder   string   `json:"folder,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 	// Kind is the document's kind, which the orchestrator reads from its
 	// data when preparing the edit.
 	Kind string          `json:"kind,omitempty"`

@@ -20,7 +20,7 @@ func (f *fixture) sendLoop(tick uint64, watched ids.ULID) {
 	loop := protocol.PreviewEntity{
 		ID: zoneID.String(), Floor: ids.ULID{}, X: 0, Y: 0, Face: [2]int{0, 1}, NPC: ids.ULID{}, Workflow: routineID,
 		Node: waitID, Activity: "Wait 40 min of 1 hr (game time)", Status: "",
-		Last: protocol.PreviewChange{From: startID, Output: flow.OutputNext, To: waitID, Tick: tick, Status: ""},
+		Last:    protocol.PreviewChange{From: startID, Output: flow.OutputNext, To: waitID, Tick: tick, Status: ""},
 		Changes: 1, Calls: nil, Way: nil, Loop: zoneID,
 	}
 	state := protocol.PreviewState{
