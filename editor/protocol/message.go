@@ -416,6 +416,28 @@ type PreviewState struct {
 	// Values are the watched NPC's values as they are now: its workflow's
 	// local values and its own, then its zone's and the world's.
 	Values []PreviewValue `json:"values,omitempty"`
+	// Log is the latest lines the NPCs' and the zone loop's Logs wrote,
+	// oldest first, at most RecentLines, so a window keeps those it has not
+	// seen by their numbers.
+	Log []PreviewLine `json:"log,omitempty"`
+}
+
+// RecentLines is how many of the latest Log lines a preview's state holds.
+const RecentLines = 50
+
+// PreviewLine is a line a Log wrote in a preview: its number in the
+// preview, from 1, the game time of day in seconds, the entity whose
+// workflow wrote it, an NPC's placement or the zone loop's zone, with its
+// NPC or zone, and the workflow and node that wrote it.
+type PreviewLine struct {
+	Seq      uint64   `json:"seq"`
+	Clock    float64  `json:"clock"`
+	Entity   string   `json:"entity"`
+	NPC      ids.ULID `json:"npc,omitzero"`
+	Loop     ids.ULID `json:"loop,omitzero"`
+	Workflow ids.ULID `json:"workflow"`
+	Node     ids.ULID `json:"node"`
+	Text     string   `json:"text"`
 }
 
 // PreviewValue is one value as the Watch window shows it: its path, such

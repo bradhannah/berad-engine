@@ -17,6 +17,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
@@ -120,8 +121,10 @@ type State struct {
 	watchFloors bool
 	offset      image.Point
 	selected    ids.ULID
-	cursor      image.Point
-	gestures    int
+	// showing is a node asked for with NodeItem, to select once it arrives.
+	showing  ids.ULID
+	cursor   image.Point
+	gestures int
 	// hoverLink is the line under the pointer, selectedLink the selected
 	// line and hoverMark the node whose problem mark is under the pointer.
 	hoverLink    routeKey
@@ -224,7 +227,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
 		problems: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
-		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
+		offset: image.Pt(0, 0), selected: ids.ULID{}, showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
@@ -312,6 +315,11 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 
 // Changed reacts to picks answered for the inspector.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
+	if update.Attention && strings.HasPrefix(update.Item, NodeItem) {
+		if node, err := ids.Parse(strings.TrimPrefix(update.Item, NodeItem)); err == nil {
+			s.showing = node
+		}
+	}
 	s.picker.Changed(update, ctx)
 	if update.AudioChanged != nil && s.audio != nil {
 		s.askAudio(ctx)
@@ -466,6 +474,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.sounds = ctx.Sounds
 	s.fade()
 	s.load(ctx.Docs)
+	s.showNode()
 	s.ask(ctx)
 	if s.guard.Active() {
 		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discardForm)
@@ -1134,6 +1143,23 @@ func (s *State) workflowBounds() (image.Rectangle, bool) {
 	}
 
 	return bounds, !first
+}
+
+// NodeItem opens a workflow with one of its nodes selected and in the
+// middle of the canvas: NodeItem then the node's ID.
+const NodeItem = "node:"
+
+// showNode selects the node asked for with NodeItem, and centres on it, once
+// the workflow holding it has arrived.
+func (s *State) showNode() {
+	if s.showing.IsZero() || s.workflow == nil {
+		return
+	}
+	if drawn, ok := s.shapes[s.showing]; ok {
+		s.selected, s.selectedLink = s.showing, noRoute()
+		s.centreOn(drawn.rect)
+	}
+	s.showing = ids.ULID{}
 }
 
 // centreOn pans the canvas so an area is in the middle of it. An area wider

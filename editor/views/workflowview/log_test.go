@@ -9,6 +9,7 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -45,5 +46,22 @@ func TestWritingALine(t *testing.T) {
 	f.typeInto("param-message", "{local.nope}")
 	if !strings.HasPrefix(f.status(), "No value is called local.nope.") || !f.has("message=At {npc.zone} with {local.count}") {
 		t.Fatalf("a value there is none of is refused: %q", f.status())
+	}
+}
+
+// TestOpeningAtANode selects the node a Watch line names, as the window
+// opens at it.
+func TestOpeningAtANode(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindLog)
+	logged := f.nth(flow.KindLog, 1)
+	f.click("node:start:1")
+	if f.has("selected:" + flow.KindLog) {
+		t.Fatal("the start is selected")
+	}
+	f.state.Changed(client.Update{Attention: true, Item: workflowview.NodeItem + logged.ID.String()}, f.ctx)
+	f.frame(noInput())
+	if !f.has("selected:" + flow.KindLog) {
+		t.Fatal("opening at the Log selects it")
 	}
 }

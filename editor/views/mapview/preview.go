@@ -76,6 +76,10 @@ type previewRun struct {
 	// anchors names the anchors of the zone's floors, for the watched
 	// NPC's place values.
 	anchors map[ids.ULID]string
+	// lines are the latest lines the Logs wrote, at most
+	// protocol.RecentLines, and written counts every line so far.
+	lines   []protocol.PreviewLine
+	written uint64
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -171,7 +175,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			},
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
-			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{},
+			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0,
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)
@@ -306,7 +310,8 @@ func (s *State) sendState(ctx *frame.Context) {
 	if sent := s.preview.sent; sent != nil && slices.EqualFunc(sent.Entities, state.Entities, sameEntity) &&
 		sent.Clock == state.Clock &&
 		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
-		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) {
+		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) &&
+		len(sent.Log) == len(state.Log) && (len(state.Log) == 0 || sent.Log[len(sent.Log)-1] == state.Log[len(state.Log)-1]) {
 		return
 	}
 	s.preview.sent = &state

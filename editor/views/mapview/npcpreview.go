@@ -261,6 +261,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
+			s.keepLines(run.npc, run.npc.Placement.String())
 		}
 		if loop := s.preview.loop; loop.workflow != nil {
 			loop.npc.Step(npcrun.World{
@@ -268,6 +269,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
 			}, s.preview.run.Tick())
 			asked = append(asked, loop.npc.Sounds...)
+			s.keepLines(loop.npc, s.zone.String())
 		}
 		if s.preview.stepping && s.stepped() {
 			s.hear(ctx, asked)
@@ -493,6 +495,22 @@ func (s *State) previewState() protocol.PreviewState {
 		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
 		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
 		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step), Values: s.watchedValues(),
+		Log: slices.Clone(s.preview.lines),
+	}
+}
+
+// keepLines numbers the lines an NPC's or the zone loop's Logs wrote this
+// tick, at the game time now, keeping the latest protocol.RecentLines.
+func (s *State) keepLines(runner *npcrun.NPC, entity string) {
+	for _, line := range runner.Lines {
+		s.preview.written++
+		s.preview.lines = append(s.preview.lines, protocol.PreviewLine{
+			Seq: s.preview.written, Clock: s.preview.clock.Seconds(), Entity: entity, NPC: runner.NPC, Loop: runner.Loop,
+			Workflow: line.Workflow, Node: line.Node, Text: line.Text,
+		})
+	}
+	if over := len(s.preview.lines) - protocol.RecentLines; over > 0 {
+		s.preview.lines = slices.Delete(s.preview.lines, 0, over)
 	}
 }
 
