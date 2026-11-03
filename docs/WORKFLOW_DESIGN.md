@@ -77,6 +77,20 @@ drawn back to either only repeats what the rule already does.
 - **Candidate: give every workflow a saved kind now,** NPC behaviour being
   the only one, so files never have to be guessed at when a second kind
   arrives.
+- **Agreed (2026-11-03): every workflow is saved with its kind,** NPC
+  behaviour first and the **zone loop** second, each offering only the
+  nodes it runs. A zone loop is a zone's own workflow, set in its details,
+  running while its zone is alive to set its values and play its sounds; it
+  has no Go to, Move or Find NPC nearby, as a zone has no body. [Increment
+  23](increments/0023-workflow-kinds.md) builds both.
+- **Agreed (2026-11-03): a workflow runs in one zone or in any zone,** set
+  on the workflow with the zone picker. Its places, the NPCs that follow it
+  and the zones that loop it are checked against that, not against
+  whoever runs it. A behaviour that runs in any zone names no fixed
+  places, its places coming from inputs and values, so one behaviour can
+  serve characters scattered through every zone, such as an enemy type.
+  This replaces checking a workflow's places against the NPCs that run it.
+  [Increment 23](increments/0023-workflow-kinds.md) builds it.
 - **Candidate: the value an NPC's workflow sets to say what it is doing**,
   with the choices defined by the project, so a typo cannot break an
   animation. *Open:* its name. The Watch window's readout of what an NPC is
@@ -109,6 +123,14 @@ drawn back to either only repeats what the rule already does.
   workflow names its own NPC's values without the NPC's name, so one
   behaviour serves every NPC with the template. Every NPC has a `name`
   value, text that starts as its display name.
+- **Agreed (2026-11-03): every NPC also has built-in values for its
+  zone, its behaviour and its sprite,** as `npc.george.zone`. Zone,
+  workflow and sprite are types of their own, compared by identity. The
+  zone and the behaviour are read only, set in the NPC's details; a
+  workflow can set its own NPC's sprite. Every value has a text form, and
+  a **Log** node writes a line of text and values to the Watch window, for
+  debugging. [Increment 24](increments/0024-built-ins-and-log.md) builds
+  them.
 - **Agreed (2026-11-01): the types are integer, with an optional minimum
   and maximum that a change is held at, bool, choice and text,** with NPC,
   and from [increment 21](increments/0021-flow-modules.md) place,
