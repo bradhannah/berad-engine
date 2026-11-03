@@ -56,7 +56,9 @@ const (
 const (
 	textNoPreview   = "Start a preview in a Map, then click an NPC."
 	textChooseNPC   = "Click an NPC on the map to watch it."
+	textChooseLoop  = "Click an NPC on the map, or Watch zone loop, to watch it."
 	textNoBehaviour = "This NPC has no behaviour."
+	textWatchLoop   = "Watch zone loop"
 )
 
 // State is one Watch window.
@@ -73,6 +75,8 @@ type State struct {
 	shown  ids.ULID
 	pause  *ui.Button
 	step   *ui.Button
+	// watchLoop watches the zone's loop, while the preview runs one.
+	watchLoop *ui.Button
 	// chosen is the workflow of the path clicked, by its place and ID,
 	// -1 to follow the NPC; parts are where each workflow of the path is
 	// drawn.
@@ -86,7 +90,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, zone: zone, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, run: ids.ULID{},
 		tick: 0, state: nil, flow: nil, shown: ids.ULID{},
-		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep), chosen: -1,
+		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep),
+		watchLoop: ui.NewButton("watch-loop", textWatchLoop), chosen: -1,
 		chosenFlow: ids.ULID{}, parts: nil,
 	}
 }
@@ -118,7 +123,31 @@ func (s *State) Title(docs frame.Docs) string {
 		return "Watch  (view " + s.window.Short(shortID) + ")"
 	}
 
-	return "Watch: " + s.name(docs, entity.NPC, "NPC") + "  (view " + s.window.Short(shortID) + ")"
+	return "Watch: " + s.entityName(docs, entity, "NPC") + "  (view " + s.window.Short(shortID) + ")"
+}
+
+// entityName names what is watched: an NPC, or a zone loop by its zone.
+func (s *State) entityName(docs frame.Docs, entity protocol.PreviewEntity, fallback string) string {
+	if !entity.Loop.IsZero() {
+		return s.name(docs, entity.Loop, fallback)
+	}
+
+	return s.name(docs, entity.NPC, fallback)
+}
+
+// loop returns the zone's loop in the preview, if it runs one.
+func (s *State) loop() (protocol.PreviewEntity, bool) {
+	if s.state != nil {
+		for _, entity := range s.state.Entities {
+			if !entity.Loop.IsZero() {
+				return entity, true
+			}
+		}
+	}
+
+	var none protocol.PreviewEntity
+
+	return none, false
 }
 
 // Changed follows the zone's preview: its start, its latest state and its
@@ -212,6 +241,12 @@ func (s *State) layout() {
 		s.step.Label = textStepping
 	}
 	s.pause.Disabled, s.step.Disabled = s.state == nil, s.state == nil || s.state.Watched.IsZero() || stepping
+	s.watchLoop.Rect = ui.Zero()
+	if loop, runs := s.loop(); runs {
+		left := s.step.Rect.Max.X + buttonGap
+		s.watchLoop.Rect = image.Rect(left, bottom-ui.ButtonH, left+buttonWidth, bottom)
+		s.watchLoop.Disabled = s.state.Watched.String() == loop.ID
+	}
 }
 
 // Update follows the watched NPC's workflow and sends the buttons' controls.
@@ -254,6 +289,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 	case s.step.Update(input):
 		control.Action = protocol.ControlStep
+	case s.watchLoop.Update(input):
+		loop, _ := s.loop()
+		control.Action, control.Placement = protocol.ControlWatch, loop.Loop
 	default:
 		return
 	}
@@ -275,6 +313,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		message = textNoPreview
 	case !watching:
 		message = textChooseNPC
+		if _, runs := s.loop(); runs {
+			message = textChooseLoop
+		}
 	case entity.Workflow.IsZero():
 		message = textNoBehaviour
 	case s.flow != nil:
@@ -296,9 +337,14 @@ func (s *State) drawHeader(screen *ebiten.Image, docs frame.Docs, entity protoco
 	s.theme.DrawLabel(screen, "WATCH", ui.Inset, (headerHeight-ui.LabelSize)/ui.Half-1, ui.ColorMuted())
 	nameX := ui.Inset + s.theme.LabelWidth("WATCH") + ui.Inset
 	if watching {
-		name := s.name(docs, entity.NPC, "Deleted NPC")
+		name := s.entityName(docs, entity, "Deleted NPC")
 		s.theme.DrawStrong(screen, name, nameX, textY, ui.ColorInk())
-		s.drawPath(screen, docs, entity, nameX+s.theme.StrongWidth(name)+ui.Inset)
+		pathX := nameX + s.theme.StrongWidth(name) + ui.Inset
+		if !entity.Loop.IsZero() {
+			s.theme.DrawText(screen, "zone loop", pathX, textY, ui.ColorMuted())
+			pathX += s.theme.TextWidth("zone loop") + ui.Inset
+		}
+		s.drawPath(screen, docs, entity, pathX)
 	}
 	if s.state != nil {
 		clockText := "LIVE  " + clock.Format(s.state.Clock) + " · " + clock.RateLabel(clock.Rate(s.state.Rate))
@@ -349,6 +395,9 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 	}
 	s.pause.Draw(screen, s.theme)
 	s.step.Draw(screen, s.theme)
+	if !s.watchLoop.Rect.Empty() {
+		s.watchLoop.Draw(screen, s.theme)
+	}
 }
 
 // way is the way the watched NPC went: its latest step's changes, under
@@ -397,7 +446,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	kind, value, _ := strings.Cut(name, ":")
 	switch kind {
 	case "ui":
-		for _, button := range []*ui.Button{s.pause, s.step} {
+		for _, button := range []*ui.Button{s.pause, s.step, s.watchLoop} {
 			if button.ID == value {
 				return ui.Center(button.Rect), true
 			}
@@ -428,7 +477,7 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	case state == "stepped":
 		return s.state != nil && s.state.NPCsPaused && len(s.state.Step) > 0
 	case strings.HasPrefix(state, "watching:"):
-		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
+		return watching && s.entityName(docs, entity, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):
 		return watching && s.nodeKind(docs, entity) == strings.TrimPrefix(state, "live:")
 	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"), strings.HasPrefix(state, "way="),
@@ -476,8 +525,13 @@ func (s *State) wayLine(docs frame.Docs, entity protocol.PreviewEntity) string {
 	return strings.Join(parts, " → ")
 }
 
-// whereLine says where a watched NPC stands, as "cell 2, 0 on Upper floor".
+// whereLine says where a watched NPC stands, as "cell 2, 0 on Upper floor";
+// a zone loop stands nowhere.
 func (s *State) whereLine(docs frame.Docs, entity protocol.PreviewEntity) string {
+	if !entity.Loop.IsZero() {
+		return ""
+	}
+
 	return fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
 		s.name(docs, entity.Floor, "a floor"))
 }

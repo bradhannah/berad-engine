@@ -356,6 +356,9 @@ type PreviewEntity struct {
 	Calls    []PreviewCall `json:"calls,omitempty"`
 	// Way is the stairs a Go to still has to take, in order.
 	Way []PreviewClimb `json:"way,omitempty"`
+	// Loop is the zone a zone loop runs for: such an entity is the zone's
+	// loop, with no NPC and no place on a floor, and its ID is the zone's.
+	Loop ids.ULID `json:"loop,omitzero"`
 }
 
 // PreviewClimb is a flight of stairs on an NPC's way: the floor it leaves,

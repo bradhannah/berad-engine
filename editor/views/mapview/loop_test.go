@@ -7,6 +7,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -70,5 +71,32 @@ func TestTheZoneLoopRunsInThePreview(t *testing.T) {
 		if len(sounds.Played) != each.rings || (each.rings > 0 && !f.has("heard:market/bell")) {
 			t.Fatalf("a %s rings %d times: %v", each.purpose, each.rings, sounds.Played)
 		}
+	}
+}
+
+// TestWatchingTheZoneLoop carries Town's loop in the preview's state, apart
+// from the NPCs the map draws; watched, a step takes it past its hour-long
+// Wait to its bell.
+func TestWatchingTheZoneLoop(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withLoop(t, f, flow.PurposeZoneLoop, true)
+	f.startPreview("cell:3,3")
+	f.idle(2)
+	entities := f.lastState().Entities
+	loop := entities[len(entities)-1]
+	if loop.Loop != zoneID || loop.ID != zoneID.String() || !loop.NPC.IsZero() || loop.Node != frametest.ID(93) {
+		t.Fatalf("the state carries the zone loop, on its Wait: %+v", loop)
+	}
+	f.state.Changed(client.Update{PreviewControl: &protocol.PreviewControl{
+		Run: runID, Action: protocol.ControlWatch, Placement: zoneID, Rate: 0, Seconds: 0,
+	}}, f.ctx)
+	f.state.Changed(client.Update{PreviewControl: &protocol.PreviewControl{
+		Run: runID, Action: protocol.ControlStep, Placement: zoneID, Rate: 0, Seconds: 0,
+	}}, f.ctx)
+	f.idle(2)
+	state := f.lastState()
+	if state.Watched != zoneID || !state.NPCsPaused || len(state.Step) == 0 || state.Step[0].From != frametest.ID(93) {
+		t.Fatalf("a step takes the watched loop past its Wait: %+v", state)
 	}
 }

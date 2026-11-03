@@ -299,7 +299,7 @@ func (s *State) hear(ctx *frame.Context, sounds []npcrun.Sound) {
 // stepped keeps the watched NPC's changes during a step, and pauses the NPCs
 // once it has changed node, or has gone. It reports whether the step is over.
 func (s *State) stepped() bool {
-	watched, ok := s.preview.npcs[s.preview.watched]
+	watched, ok := s.watchedRun()
 	if ok && len(watched.npc.Taken) == 0 {
 		return false
 	}
@@ -337,7 +337,7 @@ func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 		s.preview.paused, s.preview.stepping, s.preview.step = false, false, nil
 		ctx.Frame.Status("NPCs running")
 	case protocol.ControlStep:
-		if _, ok := s.preview.npcs[s.preview.watched]; ok {
+		if _, ok := s.watchedRun(); ok {
 			s.preview.paused, s.preview.stepping, s.preview.step = false, true, nil
 		}
 	}
@@ -414,8 +414,30 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
-		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way,
+		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
 	}
+}
+
+// loopEntity is the zone's loop as the preview's state carries it: an
+// entity with no NPC, no floor and the zone's ID.
+func (s *State) loopEntity() protocol.PreviewEntity {
+	entity := s.npcEntity(s.preview.loop)
+	entity.ID, entity.Loop = s.zone.String(), s.zone
+
+	return entity
+}
+
+// watchedRun is the runner being watched: an NPC's, or the zone loop's,
+// whose ID is the zone's.
+func (s *State) watchedRun() (*npcRun, bool) {
+	if run, ok := s.preview.npcs[s.preview.watched]; ok {
+		return run, true
+	}
+	if loop := s.preview.loop; s.preview.watched == s.zone && loop.workflow != nil {
+		return loop, true
+	}
+
+	return nil, false
 }
 
 // followWatched shows the floor the watched NPC is on when it takes
@@ -446,6 +468,9 @@ func (s *State) previewState() protocol.PreviewState {
 	entities = append(entities, entityOf(s.preview.run.Player()))
 	for _, run := range runners {
 		entities = append(entities, s.npcEntity(run))
+	}
+	if s.preview.loop.workflow != nil {
+		entities = append(entities, s.loopEntity())
 	}
 	game := s.preview.clock
 
@@ -492,7 +517,7 @@ func (s *State) declareValues(docs frame.Docs) {
 // its own, then its zone's and the world's. A local holding an NPC shows
 // that NPC's name.
 func (s *State) watchedValues() []protocol.PreviewValue {
-	run, ok := s.preview.npcs[s.preview.watched]
+	run, ok := s.watchedRun()
 	if !ok {
 		return nil
 	}
@@ -532,9 +557,14 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 func (s *State) liveNPCs() []protocol.PreviewEntity {
 	switch {
 	case s.preview != nil:
-		state := s.previewState()
+		var npcs []protocol.PreviewEntity
+		for _, entity := range s.previewState().Entities[1:] {
+			if entity.Loop.IsZero() {
+				npcs = append(npcs, entity)
+			}
+		}
 
-		return state.Entities[1:]
+		return npcs
 	case s.remote != nil && s.remote.state != nil:
 		var npcs []protocol.PreviewEntity
 		for _, entity := range s.remote.state.Entities {
