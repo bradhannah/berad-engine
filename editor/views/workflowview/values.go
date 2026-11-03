@@ -1167,8 +1167,11 @@ func (s *State) operandLabel(docs frame.Docs, node flow.Node, param string) stri
 			return "?"
 		}
 		label := declared.Label(value)
-		if declared.Type == worldstate.TypeText {
+		switch {
+		case declared.Type == worldstate.TypeText:
 			label = textLabel(value.Text)
+		case declared.Type.IsRef():
+			label = worldstate.Text(declared, value, s.namer(docs))
 		}
 		labels = append(labels, label)
 	}

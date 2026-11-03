@@ -219,6 +219,11 @@ func (n viewNamer) NPC(npcID ids.ULID) string {
 	return n.Document(npcID)
 }
 
+// namer names what values refer to, for their text forms in the editor.
+func (s *State) namer(docs frame.Docs) viewNamer {
+	return viewNamer{Names: places.NewNames(docs), catalog: s.catalog(docs)}
+}
+
 // sampleOwner is the NPC whose values a Log's line reads as it would for:
 // the first NPC following the workflow, or none.
 func (s *State) sampleOwner(docs frame.Docs, catalog *worldstate.Catalog) (ids.ULID, bool) {
@@ -242,7 +247,7 @@ func (s *State) sampleLine(docs frame.Docs, node flow.Node) string {
 		return ""
 	}
 	catalog := s.catalog(docs)
-	namer := viewNamer{Names: places.NewNames(docs), catalog: catalog}
+	namer := s.namer(docs)
 	sample, hasSample := s.sampleOwner(docs, catalog)
 	var line strings.Builder
 	for _, segment := range segments {
@@ -285,9 +290,8 @@ func (s *State) sampleLine(docs frame.Docs, node flow.Node) string {
 // sampleHeading heads the line as it would read, naming whose values it
 // reads.
 func (s *State) sampleHeading(docs frame.Docs) string {
-	catalog := s.catalog(docs)
-	if sample, ok := s.sampleOwner(docs, catalog); ok {
-		return "As it would read for " + viewNamer{Names: places.NewNames(docs), catalog: catalog}.NPC(sample)
+	if sample, ok := s.sampleOwner(docs, s.catalog(docs)); ok {
+		return "As it would read for " + s.namer(docs).NPC(sample)
 	}
 
 	return "As it would read"

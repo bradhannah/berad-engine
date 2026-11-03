@@ -52,6 +52,9 @@ func TestCheckingAZone(t *testing.T) {
 	if !f.has("holds:against=Town") || f.has("problem:"+flow.KindCheckValue+":1") {
 		t.Fatal("it checks against Town")
 	}
+	if !f.has("title:" + flow.KindCheckValue + ":1=Is npc.zone Town?") {
+		t.Fatal("the node names Town")
+	}
 }
 
 // TestSettingASprite offers a Set value its NPC's sprite and not its zone
@@ -77,8 +80,9 @@ func TestSettingASprite(t *testing.T) {
 	}
 	f.click("row:Apron")
 	f.click("ui:use")
-	if !f.has("holds:to=Apron") || f.has("problem:"+flow.KindSetValue+":1") {
-		t.Fatal("it sets the sprite to Apron")
+	if !f.has("holds:to=Apron") || f.has("problem:"+flow.KindSetValue+":1") ||
+		!f.has("title:"+flow.KindSetValue+":1=Set npc.sprite to Apron") {
+		t.Fatal("it sets the sprite to Apron, named on the node")
 	}
 	zone, err := f.nth(flow.KindSetValue, 1).WithParam(flow.ParamValue, flow.ValueRef{
 		Scope: worldstate.ScopeNPC, Value: worldstate.ZoneID(), Owner: ids.ULID{}, Found: ids.ULID{},
