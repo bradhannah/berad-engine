@@ -328,11 +328,17 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 		if entity.Status != "" {
 			now = entity.Status
 		}
-		at := fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
+		if way := s.wayLine(docs, entity); way != "" {
+			now += " · " + way
+		}
+		where := fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
 			s.name(docs, entity.Floor, "a floor"))
 		label, path := s.way(docs, entity)
 		column := ui.Inset + max(s.theme.LabelWidth(labelStep), s.theme.LabelWidth(labelLast)) + ui.Inset
-		rows := []struct{ label, text string }{{labelNow, now}, {label, s.fit(path, s.size.X-column-ui.Inset)}, {labelAt, at}}
+		rows := []struct{ label, text string }{
+			{labelNow, s.theme.FitText(now, s.size.X-column-ui.Inset)}, {label, s.fit(path, s.size.X-column-ui.Inset)},
+			{labelAt, where},
+		}
 		for index, row := range rows {
 			if row.text == "" {
 				continue
@@ -426,7 +432,7 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):
 		return watching && s.nodeKind(docs, entity) == strings.TrimPrefix(state, "live:")
-	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"):
+	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"), strings.HasPrefix(state, "way="):
 		return s.hasCallState(state, docs, entity, watching)
 	case strings.HasPrefix(state, "value:"):
 		return s.state != nil && slices.ContainsFunc(s.state.Values, func(value protocol.PreviewValue) bool {
@@ -449,4 +455,23 @@ func (s *State) nodeKind(docs frame.Docs, entity protocol.PreviewEntity) string 
 	})
 
 	return kind
+}
+
+// wayLine says which floors a watched NPC's Go to crosses, as "Ground floor
+// → stairs down at 12, 4 → Cellar", or "" while it stays on its floor.
+func (s *State) wayLine(docs frame.Docs, entity protocol.PreviewEntity) string {
+	if len(entity.Way) == 0 {
+		return ""
+	}
+	parts := []string{s.name(docs, entity.Way[0].From, "a floor")}
+	for _, climb := range entity.Way {
+		way := "down"
+		if climb.Up {
+			way = "up"
+		}
+		parts = append(parts, fmt.Sprintf("stairs %s at %d, %d", way, climb.Col, climb.Row),
+			s.name(docs, climb.To, "a floor"))
+	}
+
+	return strings.Join(parts, " → ")
 }

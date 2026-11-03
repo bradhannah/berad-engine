@@ -126,7 +126,7 @@ Chosen while planning, for its author to check:
 | 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Built |
 | 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Built |
 | 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Built |
-| 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Planned |
+| 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Built |
 | 10. Checks | `make check` and the real-window suite; a real-window test moves an NPC to another zone, mends its flagged place there, and watches it take the stairs to it | The checks pass with no lint findings | Planned |
 
 ## Step results
@@ -244,6 +244,15 @@ Chosen while planning, for its author to check:
   them on the way, and back down the only stairs down, walking around
   stairs up below the wall; and fall down a hole to a desk below, then
   carry on, as no stairs lead back up.
+- **Watching floors:** a preview's NPC carries the stairs its Go to still
+  has to take, each with the floor it leaves, its cell, whether it goes up
+  and the floor it leads to. Watch's NOW line adds them to what the NPC is
+  doing, as Walking to Desk, 9 tiles to go · Ground → stairs up at 1, 3 →
+  Upper, cut to fit. A Map showing a preview, its own or another view's,
+  follows the watched NPC to the floor it climbs to, the status saying it
+  took the stairs there, as it follows the player. Verified: a view test
+  reads the floors on a watched NPC's way up and down again in Watch, and
+  another finds the Map on the floor the watched NPC climbed to.
 
 ## Not in this increment
 

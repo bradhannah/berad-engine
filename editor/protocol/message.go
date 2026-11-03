@@ -351,6 +351,18 @@ type PreviewEntity struct {
 	Last     PreviewChange `json:"last,omitzero"`
 	Changes  uint64        `json:"changes,omitempty"`
 	Calls    []PreviewCall `json:"calls,omitempty"`
+	// Way is the stairs a Go to still has to take, in order.
+	Way []PreviewClimb `json:"way,omitempty"`
+}
+
+// PreviewClimb is a flight of stairs on an NPC's way: the floor it leaves,
+// the cell of the stairs, whether they go up, and the floor they lead to.
+type PreviewClimb struct {
+	From ids.ULID `json:"from"`
+	Col  int      `json:"col"`
+	Row  int      `json:"row"`
+	Up   bool     `json:"up,omitempty"`
+	To   ids.ULID `json:"to"`
 }
 
 // PreviewCall is a call an NPC is inside: the workflow that called and its

@@ -347,13 +347,42 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 	if len(calls) == 0 {
 		calls = nil
 	}
+	climbs := run.npc.Way()
+	way := make([]protocol.PreviewClimb, 0, len(climbs))
+	for _, climb := range climbs {
+		way = append(way, protocol.PreviewClimb{
+			From: climb.From, Col: climb.At.X, Row: climb.At.Y, To: climb.To,
+			Up: indexOf(s.floors, climb.To) > indexOf(s.floors, climb.From),
+		})
+	}
 
 	return protocol.PreviewEntity{
 		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
-		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls,
+		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way,
 	}
+}
+
+// followWatched shows the floor the watched NPC is on when it takes
+// stairs, as the map follows the player when they do.
+func (s *State) followWatched(ctx *frame.Context) {
+	watched := s.watched()
+	for _, entity := range s.liveNPCs() {
+		if entity.ID != watched.String() || watched.IsZero() {
+			continue
+		}
+		moved := !s.watchedFloor.IsZero() && entity.Floor != s.watchedFloor
+		s.watchedFloor = entity.Floor
+		if moved && entity.Floor != s.floor && indexOf(s.floors, entity.Floor) >= 0 {
+			s.switchFloor(entity.Floor, ctx)
+			ctx.Frame.Status(s.names.Name(entity.NPC, "The NPC") + " took the stairs to " +
+				s.floorName(ctx.Docs, entity.Floor))
+		}
+
+		return
+	}
+	s.watchedFloor = ids.ULID{}
 }
 
 // previewState is this window's preview as its state carries it.

@@ -172,7 +172,10 @@ type State struct {
 	zoneNPCs map[ids.ULID]int
 	// homes are the zones the project's NPCs live in, zero for none, as far
 	// as the window has them loaded.
-	homes        map[ids.ULID]ids.ULID
+	homes map[ids.ULID]ids.ULID
+	// watchedFloor is the floor the watched NPC was on last frame, to
+	// follow it when it takes stairs.
+	watchedFloor ids.ULID
 	floorsOf     int
 	floorsFor    ids.ULID
 	floorsAsking bool
@@ -242,7 +245,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
-		homes: map[ids.ULID]ids.ULID{}, floorsOf: 0,
+		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
 		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
 		menu: nil, openLoaded: ids.ULID{},
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
@@ -649,6 +652,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	} else {
 		s.arrowHint(input, ctx)
 	}
+	s.followWatched(ctx)
 	if s.floor.IsZero() {
 		return
 	}
