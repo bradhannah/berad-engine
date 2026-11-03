@@ -168,17 +168,17 @@ func (p *Picker) layout(window image.Rectangle, offer Offer) {
 	p.list.Rect = image.Rect(listLeft, line+ui.RowHeight, min(listLeft+listWidth, right), foot-ui.Half*ui.Gap-ui.ButtonH)
 	p.look = image.Rect(p.list.Rect.Max.X+ui.Inset, line, right, p.list.Rect.Max.Y)
 	p.list.Rows = p.rows(offer.Zones)
-	place := func(button *ui.Button, show bool) {
+	place := func(button *ui.Button, wide int, show bool) {
 		button.Rect = ui.Zero()
 		if show {
-			button.Rect = image.Rect(right-buttonW, foot, right, foot+ui.ButtonH)
-			right -= buttonW + ui.Gap
+			button.Rect = image.Rect(right-wide, foot, right, foot+ui.ButtonH)
+			right -= wide + ui.Gap
 		}
 	}
 	p.choose.Label = p.chooseLabel()
-	place(p.choose, true)
-	place(p.cancel, true)
-	place(p.none, p.config.NoZone)
+	place(p.choose, max(buttonW, p.theme.TextWidth(p.choose.Label)+ui.Inset), true)
+	place(p.cancel, buttonW, true)
+	place(p.none, buttonW, p.config.NoZone)
 }
 
 // layoutTags places a chip for each tag the project's zones carry, from the

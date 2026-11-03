@@ -216,3 +216,20 @@ func TestChoosingAZone(t *testing.T) {
 		t.Fatal("Escape closes without choosing")
 	}
 }
+
+// TestTheChooseButtonHoldsItsName widens the choose button for a long zone
+// name, so its label is never cut off at the button's edges.
+func TestTheChooseButtonHoldsItsName(t *testing.T) {
+	t.Parallel()
+	zones := newPicking(t, zonepicker.Config{For: "", Now: ids.ULID{}, Recent: nil, NoZone: false, GoesOn: false}, nil)
+	apart := func(name string) int {
+		zones.click("zone:" + name)
+		choose, _ := zones.picker.Locate(window, zones.offer, zonepicker.ChooseID)
+		cancel, _ := zones.picker.Locate(window, zones.offer, ui.DialogCancel)
+
+		return choose.X - cancel.X
+	}
+	if short, long := apart("Market"), apart("Smugglers' cave"); long <= short {
+		t.Fatalf("the choose button grows to hold Choose Smugglers' cave: %d, %d apart", short, long)
+	}
+}
