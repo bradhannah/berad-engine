@@ -123,6 +123,12 @@ drawn back to either only repeats what the rule already does.
   such as a guard, is several NPCs sharing one behaviour.
 - **Agreed (2026-11-01): an NPC is placed once in the whole project.** An
   NPC that seems to travel is several NPCs, shown or hidden by values.
+- **Agreed (2026-11-02): an NPC lives in one zone,** set in its details,
+  and goes only to places on that zone's floors, taking the stairs between
+  them. A place in another zone, or on a floor no stairs lead to, is a
+  problem for the NPC that runs the workflow. A module's places come from
+  its callers, so a character in two zones is two NPCs or one module
+  called by both.
 - **Agreed (2026-11-01): what a workflow uses cannot be deleted;** the
   editor says where it is used.
 - **Candidate: three sources of values.**

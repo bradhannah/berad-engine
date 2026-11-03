@@ -507,8 +507,15 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   and workflows. NPC flags grow as a game needs them.
 - **Agreed:** each NPC can carry private author notes, never shown to players.
   **Candidate:** description fields usable in an in-game guide.
-- **Agreed:** an NPC keeps one identity across zones and may have placements in
-  several; logic decides whether it appears at a placement.
+- **Agreed (2026-11-02):** an NPC lives in one zone and only one, set in its
+  details as its behaviour is, and is placed only on that zone's maps; it
+  can change floors within the zone by the stairs. A character that seems
+  to live in two zones is two NPCs. Changing an NPC's zone asks first,
+  listing the places it could no longer reach, then flags them. Zones are
+  chosen with a zone picker over the window, with search, folders, tags
+  and a look at each zone, serving whatever asks for a zone. This replaces
+  an NPC keeping one identity across zones with placements in several.
+  [Increment 22](increments/0022-npc-zones.md) builds it.
 - **Agreed:** NPCs travel to destinations by pathfinding and perform behaviour
   there, looping within scheduled times.
 - **Candidate:** positions entered by picking on the map rather than typing
