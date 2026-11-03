@@ -124,7 +124,16 @@ const (
 	TypePlace    Type = "place"
 	TypeGroup    Type = "group"
 	TypeTemplate Type = "template"
+	// TypeZone, TypeWorkflow and TypeSprite refer to a zone, a workflow or
+	// a sprite, by ID; for now only an NPC's built-in values have them.
+	TypeZone     Type = "zone"
+	TypeWorkflow Type = "workflow"
+	TypeSprite   Type = "sprite"
 )
+
+// IsRef reports whether a value of the type refers to a zone, a workflow
+// or a sprite, kept in Value.Ref.
+func (t Type) IsRef() bool { return t == TypeZone || t == TypeWorkflow || t == TypeSprite }
 
 // Types returns the value types a scope's values can have, in the order
 // windows offer them.
@@ -402,7 +411,7 @@ func (d Declaration) Empty() Value {
 		if len(d.Choices) > 0 {
 			empty.Choice = d.Choices[0].ID
 		}
-	case TypeBool, TypeText, TypeNPC, TypePlace, TypeGroup, TypeTemplate:
+	case TypeBool, TypeText, TypeNPC, TypePlace, TypeGroup, TypeTemplate, TypeZone, TypeWorkflow, TypeSprite:
 	}
 
 	return empty
@@ -537,7 +546,7 @@ func (d Declaration) Fits(value Value) bool {
 		_, found := d.Choice(value.Choice)
 
 		return found
-	case TypeBool, TypeText, TypeNPC, TypePlace, TypeGroup, TypeTemplate:
+	case TypeBool, TypeText, TypeNPC, TypePlace, TypeGroup, TypeTemplate, TypeZone, TypeWorkflow, TypeSprite:
 	}
 
 	return true
@@ -567,12 +576,15 @@ type Value struct {
 	NPC ids.ULID
 	// Place is a spot on a map; zero is none.
 	Place Place
+	// Ref is the zone, workflow or sprite a value of those types refers
+	// to; zero is none.
+	Ref ids.ULID
 }
 
 // NoValue returns a value of no type.
 func NoValue() Value {
 	return Value{Type: "", Integer: 0, Bool: false, Choice: "", Text: "", NPC: ids.ULID{},
-		Place: Place{Floor: ids.ULID{}, Anchor: ids.ULID{}},
+		Place: Place{Floor: ids.ULID{}, Anchor: ids.ULID{}}, Ref: ids.ULID{},
 	}
 }
 
@@ -593,17 +605,24 @@ func (v Value) Encode() json.RawMessage {
 	case TypeText:
 		encoded = quoted(v.Text)
 	case TypeNPC:
-		npc := ""
-		if !v.NPC.IsZero() {
-			npc = v.NPC.String()
-		}
-		encoded = quoted(npc)
+		encoded = quotedID(v.NPC)
+	case TypeZone, TypeWorkflow, TypeSprite:
+		encoded = quotedID(v.Ref)
 	case TypePlace:
 		encoded = encodePlace(v.Place)
 	case TypeGroup, TypeTemplate:
 	}
 
 	return encoded
+}
+
+// quotedID writes an ID in quotes, or "" for none.
+func quotedID(id ids.ULID) []byte {
+	if id.IsZero() {
+		return quoted("")
+	}
+
+	return quoted(id.String())
 }
 
 // encodePlace writes a place as its floor and anchor.
@@ -658,6 +677,8 @@ func (d Declaration) parseInto(raw json.RawMessage, value *Value) error {
 		return parseText(raw, &value.Text)
 	case TypeNPC:
 		return parseNPC(raw, &value.NPC)
+	case TypeZone, TypeWorkflow, TypeSprite:
+		return parseNPC(raw, &value.Ref)
 	case TypePlace:
 		return json.Unmarshal(raw, &value.Place)
 	case TypeGroup, TypeTemplate:
@@ -693,7 +714,7 @@ func parseText(raw json.RawMessage, text *string) error {
 	return nil
 }
 
-// parseNPC reads an NPC's ID, or "" for none.
+// parseNPC reads an NPC's ID, or another document's, or "" for none.
 //
 //nolint:wrapcheck // Parse wraps what this returns.
 func parseNPC(raw json.RawMessage, npc *ids.ULID) error {
@@ -707,8 +728,12 @@ func parseNPC(raw json.RawMessage, npc *ids.ULID) error {
 	return err
 }
 
+// labelNone is how a value that refers to nothing reads.
+const labelNone = "none"
+
 // Label shows a value for people: 12, true, a choice's name, text in
-// quotes, or an NPC's ID.
+// quotes, or an NPC's, a zone's, a workflow's or a sprite's ID; Text shows
+// it with names.
 func (d Declaration) Label(value Value) string {
 	switch d.Type {
 	case TypeInteger:
@@ -723,7 +748,7 @@ func (d Declaration) Label(value Value) string {
 		return string(quoted(value.Text))
 	case TypeNPC:
 		if value.NPC.IsZero() {
-			return "none"
+			return labelNone
 		}
 
 		return value.NPC.String()
@@ -733,6 +758,12 @@ func (d Declaration) Label(value Value) string {
 		}
 
 		return "a place"
+	case TypeZone, TypeWorkflow, TypeSprite:
+		if value.Ref.IsZero() {
+			return labelNone
+		}
+
+		return value.Ref.String()
 	case TypeGroup, TypeTemplate:
 	}
 

@@ -220,6 +220,7 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 		"world.shop.customers_served" {
 		t.Fatalf("the sample declares the shop's values: %s", got)
 	}
+	sampleZone := readEnvelope(t, project, "zones/sample-zone--*.json").ID
 	placed := map[ids.ULID]bool{}
 	for _, placement := range ground.Placements() {
 		placed[placement.NPC] = true
@@ -227,7 +228,7 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 	for _, each := range []struct {
 		name, path, workflow string
 		nodes                int
-	}{{"clerk", "clerk", "clerk-s-day", 19}, {"customer", "customer", "customer-shops", 12}} {
+	}{{"clerk", "clerk", "clerk-s-day", 20}, {"customer", "customer", "customer-shops", 12}} {
 		envelope := readEnvelope(t, project, "npcs/"+each.name+"--*.json")
 		document, err := npcplugin.Decode(envelope.Data)
 		if err != nil {
@@ -240,7 +241,7 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 			t.Fatal(err)
 		}
 		workflow := logic.(*workflowplugin.Document).Workflow
-		if made.Path != each.path || made.Behaviour != behaviour.ID || !placed[envelope.ID] ||
+		if made.Path != each.path || made.Behaviour != behaviour.ID || !placed[envelope.ID] || made.Zone != sampleZone ||
 			len(workflow.Nodes()) != each.nodes || workflow.Locals().Len() != 1 {
 			t.Fatalf("%s: %+v placed %v, %d nodes", each.name, made, placed[envelope.ID], len(workflow.Nodes()))
 		}

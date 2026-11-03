@@ -47,7 +47,10 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 	role := roleOf(node.Kind, param)
 	source := &valueSource{state: s, node: node.ID, param: param, role: role, operand: operand, targets: nil}
 	placeholder, empty := "Find a value, or type a new name", "No value matches. Type a name to declare one."
-	if operand {
+	switch {
+	case operand && only == "":
+		placeholder, empty = "Find a value, to set it to as text", "No value matches."
+	case operand:
 		placeholder = "Find " + only.Label() + " values"
 		empty = "No other " + only.Label() + " to compare with. Type a name to declare one."
 	}
@@ -86,11 +89,24 @@ func (v *valueSource) Options(docs frame.Docs) []valuepicker.Option {
 	for _, option := range found {
 		listed = append(listed, valuepicker.Option{
 			ID: encodeRef(option.ref), Path: option.path, Declared: option.declared, Heading: option.heading,
-			Rail: option.rail, Root: option.root, Detail: "",
+			Rail: option.rail, Root: option.root, Detail: builtInDetail(option),
 		})
 	}
 
 	return listed
+}
+
+// builtInDetail says an NPC's built-in value is built in, and read only
+// when no workflow sets it, or it is another NPC's.
+func builtInDetail(option valueOption) string {
+	switch {
+	case !worldstate.IsBuiltIn(option.ref.Value):
+		return ""
+	case worldstate.ReadOnly(option.ref.Value) || option.ref.Others():
+		return "built in · read only"
+	default:
+		return "built in"
+	}
 }
 
 // Targets lists where a name typed could be declared.
@@ -121,7 +137,7 @@ func (v *valueSource) Pick(ctx *frame.Context, option valuepicker.Option) {
 	if !found || !refers {
 		return
 	}
-	if v.state.chooseForCall(ctx, node, v.param, ref) {
+	if v.state.chooseForCall(ctx, node, v.param, ref) || v.state.insertForLog(ctx, node, ref) {
 		return
 	}
 	if v.operand {

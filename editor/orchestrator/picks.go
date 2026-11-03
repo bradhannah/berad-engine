@@ -226,12 +226,14 @@ func (o *Orchestrator) endPicksWith(left ids.ULID) {
 // query answers questions that need the whole project.
 func (o *Orchestrator) query(from *window, message protocol.Message) {
 	question, err := protocol.DecodePayload[protocol.Query](message)
-	if err != nil || question.Question != protocol.QuestionWhereUsed {
+	switch {
+	case err == nil && question.Question == protocol.QuestionWhereUsed:
+		o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: o.whereUsed(question)}))
+	case err == nil && question.Question == protocol.QuestionRunners:
+		o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: o.runners(question.Document)}))
+	default:
 		o.reply(from, message.Request, "unknown question", 0)
-
-		return
 	}
-	o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: o.whereUsed(question)}))
 }
 
 // whereUsed lists the documents that refer to a document, or to one item in

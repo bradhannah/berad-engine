@@ -45,16 +45,18 @@ const (
 
 // Problems the value nodes can have.
 const (
-	problemNoValue    = "No value chosen yet."
-	problemValueGone  = "Its value was deleted. Choose another, or undo the delete."
-	problemReadOnly   = "It can read another NPC's or zone's values, but never set them."
-	problemNPCValue   = "An NPC value cannot be set or checked here."
-	problemOperand    = "Choose what it sets the value to, or compares it with."
-	problemAddInteger = "Only an integer can be added to."
-	problemNoKeep     = "Choose a local NPC value to keep what it finds in."
-	problemWhere      = "Only an NPC's own value can be looked for."
-	problemOwnerGone  = "Its NPC or zone was deleted."
-	problemFoundGone  = "The local value holding its NPC was deleted."
+	problemNoValue   = "No value chosen yet."
+	problemValueGone = "Its value was deleted. Choose another, or undo the delete."
+	problemReadOnly  = "It can read another NPC's or zone's values, but never set them."
+	// problemBuiltInFixed is a Set value on an NPC's zone or behaviour.
+	problemBuiltInFixed = "An NPC's zone and behaviour are set in its details, not by a workflow."
+	problemNPCValue     = "An NPC value cannot be set or checked here."
+	problemOperand      = "Choose what it sets the value to, or compares it with."
+	problemAddInteger   = "Only an integer can be added to."
+	problemNoKeep       = "Choose a local NPC value to keep what it finds in."
+	problemWhere        = "Only an NPC's own value can be looked for."
+	problemOwnerGone    = "Its NPC or zone was deleted."
+	problemFoundGone    = "The local value holding its NPC was deleted."
 )
 
 // valueOption is one value a parameter can choose: its reference, path and
@@ -223,9 +225,9 @@ const (
 	roleCheck
 	roleWhere
 	roleKeep
-	// roleGive is another value a Call gives an input, and roleKept a
-	// value it keeps an output in: of any type, an NPC or a place among
-	// them.
+	// roleGive is another value a Call gives an input, or a value a Log
+	// writes, and roleKept a value a Call keeps an output in: of any type,
+	// an NPC or a place among them.
 	roleGive
 	roleKept
 	// rolePlace is a Go to's place value: a place local.
@@ -238,6 +240,8 @@ func roleOf(kind, param string) valueRole {
 		return roleGive
 	case kind == flow.KindCall:
 		return roleKept
+	case kind == flow.KindLog:
+		return roleGive
 	case kind == flow.KindGoTo:
 		return rolePlace
 	case kind == flow.KindCheckValue:
@@ -291,7 +295,7 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	if role == roleWhere {
 		heading = "THE NPC IT FINDS"
 	}
-	for _, held := range s.npcValues(docs, catalog, role) {
+	for _, held := range s.ownNPCValues(docs, catalog, role) {
 		found.add(scopePlace(heading, worldstate.ScopeNPC), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
 			held.Path, held.Declaration)
 	}
@@ -336,14 +340,13 @@ func offersLocal(role valueRole, local worldstate.Declaration) bool {
 	return local.Type != worldstate.TypeNPC && local.Type != worldstate.TypePlace
 }
 
-// npcValues lists the values a workflow's own NPC can have: its name, and
-// what the NPCs following it have, or, while none does, every template's.
+// npcValues lists the values a workflow's own NPC can have: its built-in
+// values, and what the NPCs following it have, or, while none does, every
+// template's.
 func (s *State) npcValues(docs frame.Docs, catalog *worldstate.Catalog, role valueRole) []worldstate.Held {
 	followers := s.followers(docs, catalog)
 	if len(followers) == 0 || role == roleWhere {
-		name := worldstate.Held{Declaration: worldstate.NameDeclaration(""), Path: string(worldstate.ScopeNPC) + ".name"}
-
-		return append([]worldstate.Held{name}, catalog.Templates(worldstate.ScopeNPC)...)
+		return append(builtInsHeld(), catalog.Templates(worldstate.ScopeNPC)...)
 	}
 	var values []worldstate.Held
 	for _, follower := range followers {
@@ -353,13 +356,42 @@ func (s *State) npcValues(docs frame.Docs, catalog *worldstate.Catalog, role val
 	return values
 }
 
+// ownNPCValues lists the values of the workflow's own NPC a role offers:
+// none in a zone loop, which runs for no NPC, and for a Set value none it
+// cannot set.
+func (s *State) ownNPCValues(docs frame.Docs, catalog *worldstate.Catalog, role valueRole) []worldstate.Held {
+	if role != roleWhere && s.workflow.Purpose() == flow.PurposeZoneLoop {
+		return nil
+	}
+	var offered []worldstate.Held
+	for _, held := range s.npcValues(docs, catalog, role) {
+		if role != roleSet || !worldstate.ReadOnly(held.Declaration.ID) {
+			offered = append(offered, held)
+		}
+	}
+
+	return offered
+}
+
+// builtInsHeld lists every NPC's built-in values as values it holds.
+func builtInsHeld() []worldstate.Held {
+	builtIns := worldstate.BuiltIns(worldstate.Owner{
+		Scope: worldstate.ScopeNPC, Path: "", Name: "", Owned: worldstate.NewOwned(worldstate.ScopeNPC), Zone: ids.ULID{},
+		Behaviour: ids.ULID{}, Sprite: ids.ULID{},
+	})
+	held := make([]worldstate.Held, 0, len(builtIns))
+	for _, declared := range builtIns {
+		held = append(held, worldstate.Held{Declaration: declared, Path: string(worldstate.ScopeNPC) + "." + declared.Name})
+	}
+
+	return held
+}
+
 // othersOptions adds other NPCs' and zones' values a Check value can read:
 // those of each NPC a local value holds, and of each NPC and zone with a
 // path name.
 func (s *State) othersOptions(found *options, catalog *worldstate.Catalog, locals []worldstate.Declaration) {
-	shared := append([]worldstate.Held{{
-		Declaration: worldstate.NameDeclaration(""), Path: string(worldstate.ScopeNPC) + ".name",
-	}}, catalog.Templates(worldstate.ScopeNPC)...)
+	shared := append(builtInsHeld(), catalog.Templates(worldstate.ScopeNPC)...)
 	for _, holder := range locals {
 		if holder.Type != worldstate.TypeNPC {
 			continue
@@ -635,7 +667,7 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 		current, found := s.currentNode(ctx.Docs, nodeID)
 		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
 		switch {
-		case !found, s.chooseForCall(ctx, current, param, ref):
+		case !found, s.chooseForCall(ctx, current, param, ref), s.insertForLog(ctx, current, ref):
 		case made.operand:
 			s.saveParam(ctx, current, param, flow.RefOperand(ref))
 		default:
@@ -735,7 +767,8 @@ func (s *State) newOperandControl(made *control, node flow.Node, declared worlds
 			made.choices = append(made.choices, ui.NewButton(operandPrefix+made.param.Name+"-"+choice.ID, choice.Name))
 			made.operands = append(made.operands, value.Encode())
 		}
-	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 }
 
@@ -784,6 +817,9 @@ func (s *State) layoutOperand(made *control, left, width, top int) int {
 	if made.picksValue() {
 		return layoutValue(made, left, width, top)
 	}
+	if made.operandType.IsRef() {
+		return layoutRef(made, left, width, top)
+	}
 	if made.field != nil {
 		made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 
@@ -816,6 +852,11 @@ func (s *State) updateOperand(input *ui.Input, ctx *frame.Context, made *control
 	}
 	if made.picksValue() {
 		s.updateOperandChooser(input, ctx, made, node)
+
+		return
+	}
+	if made.operandType.IsRef() {
+		s.updateRef(input, ctx, made, node)
 
 		return
 	}
@@ -916,6 +957,11 @@ func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control
 
 		return
 	}
+	if made.operandType.IsRef() {
+		s.drawRef(screen, docs, made, node)
+
+		return
+	}
 	for _, button := range made.choices {
 		button.Draw(screen, s.theme)
 	}
@@ -930,8 +976,11 @@ func (s *State) drawOperand(screen *ebiten.Image, docs frame.Docs, made *control
 // valueProblem says what is wrong with a Set value, Check value or Find NPC
 // nearby.
 func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
-	if node.Kind == flow.KindFindNPC {
+	switch node.Kind {
+	case flow.KindFindNPC:
 		return s.findProblem(node, docs)
+	case flow.KindLog:
+		return s.logProblem(node, docs)
 	}
 	ref, err := node.Ref(flow.ParamValue)
 	if err != nil {
@@ -965,6 +1014,8 @@ func kindProblem(node flow.Node, ref flow.ValueRef, declared worldstate.Declarat
 	switch {
 	case node.Kind == flow.KindSetValue && !ref.Writable():
 		return problemReadOnly
+	case node.Kind == flow.KindSetValue && worldstate.ReadOnly(ref.Value):
+		return problemBuiltInFixed
 	case declared.Type == worldstate.TypeNPC:
 		return problemNPCValue
 	case node.Kind == flow.KindSetValue && choiceOf(node, "how") == flow.HowAdd && declared.Type != worldstate.TypeInteger:
@@ -1051,6 +1102,9 @@ func compareWords(node flow.Node) string {
 
 // valueSummary describes a value node in a few words.
 func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
+	if node.Kind == flow.KindLog {
+		return s.logSummary(docs, node)
+	}
 	path := func(param string) string {
 		ref, err := node.Ref(param)
 		if err != nil || ref.IsZero() {
@@ -1113,8 +1167,11 @@ func (s *State) operandLabel(docs frame.Docs, node flow.Node, param string) stri
 			return "?"
 		}
 		label := declared.Label(value)
-		if declared.Type == worldstate.TypeText {
+		switch {
+		case declared.Type == worldstate.TypeText:
 			label = textLabel(value.Text)
+		case declared.Type.IsRef():
+			label = worldstate.Text(declared, value, s.namer(docs))
 		}
 		labels = append(labels, label)
 	}

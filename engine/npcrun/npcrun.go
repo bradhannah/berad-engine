@@ -7,7 +7,8 @@
 // Play sound, are followed in the same tick; a Wait, a Move and a Go to take
 // time. A Play sound only asks for its cue: the host plays what an NPC's
 // Sounds lists after each Step, so a run stays the same with or without
-// sound. An NPC looping without waiting plays nothing. A
+// sound; a Log likewise leaves its line in Lines for the host to show. An
+// NPC looping without waiting plays and writes nothing. A
 // branch with nothing connected goes back to the start, or, inside a
 // time-bound container, back to the container's first step; when the
 // container's time is up the NPC leaves by its exit at once, even partway
@@ -42,7 +43,8 @@ const (
 	StatusBlocked     = "Blocked, so it carried on"
 	StatusNoRoute     = "No way there, so it carried on"
 	StatusNoAnchor    = "No destination, so it carried on"
-	StatusOtherFloor  = "Can't reach it: the destination is on another floor"
+	StatusOtherFloor  = "Can't reach it: no stairs lead to its floor"
+	StatusOtherZone   = "Can't reach it: the destination is in another zone"
 	StatusNoCue       = "No sound chosen, so it carried on"
 )
 
@@ -62,6 +64,9 @@ type Change struct {
 // of the world, the zones and the NPCs, the zone it is in, and the zone's
 // other NPCs as the tick began, in placement order.
 type World struct {
+	// Names names zones, workflows, sprites and places for values' text
+	// forms; nil leaves them as IDs.
+	Names     Names
 	Zone      play.Zone
 	Workflow  *flow.Workflow
 	Behaviour ids.ULID
@@ -73,13 +78,17 @@ type World struct {
 	Others    []Other
 }
 
-// NPC is one NPC running in a zone.
+// NPC is one NPC running in a zone, or a zone's loop, which runs as an NPC
+// with no body would: it never moves, and its workflow has no node that
+// moves it.
 type NPC struct {
 	// Placement, NPC and Floor say which placement this is, of which NPC,
-	// and the floor it walks on.
+	// and the floor it walks on; all are zero for a zone loop.
 	Placement ids.ULID
 	NPC       ids.ULID
 	Floor     ids.ULID
+	// Loop is the zone a zone loop runs for; zero for an NPC.
+	Loop ids.ULID
 	// Cell is where it stands, or the cell a step is leaving; To is where the
 	// step goes, equal to Cell when it stands still.
 	Cell, To image.Point
@@ -97,6 +106,9 @@ type NPC struct {
 	// Sounds are what the latest Step's Play sounds asked for, in order,
 	// until the next Step.
 	Sounds []Sound
+	// Lines are what the latest Step's Logs wrote, oldest first, until the
+	// next Step.
+	Lines []Line
 	// Status says what keeps the NPC from following its workflow now: it has
 	// none, or it is looping without waiting.
 	Status string
@@ -127,9 +139,10 @@ type work struct {
 	movesLeft, movesTotal int
 	direction             image.Point
 	way                   string
-	// route is the cells a Go to still walks, goal the anchor's name and
-	// target its cell.
+	// route is the cells a Go to still walks, across floors, climbs the
+	// stairs it still takes, goal the anchor's name and target its cell.
 	route  []image.Point
+	climbs []Climb
 	goal   string
 	target image.Point
 }
@@ -138,7 +151,7 @@ type work struct {
 func idle() work {
 	return work{
 		started: false, waiting: false, skipped: "", waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0, movesTotal: 0,
-		direction: image.Pt(0, 0), way: "", route: nil, goal: "", target: image.Pt(0, 0),
+		direction: image.Pt(0, 0), way: "", route: nil, climbs: nil, goal: "", target: image.Pt(0, 0),
 	}
 }
 
@@ -172,14 +185,27 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 	cell := image.Pt(placement.Col, placement.Row)
 
 	return &NPC{
-		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Cell: cell, To: cell, Progress: 0,
+		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Loop: ids.ULID{}, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
-		Changes: 0, Taken: nil, Sounds: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil, module: ids.ULID{},
+		Changes: 0, Taken: nil, Sounds: nil, Lines: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil,
+		module: ids.ULID{},
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
 }
+
+// StartLoop begins a zone's loop: a runner with no placement, no NPC and
+// no floor, which stays where it is. The seed fixes its random choices.
+func StartLoop(zone ids.ULID, seed uint64) *NPC {
+	loop := Start(tilefloor.Placement{ID: ids.ULID{}, NPC: ids.ULID{}, Col: 0, Row: 0}, ids.ULID{}, seed)
+	loop.Loop = zone
+
+	return loop
+}
+
+// IsLoop reports whether the runner is a zone's loop rather than an NPC.
+func (n *NPC) IsLoop() bool { return !n.Loop.IsZero() }
 
 // seedMix spreads one seed over the generator's two words.
 const seedMix = 0x9e3779b97f4a7c15
@@ -205,10 +231,10 @@ func (n *NPC) Restart() {
 // Step runs the NPC for one tick: it finishes or continues a step between
 // cells, leaves a container whose time is up, and follows its workflow.
 func (n *NPC) Step(world World, tick uint64) {
-	n.Taken, n.Sounds = n.Taken[:0], n.Sounds[:0]
+	n.Taken, n.Sounds, n.Lines = n.Taken[:0], n.Sounds[:0], n.Lines[:0]
 	if world.Workflow == nil {
 		n.Node, n.Container, n.Status = ids.ULID{}, ids.ULID{}, StatusNoBehaviour
-		n.walk()
+		n.walk(world.Zone)
 
 		return
 	}
@@ -224,21 +250,37 @@ func (n *NPC) Step(world World, tick uint64) {
 	}
 	n.timeUp(world, tick)
 	n.wait(world)
-	n.walk()
+	n.walk(world.Zone)
 	if n.Moving() {
 		return
 	}
 	n.follow(world, tick)
 }
 
-// walk advances a step between cells.
-func (n *NPC) walk() {
+// walk advances a step between cells. A step onto stairs takes them, to
+// the same cell of the floor above or below, as the player's does.
+func (n *NPC) walk(zone play.Zone) {
 	if !n.Moving() {
 		return
 	}
 	n.Progress++
 	if n.Progress >= play.StepTicks {
 		n.Cell, n.Progress = n.To, 0
+		n.climb(zone)
+	}
+}
+
+// climb takes the stairs on the cell the NPC has just stepped onto, if any
+// lead somewhere it can stand.
+func (n *NPC) climb(zone play.Zone) {
+	floors := zone.Floors()
+	target := climbAt(zone, floors, n.Floor, n.Cell)
+	if target < 0 {
+		return
+	}
+	n.Floor = floors[target]
+	if len(n.work.climbs) > 0 && n.work.climbs[0].At == n.Cell {
+		n.work.climbs = n.work.climbs[1:]
 	}
 }
 
@@ -285,7 +327,8 @@ func (n *NPC) wait(world World) {
 
 // follow does the current node's work, following nodes that take no time
 // until one takes time or MaxInstant is reached. A loop that never waits
-// would ask for its sounds every tick, so it plays none.
+// would ask for its sounds and write its lines every tick, so it plays and
+// writes none.
 func (n *NPC) follow(world World, tick uint64) {
 	n.Status = ""
 	for range MaxInstant {
@@ -313,7 +356,7 @@ func (n *NPC) follow(world World, tick uint64) {
 			n.take(world, output, tick)
 		}
 	}
-	n.Status, n.Sounds = StatusLooping, n.Sounds[:0]
+	n.Status, n.Sounds, n.Lines = StatusLooping, n.Sounds[:0], n.Lines[:0]
 }
 
 // act does a node's work for this tick. It returns the output to leave by
@@ -338,6 +381,10 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 		return flow.OutputNext, true
 	case flow.KindSetValue:
 		n.actSet(world, node)
+
+		return flow.OutputNext, true
+	case flow.KindLog:
+		n.actLog(world, node)
 
 		return flow.OutputNext, true
 	case flow.KindCheckValue:

@@ -18,7 +18,9 @@ func TestNPCRoundTrips(t *testing.T) {
 	var look ids.ULID
 	look[15] = 10
 	clerk := npc.New()
-	clerk.Behaviour, clerk.Sprite, clerk.Path = routine, look, "clerk"
+	var market ids.ULID
+	market[15] = 11
+	clerk.Zone, clerk.Behaviour, clerk.Sprite, clerk.Path = market, routine, look, "clerk"
 	clerk.Notes = "Works the front desk.\nNever shown to players."
 	var secret, guards ids.ULID
 	secret[0], secret[15], guards[0], guards[15] = 1, 1, 1, 2
@@ -43,6 +45,10 @@ func TestNPCRoundTrips(t *testing.T) {
 	copied = clerk.Clone()
 	if copied.Sprite = routine; copied.Equal(clerk) {
 		t.Fatal("NPCs with different sprites differ")
+	}
+	copied = clerk.Clone()
+	if copied.Zone = routine; copied.Equal(clerk) {
+		t.Fatal("NPCs that live in different zones differ")
 	}
 	empty, err := npc.New().Encode()
 	if err != nil || string(empty) != "{}" {
@@ -92,11 +98,11 @@ func TestPathNames(t *testing.T) {
 }
 
 // TestOlderVersionsReadUnchanged upgrades an NPC saved before NPCs had
-// sprites, path names or values of their own.
+// sprites, path names, values of their own or a zone.
 func TestOlderVersionsReadUnchanged(t *testing.T) {
 	t.Parallel()
 	format := npc.Format()
-	if format.Current != npc.FormatVersion || npc.FormatVersion != 4 {
+	if format.Current != npc.FormatVersion || npc.FormatVersion != 5 {
 		t.Fatalf("version %d", format.Current)
 	}
 	upgraded := json.RawMessage(`{"notes":"Saved before sprites."}`)
@@ -108,7 +114,7 @@ func TestOlderVersionsReadUnchanged(t *testing.T) {
 	}
 	decoded, err := npc.Decode(upgraded)
 	if err != nil || decoded.Notes != "Saved before sprites." || !decoded.Sprite.IsZero() || decoded.Path != "" ||
-		decoded.Owned.Len() != 0 {
+		decoded.Owned.Len() != 0 || !decoded.Zone.IsZero() {
 		t.Fatalf("upgraded %+v %v", decoded, err)
 	}
 }

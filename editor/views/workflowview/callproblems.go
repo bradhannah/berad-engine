@@ -39,6 +39,9 @@ func (s *State) callProblem(node flow.Node, docs frame.Docs) string {
 	if !loaded {
 		return ""
 	}
+	if problem := s.callFitProblem(docs, called); problem != "" {
+		return problem
+	}
 	if missing := flow.MissingWays(node, called.workflow); len(missing) > 0 {
 		return called.name + " has no way out called " + missing[0].Label +
 			" any more. Remove the line, or add the Return back."
@@ -51,7 +54,47 @@ func (s *State) callProblem(node flow.Node, docs frame.Docs) string {
 			", or choose another value."
 	}
 
-	return s.refProblem(node, docs, called.workflow)
+	if problem := s.refProblem(node, docs, called.workflow); problem != "" {
+		return problem
+	}
+
+	return s.callReachProblem(docs, node, called.workflow)
+}
+
+// callFitProblem says why a workflow called does not fit this one: it is
+// of another kind, or runs in another zone than this one does; a workflow
+// running in any zone calls only those running in any zone.
+func (s *State) callFitProblem(docs frame.Docs, called module) string {
+	name := s.name(docs)
+	if purpose := called.workflow.Purpose(); purpose != s.workflow.Purpose() {
+		return called.name + " is " + article(purpose.Label()) + ", and " + name + " " +
+			article(s.workflow.Purpose().Label()) + ". Call one of its own kind."
+	}
+	runs, here := called.workflow.RunsIn(), s.runsIn(docs)
+	if _, exists := s.names(docs).Entry(runs); !exists {
+		runs = ids.ULID{}
+	}
+	switch {
+	case runs.IsZero() || runs == here:
+		return ""
+	case here.IsZero():
+		return called.name + " runs in " + s.names(docs).Name(runs, "a zone") + ", and " + name +
+			" runs in any zone. Call one that runs in any zone."
+	default:
+		return called.name + " runs in " + s.names(docs).Name(runs, "another zone") + ", and " + name + " runs in " +
+			s.runsInName(docs) + ". Call one that runs there or in any zone."
+	}
+}
+
+// article puts "a" or "an" before a kind of workflow, lowercased but for
+// NPC.
+func article(label string) string {
+	lowered := strings.ToLower(label[:1]) + label[1:]
+	if strings.HasPrefix(label, "NPC") {
+		return "an " + label
+	}
+
+	return "a " + lowered
 }
 
 // refProblem says which input is given, or output kept in, another value
@@ -93,7 +136,8 @@ func giveAnew(kind worldstate.Type) string {
 		return "Choose one of its choices"
 	case worldstate.TypePlace:
 		return "Pick a place on a map"
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return "Clear it"

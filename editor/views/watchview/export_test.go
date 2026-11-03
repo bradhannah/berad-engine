@@ -1,6 +1,9 @@
 package watchview
 
-import "github.com/bradhannah/berad-engine/editor/views/frame"
+import (
+	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
+)
 
 // Way returns the middle line of the footer, its label and its text fitted
 // to a width, for tests.
@@ -13,3 +16,6 @@ func (s *State) Way(docs frame.Docs, width int) (string, string) {
 
 	return label, s.fit(parts, width)
 }
+
+// StateNow returns the preview state the window holds, for tests.
+func (s *State) StateNow() *protocol.PreviewState { return s.state }

@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"slices"
 
-	pathfind "github.com/bradhannah/berad-sdk/modules/berad-path"
-
-	"github.com/bradhannah/berad-engine/engine/play"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -72,63 +70,39 @@ func (n *NPC) destination(world World, node flow.Node) (tilefloor.AnchorRef, boo
 	return tilefloor.AnchorRef{Floor: value.Place.Floor, Anchor: value.Place.Anchor}, true
 }
 
-// plan sets up a Go to: finds its anchor on the NPC's floor and a route
-// there. It returns why it cannot, or "".
+// plan sets up a Go to: finds its anchor on a floor of the zone and a
+// route there, across floors by their stairs. It returns why it cannot, or
+// "".
 func (n *NPC) plan(world World, node flow.Node) string {
 	zone := world.Zone
 	destination, ok := n.destination(world, node)
 	if !ok {
 		return StatusNoAnchor
 	}
-	if destination.Floor != n.Floor {
+	floors := zone.Floors()
+	target, from := slices.Index(floors, destination.Floor), slices.Index(floors, n.Floor)
+	if target < 0 || from < 0 {
+		return StatusOtherZone
+	}
+	var anchor tilefloor.Anchor
+	found := false
+	zone.Floor(destination.Floor, func(floor *tilefloor.Floor) { anchor, _, found = floor.Anchor(destination.Anchor) })
+	if !found {
+		return StatusNoAnchor
+	}
+	goal := image.Pt(anchor.Col, anchor.Row)
+	way, reached := findWay(zone, floors, hop{floor: from, cell: n.Cell, cost: 0, cells: nil, climbs: nil},
+		hop{floor: target, cell: goal, cost: 0, cells: nil, climbs: nil})
+	switch {
+	case !reached && target == from:
+		return StatusNoRoute
+	case !reached:
 		return StatusOtherFloor
 	}
-	status := StatusNoAnchor
-	zone.Floor(n.Floor, func(floor *tilefloor.Floor) {
-		anchor, _, found := floor.Anchor(destination.Anchor)
-		if !found {
-			return
-		}
-		goal := image.Pt(anchor.Col, anchor.Row)
-		route, ok := findRoute(floor, n.Cell, goal)
-		if !ok {
-			status = StatusNoRoute
+	n.work = routeWork(way.cells, anchor.Name, goal)
+	n.work.climbs = way.climbs
 
-			return
-		}
-		n.work = routeWork(route, anchor.Name, goal)
-		status = ""
-	})
-
-	return status
-}
-
-// findRoute finds a cheapest route on a floor, by the steps the player can
-// take, and returns the cells after the start.
-func findRoute(floor *tilefloor.Floor, from, goal image.Point) ([]image.Point, bool) {
-	if from == goal {
-		return nil, true
-	}
-	result, err := pathfind.Find(pathfind.Query{
-		Start: from, Goal: goal, Bounds: floor.Bounds(), Moves: pathfind.Eight, MinStep: straightCost,
-		MaxVisited: maxVisited,
-		Cost: func(at, to image.Point) (int, bool) {
-			delta := to.Sub(at)
-			if !play.CanStep(floor, at, delta) {
-				return 0, false
-			}
-			if delta.X != 0 && delta.Y != 0 {
-				return diagonalCost, true
-			}
-
-			return straightCost, true
-		},
-	})
-	if err != nil || result.Outcome != pathfind.Found {
-		return nil, false
-	}
-
-	return result.Route[1:], true
+	return ""
 }
 
 // Activity says in a few words what the NPC is doing on its node, as the

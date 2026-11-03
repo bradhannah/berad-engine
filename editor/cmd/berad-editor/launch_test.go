@@ -62,7 +62,7 @@ func TestSampleRoutineShowsEachNode(t *testing.T) {
 	browserScript := script(
 		must("row:Notes", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), quitWhenAlone(),
 	)
-	workflowScript := script(must("state:loaded", 900), must("state:nodes:19", 60), wait(20), shoot(shot), quit())
+	workflowScript := script(must("state:loaded", 900), must("state:nodes:20", 60), wait(20), shoot(shot), quit())
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)

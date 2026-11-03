@@ -31,12 +31,14 @@ import (
 // local values; version 5 renamed local types to integer and bool, and named
 // a value reference's NPC or zone its owner; version 6 gave Check value
 // comparisons by type, a range's top and a list as operands, and operands
-// that refer to another value. Layout version 2 added lines moved by hand;
+// that refer to another value; version 7 gave Go to a place value, and added
+// Return, Call workflow and place locals; version 8 gave each workflow its
+// kind and the zone it runs in. Layout version 2 added lines moved by hand;
 // version 3 let a back line's drop and end legs be moved too, and added the
 // tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 7
+	FormatVersion       = 8
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 3
 )
@@ -97,18 +99,22 @@ type Link struct {
 // each node sits, the bends of lines moved by hand, and the tints an author
 // gave nodes, outcomes and lines.
 type Workflow struct {
-	start  ids.ULID
-	nodes  []Node
-	locals *worldstate.Declarations
-	boxes  map[ids.ULID]Box
-	bends  map[string]Bend
-	tints  Tints
+	start   ids.ULID
+	nodes   []Node
+	locals  *worldstate.Declarations
+	purpose Purpose
+	zone    ids.ULID
+	boxes   map[ids.ULID]Box
+	bends   map[string]Bend
+	tints   Tints
 }
 
 type wireWorkflow struct {
-	Start  ids.ULID        `json:"start"`
-	Nodes  []Node          `json:"nodes"`
-	Locals json.RawMessage `json:"locals,omitempty"`
+	Start   ids.ULID        `json:"start"`
+	Nodes   []Node          `json:"nodes"`
+	Locals  json.RawMessage `json:"locals,omitempty"`
+	Purpose Purpose         `json:"purpose,omitempty"`
+	Zone    ids.ULID        `json:"zone,omitzero"`
 }
 
 type wireLayout struct {
@@ -117,7 +123,8 @@ type wireLayout struct {
 	Tints *Tints           `json:"tints,omitempty"`
 }
 
-// New returns a workflow holding only its start node.
+// New returns an NPC behaviour running in any zone, holding only its start
+// node.
 func New(start ids.ULID) (*Workflow, error) {
 	if start.IsZero() {
 		return nil, fmt.Errorf("%w: the start node needs an ID", ErrNode)
@@ -126,7 +133,8 @@ func New(start ids.ULID) (*Workflow, error) {
 
 	return &Workflow{
 		start: start, nodes: []Node{node}, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
-		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}, tints: newTints(),
+		purpose: PurposeBehaviour, zone: ids.ULID{}, boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
+		tints: newTints(),
 	}, nil
 }
 
@@ -307,15 +315,16 @@ const Unplaced = -1
 // Clone returns an independent copy.
 func (w *Workflow) Clone() *Workflow {
 	return &Workflow{
-		start: w.start, nodes: w.Nodes(), locals: w.locals.Clone(), boxes: maps.Clone(w.boxes),
-		bends: maps.Clone(w.bends), tints: w.tints.clone(),
+		start: w.start, nodes: w.Nodes(), locals: w.locals.Clone(), purpose: w.purpose, zone: w.zone,
+		boxes: maps.Clone(w.boxes), bends: maps.Clone(w.bends), tints: w.tints.clone(),
 	}
 }
 
 // Equal reports whether two workflows hold the same logic and layout.
 func (w *Workflow) Equal(other *Workflow) bool {
 	return w.start == other.start && slices.EqualFunc(w.nodes, other.nodes, Node.Equal) &&
-		w.locals.Equal(other.locals) && maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends()) &&
+		w.locals.Equal(other.locals) && w.purpose == other.purpose && w.zone == other.zone &&
+		maps.Equal(w.boxes, other.boxes) && bendsEqual(w.Bends(), other.Bends()) &&
 		tintsEqual(w.Tints(), other.Tints())
 }
 
@@ -329,7 +338,9 @@ func (w *Workflow) Encode() (json.RawMessage, error) {
 		}
 		locals = encoded
 	}
-	data, err := json.Marshal(wireWorkflow{Start: w.start, Nodes: w.nodes, Locals: locals})
+	data, err := json.Marshal(wireWorkflow{
+		Start: w.start, Nodes: w.nodes, Locals: locals, Purpose: w.purpose, Zone: w.zone,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode workflow: %w", err)
 	}
@@ -360,7 +371,11 @@ func Decode(data json.RawMessage) (*Workflow, error) {
 	}
 	decoded := &Workflow{
 		start: wire.Start, nodes: wire.Nodes, locals: worldstate.NewDeclarations(worldstate.HoldsLocals),
-		boxes: map[ids.ULID]Box{}, bends: map[string]Bend{}, tints: newTints(),
+		purpose: wire.Purpose, zone: wire.Zone, boxes: map[ids.ULID]Box{}, bends: map[string]Bend{},
+		tints: newTints(),
+	}
+	if decoded.purpose == "" {
+		decoded.purpose = PurposeBehaviour
 	}
 	if len(wire.Locals) > 0 {
 		if err := decoded.locals.Read(wire.Locals); err != nil {
@@ -412,9 +427,15 @@ func Format() content.Format {
 		Name: FormatName, Current: FormatVersion,
 		Migrations: map[int]content.Migration{
 			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5, 6: upgradeFrom6,
+			7: upgradeFrom7,
 		},
 	}
 }
+
+// upgradeFrom7 reads a version 7 workflow unchanged: version 8 gave each
+// workflow its kind, which it reads as an NPC behaviour, and the zone it
+// runs in, which it reads as any zone until the project settles it.
+func upgradeFrom7(data json.RawMessage) (json.RawMessage, error) { return data, nil }
 
 // upgradeFrom6 gives every Go to the anchor it had as where it goes, and no
 // place value: version 7 let a Go to go to a place value instead, and added
@@ -592,8 +613,8 @@ func layoutFrom2(data json.RawMessage) (json.RawMessage, error) {
 
 // check enforces the structure every workflow keeps: one start node; unique
 // IDs; containers only at the top level; links that stay within one level,
-// except a container's inside output, which leads into it; and no links to
-// notes.
+// except a container's inside output, which leads into it; no links to
+// notes; and only nodes its kind runs.
 func (w *Workflow) check() error {
 	seen := map[ids.ULID]Node{}
 	starts := 0
@@ -608,6 +629,9 @@ func (w *Workflow) check() error {
 	}
 	if starts != 1 || seen[w.start].Kind != KindStart {
 		return fmt.Errorf("%w: a workflow has exactly one start node", ErrNode)
+	}
+	if err := w.checkPurpose(); err != nil {
+		return err
 	}
 	for _, node := range w.nodes {
 		if err := checkPlace(node, seen); err != nil {

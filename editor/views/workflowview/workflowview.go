@@ -17,6 +17,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
@@ -26,6 +27,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/picker"
+	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -104,6 +106,9 @@ type State struct {
 	routes   map[routeKey][]image.Point
 	loops    map[routeKey]bool
 	problems map[ids.ULID]string
+	// localProblems say why a place local's start is out of the reach of
+	// the NPCs that run the workflow, by the local's ID.
+	localProblems map[ids.ULID]string
 	// laidOut is the workflow revision the shapes, routes and loops were
 	// worked out for, and problemKey what the problems were found from;
 	// layouts counts layouts, for tests.
@@ -116,8 +121,10 @@ type State struct {
 	watchFloors bool
 	offset      image.Point
 	selected    ids.ULID
-	cursor      image.Point
-	gestures    int
+	// showing is a node asked for with NodeItem, to select once it arrives.
+	showing  ids.ULID
+	cursor   image.Point
+	gestures int
 	// hoverLink is the line under the pointer, selectedLink the selected
 	// line and hoverMark the node whose problem mark is under the pointer.
 	hoverLink    routeKey
@@ -186,8 +193,10 @@ type State struct {
 	modules     map[ids.ULID]module
 	callsKey    string
 	missingWays map[ids.ULID]map[string]bool
-	// callers is who calls this workflow, as last asked.
+	// callers is who calls this workflow, as last asked, and runs the NPCs
+	// that run it.
 	callers callers
+	runs    runners
 	// locals is the inspector's part for the workflow's local values, shown
 	// while no node or line is selected.
 	locals *localsPanel
@@ -195,6 +204,20 @@ type State struct {
 	// right-click waiting in context has settled the selection.
 	contextMenu ui.Menu
 	context     contextClick
+	// zones is the zone picker while it is open, asking where the workflow
+	// runs; recentZones are the zones chosen in it lately; runsInBox is the
+	// Runs in box.
+	zones       *zonepicker.Picker
+	zonesChose  func(*frame.Context, zonepicker.Choice)
+	recentZones []ids.ULID
+	runsInBox   image.Rectangle
+	// dialog asks before a change that breaks something, and dialogThen
+	// carries the change out, as one gesture; joining is a gesture the
+	// edits sent meanwhile join.
+	dialog     *ui.Dialog
+	dialogThen func(*frame.Context, string)
+	joining    string
+	tied       bool
 }
 
 // New returns the Workflow window for a workflow.
@@ -202,8 +225,9 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
-		problems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false, layouts: 0, problemKey: "", watchFloors: false,
-		offset: image.Pt(0, 0), selected: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
+		problems: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false,
+		layouts: 0, problemKey: "", watchFloors: false,
+		offset: image.Pt(0, 0), selected: ids.ULID{}, showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
@@ -216,15 +240,27 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
+		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
+		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
+		tied: false,
 	}
-	for _, kind := range flow.Kinds() {
+	view.palette = paletteFor(flow.PurposeBehaviour)
+
+	return view
+}
+
+// paletteFor lists the node kinds a kind of workflow offers, in palette
+// order.
+func paletteFor(purpose flow.Purpose) []paletteEntry {
+	var entries []paletteEntry
+	for _, kind := range flow.KindsFor(purpose) {
 		if kind.Group != "" {
-			view.palette = append(view.palette, paletteEntry{kind: kind, rect: ui.Zero(), group: false})
+			entries = append(entries, paletteEntry{kind: kind, rect: ui.Zero(), group: false})
 		}
 	}
 
-	return view
+	return entries
 }
 
 // Title is the window title.
@@ -279,6 +315,11 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 
 // Changed reacts to picks answered for the inspector.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
+	if update.Attention && strings.HasPrefix(update.Item, NodeItem) {
+		if node, err := ids.Parse(strings.TrimPrefix(update.Item, NodeItem)); err == nil {
+			s.showing = node
+		}
+	}
 	s.picker.Changed(update, ctx)
 	if update.AudioChanged != nil && s.audio != nil {
 		s.askAudio(ctx)
@@ -304,6 +345,7 @@ func (s *State) load(docs frame.Docs) {
 		docs.View(s.document, func(document client.Document) {
 			if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
 				s.workflow = workflowDoc.Workflow.Clone()
+				s.palette = paletteFor(s.workflow.Purpose())
 			}
 		})
 		s.callsKey = calls
@@ -411,6 +453,15 @@ func coloursBottom(rows []colourRow) int {
 	return bottom
 }
 
+// ask asks the orchestrator, when what it knew may have changed, who calls
+// the workflow, which NPCs run it and the project's audio.
+func (s *State) ask(ctx *frame.Context) {
+	s.askCallers(ctx)
+	s.askRunners(ctx)
+	s.subscribeHomes(ctx)
+	s.listAudio(ctx)
+}
+
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.live != nil {
@@ -423,8 +474,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.sounds = ctx.Sounds
 	s.fade()
 	s.load(ctx.Docs)
-	s.askCallers(ctx)
-	s.listAudio(ctx)
+	s.showNode()
+	s.ask(ctx)
 	if s.guard.Active() {
 		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discardForm)
 
@@ -1094,6 +1145,23 @@ func (s *State) workflowBounds() (image.Rectangle, bool) {
 	return bounds, !first
 }
 
+// NodeItem opens a workflow with one of its nodes selected and in the
+// middle of the canvas: NodeItem then the node's ID.
+const NodeItem = "node:"
+
+// showNode selects the node asked for with NodeItem, and centres on it, once
+// the workflow holding it has arrived.
+func (s *State) showNode() {
+	if s.showing.IsZero() || s.workflow == nil {
+		return
+	}
+	if drawn, ok := s.shapes[s.showing]; ok {
+		s.selected, s.selectedLink = s.showing, noRoute()
+		s.centreOn(drawn.rect)
+	}
+	s.showing = ids.ULID{}
+}
+
 // centreOn pans the canvas so an area is in the middle of it. An area wider
 // or taller than the canvas shows is shown from its top-left corner instead,
 // where the start is.
@@ -1130,6 +1198,9 @@ func (s *State) command(ctx *frame.Context, edit, gesture string, args any, done
 		ctx.Frame.Status(err.Error())
 
 		return
+	}
+	if gesture == "" {
+		gesture = s.joining
 	}
 	command := protocol.Command{Document: s.document, Edit: edit, Gesture: gesture, Args: data}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {

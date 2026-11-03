@@ -5,8 +5,10 @@
 // convenience, not a limit. It lists its sounds: the cues, such as music or a
 // bed, that play the whole time the player is in it. And a zone has a path
 // name that workflows read its values by, such as market in
-// zone.market.crowded, and holds the values it owns and the templates
-// applied to it.
+// zone.market.crowded, holds the values it owns and the templates applied
+// to it, and keeps the author's private notes about it, which players
+// never see. It names its zone loop, the workflow that runs for it while it
+// is alive.
 package zone
 
 import (
@@ -14,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -24,10 +27,16 @@ import (
 const FormatName = "zone"
 
 // FormatVersion is the zone format version this package writes. Version 2
-// added the palettes a zone uses, version 3 its sounds, and version 4 a
-// path name and the zone's own values and templates; each reads the version
-// before it unchanged.
-const FormatVersion = 4
+// added the palettes a zone uses, version 3 its sounds, version 4 a path
+// name and the zone's own values and templates, version 5 its notes and
+// version 6 its zone loop; each reads the version before it unchanged.
+const FormatVersion = 6
+
+// MaxNotes bounds a zone's notes, in characters.
+const MaxNotes = 20000
+
+// ErrNotes reports notes that are too long.
+var ErrNotes = errors.New("invalid zone notes")
 
 // MaxFloors bounds the floors in one zone.
 const MaxFloors = 256
@@ -63,6 +72,12 @@ type Zone struct {
 	// "" until one is given. It follows the rules for value names and is
 	// unique in the project.
 	Path string
+	// Notes are the author's own notes about the zone, never shown to
+	// players.
+	Notes string
+	// Loop is the zone loop, the workflow that runs for the zone while it
+	// is alive; zero is none.
+	Loop ids.ULID
 	// Owned is the zone's own values and the templates applied to it.
 	Owned worldstate.Owned
 }
@@ -72,13 +87,16 @@ type wireZone struct {
 	Palettes []ids.ULID `json:"palettes,omitempty"`
 	Sounds   []string   `json:"sounds,omitempty"`
 	Path     string     `json:"path,omitempty"`
+	Notes    string     `json:"notes,omitempty"`
+	Loop     ids.ULID   `json:"loop,omitzero"`
 	worldstate.WireOwned
 }
 
 // New returns a zone with no floors.
 func New() *Zone {
 	return &Zone{
-		floors: []ids.ULID{}, palettes: nil, sounds: nil, Path: "", Owned: worldstate.NewOwned(worldstate.ScopeZone),
+		floors: []ids.ULID{}, palettes: nil, sounds: nil, Path: "", Notes: "", Loop: ids.ULID{},
+		Owned: worldstate.NewOwned(worldstate.ScopeZone),
 	}
 }
 
@@ -205,15 +223,25 @@ func (z *Zone) Move(floor ids.ULID, index int) (int, error) {
 func (z *Zone) Clone() *Zone {
 	return &Zone{
 		floors: slices.Clone(z.floors), palettes: slices.Clone(z.palettes), sounds: slices.Clone(z.sounds),
-		Path: z.Path, Owned: z.Owned.Clone(),
+		Path: z.Path, Notes: z.Notes, Loop: z.Loop, Owned: z.Owned.Clone(),
 	}
 }
 
 // Equal reports whether two zones list the same floors, palettes and sounds
-// in the same order, with the same path name and values.
+// in the same order, with the same path name, notes, loop and values.
 func (z *Zone) Equal(other *Zone) bool {
 	return slices.Equal(z.floors, other.floors) && slices.Equal(z.palettes, other.palettes) &&
-		slices.Equal(z.sounds, other.sounds) && z.Path == other.Path && z.Owned.Equal(other.Owned)
+		slices.Equal(z.sounds, other.sounds) && z.Path == other.Path && z.Notes == other.Notes &&
+		z.Loop == other.Loop && z.Owned.Equal(other.Owned)
+}
+
+// CheckNotes reports notes that are too long.
+func CheckNotes(notes string) error {
+	if utf8.RuneCountInString(notes) > MaxNotes {
+		return fmt.Errorf("%w: longer than %d characters", ErrNotes, MaxNotes)
+	}
+
+	return nil
 }
 
 // CheckPath reports a path name that is not fit for a path; "" is none yet.
@@ -240,7 +268,8 @@ func (z *Zone) Encode() (json.RawMessage, error) {
 		return nil, fmt.Errorf("encode zone: %w", err)
 	}
 	data, err := json.Marshal(wireZone{
-		Floors: z.floors, Palettes: z.palettes, Sounds: z.sounds, Path: z.Path, WireOwned: owned,
+		Floors: z.floors, Palettes: z.palettes, Sounds: z.sounds, Path: z.Path, Notes: z.Notes, Loop: z.Loop,
+		WireOwned: owned,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode zone: %w", err)
@@ -274,11 +303,14 @@ func Decode(data json.RawMessage) (*Zone, error) {
 	if err := CheckPath(wire.Path); err != nil {
 		return nil, err
 	}
+	if err := CheckNotes(wire.Notes); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
 	owned, err := worldstate.ReadOwned(worldstate.ScopeZone, wire.WireOwned)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrData, err)
 	}
-	decoded.Path, decoded.Owned = wire.Path, owned
+	decoded.Path, decoded.Notes, decoded.Loop, decoded.Owned = wire.Path, wire.Notes, wire.Loop, owned
 
 	return decoded, nil
 }
@@ -286,7 +318,7 @@ func Decode(data json.RawMessage) (*Zone, error) {
 // Format returns the zone format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: unchanged, 2: unchanged, 3: unchanged,
+		1: unchanged, 2: unchanged, 3: unchanged, 4: unchanged, 5: unchanged,
 	}}
 }
 

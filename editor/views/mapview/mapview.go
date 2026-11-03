@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -168,7 +169,13 @@ type State struct {
 	// and floorsOf how many floors in the project place the selected
 	// placement's NPC, as asked for floorsFor: an NPC is placed once in the
 	// whole project.
-	zoneNPCs     map[ids.ULID]int
+	zoneNPCs map[ids.ULID]int
+	// homes are the zones the project's NPCs live in, zero for none, as far
+	// as the window has them loaded.
+	homes map[ids.ULID]ids.ULID
+	// watchedFloor is the floor the watched NPC was on last frame, to
+	// follow it when it takes stairs.
+	watchedFloor ids.ULID
 	floorsOf     int
 	floorsFor    ids.ULID
 	floorsAsking bool
@@ -237,7 +244,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		outside: false,
 		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0)},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
-		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{}, floorsOf: 0,
+		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
+		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
 		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
 		menu: nil, openLoaded: ids.ULID{},
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
@@ -337,18 +345,54 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		if err := json.Unmarshal(update.Session.Value, &start); err == nil {
 			s.start = start.Seconds
 		}
+	case update.PickStart != nil, update.PickCancel != nil:
+		s.pickChanged(update, ctx)
+	case update.Snapshot != nil && *update.Snapshot == s.zone, update.Event != nil && update.Event.Document == s.zone:
+		s.syncZone(ctx)
+	default:
+		s.attend(update, ctx)
+	}
+}
+
+// pickChanged starts a pick, or ends the one running when it is
+// cancelled.
+func (s *State) pickChanged(update client.Update, ctx *frame.Context) {
+	switch {
 	case update.PickStart != nil:
 		start := *update.PickStart
 		s.pick = &start
 		s.stroke.active, s.choosing = false, false
 		ctx.Frame.Status("Choose a place for " + labelOr(start.Label, "another tab") +
 			": click a ring or a name on the right. Escape cancels.")
-	case update.PickCancel != nil && s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
+	case s.pick != nil && update.PickCancel.Pick == s.pick.Pick:
 		s.pick = nil
 		ctx.Frame.Status("Pick cancelled: " + labelOr(update.PickCancel.Reason, "no reason given"))
-	case update.Snapshot != nil && *update.Snapshot == s.zone, update.Event != nil && update.Event.Document == s.zone:
-		s.syncZone(ctx)
 	}
+}
+
+// attend shows what the window is opened to show: a placement.
+func (s *State) attend(update client.Update, ctx *frame.Context) {
+	if update.Attention && strings.HasPrefix(update.Item, PlacementItem) {
+		s.showPlacement(update.Item, ctx)
+	}
+}
+
+// PlacementItem prefixes the item a map is opened to show a placement by,
+// as "placement:<floor>:<placement>".
+const PlacementItem = "placement:"
+
+// showPlacement shows the floor a placement is on and selects it, with the
+// Place NPC tool.
+func (s *State) showPlacement(item string, ctx *frame.Context) {
+	floorPart, placementPart, _ := strings.Cut(strings.TrimPrefix(item, PlacementItem), ":")
+	floorID, floorErr := ids.Parse(floorPart)
+	placementID, placementErr := ids.Parse(placementPart)
+	if floorErr != nil || placementErr != nil || indexOf(s.floors, floorID) < 0 {
+		return
+	}
+	s.switchFloor(floorID, ctx)
+	s.setTool(ToolNPC)
+	s.selectPlacement(placementID)
 }
 
 func labelOr(value, fallback string) string {
@@ -600,6 +644,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updatePanels(input, ctx)
 	s.subscribeNPC(ctx)
+	s.subscribeNPCs(ctx)
 	s.askPlacing(ctx)
 	s.openWhenLoaded(ctx)
 	if s.preview != nil {
@@ -607,6 +652,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	} else {
 		s.arrowHint(input, ctx)
 	}
+	s.followWatched(ctx)
 	if s.floor.IsZero() {
 		return
 	}
@@ -733,7 +779,7 @@ func (s *State) toolAndTileKeys(input *ui.Input, ctx *frame.Context) {
 	}
 	for number := 1; number <= numberedTiles; number++ {
 		if input.Consume(ui.Key(strconv.Itoa(number)), ui.Plain()) {
-			offered := s.tileRows()
+			offered := slices.DeleteFunc(s.tileRows(), func(row ui.Row) bool { return row.Heading })
 			if number <= len(offered) {
 				s.chooseTile(offered[number-1].ID, ctx)
 			}
@@ -1465,8 +1511,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return !s.floor.IsZero() && s.framed && docs.View(s.floor, func(client.Document) {})
 	case strings.HasPrefix(state, "bounds:"):
 		return s.hasBounds(strings.TrimPrefix(state, "bounds:"), docs)
-	case strings.HasPrefix(state, "sprite:"), strings.HasPrefix(state, "art:"):
-		return s.hasArt(state)
+	case strings.HasPrefix(state, "sprite:"), strings.HasPrefix(state, "art:"), strings.HasPrefix(state, "npc-sprite:"):
+		return s.hasArt(state, docs)
 	case strings.HasPrefix(state, "zoom:"):
 		s.zoom.layout(s.Grid(), s.camera)
 

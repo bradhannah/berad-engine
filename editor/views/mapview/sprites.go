@@ -37,7 +37,8 @@ type spriteArt struct {
 func npcKey(npcID ids.ULID) string { return "npc:" + npcID.String() }
 
 // shownSprites returns the sprite that shows each stand-in, the player and
-// every NPC placed on the zone's floors that has one.
+// every NPC placed on the zone's floors that has one: during a preview, the
+// sprite each NPC shows now, when its workflows have set one.
 func (s *State) shownSprites(docs frame.Docs) map[string]ids.ULID {
 	record := standInSprites(docs)
 	for _, npcID := range s.placedNPCs(docs) {
@@ -47,8 +48,30 @@ func (s *State) shownSprites(docs frame.Docs) map[string]ids.ULID {
 			}
 		})
 	}
+	for _, entity := range s.liveNPCs() {
+		if !entity.Sprite.IsZero() {
+			record[npcKey(entity.NPC)] = entity.Sprite
+		}
+	}
 
 	return record
+}
+
+// hasNPCSprite answers "npc-sprite:<NPC>=<sprite>", the sprite the named
+// NPC shows now, or "none".
+func (s *State) hasNPCSprite(state string, docs frame.Docs) bool {
+	name, want, _ := strings.Cut(state, "=")
+	shown := s.shownSprites(docs)
+	for _, npcID := range s.placedNPCs(docs) {
+		if s.names.Name(npcID, "") != name {
+			continue
+		}
+		sprite, has := shown[npcKey(npcID)]
+
+		return (!has && want == "none") || (has && s.names.Name(sprite, "") == want)
+	}
+
+	return false
 }
 
 // placedNPCs returns the NPCs placed on the zone's floors, each once.
@@ -238,11 +261,14 @@ func drawSprite(area, picture *ebiten.Image, rect image.Rectangle, alpha uint8) 
 }
 
 // hasArt answers input scripts waiting for the Map's art:
-// "sprite:<stand-in>" once a sprite's tile is drawn in its place, and
+// "sprite:<stand-in>" once a sprite's tile is drawn in its place,
 // "art:<stand-in>:<col>,<row>:<colour>" once that tile has the colour at a
-// pixel.
-func (s *State) hasArt(state string) bool {
+// pixel, and "npc-sprite:<NPC>=<sprite>" (see hasNPCSprite).
+func (s *State) hasArt(state string, docs frame.Docs) bool {
 	kind, value, _ := strings.Cut(state, ":")
+	if kind == "npc-sprite" {
+		return s.hasNPCSprite(value, docs)
+	}
 	if kind == "sprite" {
 		_, shown := s.sprites.image(value)
 

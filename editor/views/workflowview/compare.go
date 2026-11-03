@@ -9,6 +9,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -118,9 +119,10 @@ func (s *State) checkProblem(docs frame.Docs, node flow.Node, declared worldstat
 }
 
 // hasOperandState answers "refers:<param>=<path>", whether the selected
-// node's operand refers to the value at a path, and "another:<param>",
+// node's operand refers to the value at a path; "another:<param>",
 // whether its Another value button is on: the operand refers to a value,
-// or its chooser is open to pick one.
+// or its chooser is open to pick one; and "holds:<param>=<name>", the zone,
+// workflow or sprite it holds, by name.
 func (s *State) hasOperandState(state string, docs frame.Docs) (bool, bool) {
 	node, selected := s.selectedNode()
 	switch {
@@ -133,6 +135,11 @@ func (s *State) hasOperandState(state string, docs frame.Docs) (bool, bool) {
 		return selected && err == nil && refers && problem == "" && path == want, true
 	case strings.HasPrefix(state, "another:"):
 		return s.anotherValueLit(strings.TrimPrefix(state, "another:")), true
+	case strings.HasPrefix(state, "holds:"):
+		param, want, _ := strings.Cut(strings.TrimPrefix(state, "holds:"), "=")
+		declared, found := s.operandDeclaration(docs, node, param)
+
+		return selected && found && s.names(docs).Name(refHeld(node, param, declared.Type), "") == want, true
 	default:
 		return false, false
 	}
@@ -197,7 +204,7 @@ func (made control) isBox(widget string) bool {
 		return widget == "cue"
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTiles,
 		flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays,
-		flow.TypePort:
+		flow.TypePort, flow.TypeMessage:
 	}
 
 	return false
@@ -321,7 +328,8 @@ func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *c
 	case made.sources[0].Update(input):
 		made.another, made.open = false, false
 		if made.refers {
-			s.saveParam(ctx, node, made.param.Name, json.RawMessage("0"))
+			s.saveParam(ctx, node, made.param.Name, worldstate.New(ids.ULID{}, "fresh", worldstate.ScopeLocal,
+				made.operandType).Empty().Encode())
 		}
 
 		return true
@@ -339,8 +347,11 @@ func (s *State) updateOperandSource(input *ui.Input, ctx *frame.Context, made *c
 func (s *State) updateOperandChooser(input *ui.Input, _ *frame.Context, made *control, node flow.Node) {
 	if input.Pressed && input.Cursor.In(made.cueBox) {
 		input.ClearPointer()
-		s.openValuePicker(node, made.param.Name, pickerTitle(made.param, made.operandType, true), made.operandType,
-			true)
+		only, title := made.operandType, pickerTitle(made.param, made.operandType, true)
+		if node.Kind == flow.KindSetValue && only == worldstate.TypeText {
+			only, title = "", "for "+made.param.Label+" · any value, as text"
+		}
+		s.openValuePicker(node, made.param.Name, title, only, true)
 	}
 }
 
@@ -409,7 +420,7 @@ func (s *State) saveAmong(ctx *frame.Context, node flow.Node, made *control, ind
 // ends of a range, or at least one ticked choice.
 func (s *State) operandsFit(docs frame.Docs, node flow.Node, declared worldstate.Declaration) bool {
 	if node.Kind != flow.KindCheckValue {
-		return operandFits(node, operandOfValue(node.Kind, flow.ParamValue), declared)
+		return s.refFits(docs, node, operandOfValue(node.Kind, flow.ParamValue), declared)
 	}
 	switch choiceOf(node, flow.ParamCompare) {
 	case flow.CompareBetween:
@@ -440,8 +451,9 @@ func (s *State) refFits(docs frame.Docs, node flow.Node, param string, declared 
 	}
 	if ref, refers := flow.OperandRef(saved); refers {
 		other, _, problem := s.resolve(docs, ref)
+		asText := node.Kind == flow.KindSetValue && declared.Type == worldstate.TypeText && other.Type.IsValue()
 
-		return problem == "" && other.Type == declared.Type
+		return problem == "" && (other.Type == declared.Type || asText)
 	}
 
 	return operandFits(node, param, declared)

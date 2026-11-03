@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
+	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -71,6 +73,7 @@ const (
 	newZone     = "new-zone"
 	newFloor    = "new-floor"
 	newWorkflow = "new-workflow"
+	newZoneLoop = "new-zone-loop"
 	newNPC      = "new-npc"
 	newText     = "new-text"
 )
@@ -83,7 +86,12 @@ const (
 	dialogBehaviour
 	dialogSprite
 	dialogDeleteCue
+	dialogMoveZone
+	dialogZoneLoop
 )
+
+// useID is the Use button of a dialog choosing from a list.
+const useID = "use"
 
 // State is the project browser.
 type State struct {
@@ -136,6 +144,22 @@ type State struct {
 	// palettes a selected sprite's tile is painted with.
 	zonePalettes   *zonepalettes.List
 	spritePalettes []spritePalette
+	// zones is the zone picker while it is open, choosing for zonesFor;
+	// recentZones are the zones chosen in it lately, most recent first.
+	zones       *zonepicker.Picker
+	zonesFor    ids.ULID
+	recentZones []ids.ULID
+	// movingNPC and movingTo are the move of an NPC to another zone its
+	// dialog asks about.
+	movingNPC ids.ULID
+	movingTo  ids.ULID
+	// zoneNotes are a selected zone's private notes, for zoneNoted.
+	zoneNotes *ui.TextField
+	// loop is a selected zone's Zone loop box, and loopFor the zone its
+	// dialog chooses a loop for.
+	loop      *loopPanel
+	loopFor   ids.ULID
+	zoneNoted ids.ULID
 }
 
 // New returns the project browser.
@@ -163,12 +187,15 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		npc: newNPCPanel(theme), audio: newAudioState(),
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
+		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
+		loop: newLoopPanel(), loopFor: ids.ULID{},
+		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
-	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.tileSize,
+	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.zoneNotes, view.tileSize,
 		view.screenCols, view.screenRows)
 
 	return view
@@ -179,7 +206,10 @@ func menuItems() []ui.MenuItem {
 	return []ui.MenuItem{
 		{ID: newZone, Label: "Zone", Icon: ui.IconZone, Disabled: false, Danger: false, Rule: false},
 		{ID: newFloor, Label: "Floor in the selected zone", Icon: ui.IconFloor, Disabled: false, Danger: false, Rule: false},
-		{ID: newWorkflow, Label: "Workflow", Icon: ui.IconWorkflow, Disabled: false, Danger: false, Rule: false},
+		{ID: newWorkflow, Label: flow.PurposeBehaviour.Label(), Icon: ui.IconWorkflow, Disabled: false, Danger: false,
+			Rule: false},
+		{ID: newZoneLoop, Label: flow.PurposeZoneLoop.Label(), Icon: ui.IconZoneLoop, Disabled: false, Danger: false,
+			Rule: false},
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
 		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
@@ -207,7 +237,13 @@ func menuItems() []ui.MenuItem {
 func (s *State) Title(frame.Docs) string { return "Project" }
 
 // Focused returns the focused text field.
-func (s *State) Focused() *ui.TextField { return s.focus.Current() }
+func (s *State) Focused() *ui.TextField {
+	if s.zones != nil {
+		return s.zones.Focused()
+	}
+
+	return s.focus.Current()
+}
 
 // Start subscribes to the project index, the art and game settings and the
 // world state, and lists the audio library.
@@ -337,6 +373,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.updateDialog(input, ctx)
 
 		return
+	case s.zones != nil:
+		s.updateZonePicker(input, ctx)
+
+		return
 	case s.menu.IsOpen():
 		s.create(ctx, s.menu.Update(input))
 
@@ -357,11 +397,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.guardSelection(ctx)
-	s.syncArt(ctx)
-	s.syncName(ctx.Docs)
-	s.syncSettings(ctx.Docs)
-	s.syncNPC(ctx)
-	s.syncCueUses(ctx)
+	s.sync(ctx)
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
@@ -371,6 +407,16 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu(ctx.Docs)
+}
+
+// sync keeps the inspector showing what is selected.
+func (s *State) sync(ctx *frame.Context) {
+	s.syncArt(ctx)
+	s.syncName(ctx.Docs)
+	s.syncSettings(ctx.Docs)
+	s.syncNPC(ctx)
+	s.syncZoneNotes(ctx)
+	s.syncCueUses(ctx)
 }
 
 // updateFields handles the text fields: Enter saves a name or tags, and the
@@ -495,13 +541,22 @@ func (s *State) fold(docs frame.Docs, hide bool) {
 }
 
 // buttons handles the toolbar and the inspector's buttons.
+// updateTagChips searches for a tag when its chip is clicked.
+func (s *State) updateTagChips(input *ui.Input) {
+	for _, chip := range s.tagBns {
+		if chip.Update(input) {
+			s.searchTag(strings.TrimPrefix(chip.ID, "tag:"))
+		}
+	}
+}
+
 func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 	if s.newMenu.Update(input) {
 		s.openMenu(ctx.Docs)
 
 		return
 	}
-	if s.saveBar(input, ctx) || s.updateArt(input, ctx) {
+	if s.saveBar(input, ctx) || s.updateArt(input, ctx) || s.updateZoneLoop(input, ctx) {
 		return
 	}
 	switch {
@@ -523,11 +578,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 		}
 	default:
 		s.updateNPC(input, ctx)
-		for _, chip := range s.tagBns {
-			if chip.Update(input) {
-				s.searchTag(strings.TrimPrefix(chip.ID, "tag:"))
-			}
-		}
+		s.updateTagChips(input)
 	}
 }
 
@@ -582,7 +633,9 @@ func (s *State) create(ctx *frame.Context, item string) {
 	case newFloor:
 		s.createFloor(ctx)
 	case newWorkflow:
-		s.createWorkflow(ctx)
+		s.createWorkflow(ctx, flow.PurposeBehaviour)
+	case newZoneLoop:
+		s.createWorkflow(ctx, flow.PurposeZoneLoop)
 	case newNPC:
 		s.createNPC(ctx)
 	case newText:
@@ -658,7 +711,7 @@ func names(entries []project.Entry) []string {
 func newDocument(format, name string, scope ids.ULID, data json.RawMessage) documentArgs {
 	return documentArgs{project.DocumentArgs{
 		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Folder: "", Tags: nil,
-		Data: data, Layout: nil,
+		Kind: "", Data: data, Layout: nil,
 	}}
 }
 
@@ -790,10 +843,14 @@ func (s *State) createText(ctx *frame.Context) {
 	}, nil)
 }
 
-// createWorkflow creates a workflow holding only its start node.
-func (s *State) createWorkflow(ctx *frame.Context) {
-	name := uniqueName("Workflow", names(s.entries(ctx.Docs, flow.FormatName)))
-	args := newDocument(flow.FormatName, name, ids.ULID{}, workflowplugin.NewData())
+// createWorkflow creates a workflow of a kind, holding only its start node.
+func (s *State) createWorkflow(ctx *frame.Context, purpose flow.Purpose) {
+	base := "Workflow"
+	if purpose == flow.PurposeZoneLoop {
+		base = purpose.Label()
+	}
+	name := uniqueName(base, names(s.entries(ctx.Docs, flow.FormatName)))
+	args := newDocument(flow.FormatName, name, ids.ULID{}, workflowplugin.NewDataFor(purpose))
 	args.Folder = s.targetFolder(ctx.Docs, flow.FormatName)
 	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
 		s.list.Selected = result.Created.String()
@@ -992,15 +1049,32 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	}
 	kind, list := s.dialogKind, s.dialog.List
 	s.dialog, s.dialogKind = nil, dialogNone
+	if choice == useID && list != nil {
+		s.useChosen(ctx, kind, list.Selected)
+
+		return
+	}
 	switch {
 	case kind == dialogDelete && choice == "delete":
 		s.deleteDocument(ctx, s.deleting)
-	case kind == dialogBehaviour && choice == "use" && list != nil:
-		s.setBehaviour(ctx, list.Selected)
-	case kind == dialogSprite && choice == "use" && list != nil:
-		s.setSprite(ctx, list.Selected)
 	case kind == dialogDeleteCue && choice == "delete":
 		s.removeCue(ctx, s.audio.deleting)
+	case kind == dialogMoveZone && choice == zoneMoveID:
+		s.applyMove(ctx, s.movingNPC, s.movingTo)
+	}
+}
+
+// useChosen sets what a dialog's list chose, by Use: an NPC's behaviour or
+// sprite, or a zone's loop.
+func (s *State) useChosen(ctx *frame.Context, kind dialogKind, chosen string) {
+	switch kind {
+	case dialogBehaviour:
+		s.setBehaviour(ctx, chosen)
+	case dialogSprite:
+		s.setSprite(ctx, chosen)
+	case dialogZoneLoop:
+		s.setZoneLoop(ctx, chosen)
+	case dialogNone, dialogDelete, dialogDeleteCue, dialogMoveZone:
 	}
 }
 
@@ -1052,6 +1126,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.guard.Locate(value, s.size)
 	case s.dialog != nil:
 		return s.locateInDialog(kind, value)
+	case s.zones != nil:
+		return s.locateZonePicker(name, docs)
 	case s.menu.IsOpen():
 		return s.menu.Locate(value)
 	case s.contextMenu.IsOpen():
@@ -1068,9 +1144,38 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.list.Locate(sectionPrefix + value)
 	case "ui":
 		return s.locateWidget(value)
+	case "state":
+		found, answered := s.hasZoneState(docs, value)
+		if !answered {
+			found = s.hasRowState(value)
+		}
+
+		return image.Pt(0, 0), found
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// hasRowState answers a row's states: "row-detail:<name>=<detail>", the
+// detail of the row named, and "row-loop:<name>", a row showing a zone
+// loop; and "flag=<text>", a flag in the inspector holding the text, under
+// an NPC's behaviour or a zone's loop.
+func (s *State) hasRowState(state string) bool {
+	if text, isFlag := strings.CutPrefix(state, "flag="); isFlag {
+		return strings.Contains(s.npc.flag+" "+s.loop.flag, text)
+	}
+	if rest, isDetail := strings.CutPrefix(state, "row-detail:"); isDetail {
+		label, detail, _ := strings.Cut(rest, "=")
+
+		return slices.ContainsFunc(s.list.Rows, func(row ui.Row) bool { return row.Label == label && row.Detail == detail })
+	}
+	if label, isLoop := strings.CutPrefix(state, "row-loop:"); isLoop {
+		return slices.ContainsFunc(s.list.Rows, func(row ui.Row) bool {
+			return row.Label == label && row.Icon == ui.IconZoneLoop
+		})
+	}
+
+	return false
 }
 
 // locateRow finds a document row by its name, or its disclosure triangle.
@@ -1098,7 +1203,12 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
-	fields := []*ui.TextField{s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.tileSize, s.screenCols, s.screenRows}
+	if widget == zoneBoxID && !s.npc.zone.Empty() {
+		return ui.Center(s.npc.zone), true
+	}
+	fields := []*ui.TextField{
+		s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.zoneNotes, s.tileSize, s.screenCols, s.screenRows,
+	}
 	for _, field := range fields {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
@@ -1117,13 +1227,25 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
-		s.npc.chooseSprite, s.npc.openSprite,
+		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap, s.loop.choose, s.loop.open,
 		s.audio.open,
 	}, s.tagBns...)
 }
 
-// locateInDialog finds a dialog button, or a dialog list row by its name.
+// locateInDialog finds a dialog button, or a dialog list row by its name,
+// or answers "state:dialog-line=<text>", a line of the dialog holding the
+// text, and "state:dialog-row=<name>", a row of its list.
 func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
+	if kind == "state" {
+		line, isLine := strings.CutPrefix(value, "dialog-line=")
+		row, isRow := strings.CutPrefix(value, "dialog-row=")
+		found := isLine && strings.Contains(strings.Join(s.dialog.Lines, " "), line)
+		if isRow && s.dialog.List != nil {
+			found = slices.ContainsFunc(s.dialog.List.Rows, func(listed ui.Row) bool { return listed.Label == row })
+		}
+
+		return image.Pt(0, 0), found || value == "dialog"
+	}
 	if kind == "row" && s.dialog.List != nil {
 		for _, row := range s.dialog.List.Rows {
 			if row.Label == value {
@@ -1153,5 +1275,6 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	s.drawZonePicker(screen, docs)
 	s.guard.Draw(screen, s.theme)
 }

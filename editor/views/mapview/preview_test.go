@@ -11,6 +11,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
 )
 
@@ -205,5 +206,31 @@ func TestAnotherViewsPreviewIsShown(t *testing.T) {
 	f.state.Changed(client.Update{PreviewStop: &protocol.PreviewStop{Run: runID, Reason: "stopped"}}, f.ctx)
 	if f.has("remote-player:3,3") {
 		t.Fatal("the player goes when the preview stops")
+	}
+}
+
+// TestTheMapFollowsTheWatchedNPC shows the floor the watched NPC climbs
+// to in another view's preview.
+func TestTheMapFollowsTheWatchedNPC(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: upperID}}, f.ctx)
+	placement := frametest.ID(71)
+	at := func(tick uint64, floorID ids.ULID) {
+		f.state.Changed(client.Update{PreviewState: &protocol.PreviewState{
+			Run: runID, Tick: tick, Watched: placement, Entities: []protocol.PreviewEntity{
+				{ID: protocol.EntityPlayer, Floor: groundID, X: 3, Y: 3, Face: [2]int{0, 1}},
+				{ID: placement.String(), Floor: floorID, X: 4, Y: 4, Face: [2]int{0, 1}, NPC: frametest.ID(72)},
+			},
+		}}, f.ctx)
+		f.frame(ui.NewInput(image.Pt(0, 0)))
+	}
+	at(1, groundID)
+	if f.state.Floor() != groundID {
+		t.Fatal("the map starts on the ground floor")
+	}
+	at(2, upperID)
+	if f.state.Floor() != upperID || !strings.Contains(f.status(), "took the stairs to Upper") {
+		t.Fatalf("the map follows the watched NPC upstairs: %q", f.status())
 	}
 }

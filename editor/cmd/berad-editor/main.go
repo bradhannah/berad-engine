@@ -274,7 +274,8 @@ func ensureDocuments(
 // as the small pickup, and a text document; so Launch plays it, a player
 // start, brick walls, figures for the player and a clerk, the hum in the
 // building and the tune throughout; and a shop, where a customer comes to
-// the desk to be served by the clerk. It holds no game content.
+// the desk to be served by the clerk, both living in the zone. It holds no
+// game content.
 func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	sample, err := sampleLantern(orch)
 	if err != nil {
@@ -300,6 +301,9 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	}
 	if err := sampleStart(orch, zoneID, floors[0]); err != nil {
 		return ids.ULID{}, err
+	}
+	if err := orch.SettleHomes(); err != nil {
+		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 	}
 	notes := textdoc.NewDocument()
 	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."

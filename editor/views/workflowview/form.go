@@ -356,8 +356,8 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 				})
 			}
 			made.addOption = ui.NewButton("add-option", "Add option")
-		case flow.TypeText:
-			made.field = text("param-"+param.Name, node.Kind == flow.KindNote)
+		case flow.TypeText, flow.TypeMessage:
+			made.field, made.pick = text("param-"+param.Name, node.Kind == flow.KindNote), insertButton(param.Type)
 		case flow.TypeTimeRange:
 			made.from, made.to = text(param.Name+"-from", false), text(param.Name+"-to", false)
 		case flow.TypeTimeRanges:
@@ -398,8 +398,13 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 		if node.Kind == flow.KindCheckValue {
 			s.shapeCheckOperand(node, made, declared, found)
 		}
+		if node.Kind == flow.KindSetValue && found && declared.Type == worldstate.TypeText {
+			s.newOperandSources(made, node)
+			made.sources[0].Label = "Text"
+		}
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
-		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
+		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort,
+		flow.TypeMessage:
 	}
 }
 
@@ -449,7 +454,7 @@ func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 			made.rows[index].from.Field.SetSaved(flow.FormatTime(span.From))
 			made.rows[index].to.Field.SetSaved(flow.FormatTime(span.To))
 		}
-	case flow.TypeAnchor, flow.TypeCue:
+	case flow.TypeAnchor, flow.TypeCue, flow.TypeMessage:
 		s.setSavedReference(made, node, ctx)
 	case flow.TypeOperand:
 		setSavedOperand(made, node)
@@ -458,8 +463,16 @@ func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 }
 
 // setSavedReference loads what a reference parameter names: an anchor's
-// floor. A cue's name comes with the audio library.
+// floor, or a message's values by their paths. A cue's name comes with the
+// audio library.
 func (s *State) setSavedReference(made *control, node flow.Node, ctx *frame.Context) {
+	if made.param.Type == flow.TypeMessage {
+		if segments, err := node.Message(); err == nil {
+			made.field.Field.SetSaved(s.messageText(ctx.Docs, segments))
+		}
+
+		return
+	}
 	if made.param.Type != flow.TypeAnchor {
 		return
 	}
@@ -480,7 +493,7 @@ func (s *State) notesTop(panel image.Rectangle, width int) int {
 }
 
 // layoutForm places the inspector's fields and buttons.
-func (s *State) layoutForm(_ frame.Docs) {
+func (s *State) layoutForm(docs frame.Docs) {
 	if s.form == nil {
 		return
 	}
@@ -518,8 +531,8 @@ func (s *State) layoutForm(_ frame.Docs) {
 			}
 			made.addRange.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 			top += ui.ButtonH + fieldSpace
-		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
-			top = s.layoutReference(made, image.Rect(left, top, left+width, footer))
+		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand, flow.TypeMessage:
+			top = s.layoutReference(docs, made, image.Rect(left, top, left+width, footer))
 		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 		}
 	}
@@ -534,7 +547,7 @@ func (s *State) layoutForm(_ frame.Docs) {
 // layoutReference places a parameter that refers to something, from the
 // top of room down to no lower than its bottom, and returns where the next
 // control goes.
-func (s *State) layoutReference(made *control, room image.Rectangle) int {
+func (s *State) layoutReference(docs frame.Docs, made *control, room image.Rectangle) int {
 	left, width, top := room.Min.X, room.Dx(), room.Min.Y
 	switch made.param.Type {
 	case flow.TypeAnchor:
@@ -551,6 +564,8 @@ func (s *State) layoutReference(made *control, room image.Rectangle) int {
 		return layoutValue(made, left, width, top)
 	case flow.TypeOperand:
 		return s.layoutOperand(made, left, width, top)
+	case flow.TypeMessage:
+		return s.layoutMessage(docs, made, left, width, top)
 	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
 		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 	}
@@ -627,6 +642,10 @@ func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control
 		s.updateValue(input, ctx, made, node)
 	case flow.TypeOperand:
 		s.updateOperand(input, ctx, made, node)
+	case flow.TypeMessage:
+		if made.pick.Update(input) {
+			s.openValuePicker(node, made.param.Name, "to put in the message, as its text", "", false)
+		}
 	case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps,
 		flow.TypeWays, flow.TypePort:
 	}
@@ -686,7 +705,7 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, made *control,
 	case s.pickUpdate(made.pick, target.owner, input):
 		s.pickOrCancel(ctx, target)
 	case input.Pressed && input.Cursor.In(made.anchor):
-		s.openPlaces(made.anchor, target)
+		s.openPlaces(ctx.Docs, made.anchor, target)
 	case made.clear.Update(input):
 		s.saveParam(ctx, node, made.param.Name, floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}})
 	}
@@ -700,12 +719,12 @@ func (s *State) anchorTarget(docs frame.Docs, node flow.Node, param string) plac
 	}
 	nodeID := node.ID
 
-	return s.newPlaceTarget(anchorOwner(nodeID, param), current, "Go to", "a Go to in “"+s.name(docs)+"”",
-		func(ctx *frame.Context, ref floor.AnchorRef) {
+	return s.goToExtras(s.newPlaceTarget(anchorOwner(nodeID, param), current, "Go to",
+		"a Go to in “"+s.name(docs)+"”", func(ctx *frame.Context, ref floor.AnchorRef) {
 			if now, ok := s.currentNode(ctx.Docs, nodeID); ok {
 				s.saveParam(ctx, now, param, ref)
 			}
-		})
+		}), nodeID)
 }
 
 // currentNode reads a node from the window's copy of the workflow as it is
@@ -751,7 +770,7 @@ func (s *State) Save(ctx *frame.Context) bool {
 		if !field.Field.Unsaved() {
 			continue
 		}
-		next, problem := s.applyField(changed, field)
+		next, problem := s.applyField(ctx.Docs, changed, field)
 		if problem != "" {
 			s.focus.Set(field)
 			ctx.Frame.Status(problem)
@@ -792,8 +811,11 @@ func (s *State) Save(ctx *frame.Context) bool {
 
 // applyField reads a field's typed value into a node, or says what is wrong
 // with it.
-func (s *State) applyField(node flow.Node, field *ui.TextField) (flow.Node, string) {
+func (s *State) applyField(docs frame.Docs, node flow.Node, field *ui.TextField) (flow.Node, string) {
 	if changed, problem, handled := s.applyCallField(node, field); handled {
+		return changed, problem
+	}
+	if changed, problem, handled := s.applyMessageField(docs, node, field); handled {
 		return changed, problem
 	}
 	for index := range s.form.controls {
@@ -909,7 +931,9 @@ func parseFor(made *control, field *ui.TextField, value string, node flow.Node) 
 	case flow.TypeOperand:
 		return parseOperand(made, field, value)
 	case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps,
-		flow.TypeWays, flow.TypePort:
+		flow.TypeWays, flow.TypePort, flow.TypeMessage:
+		// A message's values need the project's paths, so applyField
+		// reads it.
 	}
 
 	return nil, false, ""

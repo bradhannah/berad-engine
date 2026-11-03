@@ -5,9 +5,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
+	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -111,12 +113,7 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 	uses := s.uses(docs, index)
 	rows = append(rows, s.typeRows(sectionWorkflows, "Workflows", index, match.entry,
 		func(entry project.Entry, depth int) []ui.Row {
-			detail := ""
-			if count := uses[entry.ID]; count > 0 {
-				detail = fmt.Sprintf("used by %d %s", count, plural(count, "NPC", "NPCs"))
-			}
-
-			return []ui.Row{item(entry, ui.IconWorkflow, detail, depth)}
+			return []ui.Row{workflowRow(entry, uses[entry.ID], depth)}
 		})...)
 	rows = append(rows, s.typeRows(sectionNPCs, "NPCs", index, match.entry, func(entry project.Entry, depth int) []ui.Row {
 		return []ui.Row{item(entry, ui.IconNPC, s.follows(docs, index, entry.ID), depth)}
@@ -299,6 +296,7 @@ func (s *State) zoneRows(
 		if !found {
 			floorEntry = project.Entry{
 				ID: floors[position], Name: "missing floor", Format: floor.FormatName, Folder: "", Tags: nil,
+				Kind: "",
 			}
 		}
 		detail := ""
@@ -316,13 +314,39 @@ func (s *State) zoneRows(
 	return rows
 }
 
-// uses counts the NPCs following each workflow. NPCs are read one at a time.
+// workflowRow is a workflow's row: its kind's icon, and how many NPCs
+// follow it, or zones run it as their loop.
+func workflowRow(entry project.Entry, count, depth int) ui.Row {
+	icon, detail := ui.IconWorkflow, ""
+	loop := entry.Kind == string(flow.PurposeZoneLoop)
+	if loop {
+		icon = ui.IconZoneLoop
+	}
+	switch {
+	case count > 0 && loop:
+		detail = fmt.Sprintf("loop of %d %s", count, plural(count, "zone", "zones"))
+	case count > 0:
+		detail = fmt.Sprintf("used by %d %s", count, plural(count, "NPC", "NPCs"))
+	}
+
+	return item(entry, icon, detail, depth)
+}
+
+// uses counts the NPCs following each behaviour and the zones running each
+// zone loop. NPCs are read one at a time.
 func (s *State) uses(docs frame.Docs, index *project.Index) map[ids.ULID]int {
 	counts := map[ids.ULID]int{}
 	for _, entry := range index.OfFormat(npc.FormatName) {
 		if found, loaded := s.npcOf(docs, entry.ID); loaded && !found.Behaviour.IsZero() {
 			counts[found.Behaviour]++
 		}
+	}
+	for _, entry := range index.OfFormat(zone.FormatName) {
+		docs.View(entry.ID, func(document client.Document) {
+			if zoneDoc, ok := document.Model.(*zoneplugin.Document); ok && !zoneDoc.Zone.Loop.IsZero() {
+				counts[zoneDoc.Zone.Loop]++
+			}
+		})
 	}
 
 	return counts

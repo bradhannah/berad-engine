@@ -87,9 +87,11 @@ func (o *Orchestrator) prepareCreate(args json.RawMessage) (json.RawMessage, ids
 		}
 		create.Data = data
 	}
-	if _, err := documentType.DecodeWithLayout(create.Data, create.Layout); err != nil {
+	decoded, err := documentType.DecodeWithLayout(create.Data, create.Layout)
+	if err != nil {
 		return nil, ids.ULID{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
+	create.Kind = model.KindOf(decoded)
 	var created ids.ULID
 	if create.ID.IsZero() {
 		var err error
@@ -140,7 +142,7 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 	deletion = projectindex.DocumentArgs{
 		ID: deletion.ID, Format: entry.info.Format, Name: entry.info.Name, Version: entry.version,
 		Revision: entry.info.Revision, Scope: o.containerOf(deletion.ID), Folder: entry.info.Folder,
-		Tags: entry.info.Tags, Data: data, Layout: layout,
+		Tags: entry.info.Tags, Kind: model.KindOf(entry.document), Data: data, Layout: layout,
 	}
 	prepared, err := json.Marshal(deletion)
 	if err != nil {

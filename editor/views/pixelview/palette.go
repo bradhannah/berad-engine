@@ -108,6 +108,7 @@ func (s *State) offers(docs frame.Docs) []offer {
 	if !slices.ContainsFunc(entries, func(entry project.Entry) bool { return entry.ID == art.DefaultPaletteID() }) {
 		entries = append(entries, project.Entry{
 			ID: art.DefaultPaletteID(), Name: art.DefaultPaletteName, Format: art.PaletteFormatName, Folder: "", Tags: nil,
+			Kind: "",
 		})
 	}
 	offers := make([]offer, 0, len(entries))

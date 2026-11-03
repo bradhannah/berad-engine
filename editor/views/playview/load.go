@@ -1,6 +1,8 @@
 package playview
 
 import (
+	"encoding/json"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
@@ -10,6 +12,7 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -42,6 +45,7 @@ func (s *State) prepare(ctx *frame.Context) (game.Project, int, bool) {
 	snapshot := game.Project{
 		Settings: game.DefaultSettings(), Zone: nil, Floors: map[ids.ULID]*floor.Floor{},
 		NPCs: map[ids.ULID]npc.NPC{}, Workflows: map[ids.ULID]*flow.Workflow{}, Values: nil, Seconds: 0, Seed: 0,
+		Names: places.NewNames(ctx.Docs),
 	}
 	load := &loader{state: s, ctx: ctx, index: nil, ready: true}
 	ctx.Docs.View(project.IndexID(), func(document client.Document) {
@@ -57,7 +61,7 @@ func (s *State) prepare(ctx *frame.Context) (game.Project, int, bool) {
 	load.npcs(&snapshot)
 	load.values(&snapshot)
 	tile := load.art()
-	s.art.want = load.sprites()
+	s.art.want = load.sprites(snapshot.Workflows)
 
 	return snapshot, tile, load.ready
 }
@@ -124,8 +128,8 @@ func (l *loader) zone(project *game.Project) {
 	}
 }
 
-// npcs reads the NPCs placed on the zone's floors, their behaviours and the
-// workflows those call, in turn.
+// npcs reads the NPCs placed on the zone's floors, their behaviours, the
+// zone's loop and the workflows those call, in turn.
 func (l *loader) npcs(project *game.Project) {
 	for _, placed := range project.Floors {
 		for _, placement := range placed.Placements() {
@@ -142,6 +146,9 @@ func (l *loader) npcs(project *game.Project) {
 	var waiting []ids.ULID
 	for _, definition := range project.NPCs {
 		waiting = append(waiting, definition.Behaviour)
+	}
+	if project.Zone != nil {
+		waiting = append(waiting, project.Zone.Loop)
 	}
 	for len(waiting) > 0 {
 		workflowID := waiting[0]
@@ -208,14 +215,20 @@ func (l *loader) art() int {
 }
 
 // sprites returns the tile each stand-in, the player and each NPC shows,
-// once its sprite, tile and palettes have loaded.
-func (l *loader) sprites() map[string]ids.ULID {
+// and each sprite the workflows switch an NPC to, once its sprite, tile and
+// palettes have loaded.
+func (l *loader) sprites(workflows map[ids.ULID]*flow.Workflow) map[string]ids.ULID {
 	shows := map[string]ids.ULID{}
 	for standIn, sprite := range l.state.standIns {
 		shows[standIn] = sprite
 	}
 	for npcID, sprite := range l.state.npcSprites {
 		shows[npcKey(npcID)] = sprite
+	}
+	for _, workflow := range workflows {
+		for _, sprite := range switchedTo(workflow) {
+			shows[spriteKey(sprite)] = sprite
+		}
 	}
 	tiles := map[string]ids.ULID{}
 	for key, sprite := range shows {
@@ -242,6 +255,31 @@ func (l *loader) sprites() map[string]ids.ULID {
 
 // npcKey is what an NPC's art is kept under.
 func npcKey(npcID ids.ULID) string { return "npc:" + npcID.String() }
+
+// spriteKey is what a sprite a workflow switches an NPC to is kept under.
+func spriteKey(sprite ids.ULID) string { return "sprite:" + sprite.String() }
+
+// switchedTo lists the sprites a workflow's Set values set its NPC's
+// sprite to, so their art is ready before they show.
+func switchedTo(workflow *flow.Workflow) []ids.ULID {
+	var found []ids.ULID
+	for _, node := range workflow.Nodes() {
+		ref, err := node.Ref(flow.ParamValue)
+		if node.Kind != flow.KindSetValue || err != nil || ref.Value != worldstate.SpriteID() {
+			continue
+		}
+		raw, err := node.Operand("to")
+		var saved string
+		if err != nil || json.Unmarshal(raw, &saved) != nil {
+			continue
+		}
+		if sprite, err := ids.Parse(saved); err == nil && !sprite.IsZero() {
+			found = append(found, sprite)
+		}
+	}
+
+	return found
+}
 
 func (s *State) subscribe(documentID ids.ULID, ctx *frame.Context) {
 	if s.subs[documentID] {

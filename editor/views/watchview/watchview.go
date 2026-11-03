@@ -56,7 +56,9 @@ const (
 const (
 	textNoPreview   = "Start a preview in a Map, then click an NPC."
 	textChooseNPC   = "Click an NPC on the map to watch it."
+	textChooseLoop  = "Click an NPC on the map, or Watch zone loop, to watch it."
 	textNoBehaviour = "This NPC has no behaviour."
+	textWatchLoop   = "Watch zone loop"
 )
 
 // State is one Watch window.
@@ -73,12 +75,16 @@ type State struct {
 	shown  ids.ULID
 	pause  *ui.Button
 	step   *ui.Button
+	// watchLoop watches the zone's loop, while the preview runs one.
+	watchLoop *ui.Button
 	// chosen is the workflow of the path clicked, by its place and ID,
 	// -1 to follow the NPC; parts are where each workflow of the path is
 	// drawn.
 	chosen     int
 	chosenFlow ids.ULID
 	parts      []image.Rectangle
+	// log is what the Logs wrote in this preview.
+	log *logPanel
 }
 
 // New returns the Watch window for a zone.
@@ -86,8 +92,9 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, zone: zone, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, run: ids.ULID{},
 		tick: 0, state: nil, flow: nil, shown: ids.ULID{},
-		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep), chosen: -1,
-		chosenFlow: ids.ULID{}, parts: nil,
+		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep),
+		watchLoop: ui.NewButton("watch-loop", textWatchLoop), chosen: -1,
+		chosenFlow: ids.ULID{}, parts: nil, log: newLogPanel(),
 	}
 }
 
@@ -118,18 +125,45 @@ func (s *State) Title(docs frame.Docs) string {
 		return "Watch  (view " + s.window.Short(shortID) + ")"
 	}
 
-	return "Watch: " + s.name(docs, entity.NPC, "NPC") + "  (view " + s.window.Short(shortID) + ")"
+	return "Watch: " + s.entityName(docs, entity, "NPC") + "  (view " + s.window.Short(shortID) + ")"
 }
 
-// Changed follows the zone's preview: its start, its latest state and its
-// end.
+// entityName names what is watched: an NPC, or a zone loop by its zone.
+func (s *State) entityName(docs frame.Docs, entity protocol.PreviewEntity, fallback string) string {
+	if !entity.Loop.IsZero() {
+		return s.name(docs, entity.Loop, fallback)
+	}
+
+	return s.name(docs, entity.NPC, fallback)
+}
+
+// loop returns the zone's loop in the preview, if it runs one.
+func (s *State) loop() (protocol.PreviewEntity, bool) {
+	if s.state != nil {
+		for _, entity := range s.state.Entities {
+			if !entity.Loop.IsZero() {
+				return entity, true
+			}
+		}
+	}
+
+	var none protocol.PreviewEntity
+
+	return none, false
+}
+
+// Changed follows the zone's preview: its start, which starts the log
+// afresh, its latest state and the lines it brings, and its end, after
+// which the log stays to read.
 func (s *State) Changed(update client.Update, _ *frame.Context) {
 	switch {
 	case update.PreviewStart != nil:
 		s.run, s.tick, s.state = update.PreviewStart.Run, 0, nil
+		s.log.restart()
 	case update.PreviewState != nil && update.PreviewState.Run == s.run && update.PreviewState.Tick > s.tick:
 		state := *update.PreviewState
 		s.tick, s.state = state.Tick, &state
+		s.log.keep(state.Log)
 	case update.PreviewStop != nil && update.PreviewStop.Run == s.run:
 		s.run, s.tick, s.state, s.flow, s.shown = ids.ULID{}, 0, nil, nil, ids.ULID{}
 	}
@@ -161,7 +195,7 @@ func (s *State) canvas() image.Rectangle {
 		right -= valuesWidth
 	}
 
-	return image.Rect(0, headerHeight, right, content.Max.Y-frame.StatusHeight-footerHeight)
+	return image.Rect(0, headerHeight, right, s.logArea().Min.Y)
 }
 
 // valuesColumn is where the watched NPC's values are listed, beside its
@@ -171,7 +205,7 @@ func (s *State) valuesColumn() image.Rectangle {
 		return ui.Zero()
 	}
 
-	return image.Rect(s.size.X-valuesWidth, headerHeight, s.size.X, s.size.Y-frame.StatusHeight-footerHeight)
+	return image.Rect(s.size.X-valuesWidth, headerHeight, s.size.X, s.logArea().Min.Y)
 }
 
 // drawValues lists the watched NPC's values: its workflow's locals and its
@@ -197,12 +231,10 @@ func (s *State) drawValues(screen *ebiten.Image) {
 	}
 }
 
-// layout places the buttons in the footer.
+// layout places the buttons in the footer, each as wide as its label
+// needs, Watch zone loop only while the preview runs one.
 func (s *State) layout() {
 	bottom := s.size.Y - frame.StatusHeight - ui.Inset
-	s.pause.Rect = image.Rect(ui.Inset, bottom-ui.ButtonH, ui.Inset+buttonWidth, bottom)
-	s.step.Rect = image.Rect(ui.Inset+buttonWidth+buttonGap, bottom-ui.ButtonH, ui.Inset+ui.Half*buttonWidth+buttonGap,
-		bottom)
 	s.pause.Label, s.step.Label = "Pause NPCs", textStep
 	if s.state != nil && s.state.NPCsPaused {
 		s.pause.Label = "Resume NPCs"
@@ -212,12 +244,26 @@ func (s *State) layout() {
 		s.step.Label = textStepping
 	}
 	s.pause.Disabled, s.step.Disabled = s.state == nil, s.state == nil || s.state.Watched.IsZero() || stepping
+	left := ui.Inset
+	place := func(button *ui.Button) {
+		width := max(buttonWidth/ui.Half, s.theme.TextWidth(button.Label)+ui.Half*ui.Inset)
+		button.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
+		left += width + buttonGap
+	}
+	place(s.pause)
+	place(s.step)
+	s.watchLoop.Rect = ui.Zero()
+	if loop, runs := s.loop(); runs {
+		place(s.watchLoop)
+		s.watchLoop.Disabled = s.state.Watched.String() == loop.ID
+	}
 }
 
 // Update follows the watched NPC's workflow and sends the buttons' controls.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout()
+	s.updateLog(input, ctx)
 	entity, watching := s.watched()
 	if watching {
 		s.updatePath(input, entity)
@@ -254,6 +300,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		}
 	case s.step.Update(input):
 		control.Action = protocol.ControlStep
+	case s.watchLoop.Update(input):
+		loop, _ := s.loop()
+		control.Action, control.Placement = protocol.ControlWatch, loop.Loop
 	default:
 		return
 	}
@@ -275,6 +324,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		message = textNoPreview
 	case !watching:
 		message = textChooseNPC
+		if _, runs := s.loop(); runs {
+			message = textChooseLoop
+		}
 	case entity.Workflow.IsZero():
 		message = textNoBehaviour
 	case s.flow != nil:
@@ -286,6 +338,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.theme.DrawText(screen, message, canvas.Min.X+ui.Inset, canvas.Min.Y+ui.Inset, ui.ColorMuted())
 	}
 	s.drawValues(screen)
+	s.layoutLog(docs)
+	s.drawLog(screen, docs)
 	s.drawHeader(screen, docs, entity, watching)
 	s.drawFooter(screen, docs, entity, watching)
 }
@@ -296,9 +350,14 @@ func (s *State) drawHeader(screen *ebiten.Image, docs frame.Docs, entity protoco
 	s.theme.DrawLabel(screen, "WATCH", ui.Inset, (headerHeight-ui.LabelSize)/ui.Half-1, ui.ColorMuted())
 	nameX := ui.Inset + s.theme.LabelWidth("WATCH") + ui.Inset
 	if watching {
-		name := s.name(docs, entity.NPC, "Deleted NPC")
+		name := s.entityName(docs, entity, "Deleted NPC")
 		s.theme.DrawStrong(screen, name, nameX, textY, ui.ColorInk())
-		s.drawPath(screen, docs, entity, nameX+s.theme.StrongWidth(name)+ui.Inset)
+		pathX := nameX + s.theme.StrongWidth(name) + ui.Inset
+		if !entity.Loop.IsZero() {
+			s.theme.DrawText(screen, "zone loop", pathX, textY, ui.ColorMuted())
+			pathX += s.theme.TextWidth("zone loop") + ui.Inset
+		}
+		s.drawPath(screen, docs, entity, pathX)
 	}
 	if s.state != nil {
 		clockText := "LIVE  " + clock.Format(s.state.Clock) + " · " + clock.RateLabel(clock.Rate(s.state.Rate))
@@ -321,18 +380,23 @@ func (s *State) drawHeader(screen *ebiten.Image, docs frame.Docs, entity protoco
 // step went (or its latest change while it runs), where it stands, and the
 // buttons.
 func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protocol.PreviewEntity, watching bool) {
-	top := s.canvas().Max.Y
+	top := s.logArea().Max.Y
 	ui.Divider(screen, image.Pt(0, top), image.Pt(s.size.X, top))
 	if watching {
 		now := entity.Activity
 		if entity.Status != "" {
 			now = entity.Status
 		}
-		at := fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
-			s.name(docs, entity.Floor, "a floor"))
+		if way := s.wayLine(docs, entity); way != "" {
+			now += " · " + way
+		}
+		where := s.whereLine(docs, entity)
 		label, path := s.way(docs, entity)
 		column := ui.Inset + max(s.theme.LabelWidth(labelStep), s.theme.LabelWidth(labelLast)) + ui.Inset
-		rows := []struct{ label, text string }{{labelNow, now}, {label, s.fit(path, s.size.X-column-ui.Inset)}, {labelAt, at}}
+		rows := []struct{ label, text string }{
+			{labelNow, s.theme.FitText(now, s.size.X-column-ui.Inset)}, {label, s.fit(path, s.size.X-column-ui.Inset)},
+			{labelAt, where},
+		}
 		for index, row := range rows {
 			if row.text == "" {
 				continue
@@ -344,6 +408,9 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 	}
 	s.pause.Draw(screen, s.theme)
 	s.step.Draw(screen, s.theme)
+	if !s.watchLoop.Rect.Empty() {
+		s.watchLoop.Draw(screen, s.theme)
+	}
 }
 
 // way is the way the watched NPC went: its latest step's changes, under
@@ -386,13 +453,17 @@ func (s *State) name(docs frame.Docs, id ids.ULID, fallback string) string {
 }
 
 // Locate finds a named part of the window for input scripts: "ui:pause",
-// "ui:step", or "state:..." (see hasState).
+// "ui:step", the log's buttons, "log-line:<n>", or "state:..." (see
+// hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout()
+	s.layoutLog(docs)
 	kind, value, _ := strings.Cut(name, ":")
 	switch kind {
+	case strings.TrimSuffix(linePart, ":"):
+		return s.locateLine(value)
 	case "ui":
-		for _, button := range []*ui.Button{s.pause, s.step} {
+		for _, button := range []*ui.Button{s.pause, s.step, s.watchLoop, s.log.watched, s.log.all, s.log.clear} {
 			if button.ID == value {
 				return ui.Center(button.Rect), true
 			}
@@ -412,8 +483,12 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // while they are paused after a step that changed node, and
 // "value:<path>=<value>" while the watched NPC's value is that,
 // "path=<path>" while the path down through its calls reads so, and
-// "showing:<workflow>" while that workflow is drawn.
+// "showing:<workflow>" while that workflow is drawn; and the log's states
+// (see hasLogState).
 func (s *State) hasState(state string, docs frame.Docs) bool {
+	if found, handled := s.hasLogState(state); handled {
+		return found
+	}
 	entity, watching := s.watched()
 	switch {
 	case state == "previewing":
@@ -423,10 +498,11 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 	case state == "stepped":
 		return s.state != nil && s.state.NPCsPaused && len(s.state.Step) > 0
 	case strings.HasPrefix(state, "watching:"):
-		return watching && s.name(docs, entity.NPC, "") == strings.TrimPrefix(state, "watching:")
+		return watching && s.entityName(docs, entity, "") == strings.TrimPrefix(state, "watching:")
 	case strings.HasPrefix(state, "live:"):
 		return watching && s.nodeKind(docs, entity) == strings.TrimPrefix(state, "live:")
-	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"):
+	case strings.HasPrefix(state, "path="), strings.HasPrefix(state, "showing:"), strings.HasPrefix(state, "way="),
+		strings.HasPrefix(state, "at="):
 		return s.hasCallState(state, docs, entity, watching)
 	case strings.HasPrefix(state, "value:"):
 		return s.state != nil && slices.ContainsFunc(s.state.Values, func(value protocol.PreviewValue) bool {
@@ -449,4 +525,34 @@ func (s *State) nodeKind(docs frame.Docs, entity protocol.PreviewEntity) string 
 	})
 
 	return kind
+}
+
+// wayLine says which floors a watched NPC's Go to crosses, as "Ground floor
+// → stairs down at 12, 4 → Cellar", or "" while it stays on its floor.
+func (s *State) wayLine(docs frame.Docs, entity protocol.PreviewEntity) string {
+	if len(entity.Way) == 0 {
+		return ""
+	}
+	parts := []string{s.name(docs, entity.Way[0].From, "a floor")}
+	for _, climb := range entity.Way {
+		way := "down"
+		if climb.Up {
+			way = "up"
+		}
+		parts = append(parts, fmt.Sprintf("stairs %s at %d, %d", way, climb.Col, climb.Row),
+			s.name(docs, climb.To, "a floor"))
+	}
+
+	return strings.Join(parts, " → ")
+}
+
+// whereLine says where a watched NPC stands, as "cell 2, 0 on Upper floor";
+// a zone loop stands nowhere.
+func (s *State) whereLine(docs frame.Docs, entity protocol.PreviewEntity) string {
+	if !entity.Loop.IsZero() {
+		return ""
+	}
+
+	return fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
+		s.name(docs, entity.Floor, "a floor"))
 }

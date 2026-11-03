@@ -97,11 +97,15 @@ func ownerOf(docs frame.Docs, entry project.Entry) (worldstate.Owner, bool) {
 	docs.View(entry.ID, func(document client.Document) {
 		switch held := document.Model.(type) {
 		case *npcplugin.Document:
-			owner = worldstate.Owner{Scope: worldstate.ScopeNPC, Path: held.NPC.Path, Name: entry.Name, Owned: held.NPC.Owned}
+			owner = worldstate.Owner{
+				Scope: worldstate.ScopeNPC, Path: held.NPC.Path, Name: entry.Name, Owned: held.NPC.Owned, Zone: held.NPC.Zone,
+				Behaviour: held.NPC.Behaviour, Sprite: held.NPC.Sprite,
+			}
 			found = true
 		case *zoneplugin.Document:
 			owner = worldstate.Owner{
 				Scope: worldstate.ScopeZone, Path: held.Zone.Path, Name: entry.Name, Owned: held.Zone.Owned,
+				Zone: ids.ULID{}, Behaviour: ids.ULID{}, Sprite: ids.ULID{},
 			}
 			found = true
 		}

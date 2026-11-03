@@ -25,6 +25,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
 // ErrRunning reports a call that is only allowed before Run.
@@ -204,10 +205,14 @@ func (o *Orchestrator) load() error {
 		return err
 	}
 	o.folders = o.foldersOnDisk(dirs)
+	beforeZones := map[ids.ULID]bool{}
 	for _, document := range stored {
 		documentType, ok := o.cfg.Registry.Document(document.envelope.Format)
 		if !ok {
 			continue
+		}
+		if document.envelope.Format == flow.FormatName && document.fromVersion < workflowZonesSince {
+			beforeZones[document.envelope.ID] = true
 		}
 		var layout json.RawMessage
 		if document.layout != nil {
@@ -238,6 +243,8 @@ func (o *Orchestrator) load() error {
 	if err := o.replay(); err != nil {
 		return err
 	}
+	o.settleHomes()
+	o.settleRunsIn(beforeZones)
 	o.buildIndex()
 
 	return nil

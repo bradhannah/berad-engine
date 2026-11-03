@@ -37,6 +37,10 @@ type placeTarget struct {
 	what    string
 	set     func(*frame.Context, floor.AnchorRef)
 	pick    func(*frame.Context)
+	// extras are rows offered before the places while the workflow runs in
+	// any zone, such as New place input…, and chose acts on one.
+	extras []places.Extra
+	chose  func(*frame.Context, string)
 }
 
 // placeList is the open list of places and the control it chooses for.
@@ -50,7 +54,8 @@ type placeList struct {
 func (s *State) newPlaceTarget(owner string, current floor.AnchorRef, what, label string,
 	set func(*frame.Context, floor.AnchorRef),
 ) placeTarget {
-	target := placeTarget{owner: owner, current: current, what: what, set: set, pick: nil}
+	set = s.tying(set)
+	target := placeTarget{owner: owner, current: current, what: what, set: set, pick: nil, extras: nil, chose: nil}
 	target.pick = func(ctx *frame.Context) {
 		was := s.placeWas(ctx.Docs, current)
 		now := protocol.PickNow{Floor: ids.ULID{}, Item: "", Name: ""}
@@ -65,8 +70,11 @@ func (s *State) newPlaceTarget(owner string, current floor.AnchorRef, what, labe
 				return
 			}
 			s.subscribe(answer.Floor, ctx)
+			s.tied = false
 			set(ctx, floor.AnchorRef{Floor: answer.Floor, Anchor: anchor})
-			s.said(ctx, owner, "Picked", answer.Name, what, was)
+			if !s.tied {
+				s.said(ctx, owner, "Picked", answer.Name, what, was)
+			}
 		})
 	}
 
@@ -91,9 +99,10 @@ func (s *State) pickUpdate(button *ui.Button, owner string, input *ui.Input) boo
 	return button.Update(input)
 }
 
-// openPlaces opens the list of places under a control's box.
-func (s *State) openPlaces(box image.Rectangle, target placeTarget) {
-	s.places = &placeList{list: places.Open(s.theme, box, target.current), target: target}
+// openPlaces opens the list of places under a control's box, the places
+// where the workflow's NPCs live first.
+func (s *State) openPlaces(docs frame.Docs, box image.Rectangle, target placeTarget) {
+	s.places = &placeList{list: places.Open(s.theme, box, target.current, s.home(docs, target.extras)), target: target}
 }
 
 // placesOpen reports whether the list of places is open for an owner.
@@ -115,6 +124,11 @@ func (s *State) updatePlaces(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if extra, isExtra := strings.CutPrefix(chosen, places.ExtraPrefix); isExtra && target.chose != nil {
+		target.chose(ctx, extra)
+
+		return
+	}
 	ref, ok := places.Parse(chosen)
 	if !ok {
 		return
@@ -126,8 +140,11 @@ func (s *State) updatePlaces(input *ui.Input, ctx *frame.Context) {
 		}
 	}
 	was := s.placeWas(ctx.Docs, target.current)
+	s.tied = false
 	target.set(ctx, ref)
-	s.said(ctx, target.owner, "Chose", name, target.what, was)
+	if !s.tied {
+		s.said(ctx, target.owner, "Chose", name, target.what, was)
+	}
 }
 
 // drawPlaces draws the open list of places over the window.
@@ -192,6 +209,18 @@ func (s *State) hasPlaceState(state string, docs frame.Docs) (bool, bool) {
 		return s.shown, true
 	case "hidden":
 		return !s.shown, true
+	}
+	if name, isLocal := strings.CutPrefix(state, "out-of-reach:"); isLocal {
+		for _, declared := range s.workflow.Locals().Values() {
+			if _, out := s.localProblems[declared.ID]; out && declared.Name == name {
+				return true, true
+			}
+		}
+
+		return false, true
+	}
+	if shown, isList := strings.CutPrefix(state, "places-list="); isList {
+		return s.places != nil && s.places.list.Shown(s.screen(), places.All(docs, func(ids.ULID) {})) == shown, true
 	}
 	rest, ok := strings.CutPrefix(state, "given:")
 	if !ok {

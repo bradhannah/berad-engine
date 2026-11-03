@@ -199,7 +199,7 @@ func checkSamplePlays(t *testing.T, project string, ground *floor.Floor, sampleZ
 	}
 	day := readEnvelope(t, project, "workflows/clerk-s-day--????????.json")
 	routine, err := flow.Decode(day.Data)
-	if err != nil || clerk.Behaviour != day.ID || len(routine.Nodes()) != 19 || routine.Locals().Len() != 1 {
+	if err != nil || clerk.Behaviour != day.ID || len(routine.Nodes()) != 20 || routine.Locals().Len() != 1 {
 		t.Fatalf("the clerk follows the clerk's day, a node of every kind: %v", err)
 	}
 	kinds := map[string]bool{}

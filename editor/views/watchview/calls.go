@@ -129,6 +129,12 @@ func (s *State) hasCallState(state string, docs frame.Docs, entity protocol.Prev
 	if path, asked := strings.CutPrefix(state, "path="); asked {
 		return watching && s.pathText(docs, entity) == path
 	}
+	if way, asked := strings.CutPrefix(state, "way="); asked {
+		return watching && s.wayLine(docs, entity) == way
+	}
+	if where, asked := strings.CutPrefix(state, "at="); asked {
+		return watching && s.whereLine(docs, entity) == where
+	}
 
 	return s.name(docs, s.shown, "") == strings.TrimPrefix(state, "showing:")
 }

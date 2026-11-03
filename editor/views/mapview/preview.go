@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -48,12 +49,15 @@ const (
 // views through the orchestrator. NPCs can be paused, or stepped until the
 // watched NPC changes node; step is the changes it made in the latest step.
 type previewRun struct {
-	id       ids.ULID
-	run      *play.Run
-	held     play.Direction
-	sent     *protocol.PreviewState
-	clock    *clock.Clock
-	npcs     map[ids.ULID]*npcRun
+	id    ids.ULID
+	run   *play.Run
+	held  play.Direction
+	sent  *protocol.PreviewState
+	clock *clock.Clock
+	npcs  map[ids.ULID]*npcRun
+	// loop runs the zone's loop, its workflow nil while the zone has none
+	// that fits it.
+	loop     *npcRun
 	watched  ids.ULID
 	paused   bool
 	stepping bool
@@ -72,6 +76,10 @@ type previewRun struct {
 	// anchors names the anchors of the zone's floors, for the watched
 	// NPC's place values.
 	anchors map[ids.ULID]string
+	// lines are the latest lines the Logs wrote, at most
+	// protocol.RecentLines, and written counts every line so far.
+	lines   []protocol.PreviewLine
+	written uint64
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -162,9 +170,12 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
 			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
+			loop: &npcRun{
+				npc: npcrun.StartLoop(s.zone, seed(result.Created, s.zone)), workflow: nil, source: ids.ULID{}, revision: 0,
+			},
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
-			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{},
+			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0,
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)
@@ -299,7 +310,8 @@ func (s *State) sendState(ctx *frame.Context) {
 	if sent := s.preview.sent; sent != nil && slices.EqualFunc(sent.Entities, state.Entities, sameEntity) &&
 		sent.Clock == state.Clock &&
 		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
-		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) {
+		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) &&
+		len(sent.Log) == len(state.Log) && (len(state.Log) == 0 || sent.Log[len(sent.Log)-1] == state.Log[len(state.Log)-1]) {
 		return
 	}
 	s.preview.sent = &state
@@ -313,7 +325,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
 		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""}, Changes: 0,
-		Calls: nil,
+		Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{},
 	}
 }
 

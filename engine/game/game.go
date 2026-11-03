@@ -27,8 +27,8 @@ var ErrStart = errors.New("the player cannot start there")
 
 // Project is what a game plays, as it was when the game started: the game
 // settings, the start's zone with its floors, the NPCs placed on them with
-// their behaviours, and the values the project declares. Nothing in it
-// changes while the game runs.
+// their behaviours, the zone's loop, and the values the project declares.
+// Nothing in it changes while the game runs.
 type Project struct {
 	Settings  Settings
 	Zone      *zone.Zone
@@ -42,6 +42,9 @@ type Project struct {
 	Seconds float64
 	// Seed fixes the NPCs' random choices, so a run repeats.
 	Seed uint64
+	// Names names documents and places for values' text forms; nil leaves
+	// them as IDs.
+	Names npcrun.Names
 }
 
 // Game is a project being played: the player at the start, the NPCs on
@@ -60,6 +63,12 @@ type Game struct {
 	workflows  map[ids.ULID]*flow.Workflow
 	clock      *clock.Clock
 	values     *worldstate.Store
+	// loop runs the zone's loop, loopFlow, nil when it has none that fits
+	// it; loopID is the loop's workflow.
+	loop     *npcrun.NPC
+	loopFlow *flow.Workflow
+	loopID   ids.ULID
+	names    npcrun.Names
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -116,6 +125,7 @@ func New(project Project) (*Game, error) {
 		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
+		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names,
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -133,9 +143,26 @@ func New(project Project) (*Game, error) {
 		}
 	}
 	slices.SortFunc(game.npcs, func(a, b *npcrun.NPC) int { return a.Placement.Compare(b.Placement) })
+	game.startLoop(project)
 
 	return game, nil
 }
+
+// startLoop starts the zone's loop, when it has one that is a zone loop
+// running in the zone or in any zone. It runs while the zone is alive,
+// which is the whole game while a game plays one zone.
+func (g *Game) startLoop(project Project) {
+	zoneID, loopID := project.Settings.Start.Zone, project.Zone.Loop
+	loop := project.Workflows[loopID]
+	if loopID.IsZero() || loop == nil || loop.Purpose() != flow.PurposeZoneLoop ||
+		(!loop.RunsIn().IsZero() && loop.RunsIn() != zoneID) {
+		return
+	}
+	g.loop, g.loopFlow, g.loopID = npcrun.StartLoop(zoneID, seed(project.Seed, zoneID)), loop, loopID
+}
+
+// Loop returns the zone's loop as it runs, nil when the zone has none.
+func (g *Game) Loop() *npcrun.NPC { return g.loop }
 
 // seed is an NPC's random seed: the game's and its placement's.
 func seed(game uint64, placement ids.ULID) uint64 {
@@ -165,19 +192,33 @@ func (g *Game) Step(input play.Input) Step {
 	var cues []npcrun.Sound
 	for _, character := range g.npcs {
 		world := npcrun.World{
-			Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
+			Names: g.names, Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
 			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
 			Others: others,
 		}
 		character.Step(world, g.run.Tick())
-		for _, sound := range character.Sounds {
-			if !slices.ContainsFunc(cues, func(other npcrun.Sound) bool { return other.Cue == sound.Cue }) {
-				cues = append(cues, sound)
-			}
-		}
+		cues = heard(cues, character.Sounds)
+	}
+	if g.loop != nil {
+		g.loop.Step(npcrun.World{
+			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
+			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others,
+		}, g.run.Tick())
+		cues = heard(cues, g.loop.Sounds)
 	}
 
 	return Step{Outcome: outcome, Cues: cues}
+}
+
+// heard adds the cues asked for to those heard this tick, each once.
+func heard(cues, asked []npcrun.Sound) []npcrun.Sound {
+	for _, sound := range asked {
+		if !slices.ContainsFunc(cues, func(other npcrun.Sound) bool { return other.Cue == sound.Cue }) {
+			cues = append(cues, sound)
+		}
+	}
+
+	return cues
 }
 
 // workflow finds a workflow a Call calls.

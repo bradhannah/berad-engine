@@ -71,7 +71,8 @@ const (
 )
 
 // Comparisons lists the comparisons a value of a type takes, in the order
-// the inspector offers them; a type with no value to compare takes none.
+// the inspector offers them; a type with no value to compare takes none. A
+// zone, a workflow or a sprite is, or is not, the one it is compared with.
 func Comparisons(kind worldstate.Type) []string {
 	switch kind {
 	case worldstate.TypeInteger:
@@ -83,7 +84,7 @@ func Comparisons(kind worldstate.Type) []string {
 		return []string{CompareIs}
 	case worldstate.TypeChoice:
 		return []string{CompareAnyOf, CompareNoneOf}
-	case worldstate.TypeText:
+	case worldstate.TypeText, worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		return []string{CompareIs, CompareNot}
 	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
 	}

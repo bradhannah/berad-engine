@@ -34,7 +34,7 @@ func TestMakingAndCallingAModule(t *testing.T) {
 		quit(),
 	)
 	dayScript := script(
-		must("state:loaded", 900), must("state:nodes:19", 60), wait(10), keys("Escape"), wait(5),
+		must("state:loaded", 900), must("state:nodes:20", 60), wait(10), keys("Escape"), wait(5),
 		click("palette:"+flow.KindCall), must("state:selected:call-workflow", 300), wait(5), click("ui:call-workflow"),
 		must("menu:workflow-named:Workflow 1", 120), click("menu:workflow-named:Workflow 1"), wait(60), shoot(callShot),
 		must("state:output:call-workflow:2:w2=finished 2", 600), wait(240), quit(),

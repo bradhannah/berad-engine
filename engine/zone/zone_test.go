@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/engine/content"
@@ -60,7 +61,7 @@ func TestEncodeDecode(t *testing.T) {
 	if err := z.Insert(0, floorID(4)); err != nil {
 		t.Fatal(err)
 	}
-	z.Path = "market"
+	z.Path, z.Notes, z.Loop = "market", "The east-coast fishing town.\nNever shown to players.", floorID(12)
 	crowded := worldstate.New(floorID(9), "crowded", worldstate.ScopeZone, worldstate.TypeBool)
 	if err := z.Owned.Values.Insert(crowded); err != nil {
 		t.Fatal(err)
@@ -87,8 +88,23 @@ func TestEncodeDecode(t *testing.T) {
 		worldstate.TypeBool)) != nil || copied.Equal(z) {
 		t.Fatal("a copy's values are its own")
 	}
+	long, err := json.Marshal(map[string]any{"floors": []string{}, "notes": strings.Repeat("a", zone.MaxNotes+1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zone.Decode(long); !errors.Is(err, zone.ErrData) || zone.CheckNotes("short") != nil {
+		t.Fatalf("notes too long: %v", err)
+	}
 	if err := content.NewRegistry().Register(zone.Format()); err != nil {
 		t.Fatal(err)
+	}
+	if format := zone.Format(); format.Current != 6 || format.Migrations[5] == nil {
+		t.Fatalf("version 6 reads version 5 unchanged, with no zone loop: %+v", format)
+	}
+	looped := z.Clone()
+	looped.Loop = floorID(13)
+	if looped.Equal(z) {
+		t.Fatal("zones with different loops differ")
 	}
 }
 

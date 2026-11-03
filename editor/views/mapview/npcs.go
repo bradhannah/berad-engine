@@ -42,21 +42,99 @@ type placementDrag struct {
 	from Cell
 }
 
-// npcRows lists the project's NPCs, for the Place NPC tool.
+// npcRows lists the project's NPCs for the Place NPC tool: those that live
+// in the map's zone, those that live nowhere yet, and those that live
+// elsewhere, each under its heading, the last with the zone they live in.
+// The first two are numbered for the number keys.
 func (s *State) npcRows() []ui.Row {
 	entries := s.names.OfFormat(npc.FormatName)
-	rows := make([]ui.Row, 0, len(entries))
-	for number, entry := range entries {
-		detail := ""
-		if number < numberedTiles {
-			detail = strconv.Itoa(number + 1)
+	groups := map[string][]project.Entry{}
+	for _, entry := range entries {
+		groups[s.homeGroup(entry.ID)] = append(groups[s.homeGroup(entry.ID)], entry)
+	}
+	rows := make([]ui.Row, 0, len(entries)+len(groups))
+	number := 0
+	for _, group := range []string{homeHere, homeNone, homeElsewhere} {
+		if len(groups[group]) == 0 {
+			continue
 		}
-		row := ui.NewRow(entry.ID.String(), entry.Name)
-		row.Detail = detail
-		rows = append(rows, row)
+		heading := ui.NewRow(npcHeading+group, s.groupLabel(group))
+		heading.Heading = true
+		rows = append(rows, heading)
+		for _, entry := range groups[group] {
+			row := ui.NewRow(entry.ID.String(), entry.Name)
+			switch {
+			case group == homeElsewhere:
+				row.Detail = s.names.Name(s.homes[entry.ID], "another zone")
+			case number < numberedTiles:
+				number++
+				row.Detail = strconv.Itoa(number)
+			}
+			rows = append(rows, row)
+		}
 	}
 
 	return rows
+}
+
+// The Place NPC tool's groups, and the prefix of their headings' IDs.
+const (
+	homeHere      = "here"
+	homeNone      = "none"
+	homeElsewhere = "elsewhere"
+	npcHeading    = "npc-heading:"
+)
+
+// homeGroup is the group an NPC is listed in. One not loaded yet is listed
+// as living here, until it loads.
+func (s *State) homeGroup(npcID ids.ULID) string {
+	home, loaded := s.homes[npcID]
+	switch {
+	case !loaded, home == s.zone:
+		return homeHere
+	case home.IsZero():
+		return homeNone
+	default:
+		return homeElsewhere
+	}
+}
+
+// groupLabel is a group's heading, as Live in Harbour.
+func (s *State) groupLabel(group string) string {
+	switch group {
+	case homeHere:
+		return "Live in " + s.names.Name(s.zone, "this zone")
+	case homeNone:
+		return "No zone yet"
+	default:
+		return "Live elsewhere"
+	}
+}
+
+// subscribeNPCs keeps every NPC loaded, so the Place NPC tool knows where
+// each lives.
+func (s *State) subscribeNPCs(ctx *frame.Context) {
+	for _, entry := range s.names.OfFormat(npc.FormatName) {
+		s.subscribe(entry.ID, ctx)
+	}
+}
+
+// refreshHomes finds where each NPC the window has loaded lives; one whose
+// zone was deleted lives nowhere.
+func (s *State) refreshHomes(docs frame.Docs) {
+	s.homes = map[ids.ULID]ids.ULID{}
+	for _, entry := range s.names.OfFormat(npc.FormatName) {
+		docs.View(entry.ID, func(document client.Document) {
+			if npcDoc, ok := document.Model.(*npcplugin.Document); ok {
+				s.homes[entry.ID] = npcDoc.NPC.Zone
+			}
+		})
+		if home, loaded := s.homes[entry.ID]; loaded {
+			if _, exists := s.names.Entry(home); !exists {
+				s.homes[entry.ID] = ids.ULID{}
+			}
+		}
+	}
 }
 
 // refreshNPCs copies the project index, and finds the selected placement's
@@ -69,6 +147,7 @@ func (s *State) refreshNPCs(docs frame.Docs) {
 		}
 	})
 	s.countZoneNPCs(docs)
+	s.refreshHomes(docs)
 	s.placedNPC, s.behaviour = ids.ULID{}, ids.ULID{}
 	if s.placement.IsZero() {
 		return
@@ -206,6 +285,18 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 
 		return
 	}
+	home, loaded := s.homes[npcID]
+	if !loaded {
+		ctx.Frame.Status(name + " has not loaded yet. Try again in a moment.")
+
+		return
+	}
+	if !home.IsZero() && home != s.zone {
+		ctx.Frame.Status(name + " lives in " + s.names.Name(home, "another zone") +
+			". To place it here, change its zone in its details.")
+
+		return
+	}
 	floorID, index := s.floor, len(floorData.Placements())
 	ctx.Requests.WhereUsed(npcID, "", func(uses []protocol.Use, err error) {
 		if err != nil {
@@ -221,10 +312,19 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 		args := tilefloor.AddPlacementArgs{
 			Placement: floor.Placement{ID: ids.ULID{}, NPC: npcID, Col: cell.X, Row: cell.Y}, Index: index,
 		}
-		s.command(ctx, floorID, tilefloor.AddPlacementEdit, "", args, func(result protocol.Result) {
+		s.stroke.count++
+		gesture := s.window.String() + "-place-" + strconv.Itoa(s.stroke.count)
+		placedLine := fmt.Sprintf("Placed %s at %d, %d", name, cell.X, cell.Y)
+		if home.IsZero() {
+			placedLine += ". It lives in " + s.names.Name(s.zone, "this zone") + " now."
+		}
+		s.command(ctx, floorID, tilefloor.AddPlacementEdit, gesture, args, func(result protocol.Result) {
 			s.selectPlacement(result.Created)
-			ctx.Frame.Status(fmt.Sprintf("Placed %s at %d, %d", name, cell.X, cell.Y))
+			ctx.Frame.Status(placedLine)
 		})
+		if home.IsZero() {
+			s.command(ctx, npcID, npcplugin.SetZoneEdit, gesture, npcplugin.SetZoneArgs{Zone: s.zone}, nil)
+		}
 	})
 }
 

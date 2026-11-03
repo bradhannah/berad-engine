@@ -34,7 +34,10 @@ const (
 // project's names or a destination floor has changed. Floors are read one at
 // a time, never one inside another.
 func (s *State) refreshProblems(docs frame.Docs) {
-	parts := []string{strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision), "calls:" + s.callsKey}
+	parts := []string{
+		strconv.FormatUint(s.laidOut, 10), "audio:" + strconv.Itoa(s.audioRevision), "calls:" + s.callsKey,
+		"reach:" + s.reachKey(docs),
+	}
 	docs.View(project.IndexID(), func(document client.Document) {
 		parts = append(parts, "index:"+strconv.FormatUint(document.Revision, 10))
 	})
@@ -53,7 +56,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		return
 	}
 	s.problemKey = key
-	s.problems = map[ids.ULID]string{}
+	s.problems, s.localProblems = map[ids.ULID]string{}, s.localReach(docs)
 	for _, node := range s.workflow.Nodes() {
 		if problem := s.problemOf(node, docs); problem != "" {
 			s.problems[node.ID] = problem
@@ -67,7 +70,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 	switch node.Kind {
 	case flow.KindGoTo:
-		if problem := s.destinationProblem(node, docs); problem != "" {
+		if problem := s.goToProblem(node, docs); problem != "" {
 			return problem
 		}
 	case flow.KindContainer:
@@ -78,7 +81,7 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := s.cueProblem(node); problem != "" {
 			return problem
 		}
-	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog:
 		if problem := s.valueProblem(node, docs); problem != "" {
 			return problem
 		}
@@ -123,6 +126,30 @@ func (s *State) destinationProblem(node flow.Node, docs frame.Docs) string {
 	}
 
 	return ""
+}
+
+// goToProblem says what is wrong with a Go to: its destination, or that
+// the workflow's NPCs cannot reach it.
+func (s *State) goToProblem(node flow.Node, docs frame.Docs) string {
+	if problem := s.destinationProblem(node, docs); problem != "" {
+		return problem
+	}
+
+	return s.goToReach(node, docs)
+}
+
+// goToReach says why the workflow's NPCs cannot reach a Go to's place on a
+// map, or returns "".
+func (s *State) goToReach(node flow.Node, docs frame.Docs) string {
+	if choiceOf(node, flow.ParamGoes) == flow.GoesToValue {
+		return ""
+	}
+	destination, err := node.Anchor("destination")
+	if err != nil {
+		return ""
+	}
+
+	return s.reachProblem(docs, destination)
 }
 
 // markCentre is where a node's problem mark sits: inside its top-right

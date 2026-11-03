@@ -1,0 +1,332 @@
+# Increment 22: NPCs live in one zone
+
+**Status:** Built
+
+The twenty-second increment gives each NPC the zone it lives in. Today an
+NPC's zone is only where it happens to be placed, the place lists offer
+every place in the project, and a Go to whose place is on another floor,
+even of the same zone, is skipped without a word. Now an NPC's zone is set
+in its details and binds it there: it is placed only on that zone's maps,
+it can go to a place on any of the zone's floors by taking the stairs, and
+a place it can never reach is flagged. Changing its zone asks first,
+saying what would break. Zones are chosen with a **zone picker** over the
+window, built to serve whatever asks for a zone. It builds on the places
+of [increment 21](0021-flow-modules.md) and the picker of [increment
+19](0019-value-picker.md), and is held to the same strict checks as
+[increment 1](0001-foundation.md).
+
+## What it proves
+
+1. **An NPC lives in one zone:** its zone is part of the NPC, chosen in its
+   details, and it is placed only on a map of that zone.
+2. **A zone is chosen from many:** the zone picker finds a zone by name,
+   folder or tag among many, and shows enough of it to choose well.
+3. **One picker serves every asker:** the asker says what the zone is for,
+   the zone it is now, the zones it can't take and why, and whether No
+   zone is offered.
+4. **Changing a zone says what breaks:** moving an NPC that has places in
+   its workflows lists them, and the other NPCs that share them, before it
+   moves; Undo puts it back.
+5. **A place it can't reach says so:** a place in another zone, or on a
+   floor no stairs lead to, is a problem on the node and in the Problems
+   window, naming the NPC it is for.
+6. **NPCs take the stairs:** a Go to finds its way across the zone's floors
+   by their stairs, as the player walks them, and Watch shows the floors
+   on the way.
+
+## Decisions
+
+Asked for by its author on 2026-11-02, after trying increment 21: the
+place lists offered places in any zone, though an NPC can't go to another
+zone, and an NPC should belong to a zone.
+
+Agreed by its author on 2026-11-02, before building, in answer to the
+planning questions:
+
+- **An NPC's zone is a setting of the NPC,** set in its details as its
+  behaviour is, and binds it to that zone.
+- **An NPC lives in one zone and only one,** and can change floors within
+  it.
+- **Changing its zone asks first, then flags:** the move is never refused;
+  what breaks is listed before and flagged after.
+- **It is placed only on its zone's maps.** Changing its zone takes it off
+  its old map, until it is placed in the new zone.
+- **A workflow's place list puts its NPCs' zone first,** every floor of
+  it; other zones are greyed, can still be chosen, and are flagged when
+  they are. A module, which doesn't know who calls it, lists every place.
+- **A character in two zones is two NPCs,** or one module called by both;
+  one behaviour is not expected to serve NPCs in different zones.
+- **Duplicate NPC comes later.**
+
+Agreed by its author on 2026-11-02, before building, from the wireframes
+on the canvas "Workflow canvas wireframes", row "NPCs live in one zone":
+
+- **The Zone box** in an NPC's details, above Behaviour, shows the zone's
+  name, or No zone yet, grey and dashed, and opens the zone picker. Under
+  it, Placed on names the floor and cell, with Show on map, or nowhere yet.
+- **The zone picker** opens over the window, as the value picker does:
+  Choose a zone with what it is for and what it is now; a search by name,
+  folder or tag, with the project's tags as chips; a rail of All zones,
+  Recent and the project browser's zone folders, with counts; a list
+  giving each zone's folder, floors, NPCs living there and places; and a
+  look at the zone under the cursor: its ground floor drawn small, its
+  floors, size, who lives there, its places, tags and notes. Enter or the
+  Choose button picks it; Esc closes.
+- **Moving an NPC** to another zone shows Move Clerk to Harbour?: that it
+  comes off its map, each place its workflows go to that it could no longer
+  reach, and the other NPCs that run those workflows, with Cancel and Move
+  to Harbour. Each place is flagged until it has one in the new zone.
+- **The place list** heads its NPCs' zone, Where Clerk and Customer live,
+  over a group per floor, then Other zones: Clerk and Customer can't go
+  there, greyed.
+- **The map's Place NPC tool** lists the NPCs that live in its zone, those
+  with no zone yet, and, greyed, those that live elsewhere, with the zone
+  they live in; the status bar says to change an NPC's zone in its details
+  to place it there.
+- **A place it can't reach** shows its zone on the node in red, and the
+  node's red mark, and Problems names the NPC each problem is for.
+- **Watch shows the floors** of a walk across them, as Ground floor →
+  stairs down at 12, 4 → Cellar → Shelf.
+
+Chosen while planning, for its author to check:
+
+- **An NPC with no zone takes the zone of the first map it is placed on;**
+  choosing a zone for an NPC that has none asks nothing.
+- **Once an NPC has a zone it keeps one:** the picker offers no No zone
+  for it.
+- **Zones get notes,** private to the author as an NPC's are, shown in the
+  zone's details and in the picker.
+- **Recent** is the zones last chosen in the picker while the editor is
+  open.
+- **The picker's look at a zone draws its ground floor only.**
+- **Floors with no stairs between them are flagged in the editor:** a Go
+  to on one floor whose place is on a floor no stairs lead to. A way
+  blocked by something that moves is still found only in the game.
+- **The Map follows a watched NPC** down the stairs to the floor it is on.
+- **An NPC's locals start fresh** when its zone changes, as agreed in
+  [workflow design](../WORKFLOW_DESIGN.md#values).
+- **Projects made before this increment** give each placed NPC its
+  placement's zone when they open; an NPC placed nowhere has no zone yet.
+- **The zone picker is its own package,** `editor/views/zonepicker`, as
+  the value picker is.
+- **Locating for tests:** the Zone box as "ui:npc-zone", the picker's
+  search as "zone-search", a zone's row as "zone:<name>", Choose as
+  "ui:zone-choose", the move dialog's buttons as "ui:zone-move" and
+  "ui:zone-cancel".
+
+## Steps
+
+| Step | Builds | Done when | Status |
+| --- | --- | --- | --- |
+| 1. An NPC's zone | The zone in the NPC's file, its next format version; older projects giving placed NPCs their placement's zone; notes on a zone | Engine tests save, load and upgrade an NPC's zone and a zone's notes | Built |
+| 2. The zone picker | The picker package: the asker's purpose, now, zones it can't take and No zone; the search, tag chips, rail of All zones, Recent and folders, the list and the look at a zone | View tests search by name, folder and tag, narrow by a folder, grey a zone with its reason and choose one | Built |
+| 3. The Zone box | The Zone box and Placed on in an NPC's details, opening the picker; choosing a zone for an NPC with none; a zone's notes in its details | View tests choose a first zone, read Placed on and save a zone's notes | Built |
+| 4. Placing in its zone | The Place NPC tool's groups, those living elsewhere greyed; a first placement giving its zone | View tests place an NPC with no zone, find one from another zone refused with the status line | Built |
+| 5. Moving zone | The move dialog: off its map, the places it could not reach, the other NPCs that share them; the move and its Undo | View tests move an NPC with places and without, and undo a move | Built |
+| 6. Places by zone | The place list headed by its NPCs' zone, every floor, other zones greyed; a module listing every place | View tests read the order for a behaviour, a shared behaviour and a module | Built |
+| 7. Reach problems | A place in another zone, on a node, a Call's input and a place local's start, and a floor no stairs lead to, each for the NPC it is for | View tests raise and mend each problem for an NPC, and for two NPCs sharing a behaviour | Built |
+| 8. Taking the stairs | A Go to's route across the zone's floors by their stairs; the NPC changing floor in the game | Runner tests walk down and back up two-way stairs, and down a one-way hole | Built |
+| 9. Watching floors | Watch's floors on a walk; the Map following a watched NPC to its floor | A view test reads the floors in Watch and finds the Map on the new floor | Built |
+| 10. Checks | `make check` and the real-window suite; a real-window test moves an NPC to another zone, mends its flagged place there, and watches it take the stairs to it | The checks pass with no lint findings | Built |
+
+## Step results
+
+- **An NPC's zone:** an NPC names the zone it lives in, and NPCs are
+  version 5; a version 4 NPC reads unchanged, living in no zone. The NPC
+  refers to its zone, labelled lives here, so a zone's uses list the NPCs
+  that live in it. Zones keep notes, private to the author, and are
+  version 5. Opening a project gives each NPC that lives in no zone but is
+  placed on a zone's floor that zone, saved at the next save as an
+  upgrade is; an NPC placed nowhere keeps no zone. The sample's clerk and
+  customer live in the sample zone. Verified: engine tests save, read and
+  upgrade an NPC's zone and a zone's notes and refuse notes too long;
+  plug-in tests meet the undo contract for setting a zone and notes; an
+  orchestrator test reopens a project saved before NPCs had zones and
+  finds the placed NPC living in its zone and the other in none; the
+  headless sample test finds both NPCs in the sample zone.
+- **The zone picker:** `editor/views/zonepicker` opens over the window
+  with Choose a zone and what it is for and now; a search by a zone's
+  name, folder or tag, the project's zone tags as chips that narrow to
+  the zones carrying them; a rail of All zones, Recent and the zone
+  folders, a folder holding the folders inside it, each with how many
+  match; the zones with their folder, or now, or why they can't be chosen,
+  and their floors, NPCs and places in columns; and a look at the zone
+  under the cursor, else the one selected: its ground floor drawn a pixel
+  a cell in its tiles' stand-in colours, its floors, size, who lives
+  there, its places, tags and notes. A click selects, and a double-click,
+  Enter or Choose chooses, the button naming the zone, with an ellipsis
+  when choosing goes on to ask more. A refused zone stays, its reason at
+  the foot. No zone shows only when the asker offers it. Verified: view
+  tests search by name, folder and tag, narrow by a folder and a tag
+  chip, read the look, mark the zone it is now, refuse a zone with its
+  reason, choose by Enter, choose No zone and close with Escape.
+- **The Zone box:** an NPC's details open with ZONE: a box with the zone
+  icon and the zone's name in bold, or No zone yet, grey, and Choose… at
+  its right. A click opens the zone picker, for the NPC to live in, the
+  zone it lives in now marked. Under the box, Placed on names the floor
+  and cell, as Placed on Ground floor, at 9, 8, found on its zone's
+  floors, with Show on map, which opens the zone's map on that floor with
+  the placement selected; or Placed nowhere yet. Choosing a zone for an
+  NPC that lives nowhere sets it at once, the status saying it lives
+  there and Undo takes it back. A zone's inspector has NOTES under its
+  palettes, saved with Save as an NPC's are. Verified: view tests choose
+  a first zone from the picker, read the zone and Placed on, open the map
+  at the placement and save a zone's notes.
+- **Placing in its zone:** the Place NPC tool lists the NPCs under Live
+  in Town, No zone yet and Live elsewhere, the last with the zone each
+  lives in where the others have their number key; the number keys count
+  only the first two groups. The map keeps every NPC loaded to know where
+  each lives. Placing one that lives nowhere gives it the map's zone in
+  the same undo step, the status saying it lives there now; one that lives
+  elsewhere is refused, the status saying where it lives and to change
+  its zone in its details. Verified: a view test refuses an NPC living in
+  another zone with the status line, and places one living nowhere,
+  giving it the zone in one gesture.
+- **Moving zone:** choosing another zone for an NPC that lives in one
+  gathers what the move would change before asking. The workflows its
+  behaviour runs, through any number of Calls, are loaded, and the
+  orchestrator answers a new question, runners, with the NPCs that run
+  each, as their behaviour or by a call. A move that takes the NPC off no
+  map and breaks no place happens at once. Otherwise Move Clerk to
+  Harbour? says Market → Harbour; that the NPC comes off its floor and is
+  placed nowhere until put on a Harbour map; which of those workflows
+  also run for other NPCs living elsewhere, as Clerk day also runs for
+  Customer; that each place is flagged until it has one in Harbour; and
+  lists the places it could no longer go, each with the workflow, what
+  names it and its zone. Move to Harbour takes it off its map and into
+  the zone in one undo step; Cancel or Escape leaves it. The places a
+  workflow names, its Go to places on a map, the places its Calls give
+  their modules' place inputs and its place locals' starts, are listed by
+  the places package, which also finds a floor's zone. Verified: an
+  orchestrator test asks who runs a module, through two Calls and as a
+  behaviour; view tests move a placed NPC whose behaviour another NPC
+  shares, reading the dialog and the place listed, both edits sharing one
+  gesture, and move one that breaks nothing at once.
+- **Places by zone:** a Workflow tab asks who runs it, when it or the
+  project changes and every two seconds besides, as it asks who calls it,
+  and keeps those NPCs loaded to know where each lives. When it is some
+  NPC's behaviour, every place list it opens, a Go to's, a Call input's
+  and a place local's start, heads with Where Clerk lives, or Where Clerk
+  and Customer live, over a group for each floor of their zones, then
+  Other zones: Clerk can't go there over the rest, grey and still
+  choosable. A module, which no NPC has as its behaviour, lists every
+  place alike. List rows can be muted, drawn grey. Verified: a view test
+  reads the list for a behaviour, chooses a grey place, and reads it for
+  a module.
+- **Reach problems:** a Workflow tab keeps loaded every zone, the NPCs
+  that run it, as their behaviour or by a call, and the floors of the
+  zones they live in. A Go to's place on a map, and each place a Call
+  gives its module's place inputs, is a problem when an NPC that runs the
+  workflow cannot reach it: Office desk 3 is in Town, and Clerk lives in
+  Harbour. Choose a place in Harbour; or, in its own zone, No stairs lead
+  from Loft to Office, so Clerk can't reach Office desk 3. A Call's reads
+  Its place: and the same. The first NPC that cannot go is named. Stairs
+  lead from a floor to the one above when it has any stairs up, and to
+  the one below when it has any stairs down, through any floors between;
+  the check starts from the floor the NPC is placed on. A place local, not
+  an input, that starts out of reach reads place · out of reach in the
+  locals list, and its form says why under its box, in red, cut to fit.
+  Verified: view tests flag a Go to in another zone, then on a floor no
+  stairs lead to, mend it with stairs down, name the NPC that cannot go
+  of two sharing the behaviour, flag a Call's place input and a place
+  local's start, and mend the start.
+- **Taking the stairs:** an NPC that steps onto stairs takes them, to the
+  same cell of the floor above or below, when the zone has that floor and
+  the cell there can be stood on, as the player does; this holds for a
+  Move as for a Go to. A Go to finds its way to a place on any floor of
+  the NPC's zone: a cheapest route across floors, each floor walked by the
+  player's steps and never onto stairs it does not mean to take, changing
+  floor at the stairs it does. Its route is planned when it starts and
+  again when something comes into its way. An NPC's Way lists the stairs
+  it still has to take. A place on a floor no stairs lead to carries on
+  by its output, saying no stairs lead to its floor; one in another zone
+  says so. Verified: runner tests go up the nearer of two stairs, saying
+  them on the way, and back down the only stairs down, walking around
+  stairs up below the wall; and fall down a hole to a desk below, then
+  carry on, as no stairs lead back up.
+- **Watching floors:** a preview's NPC carries the stairs its Go to still
+  has to take, each with the floor it leaves, its cell, whether it goes up
+  and the floor it leads to. Watch's NOW line adds them to what the NPC is
+  doing, as Walking to Desk, 9 tiles to go · Ground → stairs up at 1, 3 →
+  Upper, cut to fit. A Map showing a preview, its own or another view's,
+  follows the watched NPC to the floor it climbs to, the status saying it
+  took the stairs there, as it follows the player. Verified: a view test
+  reads the floors on a watched NPC's way up and down again in Watch, and
+  another finds the Map on the floor the watched NPC climbed to.
+- **Checks:** `make check` passes with no lint findings. Two real-window
+  tests are new. One makes a zone and moves the sample's customer into it
+  with the zone picker: the move dialog lists the counter and the door,
+  the customer's Go to is flagged once it lives in the new zone, and Undo
+  puts it back, the flag gone. The other adds a place on the sample
+  building's upper floor, gives it to the customer's first Go to, and
+  previews the zone: the customer walks to the stairs and up them, the
+  Map follows it to the upper floor, and Watch finds it at the new place.
+  That test found a deadlock: planning a route read the floor the stairs
+  lead to from inside the floor they are on, which a window's documents
+  do not allow; a floor's stairs are now read before the floors they lead
+  to. An NPC whose zone was deleted now lives nowhere, in the Project
+  window, the Map and a Workflow tab alike. The whole real-window suite,
+  50 tests, passed. In an earlier run of it, the test of a sprite on the
+  map failed four times in a row, its map tab already closed when the
+  glass was shot; every step's commit passed it when tried on its own, and
+  then it passed nine times running, on this code too, so the failures
+  were taken to be the machine's at the time, not this increment's.
+- **Short of the plan:** the real-window test mends the flagged Go to by
+  Undo, which moves the customer back, rather than by choosing a place in
+  the new zone; a view test chooses a place in an NPC's zone instead.
+
+## Changed while building, short of the wireframes
+
+- **The move dialog is a dialog of lines over a list:** its lines say
+  Market → Harbour, that the NPC comes off its map, which workflows other
+  NPCs share and that each place is flagged; the list of places comes
+  last, above the buttons. Cancel is the dialog's own, and Escape cancels.
+- **No Problems window:** the editor has none, as increment 21 found. A
+  place out of reach is a node's problem, its mark and its inspector
+  saying which NPC cannot go; a place local's start is marked out of reach
+  in the locals list and says why in its form.
+- **No problem for an NPC that lives nowhere:** an NPC placed nowhere
+  never runs, so its behaviour's places are not flagged for it.
+- **NPCs living elsewhere are not greyed** in the Place NPC tool: their
+  rows name the zone they live in where the others have a number key, and
+  placing one is refused with the status line.
+- **Watch adds the floors to its NOW line,** after what the NPC is doing,
+  rather than on a line of its own, as the footer has room for three.
+- **The zone picker's look draws the ground floor in its tiles' stand-in
+  colours,** a pixel a cell, without their sprites.
+
+Chosen while building these steps, for its author to check:
+
+- **An NPC refers to the zone it lives in,** so a zone's uses list the
+  NPCs living there; deleting a zone is not refused, and its NPCs then
+  live in a zone that is gone, as no zone.
+- **Opening a project gives placed NPCs their zone,** as an upgrade, saved
+  at the next save; the sample's NPCs are given theirs the same way.
+- **Who runs a workflow is asked of the orchestrator,** as who calls it
+  is: the NPCs whose behaviour it is, and those whose behaviour calls it
+  through any number of Calls.
+- **A module is a workflow no NPC has as its behaviour:** its place lists
+  list every place alike, though the NPCs that call it are still checked
+  for reach.
+- **Reach is checked from the floor an NPC is placed on,** floor by floor:
+  a floor is reached when any stairs on a floor reached lead to it. Where
+  the stairs are on the floor is the game's to find.
+- **A Move that steps onto stairs takes them too,** as every step does.
+- **A route never steps onto stairs it does not mean to take,** and is
+  planned once for each pair of stairs on a floor, which is quick for the
+  few flights a zone has.
+- **Recent lasts as long as the Project window,** the window that opens
+  the picker.
+- **Show on map selects the placement with the Place NPC tool,** on its
+  floor.
+
+## Not in this increment
+
+- **Duplicate NPC,** for a character that seems to live in two zones; the
+  zone picker is built to choose the copy's zone.
+- **Doors between zones,** a door leading to another zone, chosen with the
+  zone picker.
+- **NPCs that travel between zones** in the game.
+- **Place values beyond locals,** in world, zone and NPC values, and in
+  nodes other than Go to.
+- **A behaviour as a module with its inputs filled in per NPC.**

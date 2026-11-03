@@ -84,6 +84,9 @@ func (s *State) syncLocals(ctx *frame.Context) {
 		if value.Type == worldstate.TypePlace {
 			row.Icon = ui.IconPlace
 		}
+		if _, out := s.localProblems[value.ID]; out {
+			row.Detail += " · out of reach"
+		}
 		panel.list.Rows = append(panel.list.Rows, row)
 	}
 	value, ok := s.selectedLocal()
@@ -98,6 +101,11 @@ func (s *State) syncLocals(ctx *frame.Context) {
 	if start := value.Zero().Place; value.Type == worldstate.TypePlace && !start.IsZero() {
 		panel.form.PlaceWhere = places.Where(ctx.Docs, start.Floor)
 	}
+	problem, out := s.localProblems[value.ID]
+	if out {
+		panel.form.PlaceWhere = problem
+	}
+	panel.form.PlaceWarn = out
 	if panel.form.Show(value, value.Name) || !panel.registered {
 		s.focus = ui.Focus{}
 		s.focus.Register(panel.form.Fields()...)
@@ -110,12 +118,13 @@ func (s *State) syncLocals(ctx *frame.Context) {
 func (s *State) layoutLocals() {
 	panel := s.locals
 	panel.list.Rect, panel.add.Rect, panel.form.Delete.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	s.runsInBox = ui.Zero()
 	if !s.localsActive() {
 		return
 	}
 	inspector := frame.Inspector(s.size)
 	left, width := inspector.Min.X+ui.Inset, inspector.Dx()-ui.Half*ui.Inset
-	panel.top = inspector.Min.Y + ui.Inset
+	panel.top = s.layoutRunsIn(inspector.Min.Y + ui.Inset)
 	top := panel.top + ui.Half*ui.LineHeight
 	rows := min(max(len(panel.list.Rows), 1), localsShown)
 	panel.list.Rect = image.Rect(left, top, left+width, top+rows*ui.RowHeight)
@@ -151,10 +160,10 @@ func (s *State) scrollLocal(input *ui.Input) bool {
 	return input.Pressed && !input.Cursor.In(panel.shown) && !input.Cursor.In(panel.form.Delete.Rect)
 }
 
-// updateLocals handles the local values' list, Add local and the form's
-// buttons.
+// updateLocals handles the Runs in box, the local values' list, Add local
+// and the form's buttons.
 func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
-	if !s.localsActive() {
+	if !s.localsActive() || s.updateRunsIn(input, ctx) {
 		return
 	}
 	panel := s.locals
@@ -210,7 +219,7 @@ func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
 	case valueform.ChangePickPlace:
 		s.pickOrCancel(ctx, s.localTarget(ctx, changed))
 	case valueform.ChangeChoosePlace:
-		s.openPlaces(panel.form.PlaceBox, s.localTarget(ctx, changed))
+		s.openPlaces(ctx.Docs, panel.form.PlaceBox, s.localTarget(ctx, changed))
 	case valueform.ChangeDeclareNew:
 		s.addLocal(ctx)
 	case valueform.ChangeNone:
@@ -337,8 +346,10 @@ func (s *State) saveLocal(ctx *frame.Context) bool {
 	return true
 }
 
-// drawLocals draws the local values' part of the inspector.
-func (s *State) drawLocals(screen *ebiten.Image) {
+// drawLocals draws where the workflow runs and the local values' part of
+// the inspector.
+func (s *State) drawLocals(screen *ebiten.Image, docs frame.Docs) {
+	s.drawRunsIn(screen, docs)
 	panel := s.locals
 	left := frame.Inspector(s.size).Min.X + ui.Inset
 	s.theme.Heading(screen, "Local values", left, panel.top)

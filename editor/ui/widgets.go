@@ -176,6 +176,18 @@ type Row struct {
 	// Tree draws the row as part of a tree, lined up with the rows that have
 	// an icon, a guide or a triangle, even when it has none of them.
 	Tree bool
+	// Muted rows are drawn grey: still listed, but not the ones to choose,
+	// such as a place an NPC cannot go to.
+	Muted bool
+}
+
+// ink is the colour a row's label is drawn in: muted for a muted row.
+func (r Row) ink() color.RGBA {
+	if r.Muted {
+		return ColorMuted()
+	}
+
+	return ColorInk()
 }
 
 // NewRow returns a plain selectable row; set its other fields as needed.
@@ -183,6 +195,7 @@ func NewRow(id, label string) Row {
 	return Row{
 		ID: id, Label: label, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false, Icon: IconNone,
 		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false, Aside: "", Tree: false,
+		Muted: false,
 	}
 }
 
@@ -594,9 +607,9 @@ func (l *List) drawPlainRow(area *ebiten.Image, theme *Theme, row Row, rect imag
 	}
 	labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
 	if row.ID == l.Selected || row.Strong {
-		theme.DrawStrong(area, row.Label, left, labelTop, ColorInk())
+		theme.DrawStrong(area, row.Label, left, labelTop, row.ink())
 	} else {
-		theme.DrawText(area, row.Label, left, labelTop, ColorInk())
+		theme.DrawText(area, row.Label, left, labelTop, row.ink())
 	}
 	after := left + max(theme.TextWidth(row.Label), theme.StrongWidth(row.Label)) + labelGap
 	if row.Marked {
@@ -637,9 +650,9 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 	labelLeft := left + treeToggle + IconSize + treeLabelGap
 	labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
 	if row.Strong {
-		theme.DrawStrong(area, row.Label, labelLeft, labelTop, ColorInk())
+		theme.DrawStrong(area, row.Label, labelLeft, labelTop, row.ink())
 	} else {
-		theme.DrawText(area, row.Label, labelLeft, labelTop, ColorInk())
+		theme.DrawText(area, row.Label, labelLeft, labelTop, row.ink())
 	}
 	if row.Aside != "" {
 		asideLeft := labelLeft + theme.StrongWidth(row.Label) + labelGap

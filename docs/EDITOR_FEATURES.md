@@ -507,8 +507,22 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   and workflows. NPC flags grow as a game needs them.
 - **Agreed:** each NPC can carry private author notes, never shown to players.
   **Candidate:** description fields usable in an in-game guide.
-- **Agreed:** an NPC keeps one identity across zones and may have placements in
-  several; logic decides whether it appears at a placement.
+- **Agreed (2026-11-02):** an NPC lives in one zone and only one, set in its
+  details as its behaviour is, and is placed only on that zone's maps; it
+  can change floors within the zone by the stairs. A character that seems
+  to live in two zones is two NPCs. Changing an NPC's zone asks first,
+  listing the places it could no longer reach, then flags them. Zones are
+  chosen with a zone picker over the window, with search, folders, tags
+  and a look at each zone, serving whatever asks for a zone. This replaces
+  an NPC keeping one identity across zones with placements in several.
+  [Increment 22](increments/0022-npc-zones.md) builds it.
+- **Agreed (2026-11-03):** a workflow runs in one zone or in any zone, set
+  on the workflow with the zone picker, and its places, the NPCs that
+  follow it and the zones that loop it are checked against that. Where a
+  workflow, a behaviour or a place is chosen, what fits comes first and
+  the rest is greyed with the reason; changing where a workflow runs asks
+  first, listing what breaks, then flags it. [Increment
+  23](increments/0023-workflow-kinds.md) builds it.
 - **Agreed:** NPCs travel to destinations by pathfinding and perform behaviour
   there, looping within scheduled times.
 - **Candidate:** positions entered by picking on the map rather than typing
@@ -581,6 +595,11 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   zone, and can control ambient sounds as well as music. It is not based on
   turns and pauses when the game pauses; *open:* whether a second loop runs by
   turn.
+- **Agreed (2026-11-03):** the zone loop is a kind of workflow, set in a
+  zone's details, beside NPC behaviour; it sets zone and world values and
+  plays sounds across the zone. [Increment
+  23](increments/0023-workflow-kinds.md) builds it; music and ambient
+  nodes, handlers and a loop by turn wait.
 - **Agreed:** an ambient sound is heard from a number of cells, N, growing
   louder as the player comes closer, with Ultima V Redux's curve
   (berad-audio's `QuadraticDistanceGain`): full volume within one cell, then
@@ -638,6 +657,10 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   the authored files; debug tools may be "a little unsafe" rather than heavily
   guarded. *Candidate:* a debug display as an in-game overlay or a separate
   application connected over a socket.
+- **Agreed (2026-11-03):** a workflow's **Log** node writes a line of text
+  and values, each value in its text form, to a log in the editor's Watch
+  window, for its author. [Increment 24](increments/0024-built-ins-and-log.md)
+  builds it.
 
 ## Runtime directions
 

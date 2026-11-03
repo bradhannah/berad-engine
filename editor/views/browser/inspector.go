@@ -42,6 +42,20 @@ type kind struct {
 	open  string
 }
 
+// kindOfEntry is kindOf for a document, naming a workflow's kind.
+func kindOfEntry(entry project.Entry) kind {
+	about := kindOf(entry.Format)
+	if entry.Format == flow.FormatName {
+		purpose := flow.Purpose(entry.Kind)
+		about.label = purpose.Label()
+		if purpose == flow.PurposeZoneLoop {
+			about.icon = ui.IconZoneLoop
+		}
+	}
+
+	return about
+}
+
 func kindOf(format string) kind {
 	switch format {
 	case zone.FormatName:
@@ -110,6 +124,8 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	top := s.layoutTags(entry, left, width)
 	top = s.layoutActions(docs, entry, left, width, top)
 	top = s.layoutArt(docs, entry, left, width, top)
+	top = s.layoutZoneLoop(docs, left, width, top)
+	s.layoutZoneNotes(docs, left, width, top, saveTop-footerGap)
 	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
 }
 
@@ -255,6 +271,9 @@ func (s *State) Unsaved(frame.Docs) int {
 	if !s.npc.npc.IsZero() {
 		count += frame.UnsavedFields(s.npc.path, s.npc.notes)
 	}
+	if !s.zoneNoted.IsZero() {
+		count += frame.UnsavedFields(s.zoneNotes)
+	}
 
 	return count
 }
@@ -280,6 +299,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 	}
 	if !s.npc.npc.IsZero() && s.npc.notes.Field.Unsaved() {
 		s.commitNotes(ctx)
+	}
+	if !s.zoneNoted.IsZero() && s.zoneNotes.Field.Unsaved() {
+		s.commitZoneNotes(ctx)
 	}
 
 	return true
@@ -310,6 +332,7 @@ func (s *State) discard() {
 	s.tags.Field.Revert()
 	s.npc.path.Field.Revert()
 	s.npc.notes.Field.Revert()
+	s.zoneNotes.Field.Revert()
 	s.tileSize.Field.Revert()
 	s.screenCols.Field.Revert()
 	s.screenRows.Field.Revert()
@@ -386,7 +409,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
-	about := kindOf(entry.Format)
+	about := kindOfEntry(entry)
 	s.drawHeader(screen, about.icon, about.label, entry.Name, left)
 	s.theme.Heading(screen, "NAME", left, nameFieldTop-ui.LineHeight)
 	if s.name.Rect.Empty() {
@@ -413,6 +436,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		}
 	}
 	s.drawNPC(screen, docs, left)
+	s.drawZoneDetails(screen, docs, left)
 	s.drawArt(screen, left)
 	s.save.Draw(screen, s.theme)
 	s.moveMenu.Draw(screen, s.theme)

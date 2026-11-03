@@ -228,6 +228,20 @@ type Host struct {
 // inside it.
 const QuestionWhereUsed = "where-used"
 
+// QuestionRunners asks which NPCs and zones run a workflow: the NPCs whose
+// behaviour it is, labelled RunsAsBehaviour, the zones whose loop it is,
+// labelled RunsAsLoop, and those whose behaviour or loop calls it through
+// any number of Calls, labelled RunsByCall. The answer's uses are the NPCs
+// and zones.
+const QuestionRunners = "runners"
+
+// Labels of the NPCs and zones that run a workflow.
+const (
+	RunsAsBehaviour = "behaviour"
+	RunsAsLoop      = "zone loop"
+	RunsByCall      = "calls it"
+)
+
 // Query asks a question that needs the whole project.
 type Query struct {
 	Question string   `json:"question"`
@@ -340,6 +354,24 @@ type PreviewEntity struct {
 	Last     PreviewChange `json:"last,omitzero"`
 	Changes  uint64        `json:"changes,omitempty"`
 	Calls    []PreviewCall `json:"calls,omitempty"`
+	// Way is the stairs a Go to still has to take, in order.
+	Way []PreviewClimb `json:"way,omitempty"`
+	// Loop is the zone a zone loop runs for: such an entity is the zone's
+	// loop, with no NPC and no place on a floor, and its ID is the zone's.
+	Loop ids.ULID `json:"loop,omitzero"`
+	// Sprite is the sprite an NPC shows now, which its workflows can
+	// change; zero is none, its token.
+	Sprite ids.ULID `json:"sprite,omitzero"`
+}
+
+// PreviewClimb is a flight of stairs on an NPC's way: the floor it leaves,
+// the cell of the stairs, whether they go up, and the floor they lead to.
+type PreviewClimb struct {
+	From ids.ULID `json:"from"`
+	Col  int      `json:"col"`
+	Row  int      `json:"row"`
+	Up   bool     `json:"up,omitempty"`
+	To   ids.ULID `json:"to"`
 }
 
 // PreviewCall is a call an NPC is inside: the workflow that called and its
@@ -384,6 +416,28 @@ type PreviewState struct {
 	// Values are the watched NPC's values as they are now: its workflow's
 	// local values and its own, then its zone's and the world's.
 	Values []PreviewValue `json:"values,omitempty"`
+	// Log is the latest lines the NPCs' and the zone loop's Logs wrote,
+	// oldest first, at most RecentLines, so a window keeps those it has not
+	// seen by their numbers.
+	Log []PreviewLine `json:"log,omitempty"`
+}
+
+// RecentLines is how many of the latest Log lines a preview's state holds.
+const RecentLines = 50
+
+// PreviewLine is a line a Log wrote in a preview: its number in the
+// preview, from 1, the game time of day in seconds, the entity whose
+// workflow wrote it, an NPC's placement or the zone loop's zone, with its
+// NPC or zone, and the workflow and node that wrote it.
+type PreviewLine struct {
+	Seq      uint64   `json:"seq"`
+	Clock    float64  `json:"clock"`
+	Entity   string   `json:"entity"`
+	NPC      ids.ULID `json:"npc,omitzero"`
+	Loop     ids.ULID `json:"loop,omitzero"`
+	Workflow ids.ULID `json:"workflow"`
+	Node     ids.ULID `json:"node"`
+	Text     string   `json:"text"`
 }
 
 // PreviewValue is one value as the Watch window shows it: its path, such

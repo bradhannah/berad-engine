@@ -1,6 +1,6 @@
 // Package workflow is the editor half of workflows: the workflow document,
 // with its layout kept in a file of its own (D17), and the edits that add,
-// remove, change and move its nodes.
+// remove, change and move its nodes and set the zone it runs in.
 package workflow
 
 import (
@@ -33,7 +33,16 @@ const (
 	// ChangeLocalsEdit declares, changes and removes a workflow's local
 	// values, as the world state's change edit does the project's.
 	ChangeLocalsEdit = "workflow.locals.change"
+	// SetRunsInEdit sets the zone a workflow runs in, or any zone.
+	SetRunsInEdit = "workflow.runs-in.set"
 )
+
+// RunsHere labels a workflow's reference to the zone it runs in, so the
+// zone's uses list the workflows that run there.
+const RunsHere = "runs here"
+
+// runsInItem is the undo-clash item for the zone a workflow runs in.
+const runsInItem = "runs-in"
 
 // ErrNotWorkflow reports a document that is not a workflow.
 var ErrNotWorkflow = errors.New("document is not a workflow")
@@ -43,11 +52,17 @@ type Document struct {
 	Workflow *flow.Workflow
 }
 
-// NewData returns the data of a new workflow, holding only its start node,
-// whose ID the orchestrator assigns when the workflow is created.
-func NewData() json.RawMessage {
+// NewData returns the data of a new NPC behaviour, as NewDataFor does.
+func NewData() json.RawMessage { return NewDataFor(flow.PurposeBehaviour) }
+
+// NewDataFor returns the data of a new workflow of a kind, running in any
+// zone and holding only its start node, whose ID the orchestrator assigns
+// when the workflow is created.
+func NewDataFor(purpose flow.Purpose) json.RawMessage {
 	start := flow.Node{ID: ids.ULID{}, Kind: flow.KindStart, Parent: ids.ULID{}, Params: nil, Next: nil}
-	data, err := json.Marshal(wireWorkflow{Start: ids.ULID{}, Nodes: []flow.Node{start}})
+	data, err := json.Marshal(wireWorkflow{
+		Start: ids.ULID{}, Nodes: []flow.Node{start}, Purpose: purpose, Zone: ids.ULID{},
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -56,12 +71,17 @@ func NewData() json.RawMessage {
 }
 
 type wireWorkflow struct {
-	Start ids.ULID    `json:"start"`
-	Nodes []flow.Node `json:"nodes"`
+	Start   ids.ULID     `json:"start"`
+	Nodes   []flow.Node  `json:"nodes"`
+	Purpose flow.Purpose `json:"purpose,omitempty"`
+	Zone    ids.ULID     `json:"zone,omitzero"`
 }
 
 // Format names the document format.
 func (d *Document) Format() string { return flow.FormatName }
+
+// Kind is the workflow's kind, as the project index lists it.
+func (d *Document) Kind() string { return string(d.Workflow.Purpose()) }
 
 // Encode returns the workflow's logic.
 func (d *Document) Encode() (json.RawMessage, error) {
@@ -101,10 +121,13 @@ func (d *Document) Clone() model.Document {
 
 // References lists the anchors the workflow's Go to nodes lead to, the
 // cues its Play sound nodes play, the world-state values and NPCs its
-// value nodes use, and the workflows its Calls call, as CallItem, with the
-// values they give and keep.
+// value nodes use and its Logs write, the workflows its Calls call, as
+// CallItem, with the values they give and keep, and the zone it runs in.
 func (d *Document) References() []model.Reference {
 	var references []model.Reference
+	if zone := d.Workflow.RunsIn(); !zone.IsZero() {
+		references = append(references, model.Reference{Document: zone, Item: "", Label: RunsHere})
+	}
 	for _, node := range d.Workflow.Nodes() {
 		switch node.Kind {
 		case flow.KindGoTo:
@@ -127,6 +150,8 @@ func (d *Document) References() []model.Reference {
 			references = append(references, valueReferences(node)...)
 		case flow.KindCall:
 			references = append(references, callReferences(node)...)
+		case flow.KindLog:
+			references = append(references, logReferences(node)...)
 		}
 	}
 
@@ -397,6 +422,29 @@ func (Tint) Apply(document model.Document, args json.RawMessage) (model.Applied,
 	})
 }
 
+// SetRunsInArgs sets the zone a workflow runs in; zero is any zone.
+type SetRunsInArgs struct {
+	Zone ids.ULID `json:"zone"`
+}
+
+// SetRunsIn is the edit kind that sets the zone a workflow runs in.
+type SetRunsIn struct{}
+
+// Name identifies the edit kind.
+func (SetRunsIn) Name() string { return SetRunsInEdit }
+
+// Format names the document format the edit applies to.
+func (SetRunsIn) Format() string { return flow.FormatName }
+
+// Apply sets the zone; its inverse sets the zone it ran in.
+func (SetRunsIn) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	var set SetRunsInArgs
+
+	return change(document, args, &set, func(workflow *flow.Workflow) (string, any, []string, error) {
+		return "", SetRunsInArgs{Zone: workflow.SetRunsIn(set.Zone)}, []string{runsInItem}, nil
+	})
+}
+
 // TintItem names a part's tint for undo-clash detection.
 func TintItem(key string) string { return "tint:" + key }
 
@@ -503,6 +551,30 @@ func callReferences(node flow.Node) []model.Reference {
 			refs = append(refs, ref)
 		}
 	}
+
+	return append(references, refReferences(refs, label)...)
+}
+
+// logReferences lists the values outside the workflow a Log writes.
+func logReferences(node flow.Node) []model.Reference {
+	segments, err := node.Message()
+	if err != nil {
+		return nil
+	}
+	var refs []flow.ValueRef
+	for _, segment := range segments {
+		if segment.Ref != nil {
+			refs = append(refs, *segment.Ref)
+		}
+	}
+
+	return refReferences(refs, "a Log node")
+}
+
+// refReferences lists values outside the workflow by ID under the world
+// state, and any NPC or zone they name.
+func refReferences(refs []flow.ValueRef, label string) []model.Reference {
+	var references []model.Reference
 	for _, ref := range refs {
 		if ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
 			continue
@@ -536,7 +608,7 @@ func Plugin() plugin.Plugin {
 		Documents: []model.DocumentType{{
 			Format: flow.Format(), Decode: Decode, Layout: &layout, Prepare: Prepare,
 		}},
-		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}, Tint{}},
+		Edits: append([]model.EditKind{Add{}, Remove{}, Replace{}, Move{}, Tint{}, SetRunsIn{}},
 			stateplugin.Change{Kind: ChangeLocalsEdit, On: flow.FormatName, List: localValues}),
 		Required: nil,
 	}

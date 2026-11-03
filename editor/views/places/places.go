@@ -22,12 +22,13 @@ import (
 // whereSeparator joins a zone's name to a floor's.
 const whereSeparator = " · "
 
-// Place is one anchor: where it is, its name, and its zone and floor, as
-// "Sample zone · Ground floor".
+// Place is one anchor: where it is, its name, its zone and floor, as
+// "Sample zone · Ground floor", and its zone.
 type Place struct {
 	Ref   floor.AnchorRef
 	Name  string
 	Where string
+	Zone  ids.ULID
 }
 
 // ID names a place for a list row, as its floor and anchor.
@@ -61,6 +62,7 @@ func All(docs frame.Docs, subscribe func(ids.ULID)) []Place {
 			for _, anchor := range anchors {
 				found = append(found, Place{
 					Ref: floor.AnchorRef{Floor: floorID, Anchor: anchor.ID}, Name: anchor.Name, Where: where,
+					Zone: entry.ID,
 				})
 			}
 		}

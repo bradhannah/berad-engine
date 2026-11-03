@@ -1,16 +1,17 @@
 package workflowview
 
 import (
+	"cmp"
 	"encoding/json"
 	"image"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/client"
-	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
@@ -120,7 +121,8 @@ func (s *State) newInputRow(input worldstate.Declaration) inputRow {
 		row.choices, row.values = valueButtons(prefix, input)
 	case worldstate.TypePlace:
 		row.pick = ui.NewButton(prefix+"-pick", "Pick on map")
-	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return row
@@ -310,12 +312,18 @@ func (panel *callPanel) buttons() []*ui.Button {
 	return buttons
 }
 
-// updateCall handles the Call's inspector.
+// updateCall handles the Call's inspector, keeping the workflows it could
+// call loaded, to know where each runs.
 func (s *State) updateCall(input *ui.Input, ctx *frame.Context, node flow.Node) {
 	panel := s.form.call
+	for _, entry := range s.names(ctx.Docs).OfFormat(flow.FormatName) {
+		if entry.ID != s.document {
+			s.subscribe(entry.ID, ctx)
+		}
+	}
 	switch {
 	case input.Pressed && input.Cursor.In(panel.box) && panel.box != ui.Zero():
-		s.openWorkflowMenu(ctx.Docs)
+		s.openWorkflowMenu(ctx)
 	case panel.open.Update(input):
 		if target, ok := node.Called(); ok {
 			ctx.Requests.Open(ViewName, target, false)
@@ -351,7 +359,7 @@ func (s *State) updateInput(input *ui.Input, ctx *frame.Context, node flow.Node,
 
 			return
 		case input.Pressed && input.Cursor.In(row.place):
-			s.openPlaces(row.place, target)
+			s.openPlaces(ctx.Docs, row.place, target)
 
 			return
 		}
@@ -384,7 +392,7 @@ func (s *State) inputTarget(docs frame.Docs, node flow.Node, input worldstate.De
 	nodeID := node.ID
 	label := "the input " + input.Name + " of a Call in “" + s.name(docs) + "”"
 
-	return s.newPlaceTarget(inputOwner(nodeID, input.ID), current, input.Name, label,
+	return s.inputExtras(s.newPlaceTarget(inputOwner(nodeID, input.ID), current, input.Name, label,
 		func(ctx *frame.Context, ref floor.AnchorRef) {
 			now, ok := s.currentNode(ctx.Docs, nodeID)
 			if !ok {
@@ -393,7 +401,7 @@ func (s *State) inputTarget(docs frame.Docs, node flow.Node, input worldstate.De
 			given := worldstate.NoValue()
 			given.Type, given.Place = worldstate.TypePlace, worldstate.Place{Floor: ref.Floor, Anchor: ref.Anchor}
 			s.giveInput(ctx, now, input.ID, given.Encode())
-		})
+		}), nodeID, input)
 }
 
 // openCallPicker opens the value picker for another value an input is
@@ -480,29 +488,59 @@ func typedInput(input worldstate.Declaration, typed string) (json.RawMessage, st
 	return given.Encode(), ""
 }
 
-// openWorkflowMenu lists the project's other workflows to call.
-func (s *State) openWorkflowMenu(docs frame.Docs) {
-	var items []ui.MenuItem
-	docs.View(project.IndexID(), func(document client.Document) {
-		index, ok := document.Model.(*project.Index)
-		if !ok {
-			return
+// openWorkflowMenu lists the workflows of this one's kind to call: those
+// running where it runs, or in any zone, then, disabled, those running
+// elsewhere, which it can't call. A workflow running in any zone calls only
+// those running in any zone too.
+func (s *State) openWorkflowMenu(ctx *frame.Context) {
+	index := s.names(ctx.Docs)
+	purpose, here := s.workflow.Purpose(), s.runsIn(ctx.Docs)
+	var fits, elsewhere []ui.MenuItem
+	for _, entry := range index.OfFormat(flow.FormatName) {
+		if entry.ID == s.document || cmp.Or(flow.Purpose(entry.Kind), flow.PurposeBehaviour) != purpose {
+			continue
 		}
-		for _, entry := range index.OfFormat(flow.FormatName) {
-			if entry.ID != s.document {
-				items = append(items, ui.MenuItem{
-					ID: menuWorkflow + entry.ID.String(), Label: entry.Name, Icon: ui.IconNone, Disabled: false,
-					Danger: false, Rule: false,
-				})
-			}
+		s.subscribe(entry.ID, ctx)
+		item := ui.MenuItem{
+			ID: menuWorkflow + entry.ID.String(), Label: entry.Name, Icon: ui.IconNone, Disabled: false, Danger: false,
+			Rule: false,
 		}
-	})
+		if runs := s.workflowRunsIn(ctx.Docs, entry.ID); !runs.IsZero() && runs != here {
+			item.Disabled, item.Label = true, entry.Name+" · runs in "+index.Name(runs, "another zone")
+			elsewhere = append(elsewhere, item)
+
+			continue
+		}
+		fits = append(fits, item)
+	}
+	if len(fits) > 0 && len(elsewhere) > 0 {
+		elsewhere[0].Rule = true
+	}
+	items := slices.Concat(fits, elsewhere)
 	if len(items) == 0 {
-		items = append(items, ui.MenuItem{ID: "", Label: "No other workflow yet", Icon: ui.IconNone, Disabled: true,
-			Danger: false, Rule: false})
+		items = append(items, ui.MenuItem{
+			ID: "", Label: "No other " + strings.ToLower(purpose.Label()) + " yet", Icon: ui.IconNone, Disabled: true,
+			Danger: false, Rule: false,
+		})
 	}
 	s.contextMenu.Items, s.contextMenu.Width = items, ui.MenuWidth(items, s.theme)
 	s.contextMenu.Open(s.form.call.box, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+}
+
+// workflowRunsIn returns the zone another workflow runs in: zero for any
+// zone, for a zone since deleted, or for one not loaded yet.
+func (s *State) workflowRunsIn(docs frame.Docs, workflowID ids.ULID) ids.ULID {
+	runs := ids.ULID{}
+	docs.View(workflowID, func(document client.Document) {
+		if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
+			runs = workflowDoc.Workflow.RunsIn()
+		}
+	})
+	if _, exists := s.names(docs).Entry(runs); !exists {
+		return ids.ULID{}
+	}
+
+	return runs
 }
 
 // chooseModule makes the selected Call call a workflow, starting its inputs

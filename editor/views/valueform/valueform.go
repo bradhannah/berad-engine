@@ -121,6 +121,9 @@ type Form struct {
 	PlaceBox   image.Rectangle
 	PlaceName  string
 	PlaceWhere string
+	// PlaceWarn draws PlaceWhere as a warning, when it says the place is out
+	// of reach.
+	PlaceWarn  bool
 	PlaceLit   bool
 	PlaceOpen  bool
 	means      image.Point
@@ -146,8 +149,8 @@ func New(theme *ui.Theme) *Form {
 		heads: map[string]image.Point{}, hint: image.Pt(0, 0), Locked: "", lock: image.Pt(0, 0), lockLines: nil,
 		DeclareNew: ui.NewButton(declareNewID, "Declare a new value…"), roles: nil,
 		PickPlace: ui.NewButton(pickPlaceID, "Pick on map"), ClearPlace: ui.NewButton(clearPlaceID, "Clear"),
-		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceLit: false, PlaceOpen: false, means: image.Pt(0, 0),
-		meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
+		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceWarn: false, PlaceLit: false, PlaceOpen: false,
+		means: image.Pt(0, 0), meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
 	}
 	form.PickPlace.Primary = true
 	form.description.Placeholder = "What it is for, for whoever reads it next"
@@ -270,7 +273,8 @@ func (f *Form) setSaved() {
 			button.On = choice.ID == current.Choice
 			f.defaults = append(f.defaults, button)
 		}
-	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 }
 
@@ -294,7 +298,8 @@ func (f *Form) Fields() []*ui.TextField {
 	case worldstate.TypeText:
 		fields = append(fields, f.text)
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return append(fields, f.description)
@@ -444,7 +449,8 @@ func (f *Form) layoutValue(left, top, width int) int {
 		f.high.Rect = image.Rect(left+width/ui.Half+rowSpace/ui.Half, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
 	case worldstate.TypeBool, worldstate.TypeText, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 	if f.shown.Type == worldstate.TypeNPC {
 		return top
@@ -459,7 +465,8 @@ func (f *Form) layoutValue(left, top, width int) int {
 	case worldstate.TypeText:
 		f.text.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
-	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate:
+	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		top = buttonRows(f.defaults, left, top, width, choicesPerLine)
 	}
 
@@ -653,7 +660,8 @@ func (f *Form) Typed() (worldstate.Declaration, string, *ui.TextField, string) {
 		text.Type, text.Text = worldstate.TypeText, f.text.Field.Value()
 		declared.Default = text.Encode()
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
-		worldstate.TypeTemplate:
+		worldstate.TypeTemplate,
+		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 	}
 
 	return declared, dotted, nil, ""
@@ -823,5 +831,10 @@ func (f *Form) drawPlace(screen *ebiten.Image) {
 		label, look = "No place yet", places.Empty
 	}
 	places.DrawBox(screen, f.theme, f.PlaceBox, label, look, f.PlaceLit, f.PlaceOpen)
-	f.theme.DrawText(screen, f.PlaceWhere, f.PlaceBox.Min.X, f.PlaceBox.Max.Y+ui.Gap, ui.ColorMuted())
+	whereInk := ui.ColorMuted()
+	if f.PlaceWarn {
+		whereInk = ui.ColorWarn()
+	}
+	f.theme.DrawText(screen, f.theme.FitText(f.PlaceWhere, f.PlaceBox.Dx()), f.PlaceBox.Min.X, f.PlaceBox.Max.Y+ui.Gap,
+		whereInk)
 }
