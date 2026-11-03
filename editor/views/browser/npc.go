@@ -16,7 +16,6 @@ import (
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
-	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
@@ -152,6 +151,7 @@ func (s *State) updateNPC(input *ui.Input, ctx *frame.Context) {
 	if !ok {
 		return
 	}
+	s.subscribeWorkflows(ctx)
 	if s.updateZone(input, ctx, npcID) {
 		return
 	}
@@ -213,29 +213,9 @@ func (s *State) choose(ctx *frame.Context, choice npcChoice, current ids.ULID) {
 		list.Rows = append(list.Rows, row)
 	}
 	s.dialog = ui.NewDialog(choice.title, nil,
-		ui.DialogButton("use", "Use"), ui.DialogButton(ui.DialogCancel, "Cancel"))
+		ui.DialogButton(useID, "Use"), ui.DialogButton(ui.DialogCancel, "Cancel"))
 	s.dialog.List = list
 	s.dialogKind = choice.kind
-}
-
-// chooseBehaviour asks which workflow the NPC follows.
-func (s *State) chooseBehaviour(ctx *frame.Context) {
-	found, _ := s.npcOf(ctx.Docs, s.npc.npc)
-	s.choose(ctx, npcChoice{
-		title: "Which workflow does this NPC follow?", list: "workflows", none: noBehaviour,
-		noneLabel: "No behaviour", format: flow.FormatName, icon: ui.IconWorkflow, kind: dialogBehaviour,
-	}, found.Behaviour)
-}
-
-// setBehaviour saves the behaviour chosen in the dialog.
-func (s *State) setBehaviour(ctx *frame.Context, chosen string) {
-	behaviour, err := ids.Parse(chosen)
-	if chosen == noBehaviour || err != nil {
-		behaviour = ids.ULID{}
-	}
-	npcID := s.npc.npc
-	s.command(ctx, npcID, npcplugin.SetBehaviourEdit, "", npcplugin.SetBehaviourArgs{Behaviour: behaviour},
-		func(protocol.Result, error) { ctx.Frame.Status("Behaviour set") }, nil)
 }
 
 // commitNotes saves the NPC's notes, from Save or Cmd+S.

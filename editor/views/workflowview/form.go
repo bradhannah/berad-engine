@@ -700,12 +700,12 @@ func (s *State) anchorTarget(docs frame.Docs, node flow.Node, param string) plac
 	}
 	nodeID := node.ID
 
-	return s.newPlaceTarget(anchorOwner(nodeID, param), current, "Go to", "a Go to in “"+s.name(docs)+"”",
-		func(ctx *frame.Context, ref floor.AnchorRef) {
+	return s.goToExtras(s.newPlaceTarget(anchorOwner(nodeID, param), current, "Go to",
+		"a Go to in “"+s.name(docs)+"”", func(ctx *frame.Context, ref floor.AnchorRef) {
 			if now, ok := s.currentNode(ctx.Docs, nodeID); ok {
 				s.saveParam(ctx, now, param, ref)
 			}
-		})
+		}), nodeID)
 }
 
 // currentNode reads a node from the window's copy of the workflow as it is

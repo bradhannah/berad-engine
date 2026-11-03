@@ -2,14 +2,18 @@ package workflowview_test
 
 import (
 	"encoding/json"
+	"image"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -159,24 +163,55 @@ func placesFor(t *testing.T, label string) *fixture {
 	return f
 }
 
-// TestPlacesWhereItsNPCsLive lists the places of the zone the workflow's
-// NPC lives in first, and the other zones' grey after them; a module, which
-// no NPC has as its behaviour, lists every place alike.
-func TestPlacesWhereItsNPCsLive(t *testing.T) {
+// TestPlacesWhereItRuns lists a workflow running in any zone with a new
+// place input and another value first, then every place; once it runs in
+// Town, Town's places come first and the others' grey after them, and a
+// grey place can still be chosen.
+func TestPlacesWhereItRuns(t *testing.T) {
 	t.Parallel()
-	behaviour := placesFor(t, protocol.RunsAsBehaviour)
-	if !behaviour.has("places-list=[Where Clerk lives] / [Town · Office] / Office desk 3 / Shelf / " +
-		"[Other zones: Clerk can't go there] / [Harbour · Quay] / (Dock)") {
-		t.Fatal("the places where the workflow's NPC lives come first, the others grey")
+	anywhere := placesFor(t, protocol.RunsAsBehaviour)
+	if !anywhere.has("places-list=[Daily routine runs in any zone] / New place input… / Another value… / " +
+		"[Or a fixed place: Daily routine then runs in its zone] / [Harbour · Quay] / Dock / [Town · Office] / " +
+		"Office desk 3 / Shelf") {
+		t.Fatal("a workflow running in any zone offers a new input and another value first, then every place")
 	}
-	behaviour.click("place:Dock")
-	behaviour.click("ui:runs-in-change")
-	if destination, err := behaviour.nth(flow.KindGoTo, 1).Anchor("destination"); err != nil ||
+	inTown := placesFor(t, protocol.RunsAsBehaviour)
+	inTown.keys("Escape")
+	inTown.workflow().SetRunsIn(frametest.ID(87))
+	inTown.docs.Touch(workflowID)
+	inTown.frame(ui.NewInput(image.Pt(0, 0)))
+	inTown.click("ui:place")
+	if !inTown.has("places-list=[Daily routine runs in Town] / [Town · Office] / Office desk 3 / Shelf / " +
+		"[Other zones: flagged when chosen here] / [Harbour · Quay] / (Dock)") {
+		t.Fatal("a workflow running in Town lists Town's places first, the others grey")
+	}
+	inTown.click("place:Dock")
+	if destination, err := inTown.nth(flow.KindGoTo, 1).Anchor("destination"); err != nil ||
 		destination.Anchor != frametest.ID(83) {
 		t.Fatalf("a grey place can still be chosen: %+v %v", destination, err)
 	}
-	module := placesFor(t, protocol.RunsByCall)
-	if !module.has("places-list=[Harbour · Quay] / Dock / [Town · Office] / Office desk 3 / Shelf") {
-		t.Fatal("a module lists every place alike")
+}
+
+// TestANewPlaceInput chooses New place input… for a Go to in a workflow
+// running in any zone: a place input is declared and the Go to goes to it,
+// in one gesture.
+func TestANewPlaceInput(t *testing.T) {
+	t.Parallel()
+	f := placesFor(t, protocol.RunsAsBehaviour)
+	f.click("place:New place input…")
+	changes, replaces := f.requests.Of(workflowplugin.ChangeLocalsEdit), f.requests.Of(workflowplugin.ReplaceEdit)
+	var change stateplugin.ChangeArgs
+	if len(changes) != 1 || changes[0].Decode(&change) != nil || len(change.Add) != 1 ||
+		change.Add[0].Role != worldstate.RoleInput || change.Add[0].Type != worldstate.TypePlace ||
+		change.Add[0].Name != "place" || len(replaces) == 0 ||
+		replaces[len(replaces)-1].Command.Gesture != changes[0].Command.Gesture {
+		t.Fatalf("a place input is declared and the Go to changed in one gesture: %+v %+v", changes, replaces)
+	}
+	goTo := f.nth(flow.KindGoTo, 1)
+	ref, err := goTo.Ref(flow.ParamPlace)
+	declared, declaredOK := f.workflow().Locals().Value(ref.Value)
+	if goes, _ := goTo.Choice(flow.ParamGoes); goes != flow.GoesToValue || err != nil || !declaredOK ||
+		declared.Name != "place" {
+		t.Fatalf("the Go to goes to the new input: %v %v", goes, err)
 	}
 }

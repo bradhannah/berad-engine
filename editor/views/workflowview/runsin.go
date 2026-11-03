@@ -185,14 +185,28 @@ func (s *State) zoneOffer(docs frame.Docs, ctx *frame.Context) zonepicker.Offer 
 	return zonepicker.Offer{Zones: zonepicker.Gather(docs, subscribe), Folders: zonepicker.Folders(docs)}
 }
 
-// hasRunsInState answers "strip=<line>", the strip along the canvas, and
-// "runs-in=<zone>", where the workflow runs, its zone's name or Any zone.
+// hasRunsInState answers "strip=<line>", the strip along the canvas;
+// "runs-in=<zone>", where the workflow runs, its zone's name or Any zone;
+// and "call-menu=<items>", the open list of workflows a Call can call, as
+// "Errand / Roam / (Harbour errand · runs in Harbour)".
 func (s *State) hasRunsInState(state string, docs frame.Docs) (bool, bool) {
 	if line, asked := strings.CutPrefix(state, "strip="); asked {
 		return s.stripLine(docs) == line, true
 	}
 	if where, asked := strings.CutPrefix(state, "runs-in="); asked {
 		return s.workflow != nil && s.runsInName(docs) == where, true
+	}
+	if listed, asked := strings.CutPrefix(state, "call-menu="); asked {
+		var shown []string
+		for _, item := range s.contextMenu.Items {
+			if item.Disabled {
+				shown = append(shown, "("+item.Label+")")
+			} else {
+				shown = append(shown, item.Label)
+			}
+		}
+
+		return s.contextMenu.IsOpen() && strings.Join(shown, " / ") == listed, true
 	}
 
 	return false, false

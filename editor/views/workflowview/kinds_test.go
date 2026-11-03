@@ -6,11 +6,13 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
+	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -186,5 +188,58 @@ func TestAFixedPlaceTiesItsZone(t *testing.T) {
 	}
 	if !f.has("runs-in=Town") || f.has("dialog") {
 		t.Fatal("it runs in Town, without asking")
+	}
+}
+
+// TestACallOffersWhatFits lists, for a Call in a behaviour running in Town,
+// the behaviours running in Town or any zone, then, disabled, one running in
+// Harbour, and no zone loop; running in any zone, it offers only those
+// running in any zone.
+func TestACallOffersWhatFits(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withTown()
+	town, harbour := frametest.ID(87), frametest.ID(84)
+	f.withZone(harbour, "Harbour", frametest.ID(85), "Quay",
+		floor.Anchor{ID: frametest.ID(83), Name: "Dock", Col: 1, Row: 1})
+	var entries []project.Entry
+	f.docs.View(project.IndexID(), func(document client.Document) {
+		entries = document.Model.(*project.Index).Entries()
+	})
+	for index, each := range []struct {
+		name    string
+		purpose flow.Purpose
+		runs    ids.ULID
+	}{
+		{"Errand", flow.PurposeBehaviour, town}, {"Roam", flow.PurposeBehaviour, ids.ULID{}},
+		{"Harbour errand", flow.PurposeBehaviour, harbour}, {"Market day", flow.PurposeZoneLoop, town},
+	} {
+		made, err := flow.NewFor(frametest.ID(60), each.purpose)
+		if err != nil {
+			t.Fatal(err)
+		}
+		made.SetRunsIn(each.runs)
+		documentID := frametest.ID(byte(70 + index))
+		f.docs.Put(documentID, each.name, &workflowplugin.Document{Workflow: made})
+		entries = append(entries, project.Entry{
+			ID: documentID, Name: each.name, Format: flow.FormatName, Folder: "", Tags: nil, Kind: string(each.purpose),
+		})
+	}
+	f.docs.Put(project.IndexID(), "Project", project.NewIndex(entries))
+	f.workflow().SetRunsIn(town)
+	f.docs.Touch(workflowID)
+	f.click("node:start:1")
+	f.click("palette:" + flow.KindCall)
+	f.click("ui:call-workflow")
+	if !f.has("call-menu=Errand / Roam / (Harbour errand · runs in Harbour)") {
+		t.Fatal("a Call offers the behaviours that fit, and greys the one running elsewhere")
+	}
+	f.keys("Escape")
+	f.workflow().SetRunsIn(ids.ULID{})
+	f.docs.Touch(workflowID)
+	f.click("node:call-workflow:1")
+	f.click("ui:call-workflow")
+	if !f.has("call-menu=Roam / (Errand · runs in Town) / (Harbour errand · runs in Harbour)") {
+		t.Fatal("running in any zone, it calls only behaviours running in any zone")
 	}
 }

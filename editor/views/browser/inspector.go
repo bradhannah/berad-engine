@@ -124,6 +124,7 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	top := s.layoutTags(entry, left, width)
 	top = s.layoutActions(docs, entry, left, width, top)
 	top = s.layoutArt(docs, entry, left, width, top)
+	top = s.layoutZoneLoop(docs, left, width, top)
 	s.layoutZoneNotes(docs, left, width, top, saveTop-footerGap)
 	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
 }
@@ -435,7 +436,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		}
 	}
 	s.drawNPC(screen, docs, left)
-	s.drawZoneNotes(screen, left)
+	s.drawZoneDetails(screen, docs, left)
 	s.drawArt(screen, left)
 	s.save.Draw(screen, s.theme)
 	s.moveMenu.Draw(screen, s.theme)

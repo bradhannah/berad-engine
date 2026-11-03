@@ -1,7 +1,6 @@
 package workflowview
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 
@@ -87,22 +86,23 @@ func (s *State) runnersOf(docs frame.Docs) []runner {
 	return found
 }
 
-// home is where the NPCs whose behaviour the workflow is live, for the list
-// of places; a workflow that is no NPC's behaviour, a module, has none.
-func (s *State) home(docs frame.Docs) places.Home {
-	var zones []ids.ULID
-	var who []string
-	for _, each := range s.runnersOf(docs) {
-		if !each.home || each.zone.IsZero() {
-			continue
-		}
-		who = append(who, each.name)
-		if !slices.Contains(zones, each.zone) {
-			zones = append(zones, each.zone)
+// home heads the list of places by where the workflow runs: its zone's
+// places first and the rest grey, flagged when chosen; or, when it runs in
+// any zone, the extras a control offers first, then every place, each
+// tying the workflow to its zone.
+func (s *State) home(docs frame.Docs, extras []places.Extra) places.Home {
+	name := s.name(docs)
+	if zoneID := s.runsIn(docs); !zoneID.IsZero() {
+		return places.Home{
+			Zones: []ids.ULID{zoneID}, Title: name + " runs in " + s.runsInName(docs),
+			Away: "Other zones: flagged when chosen here", Grey: true, Extras: nil,
 		}
 	}
 
-	return places.Home{Zones: zones, Who: andList(who), Several: len(who) > 1}
+	return places.Home{
+		Zones: nil, Title: name + " runs in any zone", Away: "Or a fixed place: " + name + " then runs in its zone",
+		Grey: false, Extras: extras,
+	}
 }
 
 // andList joins names as "Clerk", "Clerk and Customer" or "Clerk, Customer

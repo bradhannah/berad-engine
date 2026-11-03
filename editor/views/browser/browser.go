@@ -87,7 +87,11 @@ const (
 	dialogSprite
 	dialogDeleteCue
 	dialogMoveZone
+	dialogZoneLoop
 )
+
+// useID is the Use button of a dialog choosing from a list.
+const useID = "use"
 
 // State is the project browser.
 type State struct {
@@ -152,6 +156,10 @@ type State struct {
 	movingTo  ids.ULID
 	// zoneNotes are a selected zone's private notes, for zoneNoted.
 	zoneNotes *ui.TextField
+	// loop is a selected zone's Zone loop box, and loopFor the zone its
+	// dialog chooses a loop for.
+	loop    *loopPanel
+	loopFor ids.ULID
 	zoneNoted ids.ULID
 }
 
@@ -181,6 +189,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
+		loop: newLoopPanel(), loopFor: ids.ULID{},
 		moving: nil, movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
@@ -537,13 +546,22 @@ func (s *State) fold(docs frame.Docs, hide bool) {
 }
 
 // buttons handles the toolbar and the inspector's buttons.
+// updateTagChips searches for a tag when its chip is clicked.
+func (s *State) updateTagChips(input *ui.Input) {
+	for _, chip := range s.tagBns {
+		if chip.Update(input) {
+			s.searchTag(strings.TrimPrefix(chip.ID, "tag:"))
+		}
+	}
+}
+
 func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 	if s.newMenu.Update(input) {
 		s.openMenu(ctx.Docs)
 
 		return
 	}
-	if s.saveBar(input, ctx) || s.updateArt(input, ctx) {
+	if s.saveBar(input, ctx) || s.updateArt(input, ctx) || s.updateZoneLoop(input, ctx) {
 		return
 	}
 	switch {
@@ -565,11 +583,7 @@ func (s *State) buttons(input *ui.Input, ctx *frame.Context) {
 		}
 	default:
 		s.updateNPC(input, ctx)
-		for _, chip := range s.tagBns {
-			if chip.Update(input) {
-				s.searchTag(strings.TrimPrefix(chip.ID, "tag:"))
-			}
-		}
+		s.updateTagChips(input)
 	}
 }
 
@@ -1040,17 +1054,32 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	}
 	kind, list := s.dialogKind, s.dialog.List
 	s.dialog, s.dialogKind = nil, dialogNone
+	if choice == useID && list != nil {
+		s.useChosen(ctx, kind, list.Selected)
+
+		return
+	}
 	switch {
 	case kind == dialogDelete && choice == "delete":
 		s.deleteDocument(ctx, s.deleting)
-	case kind == dialogBehaviour && choice == "use" && list != nil:
-		s.setBehaviour(ctx, list.Selected)
-	case kind == dialogSprite && choice == "use" && list != nil:
-		s.setSprite(ctx, list.Selected)
 	case kind == dialogDeleteCue && choice == "delete":
 		s.removeCue(ctx, s.audio.deleting)
 	case kind == dialogMoveZone && choice == zoneMoveID:
 		s.applyMove(ctx, s.movingNPC, s.movingTo)
+	}
+}
+
+// useChosen sets what a dialog's list chose, by Use: an NPC's behaviour or
+// sprite, or a zone's loop.
+func (s *State) useChosen(ctx *frame.Context, kind dialogKind, chosen string) {
+	switch kind {
+	case dialogBehaviour:
+		s.setBehaviour(ctx, chosen)
+	case dialogSprite:
+		s.setSprite(ctx, chosen)
+	case dialogZoneLoop:
+		s.setZoneLoop(ctx, chosen)
+	case dialogNone, dialogDelete, dialogDeleteCue, dialogMoveZone:
 	}
 }
 
@@ -1199,7 +1228,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
-		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap,
+		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap, s.loop.choose, s.loop.open,
 		s.audio.open,
 	}, s.tagBns...)
 }

@@ -13,7 +13,7 @@ import (
 const (
 	DialogCancel = "cancel"
 	dialogWidth  = 420
-	listRows     = 6
+	listRows     = 9
 	buttonWidth  = 110
 	buttonGap    = 8
 	dialogRadius = 10

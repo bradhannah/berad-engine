@@ -6,10 +6,13 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/npc"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -60,5 +63,87 @@ func TestMakingEachKind(t *testing.T) {
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
 	if !f.has("row-loop:Market day") || !f.has("row-detail:Market day=loop of 1 zone") || f.has("row-loop:Clerk day") {
 		t.Fatal("a zone loop's row shows its icon and the zones it is the loop of")
+	}
+}
+
+// withKinds gives the fixture a behaviour running in Town, one running in
+// any zone, one running in Harbour and a zone loop running in Town, with
+// Ada Clerk living in Town.
+func (f *fixture) withKinds() map[string]ids.ULID {
+	f.t.Helper()
+	made := map[string]ids.ULID{
+		"Clerk day": dayID, "Roam": frametest.ID(50), "Harbour patrol": frametest.ID(51), "Market day": frametest.ID(52),
+		"Harbour": frametest.ID(53),
+	}
+	entries := []project.Entry{
+		{ID: zoneID, Name: "Town", Format: "zone", Folder: "", Tags: nil, Kind: ""},
+		{ID: made["Harbour"], Name: "Harbour", Format: "zone", Folder: "", Tags: nil, Kind: ""},
+		{ID: clerkID, Name: "Ada Clerk", Format: npc.FormatName, Folder: "", Tags: nil, Kind: ""},
+	}
+	for name, runs := range map[string]ids.ULID{
+		"Clerk day": zoneID, "Roam": {}, "Harbour patrol": made["Harbour"], "Market day": zoneID,
+	} {
+		purpose := flow.PurposeBehaviour
+		if name == "Market day" {
+			purpose = flow.PurposeZoneLoop
+		}
+		workflow, err := flow.NewFor(frametest.ID(60), purpose)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		workflow.SetRunsIn(runs)
+		f.docs().Put(made[name], name, &workflowplugin.Document{Workflow: workflow})
+		entries = append(entries, project.Entry{
+			ID: made[name], Name: name, Format: flow.FormatName, Folder: "", Tags: nil, Kind: string(purpose),
+		})
+	}
+	f.docs().Put(made["Harbour"], "Harbour", zoneplugin.NewDocument())
+	clerk := npcplugin.NewDocument()
+	clerk.NPC.Zone = zoneID
+	f.docs().Put(clerkID, "Ada Clerk", clerk)
+	f.docs().Put(project.IndexID(), "Project", project.NewIndex(entries))
+	f.press("Shift")
+
+	return made
+}
+
+// TestChoosingWhatFits lists an NPC's behaviours by where they run, refuses
+// one running where it does not live, and offers a zone the zone loops
+// that run there.
+func TestChoosingWhatFits(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	made := f.withKinds()
+	f.click("row:Ada Clerk", false)
+	f.click("ui:choose-behaviour", false)
+	for _, row := range []string{
+		"Run in Town, where Ada Clerk lives", "Clerk day", "Run in any zone", "Roam",
+		"Run in other zones: Ada Clerk can't follow them", "Harbour patrol",
+	} {
+		if !f.has("dialog-row=" + row) {
+			t.Fatalf("the behaviours list %q", row)
+		}
+	}
+	if f.has("dialog-row=Market day") {
+		t.Fatal("a zone loop is no NPC's behaviour")
+	}
+	f.click("row:Harbour patrol", false)
+	f.click("ui:use", false)
+	if got := f.status(); len(f.requests.Of(npcplugin.SetBehaviourEdit)) != 0 ||
+		got != "Harbour patrol runs in Harbour, and Ada Clerk lives in Town. Choose one that runs there or in any zone." {
+		t.Fatalf("a behaviour running elsewhere is refused, saying why: %q", got)
+	}
+	f.click("row:Town", false)
+	f.click("ui:choose-zone-loop", false)
+	if !f.has("dialog-row=Run in Town") || !f.has("dialog-row=Market day") || f.has("dialog-row=Roam") {
+		t.Fatal("a zone is offered the zone loops that run there")
+	}
+	f.click("row:Market day", false)
+	f.click("ui:use", false)
+	set := f.requests.Of(zoneplugin.SetLoopEdit)
+	var args zoneplugin.SetLoopArgs
+	if len(set) != 1 || set[0].Decode(&args) != nil || args.Loop != made["Market day"] ||
+		set[0].Command.Document != zoneID {
+		t.Fatalf("Town runs Market day: %+v", set)
 	}
 }

@@ -23,19 +23,32 @@ const SearchID = "place-search"
 // The list's size and the longest search.
 const (
 	listWidth = 300
-	listRows  = 8
+	listRows  = 10
 	maxSearch = 64
 	headID    = "head:"
 )
 
-// Home is where the NPCs that run a workflow live: the zones, and who, as
-// "Clerk and Customer", and whether that is several NPCs. With no zones,
-// every place is listed alike.
+// Home heads the list for the workflow it chooses a place in: the zones
+// whose places come first, under Title, such as "Shopkeeping runs in
+// Market"; the rest after them under Away, grey when Grey; and Extras,
+// offered under Title before any place, such as New place input…. With
+// no title, every place is listed alike.
 type Home struct {
-	Zones   []ids.ULID
-	Who     string
-	Several bool
+	Zones  []ids.ULID
+	Title  string
+	Away   string
+	Grey   bool
+	Extras []Extra
 }
+
+// Extra is a row offered before the places: its ID, which Update returns
+// with ExtraPrefix, its label and a note beside it.
+type Extra struct {
+	ID, Label, Detail string
+}
+
+// ExtraPrefix starts the ID Update returns for an extra row.
+const ExtraPrefix = "extra:"
 
 // List chooses a place by name: a search over every place, grouped by zone
 // and floor, with Pick on map last. It opens under the box it chooses for.
@@ -134,25 +147,26 @@ func (l *List) rows(all []Place) []ui.Row {
 		if query != "" && !strings.Contains(strings.ToLower(place.Name), query) {
 			continue
 		}
-		if len(l.home.Zones) == 0 || slices.Contains(l.home.Zones, place.Zone) {
+		if slices.Contains(l.home.Zones, place.Zone) {
 			home = append(home, place)
 		} else {
 			away = append(away, place)
 		}
 	}
 	var rows []ui.Row
-	if len(l.home.Zones) > 0 && len(home) > 0 {
-		verb := " lives"
-		if l.home.Several {
-			verb = " live"
-		}
-		rows = append(rows, headingRow(headID+"home", "Where "+l.home.Who+verb))
+	if l.home.Title != "" && (len(home) > 0 || len(l.home.Extras) > 0) {
+		rows = append(rows, headingRow(headID+"home", l.home.Title))
+	}
+	for _, extra := range l.home.Extras {
+		row := ui.NewRow(ExtraPrefix+extra.ID, extra.Label)
+		row.Detail = extra.Detail
+		rows = append(rows, row)
 	}
 	rows = l.grouped(rows, home, false)
-	if len(away) > 0 && len(l.home.Zones) > 0 {
-		rows = append(rows, headingRow(headID+"away", "Other zones: "+l.home.Who+" can't go there"))
+	if len(away) > 0 && l.home.Away != "" {
+		rows = append(rows, headingRow(headID+"away", l.home.Away))
 	}
-	rows = l.grouped(rows, away, len(l.home.Zones) > 0)
+	rows = l.grouped(rows, away, l.home.Grey)
 	if len(rows) == 0 {
 		empty := "No place matches."
 		if len(all) == 0 {
@@ -235,9 +249,9 @@ func (l *List) Locate(name string, window image.Rectangle, all []Place) (image.P
 }
 
 // Shown is the list as it reads, for input scripts: its rows in order, a
-// heading in brackets and a grey place in parentheses, as "[Where Clerk
-// lives] / [Town · Office] / Desk / [Other zones: Clerk can't go there] /
-// [Harbour · Quay] / (Dock)", without Pick on map.
+// heading in brackets and a grey place in parentheses, as "[Shopkeeping
+// runs in Town] / [Town · Office] / Desk / [Other zones: flagged when
+// chosen here] / [Harbour · Quay] / (Dock)", without Pick on map.
 func (l *List) Shown(window image.Rectangle, all []Place) string {
 	l.layout(window)
 	var shown []string

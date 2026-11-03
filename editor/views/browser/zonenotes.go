@@ -61,6 +61,12 @@ func (s *State) layoutZoneNotes(docs frame.Docs, left, width, top, limit int) {
 	s.zoneNotes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
 }
 
+// drawZoneDetails draws a selected zone's loop and notes.
+func (s *State) drawZoneDetails(screen *ebiten.Image, docs frame.Docs, left int) {
+	s.drawZoneLoop(screen, docs, left)
+	s.drawZoneNotes(screen, left)
+}
+
 // drawZoneNotes draws a selected zone's notes.
 func (s *State) drawZoneNotes(screen *ebiten.Image, left int) {
 	if s.zoneNotes.Rect.Empty() {

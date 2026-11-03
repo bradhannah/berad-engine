@@ -37,6 +37,10 @@ type placeTarget struct {
 	what    string
 	set     func(*frame.Context, floor.AnchorRef)
 	pick    func(*frame.Context)
+	// extras are rows offered before the places while the workflow runs in
+	// any zone, such as New place input…, and chose acts on one.
+	extras []places.Extra
+	chose  func(*frame.Context, string)
 }
 
 // placeList is the open list of places and the control it chooses for.
@@ -51,7 +55,7 @@ func (s *State) newPlaceTarget(owner string, current floor.AnchorRef, what, labe
 	set func(*frame.Context, floor.AnchorRef),
 ) placeTarget {
 	set = s.tying(set)
-	target := placeTarget{owner: owner, current: current, what: what, set: set, pick: nil}
+	target := placeTarget{owner: owner, current: current, what: what, set: set, pick: nil, extras: nil, chose: nil}
 	target.pick = func(ctx *frame.Context) {
 		was := s.placeWas(ctx.Docs, current)
 		now := protocol.PickNow{Floor: ids.ULID{}, Item: "", Name: ""}
@@ -98,7 +102,7 @@ func (s *State) pickUpdate(button *ui.Button, owner string, input *ui.Input) boo
 // openPlaces opens the list of places under a control's box, the places
 // where the workflow's NPCs live first.
 func (s *State) openPlaces(docs frame.Docs, box image.Rectangle, target placeTarget) {
-	s.places = &placeList{list: places.Open(s.theme, box, target.current, s.home(docs)), target: target}
+	s.places = &placeList{list: places.Open(s.theme, box, target.current, s.home(docs, target.extras)), target: target}
 }
 
 // placesOpen reports whether the list of places is open for an owner.
@@ -117,6 +121,11 @@ func (s *State) updatePlaces(input *ui.Input, ctx *frame.Context) {
 	}
 	if chosen == places.PickOnMap {
 		target.pick(ctx)
+
+		return
+	}
+	if extra, isExtra := strings.CutPrefix(chosen, places.ExtraPrefix); isExtra && target.chose != nil {
+		target.chose(ctx, extra)
 
 		return
 	}
