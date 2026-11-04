@@ -1,6 +1,6 @@
 # Increment 26: Speech, message boxes and screen shake
 
-**Status:** Planned
+**Status:** Built
 
 The twenty-sixth increment lets workflows show things to the player.
 Today a workflow can only write a Log line for its author; nothing it does
@@ -105,15 +105,58 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. The kinds | Say, Show message and Shake screen in the Show group, their settings and messages, saved and read; Say in behaviours only; their one lines and help | Workflow tests save and read each kind and refuse Say in a zone loop | Planned |
-| 2. Running them | Each NPC's speech queue and the shared box queue, timed in real time; waiting until said or gone; holding the player for a box to close; the shake; lines and boxes in Watch's log | Runner tests queue two lines, wait until one is said, queue boxes from two NPCs, hold the player and shake | Planned |
-| 3. Choosing them | Their inspectors, with the message field and Insert value…, how long they show and how they carry on; their faces on the canvas | View tests set a line with a value, choose how it shows and carries on, and read the node | Planned |
-| 4. Drawing them | Speech over heads and the box in the Map's preview and the Play tab, the bubble fading, the bar draining, 1 of 2, closing a box, the world shaking under still boxes and speech, nothing drawn for a speaker off screen | View tests find a line over the customer, a box with its count, a closed box and a shake | Planned |
-| 5. Checks | `make check` and the real-window suite; a real-window test gives the customer a Say and the clerk's day a Show message and a Shake screen, previews the sample, reads the speech, the box and the log in Watch | The checks pass with no lint findings | Planned |
+| 1. The kinds | Say, Show message and Shake screen in the Show group, their settings and messages, saved and read; Say in behaviours only; their one lines and help | Workflow tests save and read each kind and refuse Say in a zone loop | Built |
+| 2. Running them | Each NPC's speech queue and the shared box queue, timed in real time; waiting until said or gone; holding the player for a box to close; the shake; lines and boxes in Watch's log | Runner tests queue two lines, wait until one is said, queue boxes from two NPCs, hold the player and shake | Built |
+| 3. Choosing them | Their inspectors, with the message field and Insert value…, how long they show and how they carry on; their faces on the canvas | View tests set a line with a value, choose how it shows and carries on, and read the node | Built |
+| 4. Drawing them | Speech over heads and the box in the Map's preview and the Play tab, the bubble fading, the bar draining, 1 of 2, closing a box, the world shaking under still boxes and speech, nothing drawn for a speaker off screen | View tests find a line over the customer, a box with its count, a closed box and a shake | Built |
+| 5. Checks | `make check` and the real-window suite; a real-window test gives the customer a Say and the clerk's day a Show message and a Shake screen, previews the sample, reads the speech, the box and the log in Watch | The checks pass with no lint findings | Built |
 
 ## Step results
 
-None yet.
+- **The kinds:** Say, Show message and Shake screen are in a palette group
+  of their own, Show, each with its settings, its one line and its help
+  page; Say is offered in NPC behaviours only. Verified: workflow tests
+  save and read each kind with its settings, find which use their seconds,
+  refuse seconds out of range, and refuse Say in a zone loop.
+- **Running them:** each NPC has its own queue of lines and every workflow
+  shares one queue of boxes and the shake, kept by the engine, counted in
+  ticks of real time, so a run repeats exactly. A line is read when its
+  node runs; as long as it takes to read is 2 seconds and one for every 12
+  characters, at most 10. Say and Show message carry on at once or wait
+  until the line is said or the box has gone; a box the player must close
+  holds only the player's arrows. Every line and box is written to Watch's
+  log by speaker, as Ada says: Hello. Verified: runner tests queue two
+  lines and wait for the second, queue boxes from two NPCs in the order
+  asked, hold the player for a box until it is closed, and shake.
+- **Choosing them:** their inspectors have the message field with Insert
+  value…, how long a line shows or a box stays, the name on a box and how
+  each carries on, settings that don't apply hidden; their faces on the
+  canvas show the line or message. Verified: view tests set a line with a
+  value and read it as it would be said, show its seconds only once it
+  shows for seconds, and read a Say's and a Shake screen's faces.
+- **Drawing them:** the Map's preview and the Play tab draw each speaker's
+  line in a bubble over its head, fading as its time ends, and nothing for
+  a speaker off screen; the box at the foot of the map with its name, 1 of
+  2 while another waits, a bar draining as its time runs, or Enter, Space
+  or a click closes it; and the world moved by the shake under still
+  speech and boxes. Verified: a view test finds a line drawn over an NPC
+  and a box with its count, finds the box still up after its reading time,
+  closes it with a click and finds the map shaking.
+- **Checks:** `make check` passes with no lint findings. The sample's clerk
+  says Shop's open! on reaching the counter, shows The shop is shut for
+  the night. on closing, and shakes the screen gently fetching stock. A
+  real-window test is new: it gives the customer's behaviour a Say, a Show
+  message the player closes and a Shake screen, previews the sample, reads
+  the clerk's and the customer's lines, closes the box with a click, finds
+  the screen shaking and reads the log in Watch. The whole real-window
+  suite, 55 tests, passed.
+
+## Changed while building, short of the wireframes
+
+- **The box sits above the Map's zoom control,** at the foot of the map,
+  so neither hides the other.
+- **Play sound gained its Carry on setting in increment 27,** not here;
+  until then a Play sound carries on at once, as before.
 
 ## Not in this increment
 
