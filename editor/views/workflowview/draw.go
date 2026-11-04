@@ -873,8 +873,8 @@ func hintFor(kind string) string {
 			"doing. End its path with Resume to go back, or lead into the flow to take over.",
 		flow.KindResume: "Goes back to where the signal interrupted the NPC: a Wait with the time it had left, a Go " +
 			"to by a new way from here.",
-		flow.KindSendSignal: "Sends a signal at once, to one NPC, to everyone in this zone or to everyone; it lands " +
-			"on the next tick. Takes no time.",
+		flow.KindSendSignal: "Sends a signal at once, to one NPC or to everyone in this zone; it lands on the next " +
+			"tick. Takes no time.",
 		flow.KindTogether: "Starts every lane at once and goes on by all done when every lane is done. Lanes run in " +
 			"their order each tick; only one can move the NPC.",
 		flow.KindGoTo: "Walks to the anchor picked on a map, or to the place a place value holds as it starts.",

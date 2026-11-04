@@ -6,8 +6,8 @@ The twenty-eighth increment lets workflows tell each other that something
 has happened, at once. Today one NPC can learn about another only by
 reading its values, so a back-and-forth means setting a value and checking
 it again and again. Now a **signal** is declared in the project and sent
-with a **Send signal** node, to one NPC, to everyone in the zone or to
-everyone; and a workflow that answers it has a **receiver**, another start
+with a **Send signal** node, to one NPC or to everyone in the zone; and a
+workflow that answers it has a **receiver**, another start
 node, On signal, on its canvas. Hearing a signal interrupts the NPC at its
 next safe moment, runs the receiver's path, and then a **Resume** node
 sends it back to exactly where it was, or a line into the flow takes over
@@ -66,8 +66,8 @@ Agreed by its author on 2026-11-03, from the wireframes on the canvas
   the workflows that send it.
 - **Send signal** names the signal and sends it to one NPC, chosen by name
   or held in a local, such as the one Find NPC nearby found or whoever sent
-  the signal being answered; to everyone in this zone; or to everyone. It
-  takes no time, and its inspector lists who would hear it.
+  the signal being answered; or to everyone in this zone. It takes no
+  time, and its inspector lists who would hear it.
 - **A receiver's path ends** in Resume, back where it was; in a line into
   the flow, taking over; or free, going back to Start, as anywhere else.
 - **What resuming continues:** a Wait its remaining time; a Go to by a new
@@ -104,14 +104,14 @@ Chosen while planning, for its author to check:
   deleting one in use asks first, listing its uses, as a value's does.
 - **Zone loops send and receive too:** everyone in this zone includes the
   zone's loop, and a zone loop's Send signal can name an NPC.
-- **Everyone means every NPC and zone loop running,** in the preview its
-  zone, in the game the zone being played; NPCs in a zone that is not
-  running don't hear it.
+- **Only the zone running hears a signal,** in the preview its zone, in
+  the game the zone being played; NPCs in a zone that is not running don't
+  hear it. Another zone is told through a value.
 - **A broken signal call is worked out from where the signal goes:** to
   one named NPC, its behaviour must answer it; to everyone in this zone, a
-  behaviour followed there or the zone's loop must; to everyone, some
-  workflow must; to an NPC a local holds, known only as it runs, some
-  behaviour followed where the workflow runs must.
+  behaviour followed there or the zone's loop must; to an NPC a local
+  holds, known only as it runs, some behaviour followed where the workflow
+  runs must.
 - **Speech on an interrupt:** the line on screen finishes; the NPC's lines
   not yet shown are dropped, so it doesn't keep talking after turning
   away. Boxes already asked for stay in their queue.
@@ -150,7 +150,7 @@ Chosen while planning, for its author to check:
   of their own, Signals, with their one lines and help. On signal is a
   start: no line leads into it and it sits at the top level; it keeps who
   sent the signal in a local NPC value if asked. Send signal sends to one
-  NPC by name, the NPC a local holds, everyone in this zone or everyone. A
+  NPC by name, the NPC a local holds, or everyone in this zone. A
   workflow's receivers are found by signal, the first of two answering it.
   Verified: a workflow test saves and reads each node, finds the receivers
   and a receiver's path, and refuses a line into a receiver, a receiver in
@@ -208,8 +208,8 @@ Chosen while planning, for its author to check:
   its inspector, as problems do in red; listing them apart waits for a
   Problems window, which the editor has none of, as increments 21 and 22
   found.
-- **A broken signal call to everyone, to everyone in this zone, or to the
-  NPC a local holds** is flagged only when no workflow answers the signal
+- **A broken signal call to everyone in this zone, or to the NPC a local
+  holds,** is flagged only when no workflow answers the signal
   at all; narrowing it to the behaviours followed in the zone where the
   workflow runs is left for later. One to a named NPC checks that NPC's
   behaviour.
@@ -218,7 +218,12 @@ Chosen while planning, for its author to check:
   Send signal's and On signal's inspectors.
 - **Watch shows a signal on its NOW line,** what it will resume and any
   signal held following it, rather than in rows of their own.
-- **A runner never hears a signal it sent,** even to everyone.
+- **A runner never hears a signal it sent,** even to everyone in its zone.
+- **No Everyone (agreed 2026-11-04, after building):** Send signal was
+  built with a fourth choice, Everyone, as wireframed. As only the zone
+  running hears a signal, it reached no one Everyone in this zone didn't,
+  so it was taken out; another zone is told through a value. Verified: a
+  workflow test refuses a Send to everyone.
 - **A signal sent over and over keeps its receiver busy:** one held while
   the last is handled lands as soon as the NPC resumes. The sample's
   customer first rang the bell every second it waited, which kept the

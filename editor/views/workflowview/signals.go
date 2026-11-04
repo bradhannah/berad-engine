@@ -116,8 +116,6 @@ func (s *State) signalSummary(node flow.Node, docs frame.Docs) string {
 	switch choiceOf(node, flow.ParamSendTo) {
 	case flow.ToZone:
 		return name + " → everyone in this zone"
-	case flow.ToEveryone:
-		return name + " → everyone"
 	case flow.ToLocal:
 		return name + " → " + s.valueLabel(node, docs, flow.ParamHolder)
 	}

@@ -271,10 +271,10 @@ drawn back to either only repeats what the rule already does.
 ## Signals
 
 - **Agreed (2026-11-03): signals interrupt.** A signal is declared in the
-  project and sent to one NPC, to everyone in a zone or to everyone. A
-  workflow always listens: a receiver, On signal, is another start node in
-  the same workflow, registered to its signal, and what a workflow answers
-  is visible to the others in its zone. Hearing a signal interrupts the
+  project and sent to one NPC or to everyone in its zone. A workflow always
+  listens: a receiver, On signal, is another start node in the same
+  workflow, registered to its signal, and what a workflow answers is
+  visible to the others in its zone. Hearing a signal interrupts the
   NPC only at a safe moment, never inside a run of nodes that take no time
   and never between cells. A **Resume** node returns it to exactly where it
   was interrupted, as a return from interrupt does; a line from the
@@ -283,6 +283,8 @@ drawn back to either only repeats what the rule already does.
   early.** A Send to a receiver with no On signal for it is a broken signal
   call, a problem; a receiver nobody sends to is a warning. [Increment
   28](increments/0028-signals.md) builds signals.
+- **Agreed (2026-11-04): only the zone running hears a signal.** There is
+  no sending to everyone beyond it; another zone is told through a value.
 
 ## Conversations
 

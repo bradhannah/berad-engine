@@ -328,11 +328,12 @@ func signalHelp() map[string]kindHelp {
 			example: "On signal · door_knock → Go to · Door → Resume",
 		},
 		flow.KindSendSignal: {
-			about: "Sends a signal, to one NPC, the NPC a local value holds, everyone in this zone or everyone. It " +
-				"lands on the next tick, and whoever answers it is interrupted at their next safe moment.",
+			about: "Sends a signal, to one NPC, the NPC a local value holds, or everyone in this zone. It lands " +
+				"on the next tick, and whoever answers it is interrupted at their next safe moment. Only this " +
+				"zone hears it; tell another zone with a value.",
 			time: helpInstant, outputs: []helpRow{{"next", "the signal is sent"}},
 			settings: []helpRow{
-				{"Signal", "the signal to send"}, {"Send to", "one NPC, a local's NPC, this zone or everyone"},
+				{"Signal", "the signal to send"}, {"Send to", "one NPC, a local's NPC, or everyone in this zone"},
 			},
 			example: "Send signal · bread_called → Guard",
 		},

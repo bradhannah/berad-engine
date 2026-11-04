@@ -24,9 +24,8 @@ type Heard struct {
 }
 
 // Sent is a signal a runner sent on its latest Step: the signal and who
-// sent it; whom to, one NPC, everyone in a zone or everyone; the NPC or the
-// zone; and the placement or zone loop that sent it, which never hears its
-// own.
+// sent it; whom to, one NPC or everyone in its zone; the NPC or the zone;
+// and the placement or zone loop that sent it, which never hears its own.
 type Sent struct {
 	Heard
 
@@ -56,8 +55,8 @@ type interrupt struct {
 
 // Deliver gives each runner the signals sent to it on the latest tick, in
 // the order they were sent: to one NPC, its runners; to everyone in a zone,
-// the runners in it; to everyone, every runner. The runners are those of
-// one zone, the one running; a runner never hears a signal it sent.
+// the runners in it. The runners are those of one zone, the one running; a
+// runner never hears a signal it sent.
 func Deliver(sent []Sent, runners []*NPC, zone ids.ULID) {
 	for _, signal := range sent {
 		for _, runner := range runners {
@@ -71,14 +70,11 @@ func Deliver(sent []Sent, runners []*NPC, zone ids.ULID) {
 
 // reaches reports whether a signal goes to a runner of a zone.
 func (s Sent) reaches(runner *NPC, zone ids.ULID) bool {
-	switch s.To {
-	case flow.ToNPC:
+	if s.To == flow.ToNPC {
 		return !s.NPC.IsZero() && runner.NPC == s.NPC
-	case flow.ToZone:
-		return s.Zone == zone
-	default:
-		return true
 	}
+
+	return s.To == flow.ToZone && s.Zone == zone
 }
 
 // sender identifies a runner as the sender of a signal: its placement, or

@@ -74,3 +74,24 @@ func TestTheSignalNodes(t *testing.T) {
 		t.Fatalf("a signal is an identity: %v", err)
 	}
 }
+
+func TestASignalGoesNoFurtherThanThisZone(t *testing.T) {
+	t.Parallel()
+	send := node(t, 3, workflow.KindSendSignal, id(0))
+	for _, to := range []string{workflow.ToNPC, workflow.ToLocal, workflow.ToZone} {
+		reached, err := send.WithParam(workflow.ParamSendTo, to)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := workflow.CheckParams(reached); err != nil {
+			t.Fatalf("a signal can go to %s: %v", to, err)
+		}
+	}
+	everyone, err := send.WithParam(workflow.ParamSendTo, "everyone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workflow.CheckParams(everyone); !errors.Is(err, workflow.ErrNode) {
+		t.Fatalf("only the zone running hears a signal, so it goes to no one beyond it: %v", err)
+	}
+}

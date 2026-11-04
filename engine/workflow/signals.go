@@ -29,7 +29,8 @@ const (
 
 // The signal nodes' settings: the signal; the local an On signal keeps who
 // sent it in; and whom Send signal sends to: one NPC by name, the NPC a
-// local holds, everyone in this zone, or everyone.
+// local holds, or everyone in this zone. Only the zone running hears a
+// signal; another zone is told through a value.
 const (
 	ParamSignal = "signal"
 	ParamSender = "sender"
@@ -39,7 +40,6 @@ const (
 	ToNPC       = "npc"
 	ToLocal     = "local"
 	ToZone      = "zone"
-	ToEveryone  = "everyone"
 )
 
 // signalKinds declares On signal, Resume and Send signal.
@@ -62,7 +62,7 @@ func signalKinds(next []Output) []Kind {
 				signal,
 				{Name: ParamSendTo, Label: "Send to", Type: TypeChoice, Default: mustJSON(ToNPC), Choices: []Choice{
 					{Value: ToNPC, Label: "One NPC"}, {Value: ToLocal, Label: "The NPC a local holds"},
-					{Value: ToZone, Label: "Everyone in this zone"}, {Value: ToEveryone, Label: "Everyone"},
+					{Value: ToZone, Label: "Everyone in this zone"},
 				}},
 				{Name: ParamNPC, Label: "NPC", Type: TypeNPC, Default: mustJSON(""), Choices: nil},
 				{Name: ParamHolder, Label: "Local holding the NPC", Type: TypeValue, Default: mustJSON(noRef()),
