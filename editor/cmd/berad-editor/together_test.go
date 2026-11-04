@@ -11,7 +11,9 @@ import (
 // three lanes a chime that waits until it has played, a long shake and a
 // line of speech, and previews the sample: Watch shows the chime's and the
 // line's lanes done while the shake's runs on, and the customer comes round
-// to say its line again only once the shake is done.
+// to say its line again only once the shake is done. It first takes away
+// the customer's receiver, as the clerk's out_of_stock at the start of the
+// preview would interrupt the lanes and add its own lines to the log.
 func TestLanesRunTogether(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -23,7 +25,8 @@ func TestLanesRunTogether(t *testing.T) {
 		doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	customerScript := script(
-		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), addNode(flow.KindTogether),
+		must("state:loaded", 600), wait(60), click("ui:zoom-fit"), wait(10), click("node:"+flow.KindOnSignal+":1"),
+		wait(5), click("ui:delete-node"), wait(10), click("node:start:1"), wait(5), addNode(flow.KindTogether),
 		must("state:selected:"+flow.KindTogether, 300), must("state:lanes:"+flow.KindTogether+":1=2", 60),
 		click("ui:add-lane"), must("state:lanes:"+flow.KindTogether+":1=3", 300),
 		addNode(flow.KindPlaySound), must("state:selected:"+flow.KindPlaySound, 300), click("ui:cue"),

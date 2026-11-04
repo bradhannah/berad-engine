@@ -274,6 +274,12 @@ built.
   test gives each tab of a kind its own tint, a new tab the tint a closed
   one left, and a tab one when all are taken; the real-window test of the
   bell finds Clerk's day green and Customer shops amber.
+- **The real-window test of Together takes away the customer's
+  receiver first.** Since the sample's clerk tells the zone out_of_stock,
+  sometimes as the preview starts, the customer could be interrupted in
+  the lanes the test watches, and its log gained lines the test didn't
+  count on; it passed or failed by timing. Verified: it passes three runs
+  in a row.
 
 ## Not in this increment
 
