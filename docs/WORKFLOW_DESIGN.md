@@ -51,6 +51,14 @@ drawn back to either only repeats what the rule already does.
   collapsed container, the Watch window marks it live and names the node an
   NPC is on, and double-clicking, or selecting a node inside from a search
   or a problem, expands it. Collapsing is layout, saved with node positions.
+- **Agreed (2026-11-03): a Together container runs its lanes at once,**
+  each numbered and named and starting from its own dot, and goes on by
+  its one output, all done, when every lane has finished. It always waits
+  for every lane: going on when the first is done would leave the others
+  half-done, and other workflows waiting on what they would have done.
+  Only one lane can move the NPC. Play sound can wait until it has played,
+  so a lane can wait for its sound. [Increment 27](increments/0027-together.md)
+  builds it.
 
 ## Kinds of workflow
 
@@ -246,6 +254,35 @@ drawn back to either only repeats what the rule already does.
   An input's or output's type is locked while a Call uses it.
 - **Candidate:** a module can be run on its own with chosen inputs, a test
   NPC and a test profile, as a conversation can.
+
+## Speech and messages
+
+- **Agreed (2026-11-03): a workflow can show things to the player.** Say
+  puts a line of text and values over its own NPC's head for as long as it
+  takes to read; Show message puts a box at the foot of the screen that
+  goes away on its own, or when the player closes it; Shake screen shakes
+  the world, never the boxes and speech over it. Each NPC's lines, and the
+  boxes, wait their turn in queues, and a workflow can carry on at once or
+  wait until its line or box has gone. Speech off screen plays out unseen.
+  [Increment 26](increments/0026-speech-and-boxes.md) builds them.
+- **Agreed (2026-11-03): a workflow speaks only for its own NPC.** Two
+  NPCs talking signal each other, and each answers from its own workflow.
+
+## Signals
+
+- **Agreed (2026-11-03): signals interrupt.** A signal is declared in the
+  project and sent to one NPC, to everyone in a zone or to everyone. A
+  workflow always listens: a receiver, On signal, is another start node in
+  the same workflow, registered to its signal, and what a workflow answers
+  is visible to the others in its zone. Hearing a signal interrupts the
+  NPC only at a safe moment, never inside a run of nodes that take no time
+  and never between cells. A **Resume** node returns it to exactly where it
+  was interrupted, as a return from interrupt does; a line from the
+  receiver's path into the flow takes over instead.
+- **Agreed (2026-11-03): a signal that can't be answered is caught
+  early.** A Send to a receiver with no On signal for it is a broken signal
+  call, a problem; a receiver nobody sends to is a warning. [Increment
+  28](increments/0028-signals.md) builds signals.
 
 ## Conversations
 
