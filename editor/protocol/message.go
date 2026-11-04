@@ -362,6 +362,21 @@ type PreviewEntity struct {
 	// Sprite is the sprite an NPC shows now, which its workflows can
 	// change; zero is none, its token.
 	Sprite ids.ULID `json:"sprite,omitzero"`
+	// Saying is the line an NPC is saying over its head, and SayingLeft
+	// the share of its time left, from 1 down to 0.
+	Saying     string  `json:"saying,omitempty"`
+	SayingLeft float64 `json:"sayingLeft,omitempty"`
+}
+
+// PreviewBox is the message box a preview shows now: its text, the name on
+// it, the share of its time left, how many boxes are queued with it, and
+// whether it waits for the player to close it.
+type PreviewBox struct {
+	Text    string  `json:"text"`
+	Name    string  `json:"name,omitempty"`
+	Left    float64 `json:"left"`
+	Queued  int     `json:"queued"`
+	Closing bool    `json:"closing,omitempty"`
 }
 
 // PreviewClimb is a flight of stairs on an NPC's way: the floor it leaves,
@@ -420,6 +435,11 @@ type PreviewState struct {
 	// oldest first, at most RecentLines, so a window keeps those it has not
 	// seen by their numbers.
 	Log []PreviewLine `json:"log,omitempty"`
+	// Box is the message box shown now, if any, and ShakeX and ShakeY how
+	// far the world is shaken, in pixels of the game's scale.
+	Box    *PreviewBox `json:"box,omitempty"`
+	ShakeX float64     `json:"shakeX,omitempty"`
+	ShakeY float64     `json:"shakeY,omitempty"`
 }
 
 // RecentLines is how many of the latest Log lines a preview's state holds.

@@ -69,7 +69,8 @@ func setSavedChoices(made *control, node flow.Node) {
 			made.options[index].remove.Disabled = len(options) == 1
 		}
 		made.addOption.Disabled = len(options) >= flow.MaxOptions
-	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText, flow.TypeCue,
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges,
+		flow.TypeText, flow.TypeCue,
 		flow.TypeValue, flow.TypeOperand,
 		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
 	}
@@ -145,7 +146,8 @@ func (s *State) layoutChoices(made *control, left, width, top int) int {
 		}
 		made.addOption.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 		top += ui.ButtonH + rowSpace
-	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText, flow.TypeCue,
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges,
+		flow.TypeText, flow.TypeCue,
 		flow.TypeValue, flow.TypeOperand,
 		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
 	}

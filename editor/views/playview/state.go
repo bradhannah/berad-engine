@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradhannah/berad-engine/editor/views/showdraw"
+	"github.com/bradhannah/berad-engine/engine/show"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -19,7 +21,8 @@ import (
 //     zone or ambient sound plays it;
 //   - "scale:N.NN" when the screen is drawn that many times its size, and
 //     "launches:N" after N launches;
-//   - "ground:C,R:<id>" when the game's floor has that ground there.
+//   - "ground:C,R:<id>" when the game's floor has that ground there;
+//   - "box:<text>" while the game shows that message box.
 func (s *State) hasState(state string) bool {
 	kind, value, _ := strings.Cut(state, ":")
 	switch kind {
@@ -39,9 +42,22 @@ func (s *State) hasState(state string) bool {
 		return strconv.FormatFloat(s.scale, 'f', 2, 64) == value
 	case "launches":
 		return strconv.Itoa(s.launches) == value
+	case "box":
+		box := showdraw.BoxOf(s.stage())
+
+		return box != nil && box.Text == value
 	}
 
 	return s.hasPlace(kind, value)
+}
+
+// stage is the game's boxes and shake, or none before it runs.
+func (s *State) stage() *show.Stage {
+	if s.game == nil {
+		return show.NewStage()
+	}
+
+	return s.game.Stage()
 }
 
 // hasPlace answers "player:", "floor:" and "ground:".

@@ -129,6 +129,14 @@ func (b *routineBuilder) serving(parent ids.ULID, values shopValues, serving str
 	return b.node(flow.KindSetValue, parent, setTo(npcValue(values.serving), serving))
 }
 
+// shutNotice is the box the clerk shows on shutting the shop.
+const shutNotice = "The shop is shut for the night."
+
+// show adds a Say or a Show message of a line of text, carrying on at once.
+func (b *routineBuilder) show(parent ids.ULID, kind, text string) ids.ULID {
+	return b.node(kind, parent, map[string]any{flow.ParamMessage: []flow.Segment{{Text: text, Ref: nil}}})
+}
+
 // logServing writes to Watch whom the clerk serves.
 func (b *routineBuilder) logServing(parent ids.ULID, customer flow.ValueRef) ids.ULID {
 	return b.node(flow.KindLog, parent, map[string]any{flow.ParamMessage: []flow.Segment{
@@ -155,9 +163,11 @@ func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.W
 	}})
 	fetched := made.wayOut("Fetched", portFetched)
 	out := made.wayOut("Out of stock", portNone)
+	crate := made.node(flow.KindShake, none, map[string]any{flow.ParamStrength: flow.ShakeGentle, flow.ParamSeconds: 1})
 	made.link(start, flow.OutputNext, walk)
 	made.link(walk, flow.OutputNext, stock)
-	made.link(stock, "o1", fetched)
+	made.link(stock, "o1", crate)
+	made.link(crate, flow.OutputNext, fetched)
 	made.link(stock, "o2", out)
 	if made.err != nil {
 		return nil, ids.ULID{}, made.err
@@ -206,17 +216,17 @@ func clerksDay(
 	closing := made.node(flow.KindCheckValue, none, map[string]any{
 		flow.ParamValue: npcValue(values.serving), "against": json.RawMessage(shopYes),
 	})
-	shut := made.serving(none, values, shopNo)
+	shut, notice := made.serving(none, values, shopNo), made.show(none, flow.KindShowMessage, shutNotice)
 	toDoor, sleep := made.goTo(none, anchors, anchors.door), made.wait(none, nightHours, flow.UnitHours)
 	toDesk := made.goTo(shop, anchors, anchors.desk)
 	chime := made.node(flow.KindPlaySound, shop, map[string]any{"cue": chimeCue, "loudness": flow.LoudnessAsCue})
+	greet := made.show(shop, flow.KindSay, "Shop's open!")
 	customer := localValue(made.local("customer", worldstate.TypeNPC))
 	find := made.node(flow.KindFindNPC, shop, map[string]any{
 		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes), "into": customer,
 	})
 	serving, open := made.logServing(shop, customer), made.serving(shop, values, shopYes)
-	serve := made.wait(shop, serveMinutes, flow.UnitMinutes)
-	done := made.serving(shop, values, shopNo)
+	serve, done := made.wait(shop, serveMinutes, flow.UnitMinutes), made.serving(shop, values, shopNo)
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
 		{Port: "o1", Label: "tidy the shelf", Share: tidyShare}, {Port: "o2", Label: "stretch", Share: stretchShare},
 	}})
@@ -230,10 +240,11 @@ func clerksDay(
 		to     ids.ULID
 	}{
 		{start, flow.OutputNext, hours}, {hours, "r1", shop}, {hours, flow.OutputOtherwise, closing},
-		{closing, flow.OutputYes, shut}, {closing, flow.OutputOtherwise, toDoor}, {shut, flow.OutputNext, toDoor},
+		{closing, flow.OutputYes, shut}, {closing, flow.OutputOtherwise, toDoor}, {shut, flow.OutputNext, notice},
+		{notice, flow.OutputNext, toDoor},
 		{toDoor, flow.OutputNext, sleep}, {sleep, flow.OutputNext, hours},
 		{shop, flow.OutputInside, toDesk}, {shop, flow.OutputExit, hours},
-		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, find},
+		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, greet}, {greet, flow.OutputNext, find},
 		{find, flow.OutputFound, serving}, {serving, flow.OutputNext, open}, {find, flow.OutputNone, choose},
 		{open, flow.OutputNext, serve}, {serve, flow.OutputNext, done}, {done, flow.OutputNext, choose},
 		{choose, "o1", toShelf}, {toShelf, portFetched, tidy}, {toShelf, portNone, toDesk},

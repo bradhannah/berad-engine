@@ -203,6 +203,7 @@ func (made control) isBox(widget string) bool {
 	case flow.TypeCue:
 		return widget == "cue"
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTiles,
+		flow.TypeSeconds,
 		flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays,
 		flow.TypePort, flow.TypeMessage:
 	}
@@ -213,6 +214,9 @@ func (made control) isBox(widget string) bool {
 // newChoiceControl makes a choice's buttons, one per declared choice; Check
 // value's comparison is then shaped to its value's type.
 func (s *State) newChoiceControl(docs frame.Docs, node flow.Node, made *control) {
+	// A zone loop's box has no name: it has no NPC of its own.
+	made.hidden = node.Kind == flow.KindShowMessage && made.param.Name == flow.ParamBoxName && s.workflow != nil &&
+		s.workflow.Purpose() == flow.PurposeZoneLoop
 	for _, choice := range made.param.Choices {
 		made.choices = append(made.choices, ui.NewButton(made.param.Name+"-"+choice.Value, choice.Label))
 		made.values = append(made.values, choice.Value)

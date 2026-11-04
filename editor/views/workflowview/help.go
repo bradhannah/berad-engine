@@ -26,9 +26,10 @@ type kindHelp struct {
 
 // Words shared by several help pages.
 const (
-	helpInstant   = "Takes no time"
-	helpNext      = "next"
-	helpCarriesOn = "it has done its work, and carries on"
+	messageSetting = "text, with values put in by Insert value…"
+	helpInstant    = "Takes no time"
+	helpNext       = "next"
+	helpCarriesOn  = "it has done its work, and carries on"
 )
 
 // helpFor returns a kind's help page; ok is false for a kind without one.
@@ -43,6 +44,7 @@ func helpPages() map[string]kindHelp {
 	pages := flowHelp()
 	maps.Copy(pages, actionHelp())
 	maps.Copy(pages, valueHelp())
+	maps.Copy(pages, showHelp())
 
 	return pages
 }
@@ -133,7 +135,7 @@ func actionHelp() map[string]kindHelp {
 			about: "Writes a line of text and values to the Watch window's log while the preview runs, for you. " +
 				"Players never see it.",
 			time: helpInstant, outputs: []helpRow{{helpNext, helpCarriesOn}},
-			settings: []helpRow{{"Message", "text, with values put in by Insert value…"}},
+			settings: []helpRow{{"Message", messageSetting}},
 			example:  "Log · Serving {local.customer}",
 		},
 	}
@@ -177,6 +179,43 @@ func valueHelp() map[string]kindHelp {
 				{"Into", "the local NPC value it keeps the NPC in"},
 			},
 			example: "Find NPC within 2 tiles where npc.shop.waiting is yes → found → Set npc.shop.serving to yes",
+		},
+	}
+}
+
+// showHelp is the help of the Show group's nodes.
+func showHelp() map[string]kindHelp {
+	return map[string]kindHelp{
+		flow.KindSay: {
+			about: "Says a line of text and values over this NPC's own head, for as long as it takes to read or " +
+				"for some seconds. Its lines wait their turn, and it keeps walking while it talks; off screen, " +
+				"the line plays out unseen.",
+			time:    "Takes no time, or until the line has been said",
+			outputs: []helpRow{{helpNext, "at once, or once the line has been said"}},
+			settings: []helpRow{
+				{"Line", messageSetting}, {"Shows for", "reading time, or seconds"},
+				{"Carry on", "at once, or when it has been said"},
+			},
+			example: "Say · Fresh bread! → Say · Two coins a loaf! (when said) → Wait · 5 min",
+		},
+		flow.KindShowMessage: {
+			about: "Shows a message in a box at the foot of the screen. Boxes from every workflow show one at a " +
+				"time in the order asked for, and go away when read, after some seconds, or when the player " +
+				"closes them, which alone holds the player.",
+			time:    "Takes no time, or until the box has gone",
+			outputs: []helpRow{{helpNext, "at once, or once the box has gone"}},
+			settings: []helpRow{
+				{"Message", messageSetting}, {"Name on the box", "none, or this NPC's"},
+				{"Goes away", "when read, after seconds, or when closed"}, {"Carry on", "at once, or when it has gone"},
+			},
+			example: "Show message · The ground trembles! → Shake screen · strong · 2 s",
+		},
+		flow.KindShake: {
+			about: "Shakes the world, the map, its NPCs and the player, for some seconds, never the boxes and " +
+				"speech over it, then carries on.",
+			time: "Takes its seconds", outputs: []helpRow{{helpNext, "the shake has stopped"}},
+			settings: []helpRow{{"Strength", "gentle, moderate or strong"}, {"Seconds", "how long it shakes"}},
+			example:  "Play sound · Rumble → Shake screen · strong · 2 s",
 		},
 	}
 }

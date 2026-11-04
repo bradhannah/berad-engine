@@ -240,7 +240,7 @@ func roleOf(kind, param string) valueRole {
 		return roleGive
 	case kind == flow.KindCall:
 		return roleKept
-	case kind == flow.KindLog:
+	case hasMessage(kind):
 		return roleGive
 	case kind == flow.KindGoTo:
 		return rolePlace
@@ -979,7 +979,7 @@ func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
 	switch node.Kind {
 	case flow.KindFindNPC:
 		return s.findProblem(node, docs)
-	case flow.KindLog:
+	case flow.KindLog, flow.KindSay, flow.KindShowMessage:
 		return s.logProblem(node, docs)
 	}
 	ref, err := node.Ref(flow.ParamValue)
@@ -1102,8 +1102,11 @@ func compareWords(node flow.Node) string {
 
 // valueSummary describes a value node in a few words.
 func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
-	if node.Kind == flow.KindLog {
+	switch {
+	case hasMessage(node.Kind):
 		return s.logSummary(docs, node)
+	case node.Kind == flow.KindShake:
+		return shakeSummary(node)
 	}
 	path := func(param string) string {
 		ref, err := node.Ref(param)

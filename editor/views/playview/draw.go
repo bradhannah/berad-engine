@@ -10,6 +10,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/showdraw"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/game"
@@ -97,9 +98,35 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 		s.canvas = ebiten.NewImage(width, height)
 	}
 	s.canvas.Fill(ui.Hex(hexDark))
-	s.drawCells(view)
-	s.drawCharacters(view)
+	shaken := view
+	shakeX, shakeY := s.game.Stage().Offset()
+	shaken.Left -= shakeX / float64(s.tile)
+	shaken.Top -= shakeY / float64(s.tile)
+	s.drawCells(shaken)
+	s.drawCharacters(shaken)
 	s.present(screen, width, height)
+	s.drawShown(screen, view)
+}
+
+// drawShown draws over the game what its workflows show: each line said by
+// an NPC in view, in a bubble over its head, and the box at the foot. A
+// speaker off screen speaks unseen.
+func (s *State) drawShown(screen *ebiten.Image, view game.View) {
+	shown := image.Rectangle{Min: s.origin, Max: s.origin.Add(image.Pt(
+		int(float64(view.Columns*s.tile)*s.scale), int(float64(view.Rows*s.tile)*s.scale)))}
+	for _, character := range s.game.Characters() {
+		if !character.Speaking || character.Floor != view.Floor {
+			continue
+		}
+		corner := s.cellAt(view, character.X, character.Y)
+		head := s.origin.Add(image.Pt(int(float64(corner.X*ui.Half+s.tile)*s.scale/ui.Half),
+			int(float64(corner.Y)*s.scale)))
+		if head.In(shown) {
+			showdraw.DrawBubble(screen, s.theme, head, character.Line.Text,
+				float64(character.Line.Left)/float64(character.Line.Ticks))
+		}
+	}
+	showdraw.DrawBox(screen, s.theme, shown, showdraw.BoxOf(s.game.Stage()))
 }
 
 // present draws the canvas as large as the tab allows, keeping its shape and
@@ -125,8 +152,9 @@ func (s *State) present(screen *ebiten.Image, width, height int) {
 	}
 	var place ebiten.DrawImageOptions
 	place.GeoM.Scale(shrink, shrink)
-	place.GeoM.Translate(math.Round((float64(bounds.Dx())-float64(width)*s.scale)/ui.Half),
-		math.Round((float64(bounds.Dy())-float64(height)*s.scale)/ui.Half))
+	s.origin = image.Pt(int(math.Round((float64(bounds.Dx())-float64(width)*s.scale)/ui.Half)),
+		int(math.Round((float64(bounds.Dy())-float64(height)*s.scale)/ui.Half)))
+	place.GeoM.Translate(float64(s.origin.X), float64(s.origin.Y))
 	if shrink != 1 {
 		place.Filter = ebiten.FilterLinear
 	}

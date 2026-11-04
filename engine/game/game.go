@@ -13,6 +13,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/npc"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/show"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -69,14 +70,19 @@ type Game struct {
 	loopFlow *flow.Workflow
 	loopID   ids.ULID
 	names    npcrun.Names
+	// stage is the message boxes and the shake every workflow shares.
+	stage *show.Stage
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
-// and where it is in cells, between two cells during a step.
+// where it is in cells, between two cells during a step, and the line it
+// is saying, if any.
 type Character struct {
-	NPC   ids.ULID
-	Floor ids.ULID
-	X, Y  float64
+	NPC      ids.ULID
+	Floor    ids.ULID
+	X, Y     float64
+	Line     show.Line
+	Speaking bool
 }
 
 // Heard is an ambient sound on the player's floor and how far from the
@@ -125,7 +131,7 @@ func New(project Project) (*Game, error) {
 		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
-		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names,
+		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(),
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -177,11 +183,16 @@ func seed(game uint64, placement ids.ULID) uint64 {
 	return hash.Sum64()
 }
 
-// Step runs the game for one tick: the player walks, the clock moves on and
-// the NPCs follow their behaviours, each seeing where the others were as the
-// tick began.
+// Step runs the game for one tick: the player walks, unless a message box
+// holds them until they close it, the boxes and the shake count down, the
+// clock moves on and the NPCs follow their behaviours, each seeing where the
+// others were as the tick began.
 func (g *Game) Step(input play.Input) Step {
+	if g.stage.Holding() {
+		input = play.Input{Held: 0, Pressed: 0}
+	}
 	outcome := g.run.Step(g.levels, input)
+	g.stage.Tick()
 	passed := g.clock.Advance()
 	others := make([]npcrun.Other, 0, len(g.npcs))
 	for _, character := range g.npcs {
@@ -194,7 +205,7 @@ func (g *Game) Step(input play.Input) Step {
 		world := npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
 			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
-			Others: others,
+			Others: others, Stage: g.stage,
 		}
 		character.Step(world, g.run.Tick())
 		cues = heard(cues, character.Sounds)
@@ -202,7 +213,7 @@ func (g *Game) Step(input play.Input) Step {
 	if g.loop != nil {
 		g.loop.Step(npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
-			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others,
+			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others, Stage: g.stage,
 		}, g.run.Tick())
 		cues = heard(cues, g.loop.Sounds)
 	}
@@ -228,6 +239,10 @@ func (g *Game) workflow(target ids.ULID) (*flow.Workflow, bool) {
 	return found, ok && found != nil
 }
 
+// Stage returns the message boxes and the shake, for drawing them and for
+// closing a box the player must close.
+func (g *Game) Stage() *show.Stage { return g.stage }
+
 // Player returns the player.
 func (g *Game) Player() play.Player { return g.run.Player() }
 
@@ -248,7 +263,10 @@ func (g *Game) Characters() []Character {
 	characters := make([]Character, 0, len(g.npcs))
 	for _, character := range g.npcs {
 		x, y := character.At()
-		characters = append(characters, Character{NPC: character.NPC, Floor: character.Floor, X: x, Y: y})
+		line, speaking := character.Saying()
+		characters = append(characters, Character{
+			NPC: character.NPC, Floor: character.Floor, X: x, Y: y, Line: line, Speaking: speaking,
+		})
 	}
 
 	return characters

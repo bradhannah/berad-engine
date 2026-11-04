@@ -235,6 +235,7 @@ func Kinds() []Kind {
 		playSoundKind(next),
 	}...)
 	kinds = append(kinds, valueKinds(next)...)
+	kinds = append(kinds, showKinds(next)...)
 
 	return append(kinds, Kind{
 		Name: KindNote, Label: "Note", Group: GroupAnnotate,
@@ -397,6 +398,15 @@ func Outputs(node Node) []Output {
 	return append(outputs, declared.Outputs...)
 }
 
+// numberLimit is the most a whole-number parameter can be.
+func numberLimit(paramType ParamType) int {
+	if paramType == TypeSeconds {
+		return MaxSeconds
+	}
+
+	return MaxTiles
+}
+
 // CheckParams reports a node whose parameters do not match its kind: a
 // missing or unknown parameter, or a value of the wrong type or out of range.
 func CheckParams(node Node) error {
@@ -436,8 +446,8 @@ func checkValue(param Param, value json.RawMessage) error {
 		}
 
 		return nil
-	case TypeTiles:
-		return checkNumber(value, 1, MaxTiles)
+	case TypeTiles, TypeSeconds:
+		return checkNumber(value, 1, numberLimit(param.Type))
 	case TypeDuration:
 		return checkDuration(value)
 	case TypeShares:

@@ -261,7 +261,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	case flow.KindCall:
 		s.drawCallNode(area, drawn, docs)
-	case flow.KindLog:
+	case flow.KindLog, flow.KindSay, flow.KindShowMessage:
 		s.drawLogNode(area, drawn, docs)
 	case flow.KindReturn:
 		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
@@ -437,7 +437,8 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		return wayLabel(node)
 	case flow.KindCall:
 		return s.callTitle(node, docs)
-	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog:
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog, flow.KindSay, flow.KindShowMessage,
+		flow.KindShake:
 		return s.valueSummary(node, docs)
 	default:
 		return ""
@@ -696,15 +697,15 @@ func (s *State) titleWidth(value string) int {
 }
 
 func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
-	if made.hidden {
+	if !s.controlShown(made) {
 		return
 	}
 	s.theme.DrawStrong(screen, made.param.Label, left, made.label, ui.ColorInk())
 	switch made.param.Type {
-	case flow.TypeTiles, flow.TypeText:
+	case flow.TypeTiles, flow.TypeSeconds, flow.TypeText:
 		made.field.Draw(screen)
-		if made.param.Type == flow.TypeTiles {
-			s.drawUnit(screen, made.field, "tiles")
+		if unit := unitOf(made.param.Type); unit != "" {
+			s.drawUnit(screen, made.field, unit)
 		}
 	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
 		s.drawChoices(screen, made, node)
@@ -803,7 +804,7 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 		if made.note {
 			s.drawCompareNote(screen, made, node)
 		}
-	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
 		flow.TypeCue, flow.TypeValue, flow.TypeOperand,
 		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
 	}
@@ -843,6 +844,11 @@ func hintFor(kind string) string {
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindSay: "Says a line over this NPC's head for a while, without stopping the game; its lines " +
+			"wait their turn.",
+		flow.KindShowMessage: "Shows a message in a box at the foot of the screen that goes away on its own, " +
+			"or when the player closes it.",
+		flow.KindShake: "Shakes the world for a few seconds, not the boxes and speech over it, then carries on.",
 		flow.KindLog: "Writes a line to the Watch window, its values as they are now, and carries on at once. " +
 			"Players never see it.",
 		flow.KindCall: "Runs another workflow, then carries on from the output named for the way out it took, " +

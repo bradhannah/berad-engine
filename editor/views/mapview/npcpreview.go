@@ -22,6 +22,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
+	"github.com/bradhannah/berad-engine/editor/views/showdraw"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -252,12 +253,14 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	names := places.NewNames(ctx.Docs)
 	for range ticks {
 		passed := s.preview.clock.Advance()
+		s.preview.stage.Tick()
 		asked = asked[:0]
 		others := othersOf(runners)
 		for _, run := range runners {
 			world := npcrun.World{
 				Names: names, Zone: zone, Workflow: run.workflow, Behaviour: run.source, Workflows: s.module,
 				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
+				Stage: s.preview.stage,
 			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
@@ -267,6 +270,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 			loop.npc.Step(npcrun.World{
 				Names: names, Zone: zone, Workflow: loop.workflow, Behaviour: loop.source, Workflows: s.module,
 				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
+				Stage: s.preview.stage,
 			}, s.preview.run.Tick())
 			asked = append(asked, loop.npc.Sounds...)
 			s.keepLines(loop.npc, s.zone.String())
@@ -414,13 +418,18 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 		})
 	}
 
-	return protocol.PreviewEntity{
+	entity := protocol.PreviewEntity{
 		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
 		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
-		Sprite: s.spriteNow(run.npc.NPC),
+		Sprite: s.spriteNow(run.npc.NPC), Saying: "", SayingLeft: 0,
 	}
+	if line, saying := run.npc.Saying(); saying {
+		entity.Saying, entity.SayingLeft = line.Text, float64(line.Left)/float64(line.Ticks)
+	}
+
+	return entity
 }
 
 // spriteNow is the sprite an NPC shows in the preview now: its sprite value,
@@ -490,13 +499,15 @@ func (s *State) previewState() protocol.PreviewState {
 		entities = append(entities, s.loopEntity())
 	}
 	game := s.preview.clock
-
-	return protocol.PreviewState{
+	state := protocol.PreviewState{
 		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
 		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
 		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step), Values: s.watchedValues(),
-		Log: slices.Clone(s.preview.lines),
+		Log: slices.Clone(s.preview.lines), Box: showdraw.BoxOf(s.preview.stage), ShakeX: 0, ShakeY: 0,
 	}
+	state.ShakeX, state.ShakeY = s.preview.stage.Offset()
+
+	return state
 }
 
 // keepLines numbers the lines an NPC's or the zone loop's Logs wrote this
@@ -795,6 +806,9 @@ func (s *State) watchedLine() string {
 // "watching" while an NPC is watched, "npc:<name>=C,R" when the named NPC
 // stands on that cell, and "heard:<cue>" once the preview has played a cue.
 func (s *State) hasNPCState(state string, docs frame.Docs) bool {
+	if found, handled := s.hasShownState(state); handled {
+		return found
+	}
 	switch {
 	case strings.HasPrefix(state, "heard:"):
 		return s.preview != nil && s.preview.heard[strings.TrimPrefix(state, "heard:")] > 0

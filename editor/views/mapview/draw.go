@@ -109,6 +109,9 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 			}
 		})
 	}
+	shown := s.shownState()
+	shake := s.shakeBy(shown)
+	s.camera.offset = s.camera.offset.Add(shake)
 	loaded := docs.View(s.floor, func(document client.Document) {
 		floorDoc, isFloor := document.Model.(*tilefloor.Document)
 		if !isFloor {
@@ -132,6 +135,11 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 			s.drawPickWash(area, floorDoc.Floor, grid)
 		}
 	})
+	s.camera.offset = s.camera.offset.Sub(shake)
+	s.drawSpeech(area, grid)
+	if shown != nil {
+		s.drawBox(area, grid, shown.Box)
+	}
 	if !loaded {
 		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())
 	}

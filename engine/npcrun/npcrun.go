@@ -24,6 +24,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/show"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -76,6 +77,9 @@ type World struct {
 	State     *worldstate.Store
 	Here      ids.ULID
 	Others    []Other
+	// Stage is the boxes and the shake every workflow of the game shares;
+	// nil shows none.
+	Stage *show.Stage
 }
 
 // NPC is one NPC running in a zone, or a zone's loop, which runs as an NPC
@@ -122,6 +126,8 @@ type NPC struct {
 	locals map[ids.ULID]worldstate.Value
 	calls  []caller
 	module ids.ULID
+	// speech is the lines it says, one after another, over its head.
+	speech show.Speech
 }
 
 // work is what the current node is doing: started once its node has set it
@@ -145,13 +151,15 @@ type work struct {
 	climbs []Climb
 	goal   string
 	target image.Point
+	// awaited is the line or box a Say or a Show message waits for.
+	awaited uint64
 }
 
 // idle is no work: a node not yet set up.
 func idle() work {
 	return work{
 		started: false, waiting: false, skipped: "", waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0, movesTotal: 0,
-		direction: image.Pt(0, 0), way: "", route: nil, climbs: nil, goal: "", target: image.Pt(0, 0),
+		direction: image.Pt(0, 0), way: "", route: nil, climbs: nil, goal: "", target: image.Pt(0, 0), awaited: 0,
 	}
 }
 
@@ -189,7 +197,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""},
 		Changes: 0, Taken: nil, Sounds: nil, Lines: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil,
-		module: ids.ULID{},
+		module: ids.ULID{}, speech: show.Speech{},
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
@@ -232,6 +240,7 @@ func (n *NPC) Restart() {
 // cells, leaves a container whose time is up, and follows its workflow.
 func (n *NPC) Step(world World, tick uint64) {
 	n.Taken, n.Sounds, n.Lines = n.Taken[:0], n.Sounds[:0], n.Lines[:0]
+	n.speech.Tick()
 	if world.Workflow == nil {
 		n.Node, n.Container, n.Status = ids.ULID{}, ids.ULID{}, StatusNoBehaviour
 		n.walk(world.Zone)
@@ -387,6 +396,8 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 		n.actLog(world, node)
 
 		return flow.OutputNext, true
+	case flow.KindSay, flow.KindShowMessage, flow.KindShake:
+		return n.actShow(world, node)
 	case flow.KindCheckValue:
 		return n.actCheck(world, node), true
 	case flow.KindFindNPC:

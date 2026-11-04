@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -157,8 +158,8 @@ func messageLimits(segments []flow.Segment) string {
 // insertForLog puts a value picked for a Log into its message where the
 // caret was, and saves it, reporting whether the node is a Log.
 func (s *State) insertForLog(ctx *frame.Context, node flow.Node, ref flow.ValueRef) bool {
-	if node.Kind != flow.KindLog || s.form == nil || s.form.node != node.ID {
-		return node.Kind == flow.KindLog
+	if !hasMessage(node.Kind) || s.form == nil || s.form.node != node.ID {
+		return hasMessage(node.Kind)
 	}
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
@@ -340,7 +341,7 @@ func (s *State) drawMessage(screen *ebiten.Image, docs frame.Docs, made *control
 // each value as a chip holding its path, cut short at the node's edge.
 func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 	rect := s.screenRect(drawn.rect)
-	s.theme.DrawLabel(area, "Log", rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
+	s.theme.DrawLabel(area, labelOf(drawn.node.Kind), rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 	segments, err := drawn.node.Message()
 	if err != nil || len(segments) == 0 {
 		s.theme.DrawText(area, "no message", rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorMuted())
@@ -368,6 +369,16 @@ func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.theme.DrawSmall(area, s.clip(path, chipW-chipPad), chip.Min.X+chipPad, baseline+1, ui.ColorInk())
 		along = chip.Max.X + chipGap
 	}
+}
+
+// hasMessage reports whether a kind of node has a message of text and
+// values: a Log, a Say or a Show message.
+func hasMessage(kind string) bool {
+	declared, ok := flow.KindOf(kind)
+
+	return ok && slices.ContainsFunc(declared.Params, func(param flow.Param) bool {
+		return param.Type == flow.TypeMessage
+	})
 }
 
 // insertButton is Insert value… for a message, and none for plain text.
@@ -401,4 +412,15 @@ func (s *State) logSummary(docs frame.Docs, node flow.Node) string {
 	}
 
 	return s.messageText(docs, segments)
+}
+
+// shakeSummary is a Shake screen's strength and seconds, as strong · 2 s.
+func shakeSummary(node flow.Node) string {
+	strength, err := node.Choice(flow.ParamStrength)
+	seconds, secondsErr := node.Seconds()
+	if err != nil || secondsErr != nil {
+		return "?"
+	}
+
+	return strength + " · " + strconv.Itoa(seconds) + " s"
 }

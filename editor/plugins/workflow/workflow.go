@@ -150,7 +150,7 @@ func (d *Document) References() []model.Reference {
 			references = append(references, valueReferences(node)...)
 		case flow.KindCall:
 			references = append(references, callReferences(node)...)
-		case flow.KindLog:
+		case flow.KindLog, flow.KindSay, flow.KindShowMessage:
 			references = append(references, logReferences(node)...)
 		}
 	}

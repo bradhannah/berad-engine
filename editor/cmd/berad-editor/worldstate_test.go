@@ -228,7 +228,7 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 	for _, each := range []struct {
 		name, path, workflow string
 		nodes                int
-	}{{"clerk", "clerk", "clerk-s-day", 20}, {"customer", "customer", "customer-shops", 12}} {
+	}{{"clerk", "clerk", "clerk-s-day", 22}, {"customer", "customer", "customer-shops", 12}} {
 		envelope := readEnvelope(t, project, "npcs/"+each.name+"--*.json")
 		document, err := npcplugin.Decode(envelope.Data)
 		if err != nil {
