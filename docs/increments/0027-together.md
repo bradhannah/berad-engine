@@ -1,6 +1,6 @@
 # Increment 27: Together
 
-**Status:** Planned
+**Status:** Built
 
 The twenty-seventh increment lets a workflow do several things at once
 and go on only when all of them are done. Today an NPC follows one node at
@@ -84,16 +84,88 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. The container | Together with its lanes, each an output to its first step and a name, and all done; what a lane may hold and which lane a node is in; saved and read | Workflow tests save and read a Together, refuse one lane, and find each node's lane | Planned |
-| 2. Running lanes | The runner following each lane at once in lane order, going on by all done when every lane is done, time up stopping them all, the one lane that moves | Runner tests run three lanes to all done, stop them by time up, and move by one lane while the others wait | Planned |
-| 3. Waiting for a sound | Recordings' lengths in the audio library; Play sound's carry on; the runner waiting for the cue's length | Orchestrator tests measure a recording's length; runner tests wait for a sound, the same with sound off | Planned |
-| 4. On the canvas | Lanes drawn as numbered bands with their dots and lane done; Add lane; the inspector; flags for a second mover, a node in two lanes and what a lane can't hold | View tests add, rename and remove a lane and raise each flag | Planned |
-| 5. Watching lanes | Every lane in the preview's state and Watch, each running lane's node lit, Step naming the lane | View tests read each lane in Watch and step through a lane | Planned |
-| 6. Checks | `make check` and the real-window suite; a real-window test builds a Together of a sound that waits, a shake and a line of speech in the clerk's day, previews it and watches every lane finish before all done | The checks pass with no lint findings | Planned |
+| 1. The container | Together with its lanes, each an output to its first step and a name, and all done; what a lane may hold and which lane a node is in; saved and read | Workflow tests save and read a Together, refuse one lane, and find each node's lane | Built |
+| 2. Running lanes | The runner following each lane at once in lane order, going on by all done when every lane is done, time up stopping them all, the one lane that moves | Runner tests run three lanes to all done, stop them by time up, and move by one lane while the others wait | Built |
+| 3. Waiting for a sound | Recordings' lengths in the audio library; Play sound's carry on; the runner waiting for the cue's length | Orchestrator tests measure a recording's length; runner tests wait for a sound, the same with sound off | Built |
+| 4. On the canvas | Lanes drawn as numbered bands with their dots and lane done; Add lane; the inspector; flags for a second mover, a node in two lanes and what a lane can't hold | View tests add, rename and remove a lane and raise each flag | Built |
+| 5. Watching lanes | Every lane in the preview's state and Watch, each running lane's node lit, Step naming the lane | View tests read each lane in Watch and step through a lane | Built |
+| 6. Checks | `make check` and the real-window suite; a real-window test builds a Together of a sound that waits, a shake and a line of speech in the clerk's day, previews it and watches every lane finish before all done | The checks pass with no lint findings | Built |
 
 ## Step results
 
-None yet.
+- **The container:** Together holds its lanes, two to eight, each saved
+  as an output with an identity apart from its name, and goes on by all
+  done; a lane's first step must be inside it, and each node inside is in
+  the lanes that reach it. Workflows are now version 9, which gives every
+  Play sound the way it carried on before, at once. Verified: workflow
+  tests save and read a Together, list its lanes then all done, find a
+  node two lanes reach in both, refuse one lane, nine, two lanes by one
+  output and a Together inside a container, and upgrade a version 8 Play
+  sound.
+- **Running lanes:** the runner starts every lane when the NPC comes to a
+  Together and runs each in lane order every tick, a lane following its
+  steps that take no time one after another as the flow does, and going
+  on by all done once every lane has run out. A step that moves the NPC
+  waits while it is between cells, so a second lane's Move waits for the
+  first's to finish. Each change in a lane names the lane. Verified:
+  runner tests run three lanes of different lengths to all done, follow a
+  lane through two steps while an empty one is done at once, and walk in
+  one lane while another counts down and a third steps down after.
+- **Waiting for a sound:** the audio library now gives each recording the
+  length of the part of it that plays, its region or its whole file,
+  decoded once while the file is unchanged; a cue lasts as long as its
+  longest recording, rounded up to a tick, and a looping cue, music or
+  ambient, lasts none. Play sound's Carry on, at once or when it has
+  played, waits that long in real time, from the library, never from what
+  is heard. Verified: orchestrator tests give a region its length and a
+  whole tone its decoded length, and none to a file that won't decode; a
+  protocol test rounds a cue's ticks up and gives music none; runner tests
+  wait for a sound's ticks, asking for it once, and carry on at once when
+  its length is unknown.
+- **On the canvas:** a Together is a container with a band for each lane,
+  its number in a badge and its name at its left, the dot it starts from,
+  lane done after a step with nothing after it, + lane along its foot,
+  and all done when all its lanes are. Its inspector renames, adds and
+  removes lanes; removing one removes the steps only it reaches, in one
+  undo step, and two lanes stay. Add after puts a node in the first empty
+  lane; dropping one in an empty lane's band makes it the lane's first
+  step; a Together goes into a line by its all done. Flagged: a Call or a
+  Return in a lane, a step two lanes reach, and a Go to or Move in a
+  second lane. Play sound shows until played, and is flagged when it
+  waits on a looping cue. Verified: view tests add, rename and remove a
+  lane, put steps in empty lanes by Add after and by a drop, put a
+  Together between two nodes, and raise each flag.
+- **Watching lanes:** the preview's state lists each lane, what it is
+  doing or that it is done; Watch's NOW line names each lane, and each
+  running lane's node is outlined LANE 1, LANE 2 and so on; a step stops
+  at the next change in any lane and names the lane. Verified: a map test
+  reads each lane in the preview's state and steps to a lane's next step;
+  a Watch test reads a waiting lane and a done one, lights the running
+  lane's node and names the lane in the step.
+- **Checks:** `make check` passes with no lint findings, but for
+  TestRecordingIsSentInParts, which runs out of time under the whole
+  suite's load and passes alone and with its package, as before. The
+  sample's Fetch stock lifts its crate with a Together, a shake and a
+  chime that waits until it has played. A real-window test is new: it
+  puts a Together after the customer's start with a chime that waits, a
+  ten-second shake and a line, previews the sample, and watches the
+  chime's and the line's lanes finish while the shake's runs on, the
+  customer coming round to its line again only once the shake is done.
+  The whole real-window suite, 56 tests, passed.
+
+## Changed while building, short of the wireframes
+
+- **A Together sits at the top level,** never inside a time-bound
+  container, as containers aren't nested; so time up stopping every lane
+  waits until they are.
+- **A lane's band is a guide.** Bands are equal in height and arranged
+  with each lane's steps in its own, but which lane a step is in follows
+  the lines from each lane's dot, wherever the step is moved.
+- **A lane ending is not a change,** so Step to next change stops at a
+  lane's next step, not at its end.
+- **When it has played needs the audio library listed,** which the
+  preview and the Play tab ask for as they start; a Play sound reached
+  before it is carries on at once.
 
 ## Not in this increment
 
