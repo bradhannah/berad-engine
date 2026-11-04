@@ -80,7 +80,7 @@ func reachTown(t *testing.T) *fixture {
 		project.Entry{ID: loftID, Name: "Loft", Format: floor.FormatName})))
 	f.docs.Touch(townID)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.click("ui:place")
 	f.click("place:Office desk 3")
 

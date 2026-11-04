@@ -98,7 +98,7 @@ func TestGoToChoosesAPlace(t *testing.T) {
 	f := newFixture(t)
 	f.withTown()
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.click("ui:place")
 	f.click("place:Shelf")
 	destination, err := f.nth(flow.KindGoTo, 1).Anchor("destination")
@@ -156,7 +156,7 @@ func placesFor(t *testing.T, label string) *fixture {
 	clerkDoc.NPC.Zone = frametest.ID(87)
 	f.docs.Put(clerk, "Clerk", clerkDoc)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.answerRunners([]protocol.Use{{Document: clerk, Name: "Clerk", Format: npc.FormatName, Label: label, Item: ""}})
 	f.click("ui:place")
 

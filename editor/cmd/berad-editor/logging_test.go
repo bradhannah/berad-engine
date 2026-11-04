@@ -8,9 +8,9 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// TestLoggingInWatch adds a Log to the customer's behaviour, its name put
-// in with Insert value…, and a Set value to the clerk's that dresses the
-// clerk as the lantern. Previewing the sample, the Map shows the clerk as
+// TestLoggingInWatch adds a Log to the customer's behaviour after its
+// start, its name put in with Insert value…, and a Set value after the
+// clerk's start that dresses the clerk as the lantern. Previewing the sample, the Map shows the clerk as
 // the lantern, and Watch, watching the customer once it stands at the
 // counter, reads its line, opens the customer's behaviour at the Log, and
 // shows every NPC's lines.
@@ -26,20 +26,16 @@ func TestLoggingInWatch(t *testing.T) {
 		must("state:tabs:4", 600), quitWhenAlone(),
 	)
 	customerScript := script(
-		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), click("palette:"+flow.KindLog),
-		must("state:selected:log", 300), drag("port:start:1:next", "node:log:1"), wait(10),
-		drag("port:log:1:next", "node:check-value:1"), wait(10),
-		click("node:log:1"), wait(5), click("ui:param-message"), wait(5), typed("Shopping as "), wait(5),
+		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), addNode(""+flow.KindLog),
+		must("state:selected:log", 300), wait(10), click("ui:param-message"), wait(5), typed("Shopping as "), wait(5),
 		click("ui:insert-value"), must("valuerow:npc.name", 300), click("valuerow:npc.name"),
 		must("state:message=Shopping as {npc.name}", 300), must("state:reads=Shopping as Customer", 300), wait(10),
 		shoot(logShot), click("node:start:1"), must("state:selected:start", 60), must("state:selected:log", 3600),
 		wait(30), quit(),
 	)
 	clerkScript := script(
-		must("state:loaded", 900), wait(5), click("node:start:1"), wait(5), click("palette:set-value"),
-		must("state:selected:set-value", 300), drag("port:start:1:next", "node:set-value:4"), wait(10),
-		drag("port:set-value:4:next", "node:time-switch:1"), wait(10), click("node:set-value:4"), wait(5),
-		click("ui:pick-value"), must("valuerow:npc.sprite", 300),
+		must("state:loaded", 900), wait(5), click("node:start:1"), wait(5), addNode("set-value"),
+		must("state:selected:set-value", 300), wait(10), click("ui:pick-value"), must("valuerow:npc.sprite", 300),
 		click("valuerow:npc.sprite"), must("state:value:value=npc.sprite", 300), click("ui:pick-to"),
 		must("state:dialog-row=Lantern", 300), click("row:Lantern"), wait(5), click("ui:use"),
 		must("state:holds:to=Lantern", 300), wait(30), quit(),

@@ -333,6 +333,12 @@ func click(at string) []step {
 	return []step{{Repeat: 2, At: at, Down: true, Pressed: true}, {Repeat: 2, At: at, Released: true}}
 }
 
+// addNode adds a node as the palette does: a click on its entry shows its
+// help, and Add after puts it after the selected node.
+func addNode(kind string) []step {
+	return script(click("palette:"+kind), wait(5), click("ui:help-add"))
+}
+
 // rightClick presses the right button on a named part of the window.
 func rightClick(at string) step { return step{Repeat: 2, At: at, Secondary: true} }
 
@@ -973,11 +979,11 @@ func TestWorkflowBuildsARoutine(t *testing.T) {
 	)
 	workflowScript := script(
 		expect("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:time-switch"), wait(10),
-		click("palette:container"), wait(10), click("palette:go-to"), wait(10),
+		click("node:start:1"), wait(5), addNode("time-switch"), wait(10),
+		addNode("container"), wait(10), addNode("go-to"), wait(10),
 		click("ui:pick"), expect("state:destination", 1800), wait(5),
-		click("palette:wait"), wait(10),
-		click("node:time-switch:1"), wait(5), click("palette:wait"), wait(10),
+		addNode("wait"), wait(10),
+		click("node:time-switch:1"), wait(5), addNode("wait"), wait(10),
 		click("ui:param-duration"), keys("Cmd+A"), typed("45"), shoot(unsaved),
 		keys("Cmd+S"), wait(20),
 		expect("state:nodes:6", 300), click("ui:arrange"), wait(20),
@@ -1047,11 +1053,11 @@ func TestWorkflowRandomWalk(t *testing.T) {
 	)
 	workflowScript := script(
 		expect("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:random"), wait(10),
+		click("node:start:1"), wait(5), addNode("random"), wait(10),
 		retype("options-1-label", "up"), retype("options-2-label", "down"),
-		click("palette:move"), wait(10), click("node:random:1"), wait(5), click("palette:move"), wait(10),
+		addNode("move"), wait(10), click("node:random:1"), wait(5), addNode("move"), wait(10),
 		click("ui:direction-down"), wait(10),
-		click("node:move:1"), wait(5), click("palette:wait"), wait(10),
+		click("node:move:1"), wait(5), addNode("wait"), wait(10),
 		retype("param-duration", "2"), click("ui:duration-seconds"), wait(10),
 		drag("port:move:2:next", "entry:wait:1"), expect("state:entries:wait:1=2", 300), wait(10),
 		click("ui:arrange"), wait(20), step{Repeat: 1, At: "canvas:400,300", Wheel: &[2]float64{-7, 0}}, wait(10),
@@ -1154,9 +1160,9 @@ func TestNPCFollowsItsWorkflow(t *testing.T) {
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:random"), wait(10),
-		click("palette:move"), wait(10), click("node:random:1"), wait(5), click("palette:move"), wait(10),
-		click("ui:direction-down"), wait(10), click("node:move:1"), wait(5), click("palette:wait"), wait(10),
+		click("node:start:1"), wait(5), addNode("random"), wait(10),
+		addNode("move"), wait(10), click("node:random:1"), wait(5), addNode("move"), wait(10),
+		click("ui:direction-down"), wait(10), click("node:move:1"), wait(5), addNode("wait"), wait(10),
 		retype("param-duration", "1"), click("ui:duration-seconds"), wait(10),
 		drag("port:move:2:next", "entry:wait:1"), must("state:entries:wait:1=2", 300), wait(10), quit(),
 	)
@@ -1213,11 +1219,11 @@ func TestSoundsInWorkflows(t *testing.T) {
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:play-sound"), must("state:cues", 300), wait(5),
+		click("node:start:1"), wait(5), addNode("play-sound"), must("state:cues", 300), wait(5),
 		click("ui:cue"), must("cue:sample/chime", 300), wait(5), shoot(chooserShot),
 		click("cue:sample/chime"), must("state:cue=sample/chime", 300), wait(5),
 		click("ui:listen"), wait(30), shoot(chosenShot),
-		click("palette:wait"), wait(10), click("ui:param-duration"), wait(3), keys("Cmd+A"), typed("1"),
+		addNode("wait"), wait(10), click("ui:param-duration"), wait(3), keys("Cmd+A"), typed("1"),
 		keys("Enter"), wait(10), click("ui:duration-seconds"), wait(10), quit(),
 	)
 	mapScript := script(

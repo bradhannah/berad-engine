@@ -21,8 +21,8 @@ func TestWorkflowLegsAndColoursAreSaved(t *testing.T) {
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:random"), must("state:nodes:2", 300), wait(10),
-		click("palette:wait"), must("state:nodes:3", 300), wait(10),
+		click("node:start:1"), wait(5), addNode("random"), must("state:nodes:2", 300), wait(10),
+		addNode("wait"), must("state:nodes:3", 300), wait(10),
 		drag("port:wait:1:next", "node:random:1"), must("state:entries:random:1=2", 300), wait(10),
 		click("ui:arrange"), wait(20),
 		drag("bend:wait:1:next:end", "canvas:150,300"), must("state:bent:wait:1:next", 300), wait(10),

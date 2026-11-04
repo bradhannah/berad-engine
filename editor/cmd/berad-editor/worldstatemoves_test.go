@@ -33,7 +33,7 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:"+flow.KindSetValue), must("state:selected:set-value", 300),
+		click("node:start:1"), wait(5), addNode(""+flow.KindSetValue), must("state:selected:set-value", 300),
 		click("ui:pick-value"), must("state:picker", 120), typed("done"), wait(5), must("declare:world.done", 120),
 		click("declare:world.done"), wait(5), click("ui:picker-declare"), must("state:value:value=world.done", 300),
 		must("state:value:value=world.progress.done", 3600), wait(10), quit(),

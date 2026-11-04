@@ -75,8 +75,13 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.drawLegend(screen)
 	}
 	s.drawToolbar(screen, docs)
+	if s.pal.help != "" {
+		frame.DrawInspector(screen)
+		s.drawHelp(screen)
+	} else {
+		s.drawInspector(screen, docs)
+	}
 	s.drawPalette(screen)
-	s.drawInspector(screen, docs)
 	if dialog := s.picker.Dialog(); dialog != nil {
 		dialog.Draw(screen, s.theme)
 	}
@@ -109,44 +114,6 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 // zoneLoopLacks says, under a zone loop's palette, which nodes it has not.
 const zoneLoopLacks = "Not in a zone loop: Go to, Move and Find NPC nearby. A zone has no body to move, or to look " +
 	"around from."
-
-func (s *State) drawPalette(screen *ebiten.Image) {
-	content := frame.Content(s.size)
-	ui.Divider(screen, image.Pt(PaletteWidth-ui.Outline, toolbarHeight), image.Pt(PaletteWidth-ui.Outline, content.Max.Y))
-	group := ""
-	for _, entry := range s.palette {
-		if entry.kind.Group != group {
-			group = entry.kind.Group
-			s.theme.Heading(screen, group, ui.Inset, entry.rect.Min.Y-groupSpace/ui.Half-ui.Gap-1)
-		}
-		fill := ui.ColorBackground()
-		if s.cursor.In(entry.rect) {
-			fill = ui.ColorHover()
-		}
-		ui.FillRound(screen, entry.rect, paletteRadius, fill)
-		if entry.kind.Name == flow.KindNote {
-			strokeDashed(screen, entry.rect, ui.Border, ui.ColorInk())
-		} else {
-			ui.StrokeRound(screen, entry.rect, paletteRadius, ui.Border, ui.ColorInk())
-		}
-		s.theme.DrawTextIn(screen, entry.kind.Label, entry.rect, ui.ColorInk())
-	}
-	if s.workflow != nil && s.workflow.Purpose() == flow.PurposeZoneLoop && len(s.palette) > 0 {
-		top := s.palette[len(s.palette)-1].rect.Max.Y + groupSpace
-		for index, line := range s.theme.Wrap(zoneLoopLacks, PaletteWidth-ui.Inset*ui.Half) {
-			s.theme.DrawText(screen, line, ui.Inset, top+index*ui.LineHeight, ui.ColorMuted())
-		}
-	}
-	if s.adding != nil && !s.adding.at.In(frame.Content(s.size).Intersect(image.Rect(0, 0, PaletteWidth, s.size.Y))) {
-		corner := s.adding.at.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half))
-		ghost := image.Rect(corner.X, corner.Y, corner.X+nodeWidth, corner.Y+nodeHeight)
-		ui.FillRound(screen, ghost, ui.Radius, ui.HexAlpha(hexWhite, ghostAlpha))
-		ui.StrokeRound(screen, ghost, ui.Radius, ui.Border, ui.ColorSelect())
-		if kind, ok := flow.KindOf(s.adding.kind); ok {
-			s.theme.DrawTextIn(screen, kind.Label, ghost, ui.ColorSelect())
-		}
-	}
-}
 
 // drawCanvas draws the dotted ground, then connections behind the nodes.
 func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
@@ -967,12 +934,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return image.Pt(0, 0), false
 	case locateCue, locatePlay:
 		return s.locateCueRow(kind, value)
-	case "palette":
-		for _, entry := range s.palette {
-			if entry.kind.Name == value {
-				return ui.Center(entry.rect), true
-			}
-		}
+	case "palette", resultPart:
+		return s.locatePalette(value)
 	case "ui":
 		return s.locateWidget(value)
 	case locateMenu:
@@ -1112,7 +1075,7 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 // its places and its values as well as the rest.
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
-		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState,
+		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState,
 	} {
 		if found, handled := has(state, docs); handled {
 			return found
@@ -1129,8 +1092,12 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if rest, isSwatch := strings.CutPrefix(widget, "swatch:"); isSwatch {
 		return s.locateSwatch(rest)
 	}
-	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine},
-		s.zoomCard.buttons()) {
+	if widget == paletteSearchID {
+		return ui.Center(s.pal.search.Rect), true
+	}
+	for _, button := range slices.Concat([]*ui.Button{
+		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add,
+	}, s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}

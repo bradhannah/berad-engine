@@ -27,14 +27,14 @@ func TestWorkflowValuePicker(t *testing.T) {
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:"+flow.KindSetValue), must("state:selected:set-value", 300),
+		click("node:start:1"), wait(5), addNode(""+flow.KindSetValue), must("state:selected:set-value", 300),
 		click("ui:pick-value"), must("state:picker", 120), typed("world.quests.dragon_slain"), wait(10),
 		must("declare:world.quests.dragon_slain", 120), click("declare:world.quests.dragon_slain"), wait(5),
 		click("ui:declare-type-bool"), wait(5), click("ui:declare-start-true"), wait(10), shoot(declareShot), wait(5),
 		click("ui:picker-declare"), must("state:value:value=world.quests.dragon_slain", 300), wait(10),
 		click("ui:pick-value"), must("state:picker", 120), typed("world.gold"), wait(10), keys("Enter"),
 		must("state:value:value=world.gold", 300), wait(10),
-		click("palette:"+flow.KindCheckValue), must("state:selected:check-value", 300), wait(5),
+		addNode(""+flow.KindCheckValue), must("state:selected:check-value", 300), wait(5),
 		keys("Enter"), must("state:picker", 120), must("picker:group:world.quests", 120),
 		click("picker:group:world.quests"), must("valuerow:world.quests.dragon_slain", 120), wait(10),
 		shoot(treeShot), wait(5),

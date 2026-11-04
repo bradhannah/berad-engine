@@ -67,7 +67,7 @@ func TestRunsIn(t *testing.T) {
 	f.withTown()
 	town := frametest.ID(87)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.answerRunners([]protocol.Use{{
 		Document: adaID, Name: "Ada Clerk", Format: npc.FormatName, Label: protocol.RunsAsBehaviour, Item: "",
 	}})
@@ -119,7 +119,7 @@ func (f *fixture) withDeskGoTo() {
 	ada.NPC.Path, ada.NPC.Behaviour, ada.NPC.Zone = "ada", workflowID, town
 	f.docs.Put(adaID, "Ada Clerk", ada)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.answerRunners([]protocol.Use{{
 		Document: adaID, Name: "Ada Clerk", Format: npc.FormatName, Label: protocol.RunsAsBehaviour, Item: "",
 	}})
@@ -176,7 +176,7 @@ func TestAFixedPlaceTiesItsZone(t *testing.T) {
 	f.withTown()
 	f.docs.Put(adaID, "Ada Clerk", npcplugin.NewDocument())
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.answerRunners(nil)
 	f.click("ui:place")
 	f.click("place:Shelf")
@@ -239,7 +239,7 @@ func TestCallsThatDoNotFit(t *testing.T) {
 	f.workflow().SetRunsIn(frametest.ID(87))
 	f.docs.Touch(workflowID)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindCall)
+	f.add("" + flow.KindCall)
 	f.click("ui:call-workflow")
 	f.click("menu:workflow:" + made["Roam"].String())
 	if f.has("problem:call-workflow:1") {
@@ -279,7 +279,7 @@ func TestACallOffersWhatFits(t *testing.T) {
 	f.workflow().SetRunsIn(town)
 	f.docs.Touch(workflowID)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindCall)
+	f.add("" + flow.KindCall)
 	f.click("ui:call-workflow")
 	if !f.has("call-menu=Errand / Roam / (Harbour errand · runs in Harbour)") {
 		t.Fatal("a Call offers the behaviours that fit, and greys the one running elsewhere")

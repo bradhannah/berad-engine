@@ -40,8 +40,8 @@ const ViewName = "workflow"
 const (
 	PaletteWidth  = 200
 	toolbarHeight = 40
-	paletteItem   = 28
-	paletteGap    = 6
+	paletteItem   = 24
+	paletteGap    = 4
 	paletteTop    = toolbarHeight + ui.Inset
 	groupSpace    = 26
 	arrangeWidth  = 110
@@ -87,11 +87,13 @@ type lineDrag struct {
 	moved   bool
 }
 
-// paletteEntry is one node kind offered on the left.
+// paletteEntry is one node kind offered on the left; lines are its one
+// line, wrapped, while it is a search's result.
 type paletteEntry struct {
 	kind  flow.Kind
 	rect  image.Rectangle
 	group bool
+	lines []string
 }
 
 // State is one Workflow window.
@@ -148,7 +150,9 @@ type State struct {
 	wheel    float64
 	drawn    *ebiten.Image
 
-	palette    []paletteEntry
+	palette []paletteEntry
+	// pal is the palette's search, its tooltip and the help it shows.
+	pal        *palettePanel
 	arrange    *ui.Button
 	recentre   *ui.Button
 	deleteLine *ui.Button
@@ -231,7 +235,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
-		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
+		palette: nil, pal: newPalettePanel(theme), arrange: ui.NewButton("arrange", "Auto-arrange"),
+		recentre:   ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
@@ -256,7 +261,7 @@ func paletteFor(purpose flow.Purpose) []paletteEntry {
 	var entries []paletteEntry
 	for _, kind := range flow.KindsFor(purpose) {
 		if kind.Group != "" {
-			entries = append(entries, paletteEntry{kind: kind, rect: ui.Zero(), group: false})
+			entries = append(entries, paletteEntry{kind: kind, rect: ui.Zero(), group: false, lines: nil})
 		}
 	}
 
@@ -287,6 +292,8 @@ func (s *State) Focused() *ui.TextField {
 		return s.values.picker.Focused()
 	case s.places != nil:
 		return s.places.list.Focused()
+	case s.pal.focus.Current() != nil:
+		return s.pal.focus.Current()
 	}
 
 	return s.focus.Current()
@@ -407,16 +414,8 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.legend.Rect = image.Rect(s.recentre.Rect.Min.X-ui.Inset-legendWidth, s.arrange.Rect.Min.Y,
 		s.recentre.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
 	s.legendBox = s.legendLayout()
-	top, group := paletteTop, ""
-	for index := range s.palette {
-		entry := &s.palette[index]
-		if entry.kind.Group != group {
-			group = entry.kind.Group
-			top += groupSpace
-		}
-		entry.rect = image.Rect(ui.Inset-ui.Half, top, PaletteWidth-ui.Inset, top+paletteItem)
-		top += paletteItem + paletteGap
-	}
+	s.layoutPalette()
+	s.layoutHelp()
 	s.layoutForm(docs)
 	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
@@ -488,12 +487,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.updateOverlay(input, ctx) {
 		return
 	}
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
-		s.Save(ctx)
-	}
-	if s.focus.Current() == nil {
-		s.keys(input, ctx)
-	}
+	s.updateTyping(input, ctx)
 	frame.CommonKeys(input, ctx)
 	if s.workflow == nil {
 		return
@@ -504,16 +498,33 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			s.subscribe(floorID, ctx)
 		}
 	}
-	s.updateLineButtons(input, ctx)
-	s.updateColours(input, ctx)
-	s.updateForm(input, ctx)
-	s.updateLocals(input, ctx)
+	if !s.updateHelp(input, ctx) {
+		s.updateLineButtons(input, ctx)
+		s.updateColours(input, ctx)
+		s.updateForm(input, ctx)
+		s.updateLocals(input, ctx)
+	}
 	s.updateToolbar(input, ctx)
 	s.updateZoom(input)
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu()
+}
+
+// updateTyping runs the palette's search, then the inspector's fields while
+// no help page covers them, then the window's own keys while no field has
+// focus.
+func (s *State) updateTyping(input *ui.Input, ctx *frame.Context) {
+	s.updateSearch(input, ctx)
+	if s.pal.help == "" {
+		if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
+			s.Save(ctx)
+		}
+	}
+	if s.focus.Current() == nil && s.pal.focus.Current() == nil {
+		s.keys(input, ctx)
+	}
 }
 
 // updateToolbar handles Auto-arrange, Recentre and the Legend toggle, and
@@ -572,6 +583,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
 		s.picker.Cancel(ctx, cancelledHere)
+	case s.pal.help != "" && input.Consume(ui.KeyEscape, plain):
+		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
 	case input.Consume(ui.KeyEqual, ui.Cmd()):
@@ -607,40 +620,6 @@ func (s *State) removeLine(ctx *frame.Context) {
 	output := s.selectedLink.output
 	s.selectedLink = noRoute()
 	s.replace(ctx, from.WithLink(output, ids.ULID{}), "Line removed. Undo puts it back.")
-}
-
-// updatePalette adds a node when a palette entry is clicked, or dragged onto
-// the canvas and dropped.
-func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
-	if s.adding != nil {
-		s.adding.at = input.Cursor
-		if !input.Released && input.Down {
-			return
-		}
-		adding := s.adding
-		s.adding = nil
-		moved := adding.at.Sub(adding.start)
-		dragged := max(abs(moved.X), abs(moved.Y)) > dragStart
-		switch {
-		case dragged && adding.at.In(s.Canvas()):
-			s.addAt(ctx, adding.kind, s.toCanvas(adding.at))
-		case !dragged:
-			s.addAfterSelected(ctx, adding.kind)
-		}
-
-		return
-	}
-	if !input.Pressed {
-		return
-	}
-	for _, entry := range s.palette {
-		if input.Cursor.In(entry.rect) {
-			s.adding = &paletteDrag{kind: entry.kind.Name, start: input.Cursor, at: input.Cursor}
-			input.ClearPointer()
-
-			return
-		}
-	}
 }
 
 // updateCanvas handles panning and the gestures on nodes and ports.
@@ -926,8 +905,9 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 }
 
 // addAfterSelected adds a node after the selected one, connected from its
-// first free output, or inside a selected container; with nothing selected
-// it goes in the middle of the view.
+// first free output, or put into the line of its first output when it has
+// none free; or inside a selected container; with nothing selected it goes
+// in the middle of the view.
 func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 	selected, ok := s.shapes[s.selected]
 	if !ok {
@@ -965,6 +945,11 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 		place.Y = candidate.at.Y - nodeHeight/ui.Half
 
 		break
+	}
+	if link == nil && len(selected.ports) > 0 && splices(kind) {
+		s.splice(ctx, kind, routeKey{from: selected.node.ID, output: selected.ports[0].output.Name}, place)
+
+		return
 	}
 	s.add(ctx, kind, s.clearOf(place, selected.node.Parent), selected.node.Parent, link)
 }
@@ -1066,10 +1051,16 @@ func (s *State) add(ctx *frame.Context, kind string, place image.Point, parent i
 		return
 	}
 	node.Parent = parent
-	if kind == flow.KindReturn {
+	s.addNode(ctx, node, place, link)
+}
+
+// addNode sends the edit that adds a node already made, then selects it
+// and, given a link, connects it, all as one undo step.
+func (s *State) addNode(ctx *frame.Context, node flow.Node, place image.Point, link *flow.Link) {
+	if node.Kind == flow.KindReturn {
 		node = s.freshReturn(node)
 	}
-	box := newBox(kind, place)
+	box := newBox(node.Kind, place)
 	gesture := s.gesture()
 	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
 	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {

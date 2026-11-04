@@ -95,7 +95,7 @@ func (f *fixture) withCall() {
 	f.t.Helper()
 	f.withModule()
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindCall)
+	f.add("" + flow.KindCall)
 	f.click("ui:call-workflow")
 	f.click("menu:workflow:" + moduleID.String())
 }
@@ -221,7 +221,7 @@ func TestCallProblems(t *testing.T) {
 	f := newFixture(t)
 	f.withModule()
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindCall)
+	f.add("" + flow.KindCall)
 	if !f.has("problem:call-workflow:1=No workflow chosen yet.") {
 		t.Fatal("a Call with no workflow is flagged")
 	}

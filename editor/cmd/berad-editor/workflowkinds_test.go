@@ -26,12 +26,12 @@ func TestASampleZoneLoop(t *testing.T) {
 		doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	loopScript := script(
-		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), click("palette:set-value"),
+		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), addNode("set-value"),
 		must("state:selected:set-value", 300), click("ui:pick-value"), wait(5), typed("rings"), wait(5),
 		must("declare:world.rings", 120), click("declare:world.rings"), wait(5), click("ui:picker-declare"),
 		must("state:value:value=world.rings", 300), wait(5),
 		click("ui:operand-to"), keys("Cmd+A"), typed("1"), keys("Enter"), must("state:operand:to=1", 300), wait(10),
-		click("palette:wait"), must("state:selected:wait", 300), wait(10), keys("Escape"),
+		addNode("wait"), must("state:selected:wait", 300), wait(10), keys("Escape"),
 		must("state:strip=Zone loop · Runs in any zone · Loop of Sample zone", 1800), wait(10), shoot(loopShot),
 		wait(1200), quit(),
 	)

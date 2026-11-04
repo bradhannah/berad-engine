@@ -62,7 +62,7 @@ func withNode(t *testing.T, kind string) *fixture {
 	t.Helper()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + kind)
+	f.add("" + kind)
 	if !f.has("selected:" + kind) {
 		t.Fatalf("a new %s is selected", kind)
 	}
