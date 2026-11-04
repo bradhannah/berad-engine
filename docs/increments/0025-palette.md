@@ -1,6 +1,6 @@
 # Increment 25: Finding and placing nodes
 
-**Status:** Planned
+**Status:** Built
 
 The twenty-fifth increment makes the Workflow window's palette say what
 each node does before it is placed. Today a click on a palette entry adds
@@ -82,15 +82,68 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Help for every node | Each kind's one line and help page text: what it does, its outputs, its settings, an example; a check that every kind offered has them | A view test finds help for every kind of both kinds of workflow | Planned |
-| 2. The search | The search at the palette's top, its results with group, one line and marked words, Esc, Up, Down and Enter | View tests find nodes by name, by description and by a setting, and clear the search | Planned |
-| 3. Help and hover | A click showing the help page in the inspector, back to the selected node, Add after splicing like a drop; the tooltip on hover | View tests show a help page, go back, add after a node already leading somewhere, and read a tooltip | Planned |
-| 4. Placing by dragging | Clicks never place; dragging shows the node's outputs and lights the line under it; dropping on a line or on the canvas | View tests click without placing, drag onto a line and onto the canvas | Planned |
-| 5. Checks | `make check` and the real-window suite; a real-window test searches for "value", reads Check value's help, adds it after a node with Add after and drags a Wait onto a line | The checks pass with no lint findings | Planned |
+| 1. Help for every node | Each kind's one line and help page text: what it does, its outputs, its settings, an example; a check that every kind offered has them | A view test finds help for every kind of both kinds of workflow | Built |
+| 2. The search | The search at the palette's top, its results with group, one line and marked words, Esc, Up, Down and Enter | View tests find nodes by name, by description and by a setting, and clear the search | Built |
+| 3. Help and hover | A click showing the help page in the inspector, back to the selected node, Add after splicing like a drop; the tooltip on hover | View tests show a help page, go back, add after a node already leading somewhere, and read a tooltip | Built |
+| 4. Placing by dragging | Clicks never place; dragging shows the node's outputs and lights the line under it; dropping on a line or on the canvas | View tests click without placing, drag onto a line and onto the canvas | Built |
+| 5. Checks | `make check` and the real-window suite; a real-window test searches for "value", reads Check value's help, adds it after a node with Add after and drags a Wait onto a line | The checks pass with no lint findings | Built |
 
 ## Step results
 
-None yet.
+- **Help for every node:** each kind has its one line, which the inspector
+  already showed under a selected node, and now a help page: what it does,
+  whether it takes time, its outputs and when each is taken, its settings
+  and an example. They are kept with the editor, beside each kind's label.
+  Verified: a view test finds the one line and a help page, with what it
+  does, how long it takes and an example, for every kind both kinds of
+  workflow offer, so a kind can't be offered without them.
+- **The search:** Find a node, at the palette's top, matches each node's
+  name, group, one line, help and settings; while searching, the groups
+  give way to one list of results, those matching by name first, each with
+  its group and its one line, the words searched for marked, and how many
+  match above them. Up and Down mark a result, Enter shows its help and
+  Escape clears the search. The palette's entries are a little smaller,
+  and scroll with the wheel when they don't fit. Verified: view tests find
+  Play sound by its name, Go to by what it does and Wait by a setting, mark
+  and open Check value's help with Down and Enter, and clear the search.
+- **Help and hover:** a click on an entry shows its help page in the
+  inspector, headed About a node, with a link back to the selected node,
+  which stays selected; the entry is marked while its help shows. A click
+  on the canvas, the back link or Escape closes it. Add after puts the node
+  after the selected node, as Add after Start says; inside a selected
+  container, or in the middle of the canvas with nothing selected, as a
+  click used to. Resting on an entry for half a second shows its one line
+  in a tooltip beside it, ending Click for more · drag to place. Verified:
+  view tests show a help page without placing anything, go back, add after
+  the start, put a Move between the start and a Wait with Add after, and
+  read and lose a tooltip.
+- **Placing by dragging:** a click on the palette never places a node.
+  Dragging shows the node with its outputs; over a line it can go into, the
+  line lights and says Drop to put it between Wait and Go to, and dropped
+  there the line ends at the new node and its first output goes on to the
+  old target, in one undo step, the status saying so. Dropped on empty
+  canvas, it is placed free. Verified: a view test drops a Wait on the line
+  from the start to a Move and another on the canvas.
+- **Checks:** `make check` passes with no lint findings. A real-window test
+  is new: it searches a new workflow's palette for "value", reads Check
+  value's help, adds it after the start with Add after, rests on Wait for
+  its tooltip, clears the search, and drags a Wait onto the line from the
+  start, which puts it between the start and Check value. Every test that
+  added nodes by clicking the palette now clicks and then Add after. The
+  whole real-window suite, 54 tests, passed.
+
+## Changed while building, short of the wireframes
+
+- **Dropping onto a line was built here.** It was agreed on 2026-11-01 but
+  never built, having been tried in [increment 3](0003-npc-workflows.md)
+  and taken out as too eager; it now puts a node into a line only when a
+  dragged node is over the line, which lights to say so.
+- **Add after uses the selected node's first free output, as a click did,**
+  and puts the node into the line of its first output only when none is
+  free, as after a start that already leads somewhere. A Random choice or a
+  Check value with a free output is joined from it, not cut into.
+- **A result's one line is cut to two lines** in the palette; the tooltip
+  and the help page give it whole.
 
 ## Not in this increment
 
