@@ -1,6 +1,6 @@
 # Increment 28: Signals
 
-**Status:** Planned
+**Status:** Built
 
 The twenty-eighth increment lets workflows tell each other that something
 has happened, at once. Today one NPC can learn about another only by
@@ -126,16 +126,110 @@ Chosen while planning, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Signals in the project | Signals declared in the world state by identity, its next version; SIGNALS in the World state window, adding, renaming and deleting, asking first when used; their uses | Engine tests save, read and upgrade signals; view tests add, rename and delete one in use | Planned |
-| 2. The nodes | On signal, Resume and Send signal, saved and read; where Resume may go; one receiver for each signal; their one lines and help | Workflow tests save and read each node, flag a Resume outside a receiver and two receivers for one signal | Planned |
-| 3. Running signals | Signals landing on the next tick in order; the safe moments; keeping where the NPC was; Resume and taking over; holding signals during a receiver; inside a module; zone loops; the preview and the game passing signals between runners | Runner tests interrupt a Wait and a Go to, resume each, take over, hold a second signal, unwind a call, and repeat a run exactly | Planned |
-| 4. On the canvas | Receiver and Resume faces; Send signal's inspector with who would hear it; the signals answered on the tab and in an NPC's details; broken signal calls as problems and unheard receivers as warnings, amber, listed apart in the Problems window | View tests send to an NPC that answers, flag a broken call and an unheard receiver, and read the warnings apart | Planned |
-| 5. Watching signals | Handling, what it will resume and what is held in Watch; signals heard in the log | View tests read a signal being handled and one held | Planned |
-| 6. Checks | `make check` and the real-window suite; a real-window test gives the clerk's day a receiver that says a line and resumes, has the customer's behaviour signal the clerk, previews the sample, and reads the interruption and the line in Watch; deleting the receiver flags the Send | The checks pass with no lint findings | Planned |
+| 1. Signals in the project | Signals declared in the world state by identity, its next version; SIGNALS in the World state window, adding, renaming and deleting, asking first when used; their uses | Engine tests save, read and upgrade signals; view tests add, rename and delete one in use | Built |
+| 2. The nodes | On signal, Resume and Send signal, saved and read; where Resume may go; one receiver for each signal; their one lines and help | Workflow tests save and read each node, flag a Resume outside a receiver and two receivers for one signal | Built |
+| 3. Running signals | Signals landing on the next tick in order; the safe moments; keeping where the NPC was; Resume and taking over; holding signals during a receiver; inside a module; zone loops; the preview and the game passing signals between runners | Runner tests interrupt a Wait and a Go to, resume each, take over, hold a second signal, unwind a call, and repeat a run exactly | Built |
+| 4. On the canvas | Receiver and Resume faces; Send signal's inspector with who would hear it; the signals answered on the tab and in an NPC's details; broken signal calls as problems and unheard receivers as warnings, amber, listed apart in the Problems window | View tests send to an NPC that answers, flag a broken call and an unheard receiver, and read the warnings apart | Built |
+| 5. Watching signals | Handling, what it will resume and what is held in Watch; signals heard in the log | View tests read a signal being handled and one held | Built |
+| 6. Checks | `make check` and the real-window suite; a real-window test gives the clerk's day a receiver that says a line and resumes, has the customer's behaviour signal the clerk, previews the sample, and reads the interruption and the line in Watch; deleting the receiver flags the Send | The checks pass with no lint findings | Built |
 
 ## Step results
 
-None yet.
+- **Signals in the project:** the world state declares signals by
+  identity, each a name fit for a path and a line about it; world states
+  are now version 3, an older one declaring none. The World state window
+  lists them under SIGNALS, each with how many workflows send and answer
+  it; Add signal adds one ready to name, and a selected signal's name and
+  line are changed in the inspector, which lists the workflows that send
+  and answer it. Deleting one in use asks first, naming each workflow and
+  node; every change is one undo step. Verified: engine tests save, read,
+  find and upgrade signals and refuse two of one name; a plugin test adds,
+  renames and refuses; a view test adds, renames and deletes one in use
+  after asking, and an unused one at once.
+- **The nodes:** On signal, Resume and Send signal are in a palette group
+  of their own, Signals, with their one lines and help. On signal is a
+  start: no line leads into it and it sits at the top level; it keeps who
+  sent the signal in a local NPC value if asked. Send signal sends to one
+  NPC by name, the NPC a local holds, everyone in this zone or everyone. A
+  workflow's receivers are found by signal, the first of two answering it.
+  Verified: a workflow test saves and reads each node, finds the receivers
+  and a receiver's path, and refuses a line into a receiver, a receiver in
+  a container and a signal that is not an identity.
+- **Running signals:** signals sent on a tick land on the next, in the
+  order sent; a runner never hears its own. A signal lands only at a safe
+  moment, standing on a cell between ticks, never inside a run of nodes
+  that take no time; the NPC keeps where it was, its node, its work, its
+  lanes and its calls, and runs the receiver's path in its behaviour.
+  Resume goes back: a Wait with the time it had left, a Move with its
+  tiles left, a Go to by a new way from where it stands, a sound or a
+  shake as if it had kept playing, a Together's lanes where they were. A
+  path into the flow from the start takes over, the interruption
+  forgotten. While one is handled, signals heard wait, one of each, and
+  land once it has resumed or been taken over; one nothing answers is
+  gone. Lines the NPC had yet to say are dropped. Hearing a signal is
+  written to the log, as Heard bell_rung from Customer. The preview and
+  the game pass signals between their NPCs and the zone's loop. Verified:
+  runner tests interrupt a Wait and resume it with its time kept, take
+  over, hold a second signal and drop an unanswered one, interrupt a walk
+  at a cell and find the way again, land inside a module and resume back
+  into it, and repeat a run exactly.
+- **On the canvas:** a receiver is drawn as a start, naming its signal;
+  Send signal names its signal and whom it goes to; Resume says back where
+  it was. Their inspectors choose the signal from those declared and the
+  NPC from the project's, Send signal showing only the setting its Send to
+  needs. Flagged: no signal or one not declared, two receivers for one
+  signal, a Resume off any receiver's path, no NPC or local chosen, and a
+  broken signal call, a Send nothing it goes to answers. A receiver
+  nothing sends to is warned of in amber, beside problems' red.
+  Auto-arrange puts each receiver's path in a row of its own under the
+  flow. Verified: view tests flag a Send to Ada until her behaviour
+  answers it, warn of a receiver nothing sends to, flag a lone Resume, and
+  arrange a receiver's path under the flow.
+- **Watching signals:** the preview's state carries the signal an NPC is
+  handling, from whom, what it will resume and the signals waiting; Watch
+  writes them on its NOW line, as Handling bell_rung from Customer, then
+  Wait 7 min of 10 min, and the log has each signal heard. Verified: a
+  Watch test reads a signal being handled, what it resumes and one held.
+- **Checks:** `make check` passes with no lint findings. The sample
+  declares bell_rung and out_of_stock: the customer rings the bell for the
+  clerk once each time it reaches the counter, looking again for the clerk
+  every second rather than starting over, and the clerk says Just a
+  moment! and, once it is said, resumes;
+  Fetch stock tells everyone in the zone when the shelf is empty, and the
+  customer says Oh, no stock! and resumes. A real-window test is new: it
+  previews the sample, watches the clerk handle bell_rung from the
+  customer and reads both lines in Watch's log, then deletes the clerk's
+  receiver, which flags the customer's Send as a broken signal call. The
+  whole real-window suite, 57 tests, passed.
+
+## Changed while building, short of the wireframes
+
+- **No Problems window yet:** warnings show in amber on the node and in
+  its inspector, as problems do in red; listing them apart waits for a
+  Problems window, which the editor has none of, as increments 21 and 22
+  found.
+- **A broken signal call to everyone, to everyone in this zone, or to the
+  NPC a local holds** is flagged only when no workflow answers the signal
+  at all; narrowing it to the behaviours followed in the zone where the
+  workflow runs is left for later. One to a named NPC checks that NPC's
+  behaviour.
+- **Who sends and who answers** is listed for each signal in the World
+  state window, not yet on a workflow's tab, in an NPC's details, or in
+  Send signal's and On signal's inspectors.
+- **Watch shows a signal on its NOW line,** what it will resume and any
+  signal held following it, rather than in rows of their own.
+- **A runner never hears a signal it sent,** even to everyone.
+- **A signal sent over and over keeps its receiver busy:** one held while
+  the last is handled lands as soon as the NPC resumes. The sample's
+  customer first rang the bell every second it waited, which kept the
+  clerk saying Just a moment! and never fetching stock; it now rings once
+  a visit. As the clerk now stops for the bell, the real-window test of
+  the shop waits up to 45 seconds, not 15, for the first customer served.
+- **Locating for tests:** a receiver is located as any node,
+  "node:on-signal:<n>", and the warnings as "warning:<kind>:<n>" and
+  "warnings:<count>"; a signal in the World state window is
+  "signal:<name>", and the states "signals=<count>", "handling=<signal>",
+  "resumes=<what>" and "held=<signal>".
 
 ## Not in this increment
 
