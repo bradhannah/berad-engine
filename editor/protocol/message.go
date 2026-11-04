@@ -369,6 +369,13 @@ type PreviewEntity struct {
 	SayingLeft float64 `json:"sayingLeft,omitempty"`
 	// Lanes are the lanes of the Together an NPC is on, in lane order.
 	Lanes []PreviewLane `json:"lanes,omitempty"`
+	// Handling is the signal an NPC is handling, by name, HandlingFrom who
+	// sent it, Resumes what it goes back to when it resumes, and Held the
+	// signals waiting to land, by name.
+	Handling     string   `json:"handling,omitempty"`
+	HandlingFrom string   `json:"handlingFrom,omitempty"`
+	Resumes      string   `json:"resumes,omitempty"`
+	Held         []string `json:"held,omitempty"`
 }
 
 // PreviewLane is one lane of the Together an NPC is on: its output, its

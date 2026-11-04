@@ -44,7 +44,7 @@ func durationButtons(name string) ([]*ui.Button, []*ui.Button) {
 // the chosen buttons, the wait's amount and the options' names and shares.
 func setSavedChoices(made *control, node flow.Node) {
 	switch made.param.Type {
-	case flow.TypeChoice:
+	case flow.TypeChoice, flow.TypeSignal, flow.TypeNPC:
 		chosen, err := node.Choice(made.param.Name)
 		if err == nil {
 			markValues(made.choices, made.values, chosen)
@@ -126,7 +126,7 @@ func (s *State) layoutButtonRows(buttons []*ui.Button, left, width, top int) int
 func (s *State) layoutChoices(made *control, left, width, top int) int {
 	row := func(buttons []*ui.Button) { top = s.layoutButtonRows(buttons, left, width, top) }
 	switch made.param.Type {
-	case flow.TypeChoice:
+	case flow.TypeChoice, flow.TypeSignal, flow.TypeNPC:
 		row(made.choices)
 		if made.note {
 			top += ui.LineHeight

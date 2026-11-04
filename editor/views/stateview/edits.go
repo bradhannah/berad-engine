@@ -83,7 +83,7 @@ func (s *State) addTarget(docs frame.Docs) (target, bool) {
 		own, ok := valuetree.Owned(docs, selected.ownerID)
 
 		return target{list: own, scope: selected.scope, parent: ids.ULID{}}, ok
-	case itemTemplates:
+	case itemTemplates, itemSignal:
 	}
 
 	return target{list: world, scope: selected.scope, parent: ids.ULID{}}, false
@@ -113,6 +113,8 @@ func (s *State) updateAdds(input *ui.Input, ctx *frame.Context) {
 	case s.adds[2].Update(input):
 		world, _ := valuetree.World(ctx.Docs)
 		s.declare(ctx, target{list: world, scope: scope, parent: ids.ULID{}}, "template", worldstate.TypeTemplate)
+	case s.adds[3].Update(input):
+		s.addSignal(ctx)
 	}
 }
 
@@ -262,8 +264,15 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	if choice == "" {
 		return
 	}
-	going, moving := s.deleting, s.moving
-	s.dialog, s.deleting, s.moving = nil, nil, nil
+	going, moving, signal := s.deleting, s.moving, s.signal.deleting
+	s.dialog, s.deleting, s.moving, s.signal.deleting = nil, nil, nil, ids.ULID{}
+	if choice == deleteID && !signal.IsZero() {
+		if meaning, found := s.selected(); found && meaning.ownerID == signal {
+			s.deleteSignal(ctx, signal, meaning.path)
+		}
+
+		return
+	}
 	if choice == moveID && moving != nil {
 		s.change(ctx, moving.list, moving.change, moving.success)
 

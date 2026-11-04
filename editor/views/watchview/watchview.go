@@ -390,7 +390,7 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 		if entity.Status != "" {
 			now = entity.Status
 		}
-		now += lanesLine(entity.Lanes)
+		now = handlingLine(entity) + now + lanesLine(entity.Lanes) + heldLine(entity)
 		if way := s.wayLine(docs, entity); way != "" {
 			now += " · " + way
 		}
@@ -591,10 +591,12 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasLogState(state); handled {
 		return found, true
 	}
+	entity, watching := s.watched()
 	if strings.HasPrefix(state, "lane:") || strings.HasPrefix(state, "lane-done:") {
-		entity, watching := s.watched()
-
 		return watching && hasLaneState(entity, state), true
+	}
+	if found, handled := hasSignalState(entity, state); handled {
+		return watching && found, true
 	}
 
 	return false, false
@@ -609,4 +611,47 @@ func lanesLine(lanes []protocol.PreviewLane) string {
 	}
 
 	return line.String()
+}
+
+// handlingLine says which signal the NPC is handling and from whom, and what
+// it will resume, before what it is doing: "Handling bread_called from
+// Baker, then Wait 7 min of 10 min · ".
+func handlingLine(entity protocol.PreviewEntity) string {
+	if entity.Handling == "" {
+		return ""
+	}
+	line := "Handling " + entity.Handling
+	if entity.HandlingFrom != "" {
+		line += " from " + entity.HandlingFrom
+	}
+	if entity.Resumes != "" {
+		line += ", then " + entity.Resumes
+	}
+
+	return line + " · "
+}
+
+// heldLine names the signals waiting to land.
+func heldLine(entity protocol.PreviewEntity) string {
+	if len(entity.Held) == 0 {
+		return ""
+	}
+
+	return " · waiting: " + strings.Join(entity.Held, ", ")
+}
+
+// hasSignalState answers "handling=<signal>", "resumes=<what>" and
+// "held=<signal>" for the watched NPC, and whether the state is one of them.
+func hasSignalState(entity protocol.PreviewEntity, state string) (bool, bool) {
+	if signal, asked := strings.CutPrefix(state, "handling="); asked {
+		return entity.Handling == signal, true
+	}
+	if what, asked := strings.CutPrefix(state, "resumes="); asked {
+		return entity.Resumes == what, true
+	}
+	if signal, asked := strings.CutPrefix(state, "held="); asked {
+		return slices.Contains(entity.Held, signal), true
+	}
+
+	return false, false
 }

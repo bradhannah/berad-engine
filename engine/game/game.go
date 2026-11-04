@@ -46,6 +46,8 @@ type Project struct {
 	// Names names documents and places for values' text forms; nil leaves
 	// them as IDs.
 	Names npcrun.Names
+	// Signals are the signals the project declares.
+	Signals []worldstate.Signal
 }
 
 // Game is a project being played: the player at the start, the NPCs on
@@ -74,6 +76,10 @@ type Game struct {
 	stage *show.Stage
 	// cueTicks says how long each cue plays, for a Play sound that waits.
 	cueTicks func(cue string) int
+	// signals are the project's signals, and sent those sent on the latest
+	// tick, which land on the next.
+	signals []worldstate.Signal
+	sent    []npcrun.Sent
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -134,6 +140,7 @@ func New(project Project) (*Game, error) {
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
 		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(), cueTicks: nil,
+		signals: project.Signals, sent: nil,
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -203,22 +210,26 @@ func (g *Game) Step(input play.Input) Step {
 		})
 	}
 	var cues []npcrun.Sound
+	npcrun.Deliver(g.sent, g.runners(), g.settings.Start.Zone)
+	g.sent = g.sent[:0]
 	for _, character := range g.npcs {
 		world := npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
 			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
-			Others: others, Stage: g.stage, CueTicks: g.cueTicks,
+			Others: others, Stage: g.stage, CueTicks: g.cueTicks, Signals: g.signals,
 		}
 		character.Step(world, g.run.Tick())
 		cues = heard(cues, character.Sounds)
+		g.sent = append(g.sent, character.Sent...)
 	}
 	if g.loop != nil {
 		g.loop.Step(npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
 			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others, Stage: g.stage,
-			CueTicks: g.cueTicks,
+			CueTicks: g.cueTicks, Signals: g.signals,
 		}, g.run.Tick())
 		cues = heard(cues, g.loop.Sounds)
+		g.sent = append(g.sent, g.loop.Sent...)
 	}
 
 	return Step{Outcome: outcome, Cues: cues}
@@ -227,6 +238,15 @@ func (g *Game) Step(input play.Input) Step {
 // KnowCues tells the game how many ticks each cue plays for, from its
 // audio library, so a Play sound can wait until its sound has played.
 func (g *Game) KnowCues(cueTicks func(cue string) int) { g.cueTicks = cueTicks }
+
+// runners are the NPCs, then the zone's loop when it has one.
+func (g *Game) runners() []*npcrun.NPC {
+	if g.loop == nil {
+		return g.npcs
+	}
+
+	return append(slices.Clip(g.npcs), g.loop)
+}
 
 // heard adds the cues asked for to those heard this tick, each once.
 func heard(cues, asked []npcrun.Sound) []npcrun.Sound {

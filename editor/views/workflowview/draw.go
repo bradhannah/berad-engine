@@ -249,9 +249,8 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 	}
 	ui.Box(area, rect, face)
 	switch drawn.node.Kind {
-	case flow.KindStart:
-		s.theme.DrawLabel(area, flow.GroupFlow, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
-		s.theme.DrawStrong(area, "Start", rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
+	case flow.KindStart, flow.KindOnSignal:
+		s.drawReceiver(area, drawn, docs)
 	case flow.KindTimeSwitch, flow.KindRandom:
 		if drawn.node.Kind == flow.KindTimeSwitch {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+(switchHead-ui.TextSize)/ui.Half-1,
@@ -287,6 +286,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}
 	s.drawMark(area, drawn)
+	s.drawWarningMark(area, drawn)
 }
 
 // drawNoteNode draws a Note: a dashed box holding its text.
@@ -440,7 +440,7 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 	case flow.KindCall:
 		return s.callTitle(node, docs)
 	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog, flow.KindSay, flow.KindShowMessage,
-		flow.KindShake:
+		flow.KindShake, flow.KindSendSignal, flow.KindResume:
 		return s.valueSummary(node, docs)
 	default:
 		return ""
@@ -592,6 +592,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		for index, line := range lines {
 			s.theme.DrawText(screen, line, left, above+index*ui.LineHeight, ui.ColorWarn())
 		}
+	} else {
+		s.drawWarning(screen, node.ID, left, bottom-len(hint)*ui.LineHeight-ui.Gap, panel.Dx()-ui.Half*ui.Inset)
 	}
 }
 
@@ -608,6 +610,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 		return found, true
 	}
 	if found, handled := s.hasLaneState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasWarningState(state); handled {
 		return found, true
 	}
 	if state == "legend" {
@@ -729,7 +734,7 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		if unit := unitOf(made.param.Type); unit != "" {
 			s.drawUnit(screen, made.field, unit)
 		}
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeSignal, flow.TypeNPC:
 		s.drawChoices(screen, made, node)
 	case flow.TypeLanes:
 		s.drawLanes(screen, made)
@@ -831,7 +836,7 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
 		flow.TypeCue, flow.TypeValue, flow.TypeOperand,
 		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage,
-		flow.TypeLanes:
+		flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 	}
 }
 
@@ -848,6 +853,8 @@ func (s *State) noteLines(node flow.Node, width int) int {
 	lines := len(s.wrap(hintFor(node.Kind), width))
 	if problem, has := s.problems[node.ID]; has {
 		lines += len(s.wrap(problem, width))
+	} else if warning, warned := s.warnings[node.ID]; warned {
+		lines += len(s.wrap(warning, width))
 	}
 
 	return lines
@@ -862,6 +869,12 @@ func hintFor(kind string) string {
 			"shows what that works out to.",
 		flow.KindContainer: "Repeats what is inside while its time lasts, then leaves by its exit, even partway " +
 			"through a step.",
+		flow.KindOnSignal: "Runs when its signal is heard, at the NPC's next safe moment, interrupting what it was " +
+			"doing. End its path with Resume to go back, or lead into the flow to take over.",
+		flow.KindResume: "Goes back to where the signal interrupted the NPC: a Wait with the time it had left, a Go " +
+			"to by a new way from here.",
+		flow.KindSendSignal: "Sends a signal at once, to one NPC, to everyone in this zone or to everyone; it lands " +
+			"on the next tick. Takes no time.",
 		flow.KindTogether: "Starts every lane at once and goes on by all done when every lane is done. Lanes run in " +
 			"their order each tick; only one can move the NPC.",
 		flow.KindGoTo: "Walks to the anchor picked on a map, or to the place a place value holds as it starts.",

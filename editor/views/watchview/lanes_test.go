@@ -97,3 +97,26 @@ func TestWatchListsLanes(t *testing.T) {
 		t.Fatalf("the step names its lane: %s %q", label, way)
 	}
 }
+
+// TestWatchShowsASignalBeingHandled reads the signal the clerk is handling,
+// from whom, what she will resume, and a signal held meanwhile.
+func TestWatchShowsASignalBeingHandled(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: ids.ULID{}}}, f.ctx)
+	clerk := protocol.PreviewEntity{
+		ID: placementID.String(), Floor: floorID, X: 4, Y: 2, Face: [2]int{0, 1}, NPC: clerkID, Workflow: routineID,
+		Node: waitID, Activity: "Wait 1 min of 1 min (game time)", Changes: 3,
+		Handling: "bread_called", HandlingFrom: "Baker", Resumes: "Wait 7 min 59 s of 10 min (game time)",
+		Held: []string{"flour_low"},
+	}
+	state := protocol.PreviewState{
+		Run: runID, Tick: 9, Entities: []protocol.PreviewEntity{clerk}, Clock: 9 * 3600, Rate: 60, Watched: placementID,
+	}
+	f.state.Changed(client.Update{PreviewState: &state}, f.ctx)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("handling=bread_called") || !f.has("resumes=Wait 7 min 59 s of 10 min (game time)") ||
+		!f.has("held=flour_low") || f.has("held=bread_called") {
+		t.Fatal("the clerk handles bread_called, will resume her Wait, and holds flour_low")
+	}
+}

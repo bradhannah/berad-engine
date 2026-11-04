@@ -83,6 +83,10 @@ type previewRun struct {
 	written uint64
 	// stage is the message boxes and the shake the workflows share.
 	stage *show.Stage
+	// signals are the signals sent on the latest tick, which land on the
+	// next, and named the signals the project declares, to name them.
+	signals []npcrun.Sent
+	named   []worldstate.Signal
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -180,7 +184,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
 			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0,
-			stage: show.NewStage(),
+			stage: show.NewStage(), signals: nil, named: nil,
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)
@@ -321,7 +325,14 @@ func sameEntity(sent, now protocol.PreviewEntity) bool {
 	return slices.Equal(sent.Calls, now.Calls) && sent.ID == now.ID && sent.Floor == now.Floor && sent.X == now.X &&
 		sent.Y == now.Y && sent.Face == now.Face && sent.NPC == now.NPC && sent.Workflow == now.Workflow &&
 		sent.Node == now.Node && sent.Activity == now.Activity && sent.Status == now.Status && sent.Last == now.Last &&
-		sent.Changes == now.Changes && sent.Saying == now.Saying && slices.Equal(sent.Lanes, now.Lanes)
+		sameDoing(sent, now)
+}
+
+// sameDoing reports whether what an entity is doing, beside its node, is as
+// it was sent: its changes, its line, its lanes and its signals.
+func sameDoing(sent, now protocol.PreviewEntity) bool {
+	return sent.Changes == now.Changes && sent.Saying == now.Saying && slices.Equal(sent.Lanes, now.Lanes) &&
+		sent.Handling == now.Handling && sent.Resumes == now.Resumes && slices.Equal(sent.Held, now.Held)
 }
 
 // sendState sends the preview's state, the player, the NPCs and the clock,
@@ -347,6 +358,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
 		Last:    protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: ""},
 		Changes: 0, Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{}, Saying: "", SayingLeft: 0, Lanes: nil,
+		Handling: "", HandlingFrom: "", Resumes: "", Held: nil,
 	}
 }
 

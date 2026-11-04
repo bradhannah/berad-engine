@@ -96,7 +96,7 @@ func (s shape) entryOf(from ids.ULID, output string) (image.Point, bool) {
 
 // takesEntries reports whether links can come into a kind of node.
 func takesEntries(kind string) bool {
-	return kind != flow.KindStart && kind != flow.KindNote
+	return !flow.IsStart(kind) && kind != flow.KindNote
 }
 
 // incomingLinks lists, for each node, the links that come into it.
@@ -189,8 +189,12 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, 
 	}
 	entries := entriesHeight(incoming)
 	switch node.Kind {
-	case flow.KindStart:
-		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(startWidth, nodeHeight))}
+	case flow.KindStart, flow.KindOnSignal:
+		width := startWidth
+		if node.Kind == flow.KindOnSignal {
+			width = nodeWidth
+		}
+		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, nodeHeight))}
 		made.ports = rightPorts(made.rect, outputs)
 	case flow.KindContainer:
 		made = containerShape(made, box, outputs, entries)

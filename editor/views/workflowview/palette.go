@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -251,7 +252,7 @@ func (s *State) drop(ctx *frame.Context, kind string, point image.Point) {
 // in the flow and has an output to carry it on.
 func splices(kind string) bool {
 	node, err := flow.NewNode(kind)
-	if err != nil || !flow.Runs(kind) || kind == flow.KindContainer || kind == flow.KindStart {
+	if err != nil || !flow.Runs(kind) || kind == flow.KindContainer || flow.IsStart(kind) {
 		return false
 	}
 
@@ -491,15 +492,26 @@ func (s *State) drawTooltip(screen *ebiten.Image) {
 }
 
 // locatePalette finds an entry, "palette:<kind>", or a result while
-// searching, "result:<kind>".
+// searching, "result:<kind>", scrolling the palette to show it as a person
+// would.
 func (s *State) locatePalette(kind string) (image.Point, bool) {
-	for _, entry := range s.palette {
-		if entry.kind.Name == kind && s.shownEntry(entry) {
-			return ui.Center(entry.rect), true
-		}
+	index := slices.IndexFunc(s.palette, func(entry paletteEntry) bool { return entry.kind.Name == kind })
+	if index < 0 || s.palette[index].rect.Empty() {
+		return image.Pt(0, 0), false
+	}
+	area, rect := s.paletteArea(), s.palette[index].rect
+	switch {
+	case rect.Max.Y > area.Max.Y:
+		s.pal.scroll += rect.Max.Y - area.Max.Y + paletteGap
+	case rect.Min.Y < area.Min.Y:
+		s.pal.scroll -= area.Min.Y - rect.Min.Y + paletteGap
+	}
+	s.layoutPalette()
+	if !s.shownEntry(s.palette[index]) {
+		return image.Pt(0, 0), false
 	}
 
-	return image.Pt(0, 0), false
+	return ui.Center(s.palette[index].rect), true
 }
 
 // hasPaletteState answers "results=<count>", how many entries a search

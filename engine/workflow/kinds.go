@@ -237,6 +237,7 @@ func Kinds() []Kind {
 	}...)
 	kinds = append(kinds, valueKinds(next)...)
 	kinds = append(kinds, showKinds(next)...)
+	kinds = append(kinds, signalKinds(next)...)
 
 	return append(kinds, Kind{
 		Name: KindNote, Label: "Note", Group: GroupAnnotate,
@@ -467,8 +468,8 @@ func checkValue(param Param, value json.RawMessage) error {
 		return checkSpan(value)
 	case TypeTimeRanges:
 		return checkRanges(value)
-	case TypeText, TypeCue:
-		return checkText(value, textLimit(param.Type))
+	case TypeText, TypeCue, TypeSignal, TypeNPC:
+		return checkWritten(param.Type, value)
 	case TypeValue, TypeOperand, TypeMessage:
 		return checkValues(param.Type, value)
 	case TypeWorkflow, TypeInputs, TypeKeeps, TypeWays, TypePort:

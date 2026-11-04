@@ -45,6 +45,7 @@ func helpPages() map[string]kindHelp {
 	maps.Copy(pages, actionHelp())
 	maps.Copy(pages, valueHelp())
 	maps.Copy(pages, showHelp())
+	maps.Copy(pages, signalHelp())
 
 	return pages
 }
@@ -304,4 +305,36 @@ func matchesSearch(kind flow.Kind, query string) (bool, bool) {
 	byName := strings.Contains(strings.ToLower(kind.Label), query)
 
 	return byName || strings.Contains(searchText(kind), query), byName
+}
+
+// signalHelp is the help of the Signals group's nodes.
+func signalHelp() map[string]kindHelp {
+	return map[string]kindHelp{
+		flow.KindOnSignal: {
+			about: "Another start, which runs when its signal is heard: at the NPC's next safe moment, between " +
+				"steps or at its next cell, never partway through steps that take no time. Its path ends in " +
+				"Resume, back where the NPC was, or leads into the flow, which takes over from there.",
+			time: helpInstant, outputs: []helpRow{{"next", "its signal was heard"}},
+			settings: []helpRow{
+				{"Signal", "the signal it answers"}, {"Keep who sent it in", "a local NPC value, to answer them"},
+			},
+			example: "On signal · bread_called → Say · Coming! → Resume",
+		},
+		flow.KindResume: {
+			about: "Goes back to where the signal interrupted the NPC: a Wait with the time it had left, a Move " +
+				"with its tiles left, a Go to by a new way from where the NPC stands, a Together's lanes where " +
+				"they were.",
+			time: helpInstant, outputs: nil, settings: nil,
+			example: "On signal · door_knock → Go to · Door → Resume",
+		},
+		flow.KindSendSignal: {
+			about: "Sends a signal, to one NPC, the NPC a local value holds, everyone in this zone or everyone. It " +
+				"lands on the next tick, and whoever answers it is interrupted at their next safe moment.",
+			time: helpInstant, outputs: []helpRow{{"next", "the signal is sent"}},
+			settings: []helpRow{
+				{"Signal", "the signal to send"}, {"Send to", "one NPC, a local's NPC, this zone or everyone"},
+			},
+			example: "Send signal · bread_called → Guard",
+		},
+	}
 }

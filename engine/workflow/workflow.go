@@ -676,7 +676,7 @@ func checkPlace(node Node, nodes map[ids.ULID]Node) error {
 	if node.Parent.IsZero() {
 		return nil
 	}
-	if node.Kind == KindStart || IsContainer(node.Kind) || !IsContainer(nodes[node.Parent].Kind) {
+	if IsStart(node.Kind) || IsContainer(node.Kind) || !IsContainer(nodes[node.Parent].Kind) {
 		return fmt.Errorf("%w: %s cannot sit in %s", ErrNode, node.ID, node.Parent)
 	}
 
@@ -687,7 +687,7 @@ func checkLink(from Node, output string, target Node) error {
 	switch {
 	case target.Kind == "":
 		return fmt.Errorf("%w: %s links to a node that is not there", ErrNode, from.ID)
-	case !Runs(target.Kind) || target.Kind == KindStart || !Runs(from.Kind):
+	case !Runs(target.Kind) || IsStart(target.Kind) || !Runs(from.Kind):
 		return fmt.Errorf("%w: notes and the start node cannot be linked to", ErrNode)
 	case IsInner(from, output):
 		if target.Parent != from.ID {

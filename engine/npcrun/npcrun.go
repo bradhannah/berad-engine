@@ -87,6 +87,8 @@ type World struct {
 	// Stage is the boxes and the shake every workflow of the game shares;
 	// nil shows none.
 	Stage *show.Stage
+	// Signals are the signals the project declares, to name them in the log.
+	Signals []worldstate.Signal
 	// CueTicks says how many ticks a cue plays for, its longest recording,
 	// for a Play sound that waits until it has played; nil, or none for a
 	// cue, carries on at once. It comes from the audio library, never from
@@ -125,6 +127,9 @@ type NPC struct {
 	// Lines are what the latest Step's Logs wrote, oldest first, until the
 	// next Step.
 	Lines []Line
+	// Sent are the signals the latest Step's Send signals sent, in order,
+	// until the next Step; the host delivers them before the next tick.
+	Sent []Sent
 	// Status says what keeps the NPC from following its workflow now: it has
 	// none, or it is looping without waiting.
 	Status string
@@ -142,6 +147,10 @@ type NPC struct {
 	speech show.Speech
 	// lanes are the lanes of the Together it is on, nil until they start.
 	lanes []lane
+	// heard are the signals waiting to land, and handling the one being
+	// handled, nil for none.
+	heard    []Heard
+	handling *interrupt
 }
 
 // work is what the current node is doing: started once its node has set it
@@ -211,7 +220,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
 		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: ""},
 		Changes: 0, Taken: nil, Sounds: nil, Lines: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil,
-		module: ids.ULID{}, speech: show.Speech{}, lanes: nil,
+		module: ids.ULID{}, speech: show.Speech{}, lanes: nil, Sent: nil, heard: nil, handling: nil,
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
 		rng: rand.New(rand.NewPCG(seed, seed^seedMix)),
 	}
@@ -247,13 +256,13 @@ func (n *NPC) At() (float64, float64) {
 // local values clear.
 func (n *NPC) Restart() {
 	n.Node, n.Container, n.work, n.Status, n.locals = ids.ULID{}, ids.ULID{}, idle(), "", nil
-	n.calls, n.module, n.lanes = nil, ids.ULID{}, nil
+	n.calls, n.module, n.lanes, n.heard, n.handling = nil, ids.ULID{}, nil, nil, nil
 }
 
 // Step runs the NPC for one tick: it finishes or continues a step between
 // cells, leaves a container whose time is up, and follows its workflow.
 func (n *NPC) Step(world World, tick uint64) {
-	n.Taken, n.Sounds, n.Lines = n.Taken[:0], n.Sounds[:0], n.Lines[:0]
+	n.Taken, n.Sounds, n.Lines, n.Sent = n.Taken[:0], n.Sounds[:0], n.Lines[:0], n.Sent[:0]
 	n.speech.Tick()
 	if world.Workflow == nil {
 		n.Node, n.Container, n.Status = ids.ULID{}, ids.ULID{}, StatusNoBehaviour
@@ -274,6 +283,9 @@ func (n *NPC) Step(world World, tick uint64) {
 	n.timeUp(world, tick)
 	n.wait(world)
 	n.walk(world.Zone)
+	if !n.Moving() {
+		n.land(world, tick)
+	}
 	if n.Moving() && n.lanes == nil {
 		return
 	}
@@ -379,6 +391,8 @@ func (n *NPC) follow(world World, tick uint64) {
 			}
 		case node.Kind == flow.KindReturn:
 			n.actReturn(world, node, tick)
+		case node.Kind == flow.KindResume:
+			n.actResume(world, node, tick)
 		case node.Kind == flow.KindTogether:
 			if !n.together(here, node, tick) || n.Moving() {
 				return
@@ -392,7 +406,7 @@ func (n *NPC) follow(world World, tick uint64) {
 			n.take(world, output, tick)
 		}
 	}
-	n.Status, n.Sounds, n.Lines = StatusLooping, n.Sounds[:0], n.Lines[:0]
+	n.Status, n.Sounds, n.Lines, n.Sent = StatusLooping, n.Sounds[:0], n.Lines[:0], n.Sent[:0]
 }
 
 // act does a node's work for this tick. It returns the output to leave by
@@ -419,6 +433,10 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 		return flow.OutputNext, true
 	case flow.KindLog:
 		n.actLog(world, node)
+
+		return flow.OutputNext, true
+	case flow.KindSendSignal:
+		n.actSend(world, node)
 
 		return flow.OutputNext, true
 	case flow.KindSay, flow.KindShowMessage, flow.KindShake:
@@ -625,11 +643,12 @@ func (n *NPC) restartOf(workflow *flow.Workflow, from flow.Node, output string) 
 }
 
 // enter moves the NPC onto a node, recording the change.
-func (n *NPC) enter(workflow *flow.Workflow, to ids.ULID, output string, tick uint64) {
-	n.Last = Change{From: n.Node, Output: output, To: to, Tick: tick, Status: n.work.skipped, Lane: ""}
+func (n *NPC) enter(workflow *flow.Workflow, target ids.ULID, output string, tick uint64) {
+	n.Last = Change{From: n.Node, Output: output, To: target, Tick: tick, Status: n.work.skipped, Lane: ""}
 	n.Taken = append(n.Taken, n.Last)
 	n.Changes++
-	n.Node, n.work, n.lanes = to, idle(), nil
-	node, _ := workflow.Node(to)
+	n.Node, n.work, n.lanes = target, idle(), nil
+	node, _ := workflow.Node(target)
 	n.Container = node.Parent
+	n.takenOver(target)
 }

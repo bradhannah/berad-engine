@@ -108,6 +108,9 @@ type State struct {
 	routes   map[routeKey][]image.Point
 	loops    map[routeKey]bool
 	problems map[ids.ULID]string
+	// warnings are what deserves a look on a node but is not wrong, such as
+	// a receiver nothing sends to.
+	warnings map[ids.ULID]string
 	// localProblems say why a place local's start is out of the reach of
 	// the NPCs that run the workflow, by the local's ID.
 	localProblems map[ids.ULID]string
@@ -229,7 +232,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
-		problems: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false,
+		problems: map[ids.ULID]string{}, warnings: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{},
+		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
@@ -459,6 +463,7 @@ func (s *State) ask(ctx *frame.Context) {
 	s.askRunners(ctx)
 	s.subscribeHomes(ctx)
 	s.listAudio(ctx)
+	s.subscribeSignals(ctx)
 }
 
 // Update handles one frame of input.
@@ -896,6 +901,8 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 		return ""
 	case targetNode.Kind == flow.KindStart:
 		return "Nothing links back to the start: a branch that ends goes back there by itself."
+	case targetNode.Kind == flow.KindOnSignal:
+		return "Nothing links into a receiver: it runs when its signal is heard."
 	case !flow.Runs(targetNode.Kind):
 		return "Notes are not part of the flow, so nothing can link to them."
 	case flow.IsInner(from, output):
@@ -922,9 +929,12 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 
 		return
 	}
-	if kind == flow.KindNote {
-		place := image.Pt(selected.rect.Min.X, selected.rect.Min.Y-noteMinHeight-rowGap)
-		s.add(ctx, kind, place, selected.node.Parent, nil)
+	if kind == flow.KindNote || flow.IsStart(kind) {
+		place, parent := image.Pt(selected.rect.Min.X, selected.rect.Min.Y-noteMinHeight-rowGap), selected.node.Parent
+		if flow.IsStart(kind) {
+			place, parent = s.clearOf(image.Pt(selected.rect.Min.X, selected.rect.Max.Y+rowGap), ids.ULID{}), ids.ULID{}
+		}
+		s.add(ctx, kind, place, parent, nil)
 
 		return
 	}

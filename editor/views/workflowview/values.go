@@ -1107,6 +1107,8 @@ func (s *State) valueSummary(node flow.Node, docs frame.Docs) string {
 		return s.logSummary(docs, node)
 	case node.Kind == flow.KindShake:
 		return shakeSummary(node)
+	case node.Kind == flow.KindSendSignal || node.Kind == flow.KindResume:
+		return s.signalSummary(node, docs)
 	}
 	path := func(param string) string {
 		ref, err := node.Ref(param)

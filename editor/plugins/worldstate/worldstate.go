@@ -369,7 +369,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: worldstate.Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{Change{Kind: ChangeEdit, On: worldstate.FormatName, List: worldValues}},
+		Edits:     []model.EditKind{Change{Kind: ChangeEdit, On: worldstate.FormatName, List: worldValues}, Signals{}},
 		Required: []model.RequiredDocument{{
 			ID: worldstate.ID(), Format: worldstate.FormatName, Name: worldstate.Name, Data: emptyState,
 			ReadOnly: false,

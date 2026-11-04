@@ -154,7 +154,9 @@ func (w *Workflow) reachLane(nodeID ids.ULID, port string, seen map[ids.ULID]boo
 func Moves(kind string) bool { return kind == KindMove || kind == KindGoTo }
 
 // InLane reports whether a kind of node can sit in a Together's lane: a
-// step in a line, not the start, a note, a Call, a Return or a container.
+// step in a line, not a start, a note, a Call, a Return, a Resume or a
+// container.
 func InLane(kind string) bool {
-	return Runs(kind) && kind != KindStart && kind != KindCall && kind != KindReturn && !IsContainer(kind)
+	return Runs(kind) && !IsStart(kind) && kind != KindCall && kind != KindReturn && kind != KindResume &&
+		!IsContainer(kind)
 }

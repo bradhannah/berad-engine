@@ -99,6 +99,9 @@ type town struct {
 	names     npcrun.Names
 	behaviour ids.ULID
 	stage     *show.Stage
+	// sent are the signals sent on the latest tick, delivered on the next.
+	sent    []npcrun.Sent
+	modules flow.Lookup
 }
 
 func newTown(t *testing.T, state *worldstate.Store) *town {
@@ -107,7 +110,7 @@ func newTown(t *testing.T, state *worldstate.Store) *town {
 	return &town{
 		npcs: nil, workflows: nil, state: state, zone: play.Levels{{ID: id(groundID), Floor: office(t)}},
 		clock: clock.New(eight, clock.MinutePerSecond), tick: 0, names: nil, behaviour: ids.ULID{},
-		stage: show.NewStage(),
+		stage: show.NewStage(), sent: nil, modules: nil,
 	}
 }
 
@@ -129,11 +132,14 @@ func (w *town) run(ticks int) {
 		for _, each := range w.npcs {
 			others = append(others, npcrun.Other{Placement: each.Placement, NPC: each.NPC, Floor: each.Floor, Cell: each.Cell})
 		}
+		npcrun.Deliver(w.sent, w.npcs, id(zoneID))
+		w.sent = w.sent[:0]
 		for index, each := range w.npcs {
 			each.Step(npcrun.World{
 				Names: w.names, Zone: w.zone, Workflow: w.workflows[index], Behaviour: w.behaviour, Clock: w.clock,
-				Passed: passed, State: w.state, Here: id(zoneID), Others: others, Stage: w.stage,
+				Passed: passed, State: w.state, Here: id(zoneID), Others: others, Stage: w.stage, Workflows: w.modules,
 			}, w.tick)
+			w.sent = append(w.sent, each.Sent...)
 		}
 	}
 }

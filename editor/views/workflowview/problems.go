@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/signals"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -46,7 +48,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		docs.View(valueDoc, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
 		parts = append(parts, valueDoc.String()+":"+revision)
 	}
-	for _, floorID := range s.destinationFloors() {
+	for _, floorID := range slices.Concat(s.destinationFloors(), signals.Documents(docs)) {
 		revision := "-"
 		docs.View(floorID, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
 		parts = append(parts, floorID.String()+":"+revision)
@@ -56,10 +58,13 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		return
 	}
 	s.problemKey = key
-	s.problems, s.localProblems = map[ids.ULID]string{}, s.localReach(docs)
+	s.problems, s.warnings, s.localProblems = map[ids.ULID]string{}, map[ids.ULID]string{}, s.localReach(docs)
 	for _, node := range s.workflow.Nodes() {
 		if problem := s.problemOf(node, docs); problem != "" {
 			s.problems[node.ID] = problem
+		}
+		if warning := s.signalWarning(node, docs); warning != "" {
+			s.warnings[node.ID] = warning
 		}
 	}
 }
@@ -104,6 +109,8 @@ func (s *State) kindProblem(node flow.Node, docs frame.Docs) string {
 		if problem := returnProblem(node); problem != "" {
 			return problem
 		}
+	case flow.KindOnSignal, flow.KindResume, flow.KindSendSignal:
+		return s.signalProblem(node, docs)
 	case flow.KindCall:
 		if problem := s.callProblem(node, docs); problem != "" {
 			return problem

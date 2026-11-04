@@ -187,6 +187,7 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
 	}
+	shape.WriteString(identityShape(docs, node))
 	switch node.Kind {
 	case flow.KindCall:
 		shape.WriteString("call=" + s.callShape(node) + ";")
@@ -360,6 +361,8 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 			newOptionRows(&made, built.rows, text)
 		case flow.TypeLanes:
 			newLaneRows(&made, built.rows, text)
+		case flow.TypeSignal, flow.TypeNPC:
+			newIdentityControl(docs, &made)
 		case flow.TypeText, flow.TypeMessage:
 			made.field, made.pick = text("param-"+param.Name, node.Kind == flow.KindNote), insertButton(param.Type)
 		case flow.TypeTimeRange:
@@ -392,7 +395,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 func (s *State) controlShown(made *control) bool {
 	node, _ := s.selectedNode()
 
-	return !made.hidden && (made.param.Type != flow.TypeSeconds || node.UsesSeconds())
+	return !made.hidden && (made.param.Type != flow.TypeSeconds || node.UsesSeconds()) && sendShows(node, made)
 }
 
 // unitOf is the unit written in a whole-number field.
@@ -430,7 +433,7 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 	case flow.TypeTiles, flow.TypeSeconds, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText,
 		flow.TypeTimeRange,
 		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort,
-		flow.TypeMessage, flow.TypeLanes:
+		flow.TypeMessage, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 	}
 }
 
@@ -459,7 +462,7 @@ func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 		if number, err := node.Number(made.param.Name); err == nil {
 			made.field.Field.SetSaved(strconv.Itoa(number))
 		}
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 		setSavedChoices(made, node)
 	case flow.TypeText:
 		if value, err := node.Text(made.param.Name); err == nil {
@@ -537,7 +540,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 		made.label = top
 		top += ui.LineHeight
 		switch made.param.Type {
-		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes:
+		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 			top = s.layoutChoices(made, left, width, top)
 		case flow.TypeTiles, flow.TypeSeconds, flow.TypeText:
 			height := ui.ButtonH
@@ -595,7 +598,7 @@ func (s *State) layoutReference(docs frame.Docs, made *control, room image.Recta
 	case flow.TypeTiles, flow.TypeSeconds, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText,
 		flow.TypeTimeRange,
 		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort,
-		flow.TypeLanes:
+		flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 	}
 
 	return top
@@ -660,7 +663,7 @@ func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control
 		s.updateRanges(input, ctx, made, node)
 	case flow.TypeAnchor:
 		s.updateAnchor(input, ctx, made, node)
-	case flow.TypeChoice, flow.TypeDuration:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeSignal, flow.TypeNPC:
 		s.updateChoices(input, ctx, made, node)
 	case flow.TypeShares:
 		s.updateOptions(input, ctx, made, node)
@@ -954,7 +957,7 @@ func parseFor(made *control, field *ui.TextField, value string, node flow.Node) 
 		return parseOptionField(made, field, value, node)
 	case flow.TypeLanes:
 		return parseLaneField(made, field, value, node)
-	case flow.TypeChoice:
+	case flow.TypeChoice, flow.TypeSignal, flow.TypeNPC:
 		return nil, false, ""
 	case flow.TypeText:
 		if field != made.field {

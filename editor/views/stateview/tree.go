@@ -44,6 +44,8 @@ const (
 	itemHeld
 	// itemName is an NPC's name.
 	itemName
+	// itemSignal is a signal workflows send and answer.
+	itemSignal
 )
 
 // item is one row's meaning: what it is, the list holding it, and the path
@@ -94,6 +96,7 @@ func (s *State) build(docs frame.Docs) (tree, bool) {
 			s.ownerRows(&built, docs, world, owner)
 		}
 	}
+	s.signalRows(&built, docs)
 
 	return built, true
 }

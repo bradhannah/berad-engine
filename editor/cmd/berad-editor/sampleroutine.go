@@ -23,8 +23,10 @@ import (
 // one for 20 game minutes, then mostly calls Fetch stock to fetch from the
 // shelf, tidying it when there is stock, and now and then stretches. At
 // night the clerk stops serving, if closing came mid-serve, and waits by
-// the door an hour at a time. A note sums it up under the rest. It is
-// placeholder behaviour for trying the editor, not game content.
+// the door an hour at a time. Whenever a customer rings the bell, the clerk
+// says Just a moment! and goes back to what she was doing. A note sums it up
+// under the rest. It is placeholder behaviour for trying the editor, not
+// game content.
 const (
 	routineName  = "Clerk's day"
 	fetchName    = "Fetch stock"
@@ -147,8 +149,11 @@ func (b *routineBuilder) logServing(parent ids.ULID, customer flow.ValueRef) ids
 // fetchStock is the workflow the clerk's day calls: the clerk goes to the
 // place it is given, the shelf to start with, and finds stock there three
 // times in four, lifting the crate with a shake and a chime together,
-// going back by Fetched or Out of stock.
-func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Workflow, ids.ULID, error) {
+// going back by Fetched; or telling everyone in the zone the shelf is empty
+// and going back by Out of stock.
+func fetchStock(
+	orch *orchestrator.Orchestrator, anchors sampleAnchors, emptyShelf ids.ULID,
+) (*flow.Workflow, ids.ULID, error) {
 	start, err := orch.NewID()
 	if err != nil {
 		return nil, ids.ULID{}, fmt.Errorf("sample routine: %w", err)
@@ -175,7 +180,11 @@ func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.W
 	made.link(lift, "l1", crate)
 	made.link(lift, "l2", thud)
 	made.link(lift, flow.OutputDone, fetched)
-	made.link(stock, "o2", out)
+	empty := made.node(flow.KindSendSignal, none, map[string]any{
+		flow.ParamSignal: emptyShelf.String(), flow.ParamSendTo: flow.ToZone,
+	})
+	made.link(stock, "o2", empty)
+	made.link(empty, flow.OutputNext, out)
 	if made.err != nil {
 		return nil, ids.ULID{}, made.err
 	}
@@ -241,6 +250,7 @@ func clerksDay(
 	down := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionDown, "tiles": stretchCells})
 	rise := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionUp, "tiles": stretchCells})
 	note := made.node(flow.KindNote, none, map[string]any{"text": routineNote})
+	made.answerBell(values.bell)
 	for _, joined := range []struct {
 		from   ids.ULID
 		output string
@@ -265,6 +275,16 @@ func clerksDay(
 	}
 
 	return arrangedRoutine(start, made, note)
+}
+
+// answerBell adds the clerk's receiver for the bell: she says Just a
+// moment! and resumes what she was doing.
+func (b *routineBuilder) answerBell(bell ids.ULID) {
+	none := ids.ULID{}
+	ring := b.node(flow.KindOnSignal, none, map[string]any{flow.ParamSignal: bell.String()})
+	coming, back := b.show(none, flow.KindSay, "Just a moment!"), b.node(flow.KindResume, none, nil)
+	b.link(ring, flow.OutputNext, coming)
+	b.link(coming, flow.OutputNext, back)
 }
 
 // arrangedRoutine puts the nodes in a workflow, laid out as Auto-arrange
@@ -300,7 +320,7 @@ func arrangedRoutine(start ids.ULID, made *routineBuilder, note ids.ULID) (*flow
 // sampleRoutine makes Fetch stock and the clerk's day, which calls it, and
 // gives the day to the clerk, with the shop's values.
 func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, anchors sampleAnchors, values shopValues) error {
-	fetch, place, err := fetchStock(orch, anchors)
+	fetch, place, err := fetchStock(orch, anchors, values.emptyShelf)
 	if err != nil {
 		return err
 	}

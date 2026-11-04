@@ -82,7 +82,7 @@ func (s *State) rowMenu(row string, meaning item, found bool) ([]ui.MenuItem, ma
 		return items, subs
 	case itemDeclared:
 		return s.declaredMenu(meaning, adds), subs
-	case itemApplied, itemHeld, itemName:
+	case itemApplied, itemHeld, itemName, itemSignal:
 	}
 
 	return nil, subs

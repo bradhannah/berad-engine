@@ -91,7 +91,7 @@ func (n *NPC) runLane(world World, index int, tick uint64) {
 			return
 		}
 	}
-	n.Status, n.Sounds, n.Lines = StatusLooping, n.Sounds[:0], n.Lines[:0]
+	n.Status, n.Sounds, n.Lines, n.Sent = StatusLooping, n.Sounds[:0], n.Lines[:0], n.Sent[:0]
 }
 
 // laneTake moves a lane on by an output, recording the change with the
