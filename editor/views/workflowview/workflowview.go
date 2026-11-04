@@ -1014,11 +1014,12 @@ func (s *State) freeSpot(container ids.ULID, place image.Point) image.Point {
 }
 
 // addAt adds a node where it is dropped, inside the container there, if
-// any; dropped in an empty lane of a Together, it is the lane's first step.
+// any, unless it is a receiver, which sits at the top level; dropped in an
+// empty lane of a Together, it is the lane's first step.
 func (s *State) addAt(ctx *frame.Context, kind string, point image.Point) {
 	parent := ids.ULID{}
 	var link *flow.Link
-	if !flow.IsContainer(kind) {
+	if !flow.IsContainer(kind) && !flow.IsStart(kind) {
 		for nodeID, candidate := range s.shapes {
 			if flow.IsContainer(candidate.node.Kind) && point.In(innerOf(candidate)) {
 				parent = nodeID
