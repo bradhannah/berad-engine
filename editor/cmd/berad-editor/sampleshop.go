@@ -173,10 +173,11 @@ func placeShop(orch *orchestrator.Orchestrator, floorID ids.ULID, placement floo
 	return nil
 }
 
-// customerWorkflow walks to the counter, rings the bell for the clerk, and
-// waits there until it finds a clerk serving within two tiles; then it is
-// served, counts itself, leaves by the door, and some seconds later wants
-// serving again. Told the shelf is empty, it says so, and carries on.
+// customerWorkflow walks to the counter, rings the bell for the clerk once,
+// and waits there, looking again every second, until it finds a clerk
+// serving within two tiles; then it is served, counts itself, leaves by the
+// door, and some seconds later wants serving again. Told the shelf is
+// empty, it says so, and carries on.
 func customerWorkflow(
 	orch *orchestrator.Orchestrator, values shopValues, anchors sampleAnchors, clerkNPC ids.ULID,
 ) (ids.ULID, error) {
@@ -222,6 +223,7 @@ func customerWorkflow(
 	build.chain(told, sigh, build.add(flow.KindResume, sigh, toldRow, nil))
 	build.link(find, flow.OutputFound, done)
 	build.link(find, flow.OutputNone, pause)
+	build.link(pause, flow.OutputNext, find)
 	build.chain(done, served, count, leave)
 
 	return build.create("Customer shops")
