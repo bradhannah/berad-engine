@@ -84,7 +84,15 @@ func (s *State) drawSpeech(area *ebiten.Image, grid image.Rectangle) {
 
 // drawBox draws the box shown now at the foot of the map.
 func (s *State) drawBox(area *ebiten.Image, grid image.Rectangle, box *protocol.PreviewBox) {
-	showdraw.DrawBox(area, s.theme, grid, box)
+	showdraw.DrawBox(area, s.theme, boxArea(grid), box)
+}
+
+// boxArea is the part of the map a box goes at the foot of: above the zoom
+// control, so neither hides the other.
+func boxArea(grid image.Rectangle) image.Rectangle {
+	grid.Max.Y -= ui.ButtonH + ui.Half*ui.Inset
+
+	return grid
 }
 
 // closeBox closes a box that waits for the player when they click the map,
@@ -113,7 +121,7 @@ func (s *State) locateShown(kind, value string) (image.Point, bool) {
 		}
 	case boxPart:
 		if state != nil && state.Box != nil {
-			rect, _ := showdraw.BoxRect(s.theme, grid, state.Box)
+			rect, _ := showdraw.BoxRect(s.theme, boxArea(grid), state.Box)
 
 			return ui.Center(rect), true
 		}
