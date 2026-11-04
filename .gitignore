@@ -4,3 +4,4 @@
 *.out
 /bin/
 local.mk
+/editor/berad-editor
