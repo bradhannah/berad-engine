@@ -251,7 +251,7 @@ func (s *State) drop(ctx *frame.Context, kind string, point image.Point) {
 // in the flow and has an output to carry it on.
 func splices(kind string) bool {
 	node, err := flow.NewNode(kind)
-	if err != nil || !flow.Runs(kind) || flow.IsContainer(kind) || kind == flow.KindStart {
+	if err != nil || !flow.Runs(kind) || kind == flow.KindContainer || kind == flow.KindStart {
 		return false
 	}
 
@@ -265,7 +265,7 @@ func (s *State) spliceTarget(kind string, point image.Point) (routeKey, bool) {
 		return noRoute(), false
 	}
 	key, onLine := s.linkAt(point)
-	if !onLine {
+	if from, found := s.workflow.Node(key.from); !onLine || !found || flow.IsContainer(kind) && !from.Parent.IsZero() {
 		return noRoute(), false
 	}
 	if _, linked := s.targetOf(key); !linked {
@@ -284,13 +284,30 @@ func (s *State) splice(ctx *frame.Context, kind string, key routeKey, place imag
 	if !found || !linked || err != nil {
 		return
 	}
+	if flow.IsContainer(kind) && !from.Parent.IsZero() {
+		ctx.Frame.Status(labelOf(kind) + " sits at the top level, not inside a container.")
+
+		return
+	}
 	node.Parent = from.Parent
-	if outputs := flow.Outputs(node); len(outputs) > 0 {
-		node = node.WithLink(outputs[0].Name, target)
+	if out, ok := wayOn(node); ok {
+		node = node.WithLink(out, target)
 	}
 	s.addNode(ctx, node, s.clearOf(place, from.Parent), &flow.Link{From: from.ID, Output: key.output, To: ids.ULID{}})
 	ctx.Frame.Status("Put " + labelOf(kind) + " between " + s.kindLabel(from.ID) + " and " + s.kindLabel(target) +
 		". Undo takes it out.")
+}
+
+// wayOn is the output a node goes on by in a line: its first, or a
+// Together's all done, never one that leads inside it.
+func wayOn(node flow.Node) (string, bool) {
+	for _, output := range flow.Outputs(node) {
+		if !flow.IsInner(node, output.Name) {
+			return output.Name, true
+		}
+	}
+
+	return "", false
 }
 
 // labelOf names a kind of node.

@@ -113,3 +113,17 @@ func TestLaneFlags(t *testing.T) {
 		t.Fatal("the first lane's Move is fine")
 	}
 }
+
+// TestATogetherGoesIntoALine adds a Together after the start, which already
+// leads to a Wait: the start now leads to the Together, and all done to the
+// Wait.
+func TestATogetherGoesIntoALine(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindWait)
+	f.click("node:start:1")
+	f.add(flow.KindTogether)
+	start, together, wait := f.nth(flow.KindStart, 1), f.nth(flow.KindTogether, 1), f.nth(flow.KindWait, 1)
+	if start.Next[flow.OutputNext] != together.ID || together.Next[flow.OutputDone] != wait.ID {
+		t.Fatalf("the Together goes between the start and the Wait, on by all done: %v %v", start.Next, together.Next)
+	}
+}
