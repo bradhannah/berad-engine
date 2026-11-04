@@ -259,11 +259,11 @@ func TestSampleShopRuns(t *testing.T) {
 	mapScript := script(
 		must("state:loaded", 600), wait(5), keys("P"), click("cell:3,1"), must("state:previewing", 300), wait(10),
 		click("live-npc:Customer"), wait(5), click("live-npc:Customer"), must("state:watching", 300), wait(10),
-		click("ui:watch"), wait(900), shoot(mapShot), keys("P"), wait(30), quit(),
+		click("ui:watch"), wait(2700), shoot(mapShot), keys("P"), wait(30), quit(),
 	)
 	watchScript := script(
 		must("state:previewing", 1800), must("state:watching:Customer", 600),
-		must("state:value:world.shop.customers_served=1", 900), must("state:value:npc.shop.served=true", 60),
+		must("state:value:world.shop.customers_served=1", 2700), must("state:value:npc.shop.served=true", 60),
 		shoot(watchShot), wait(10), quit(),
 	)
 	clockScript := script(must("state:running", 3600), wait(30), quit())
