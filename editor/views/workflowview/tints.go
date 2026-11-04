@@ -169,7 +169,7 @@ func (s *State) colourRows() []colourRow {
 	}}
 	var outcomes []flow.Output
 	for _, out := range flow.Outputs(node) {
-		if out.Name != flow.OutputInside {
+		if !flow.IsInner(node, out.Name) {
 			outcomes = append(outcomes, out)
 		}
 	}

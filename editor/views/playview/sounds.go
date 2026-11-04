@@ -39,6 +39,7 @@ func (s *sounds) launch(ctx *frame.Context, played *game.Game, cues []string) {
 	ctx.Requests.AudioLibrary(func(library protocol.AudioLibrary, err error) {
 		if err == nil {
 			s.library = &library
+			played.KnowCues(s.library.CueTicks)
 		}
 	})
 	if len(cues) > 0 {

@@ -347,3 +347,21 @@ func TestOversizedFrameRejected(t *testing.T) {
 		t.Fatal("oversized frame sent")
 	}
 }
+
+// TestCueTicks gives an SFX cue its longest recording's ticks, rounded up,
+// and a cue that loops, or one not in the library, none.
+func TestCueTicks(t *testing.T) {
+	t.Parallel()
+	library := protocol.AudioLibrary{Cues: []protocol.AudioCue{
+		{ID: "bell", Category: protocol.CategorySFX, Recordings: []protocol.AudioRecording{
+			{ID: "short", LengthMs: 250}, {ID: "long", LengthMs: 1010},
+		}},
+		{ID: "theme", Category: protocol.CategoryMusic, Recordings: []protocol.AudioRecording{{ID: "song", LengthMs: 9000}}},
+	}}
+	if ticks := library.CueTicks("bell"); ticks != 61 {
+		t.Fatalf("the bell lasts its longest recording, rounded up to a tick: %d", ticks)
+	}
+	if library.CueTicks("theme") != 0 || library.CueTicks("gone") != 0 {
+		t.Fatal("music loops, and a cue not in the library lasts no time")
+	}
+}

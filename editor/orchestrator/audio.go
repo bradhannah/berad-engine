@@ -46,8 +46,9 @@ var errNotPlayable = errors.New("this recording cannot be sent")
 // reads the files again for every question, so changes made by an audio
 // edit, or in the terminal audio editor, show up at once.
 type projectAudio struct {
-	root *os.Root
-	dir  string
+	root    *os.Root
+	dir     string
+	lengths *recordingLengths
 }
 
 // loadedAudio is the audio library as last read: its cues for windows, and
@@ -241,7 +242,7 @@ func (a *projectAudio) recordingOf(
 	sent := protocol.AudioRecording{
 		ID: recordingID, Extension: "", Version: "", Size: 0, CalibrationDB: recording.CalibrationDB,
 		CalibrationMode: calibrationMode(source), TargetDB: 0, Family: familyOf(document, recordingID),
-		StartMs: 0, EndMs: 0,
+		StartMs: 0, EndMs: 0, LengthMs: 0,
 		Status: protocol.RecordingNoFile, File: recording.File, OriginalFile: provenance.OriginalFilename,
 		Note: source.Note, SearchTerms: source.SearchTerms,
 		Attribution: protocol.Attribution{
@@ -261,6 +262,9 @@ func (a *projectAudio) recordingOf(
 		loaded.files[sent.ID] = file
 		sent.Extension = strings.ToLower(path.Ext(recording.File))
 		a.describe(file, &sent)
+		if sent.Status == protocol.RecordingReady {
+			sent.LengthMs = a.lengthOf(file, &sent)
+		}
 	}
 
 	return sent

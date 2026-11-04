@@ -62,15 +62,18 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 	sized := sizing{noteHeight: noteHeight, incoming: incoming}
 	cycle := loops(workflow)
 	for _, node := range workflow.Nodes() {
-		if node.Kind == flow.KindContainer {
+		switch node.Kind {
+		case flow.KindContainer:
 			sizes[node.ID] = arrangeInside(workflow, node, boxes, sized, cycle)
+		case flow.KindTogether:
+			sizes[node.ID] = arrangeTogether(workflow, node, boxes, sized, cycle)
 		}
 	}
 	placed := arrangeLevel(workflow, ids.ULID{}, workflow.Start(), sizes, sized, cycle, image.Pt(arrangeX, arrangeY))
 	for nodeID, at := range placed {
 		node, _ := workflow.Node(nodeID)
 		boxes[nodeID] = boxAt(node, at, sizeOf(node, sizes, sized))
-		if node.Kind == flow.KindContainer {
+		if flow.IsContainer(node.Kind) {
 			offsetChildren(workflow, nodeID, boxes, at)
 		}
 	}
@@ -106,15 +109,27 @@ func arrangeLevel(
 	graph := levelOf(workflow, parent, cycle)
 	columns := graph.columns(first)
 	graph.reorder(columns)
+	corners := graph.placeColumns(columns, sizes, sized, origin)
+	placeNotes(workflow, parent, corners, sizes, sized, origin)
+
+	return corners
+}
+
+// placeColumns places columns of a level's nodes left to right from an
+// origin, each node lined up with the output it comes from, and returns
+// each node's top-left corner.
+func (g *level) placeColumns(
+	columns [][]ids.ULID, sizes map[ids.ULID]image.Point, sized sizing, origin image.Point,
+) map[ids.ULID]image.Point {
 	corners := map[ids.ULID]image.Point{}
 	left := origin.X
 	for _, column := range columns {
 		top, width, leaving := origin.Y, 0, 0
 		for _, nodeID := range column {
-			node := graph.nodes[nodeID]
+			node := g.nodes[nodeID]
 			size := sizeOf(node, sizes, sized)
 			want := top
-			if aligned, ok := graph.alignedTop(nodeID, corners, sizes, sized); ok {
+			if aligned, ok := g.alignedTop(nodeID, corners, sizes, sized); ok {
 				want = max(want, aligned)
 			}
 			corners[nodeID] = image.Pt(left, want)
@@ -124,7 +139,6 @@ func arrangeLevel(
 		}
 		left += width + max(columnGap, ui.Half*laneMargin+(leaving+1)*laneGap)
 	}
-	placeNotes(workflow, parent, corners, sizes, sized, origin)
 
 	return corners
 }
@@ -166,7 +180,7 @@ func levelOf(workflow *flow.Workflow, parent ids.ULID, cycle map[routeKey]bool) 
 		for index, output := range outputs {
 			target, linked := node.Next[output.Name]
 			_, here := graph.nodes[target]
-			if !linked || !here || output.Name == flow.OutputInside || cycle[routeKey{from: nodeID, output: output.Name}] {
+			if !linked || !here || flow.IsInner(node, output.Name) || cycle[routeKey{from: nodeID, output: output.Name}] {
 				continue
 			}
 			link := edge{
@@ -382,10 +396,10 @@ func sizeOf(node flow.Node, containers map[ids.ULID]image.Point, sized sizing) i
 // notes keep their size in the box.
 func boxAt(node flow.Node, at, size image.Point) flow.Box {
 	box := flow.Box{X: at.X, Y: at.Y, W: 0, H: 0}
-	switch node.Kind {
-	case flow.KindContainer:
+	switch {
+	case flow.IsContainer(node.Kind):
 		box.W, box.H = size.X, size.Y
-	case flow.KindNote:
+	case node.Kind == flow.KindNote:
 		box.W = size.X
 	}
 

@@ -64,10 +64,25 @@ func (s *State) refreshProblems(docs frame.Docs) {
 	}
 }
 
-// problemOf says what is wrong with a node, or returns "": a Go to with no
-// destination or a broken one, a container with no first step, or a node
-// nothing links into.
+// problemOf says what is wrong with a node, or returns "": being in a lane
+// it can't be in, its own settings, or nothing linking into it.
 func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
+	if problem := s.laneProblem(node); problem != "" {
+		return problem
+	}
+	if problem := s.kindProblem(node, docs); problem != "" {
+		return problem
+	}
+	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {
+		return problemUnreached
+	}
+
+	return ""
+}
+
+// kindProblem says what is wrong with a node's own settings: a Go to with
+// no destination or a broken one, a container with no first step, and so on.
+func (s *State) kindProblem(node flow.Node, docs frame.Docs) string {
 	switch node.Kind {
 	case flow.KindGoTo:
 		if problem := s.goToProblem(node, docs); problem != "" {
@@ -93,9 +108,6 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := s.callProblem(node, docs); problem != "" {
 			return problem
 		}
-	}
-	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {
-		return problemUnreached
 	}
 
 	return ""

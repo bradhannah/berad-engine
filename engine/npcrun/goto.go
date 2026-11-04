@@ -115,23 +115,32 @@ func (n *NPC) Activity(workflow *flow.Workflow) string {
 	if !ok {
 		return "Starting"
 	}
+	if node.Kind == flow.KindTogether {
+		return n.togetherActivity()
+	}
+
+	return describe(node, n.work)
+}
+
+// describe says what a node is doing with its work.
+func describe(node flow.Node, work work) string {
 	kind, _ := flow.KindOf(node.Kind)
 	switch {
-	case node.Kind == flow.KindWait && n.work.waiting:
+	case node.Kind == flow.KindWait && work.waiting:
 		clockName := "game time"
-		if n.work.real {
+		if work.real {
 			clockName = "real time"
 		}
 
-		return fmt.Sprintf("Wait %s of %s (%s)", seconds(max(n.work.waitLeft, 0)), seconds(n.work.waitTotal), clockName)
-	case node.Kind == flow.KindMove && n.work.started:
-		tile := min(n.work.movesTotal-n.work.movesLeft, n.work.movesTotal)
+		return fmt.Sprintf("Wait %s of %s (%s)", seconds(max(work.waitLeft, 0)), seconds(work.waitTotal), clockName)
+	case node.Kind == flow.KindMove && work.started:
+		tile := min(work.movesTotal-work.movesLeft, work.movesTotal)
 
-		return fmt.Sprintf("Move %s, %d of %d %s", n.work.way, tile, n.work.movesTotal, plural(n.work.movesTotal))
-	case node.Kind == flow.KindGoTo && n.work.started:
-		left := len(n.work.route)
+		return fmt.Sprintf("Move %s, %d of %d %s", work.way, tile, work.movesTotal, plural(work.movesTotal))
+	case node.Kind == flow.KindGoTo && work.started:
+		left := len(work.route)
 
-		return fmt.Sprintf("Walking to %s, %d %s to go", n.work.goal, left, plural(left))
+		return fmt.Sprintf("Walking to %s, %d %s to go", work.goal, left, plural(left))
 	default:
 		return kind.Label
 	}

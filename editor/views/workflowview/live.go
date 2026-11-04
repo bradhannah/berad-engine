@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -33,6 +34,9 @@ type live struct {
 	changes uint64
 	flash   int
 	step    map[routeKey]bool
+	// lanes are the nodes the lanes of a Together are on, by lane number,
+	// zero for a lane that is done.
+	lanes []ids.ULID
 }
 
 // NewLive returns a read-only view of a workflow for the Watch window: only
@@ -40,7 +44,7 @@ type live struct {
 // edited, with the node an NPC is on outlined in orange under a LIVE bar.
 func NewLive(window, document ids.ULID, theme *ui.Theme) *State {
 	view := New(window, document, theme)
-	view.live = &live{area: ui.Zero(), node: ids.ULID{}, last: noRoute(), changes: 0, flash: 0, step: nil}
+	view.live = &live{area: ui.Zero(), node: ids.ULID{}, last: noRoute(), changes: 0, flash: 0, step: nil, lanes: nil}
 
 	return view
 }
@@ -62,6 +66,21 @@ func (s *State) SetLive(node, from ids.ULID, output string, changes uint64) {
 		s.live.flash = flashFrames
 	}
 	s.live.node, s.live.last, s.live.changes = node, routeKey{from: from, output: output}, changes
+}
+
+// SetLanes marks the node each lane of the Together an NPC is on is on.
+func (s *State) SetLanes(lanes []protocol.PreviewLane) {
+	if s.live == nil {
+		return
+	}
+	s.live.lanes = s.live.lanes[:0]
+	for _, lane := range lanes {
+		node := lane.Node
+		if lane.Done {
+			node = ids.ULID{}
+		}
+		s.live.lanes = append(s.live.lanes, node)
+	}
 }
 
 // SetStep marks the lines an NPC took in its latest step, which stay orange
@@ -92,6 +111,9 @@ func (s *State) Path(changes []protocol.PreviewChange, docs frame.Docs) []string
 			continue
 		}
 		part := s.nodeLabel(node, docs)
+		if lane := s.laneOf(node, change.Lane); lane != "" {
+			part = lane + ": " + part
+		}
 		if label := choiceLabel(node, change.Output); label != "" {
 			part += ": " + label
 		}
@@ -105,6 +127,16 @@ func (s *State) Path(changes []protocol.PreviewChange, docs frame.Docs) []string
 	}
 
 	return parts
+}
+
+// laneOf names the lane of a node's Together a change was in, "" for none.
+func (s *State) laneOf(node flow.Node, port string) string {
+	together, ok := s.workflow.Node(node.Parent)
+	if port == "" || !ok {
+		return ""
+	}
+
+	return laneNames(together)[port]
 }
 
 // choiceLabel is the label of the output a node was left by, when it has
@@ -162,22 +194,41 @@ func (s *State) drawLive(screen *ebiten.Image, docs frame.Docs) {
 	}
 }
 
-// drawLiveNode outlines the node an NPC is on in orange, under a LIVE bar.
+// drawLiveNode outlines the node an NPC is on in orange, under a LIVE bar,
+// and on a Together, the node each running lane is on, under its lane's
+// number.
 func (s *State) drawLiveNode(area *ebiten.Image) {
 	if s.live == nil {
 		return
 	}
-	drawn, ok := s.shapes[s.live.node]
+	s.outlineLive(area, s.live.node, "LIVE")
+	for index, node := range s.live.lanes {
+		s.outlineLive(area, node, "LANE "+strconv.Itoa(index+1))
+	}
+}
+
+// outlineLive outlines a node in orange under a bar with a label.
+func (s *State) outlineLive(area *ebiten.Image, node ids.ULID, label string) {
+	drawn, ok := s.shapes[node]
 	if !ok {
 		return
 	}
 	rect := s.screenRect(drawn.rect)
 	ui.StrokeRound(area, rect.Inset(-selectGap), ui.Radius+selectGap, liveOutline, ui.ColorLive())
-	label := "LIVE"
 	bar := image.Rect(rect.Min.X, rect.Min.Y-selectGap-liveBar, rect.Min.X+s.theme.LabelWidth(label)+ui.Half*liveBarPad,
 		rect.Min.Y-selectGap)
 	ui.FillRound(area, bar, ui.Radius, ui.ColorLive())
 	s.theme.DrawLabel(area, label, bar.Min.X+liveBarPad, bar.Min.Y+(liveBar-ui.LabelSize)/ui.Half-1, ui.ColorBackground())
+}
+
+// LiveLanes returns the nodes a live view marks for a Together's lanes, for
+// tests.
+func (s *State) LiveLanes() []ids.ULID {
+	if s.live == nil {
+		return nil
+	}
+
+	return s.live.lanes
 }
 
 // lineFlashing reports whether a line is orange: the one just taken, while

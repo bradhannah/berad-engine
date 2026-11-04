@@ -76,6 +76,16 @@ func flowHelp() map[string]kindHelp {
 			settings: []helpRow{{"Name", "what the steps inside are for"}, {"Time", "the time of day they run"}},
 			example:  "Shop hours 08:00–18:00, holding Go to · Desk and Wait → exit → Go to · Home",
 		},
+		flow.KindTogether: {
+			about: "Starts every lane at once, each running its own steps in a line, and goes on when every " +
+				"lane is done. Lanes run in their order each tick, so a run repeats; only one can move the NPC.",
+			time: "Takes as long as its longest lane",
+			outputs: []helpRow{
+				{"each lane", "its first step, started at once"}, {"all done", "every lane is done"},
+			},
+			settings: []helpRow{{"Name", "what the lanes do together"}, {"Lanes", "each a name, two to eight"}},
+			example:  "Tremor: Play sound · Rumble · until played | Shake screen · 2 s | Say · Hold on! → all done",
+		},
 		flow.KindCall: {
 			about: "Runs another workflow, a module, giving it its inputs, and carries on by the output named " +
 				"for the way out it ended at.",

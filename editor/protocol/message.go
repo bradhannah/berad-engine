@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -366,6 +367,18 @@ type PreviewEntity struct {
 	// the share of its time left, from 1 down to 0.
 	Saying     string  `json:"saying,omitempty"`
 	SayingLeft float64 `json:"sayingLeft,omitempty"`
+	// Lanes are the lanes of the Together an NPC is on, in lane order.
+	Lanes []PreviewLane `json:"lanes,omitempty"`
+}
+
+// PreviewLane is one lane of the Together an NPC is on: its output, its
+// name, the node it is on, what it is doing there, and whether it is done.
+type PreviewLane struct {
+	Port  string   `json:"port"`
+	Label string   `json:"label"`
+	Node  ids.ULID `json:"node,omitzero"`
+	Doing string   `json:"doing"`
+	Done  bool     `json:"done,omitempty"`
 }
 
 // PreviewBox is the message box a preview shows now: its text, the name on
@@ -397,14 +410,15 @@ type PreviewCall struct {
 }
 
 // PreviewChange is an NPC's change from one node to another: the output it
-// took, the tick, and, when the node it left could not do its work and
-// carried on, why.
+// took, the tick, when the node it left could not do its work and carried
+// on, why, and the output of the Together's lane it was in, if any.
 type PreviewChange struct {
 	From   ids.ULID `json:"from,omitzero"`
 	Output string   `json:"output,omitempty"`
 	To     ids.ULID `json:"to,omitzero"`
 	Tick   uint64   `json:"tick,omitempty"`
 	Status string   `json:"status,omitempty"`
+	Lane   string   `json:"lane,omitempty"`
 }
 
 // PreviewState is a preview's latest live state, sent at a limited rate; the
@@ -592,6 +606,24 @@ type AudioLibrary struct {
 	MaxCueGain      float64            `json:"maxCueGain,omitempty"`
 }
 
+// CueTicks is how many ticks of play a cue lasts: its longest recording's
+// played part. A cue that loops, music or ambient, or whose lengths are not
+// known, lasts none, so a Play sound waiting for it carries on at once.
+func (l *AudioLibrary) CueTicks(cueID string) int {
+	longest := int64(0)
+	for _, cue := range l.Cues {
+		if cue.ID != cueID || cue.Category != CategorySFX {
+			continue
+		}
+		for _, recording := range cue.Recordings {
+			longest = max(longest, recording.LengthMs)
+		}
+	}
+	const millisecond = 1000
+
+	return int((longest*clock.TicksPerSecond + millisecond - 1) / millisecond)
+}
+
 // AudioProfile is a classification profile: the kind of moment a cue plays
 // for, which a search finds it by. Its fields are berad-audio's.
 type AudioProfile struct {
@@ -647,7 +679,8 @@ type AudioCue struct {
 // extension, which says how to decode it; a version that changes whenever
 // the file does, so a window keeps bytes it already holds; its size in
 // bytes; its calibration gain in dB; the part of it that plays, in
-// milliseconds, both zero for all of it; and its status. For the Audio
+// milliseconds, both zero for all of it, and how long that part lasts, zero
+// when it is not known; and its status. For the Audio
 // window it also has how its calibration was set (CalibrationAuto, manual,
 // or empty for none) and its target, zero for its family's; its acoustic
 // family; its file, relative to the audio folder; the file it was copied
@@ -663,6 +696,7 @@ type AudioRecording struct {
 	Family          string      `json:"family,omitempty"`
 	StartMs         int64       `json:"startMs,omitempty"`
 	EndMs           int64       `json:"endMs,omitempty"`
+	LengthMs        int64       `json:"lengthMs,omitempty"`
 	Status          string      `json:"status"`
 	File            string      `json:"file,omitempty"`
 	OriginalFile    string      `json:"originalFile,omitempty"`

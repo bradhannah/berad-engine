@@ -683,7 +683,11 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	for _, nodeID := range s.drawOrder() {
 		if drawn := s.shapes[nodeID]; point.In(drawn.addOption) {
 			s.selected = nodeID
-			s.addOption(ctx, drawn.node)
+			if drawn.node.Kind == flow.KindTogether {
+				s.addLane(ctx, drawn.node)
+			} else {
+				s.addOption(ctx, drawn.node)
+			}
 
 			return
 		}
@@ -733,7 +737,7 @@ func (s *State) updateDrag(input *ui.Input, ctx *frame.Context, point image.Poin
 	}
 	target := point.Sub(drag.grab)
 	if container, inContainer := s.shapes[moving.node.Parent]; inContainer {
-		target = clampInto(target, moving.rect.Size(), inside(container.rect))
+		target = clampInto(target, moving.rect.Size(), innerOf(container))
 	}
 	delta := target.Sub(moving.rect.Min)
 	if delta == image.Pt(0, 0) {
@@ -752,7 +756,7 @@ func (s *State) movedBox(moving shape, delta image.Point) flow.Box {
 	box, placed := s.workflow.Box(moving.node.ID)
 	if !placed {
 		box = flow.Box{X: moving.rect.Min.X, Y: moving.rect.Min.Y, W: 0, H: 0}
-		if moving.node.Kind == flow.KindContainer {
+		if flow.IsContainer(moving.node.Kind) {
 			box.W, box.H = moving.rect.Dx(), moving.rect.Dy()
 		}
 	}
@@ -775,7 +779,8 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, point image.Po
 
 		return
 	}
-	right, bottom := max(point.X, container.rect.Min.X+containerMinW), max(point.Y, container.rect.Min.Y+containerMinH)
+	least := container.rect.Min.Add(containerMin(container.node))
+	right, bottom := max(point.X, least.X), max(point.Y, least.Y)
 	for _, child := range s.workflow.Children(s.resize.id) {
 		right = max(right, s.shapes[child].rect.Max.X+containerPad)
 		bottom = max(bottom, s.shapes[child].rect.Max.Y+containerPad/ui.Half)
@@ -893,7 +898,7 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 		return "Nothing links back to the start: a branch that ends goes back there by itself."
 	case !flow.Runs(targetNode.Kind):
 		return "Notes are not part of the flow, so nothing can link to them."
-	case from.Kind == flow.KindContainer && output == flow.OutputInside:
+	case flow.IsInner(from, output):
 		if targetNode.Parent != from.ID {
 			return "A container's first step must be inside it."
 		}
@@ -923,22 +928,15 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 
 		return
 	}
-	if selected.node.Kind == flow.KindContainer && kind != flow.KindContainer {
-		place := inside(selected.rect).Min
-		var link *flow.Link
-		if _, used := selected.node.Next[flow.OutputInside]; !used {
-			link = &flow.Link{From: selected.node.ID, Output: flow.OutputInside, To: ids.ULID{}}
-		} else {
-			place = s.freeSpot(selected.node.ID, place)
-		}
-		s.add(ctx, kind, place, selected.node.ID, link)
+	if flow.IsContainer(selected.node.Kind) && !flow.IsContainer(kind) {
+		s.addInside(ctx, kind, selected)
 
 		return
 	}
 	place := image.Pt(selected.rect.Max.X+newGap, selected.rect.Min.Y)
 	var link *flow.Link
 	for _, candidate := range selected.ports {
-		if _, used := selected.node.Next[candidate.output.Name]; used || candidate.output.Name == flow.OutputInside {
+		if _, used := selected.node.Next[candidate.output.Name]; used || flow.IsInner(selected.node, candidate.output.Name) {
 			continue
 		}
 		link = &flow.Link{From: selected.node.ID, Output: candidate.output.Name, To: ids.ULID{}}
@@ -952,6 +950,29 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 		return
 	}
 	s.add(ctx, kind, s.clearOf(place, selected.node.Parent), selected.node.Parent, link)
+}
+
+// addInside adds a node inside a selected container: as its first step, or
+// a Together's first empty lane's, when it has none; otherwise free, below
+// what is inside.
+func (s *State) addInside(ctx *frame.Context, kind string, selected shape) {
+	place := innerOf(selected).Min
+	first := port{output: flow.Output{Name: flow.OutputInside, Label: ""}, at: place, row: image.Rect(0, 0, 0, 0)}
+	var free bool
+	if selected.node.Kind == flow.KindTogether {
+		first, free = firstEmptyLane(selected)
+		place = image.Pt(place.X, first.at.Y-entryTop)
+	} else {
+		_, used := selected.node.Next[flow.OutputInside]
+		free = !used
+	}
+	var link *flow.Link
+	if free {
+		link = &flow.Link{From: selected.node.ID, Output: first.output.Name, To: ids.ULID{}}
+	} else {
+		place = s.freeSpot(selected.node.ID, innerOf(selected).Min)
+	}
+	s.add(ctx, kind, place, selected.node.ID, link)
 }
 
 // clearOf moves a new node's place down until it overlaps none of the nodes
@@ -982,27 +1003,34 @@ func (s *State) freeSpot(container ids.ULID, place image.Point) image.Point {
 	return place
 }
 
-// addAt adds a node where it is dropped, inside the container there, if any.
+// addAt adds a node where it is dropped, inside the container there, if
+// any; dropped in an empty lane of a Together, it is the lane's first step.
 func (s *State) addAt(ctx *frame.Context, kind string, point image.Point) {
 	parent := ids.ULID{}
-	if kind != flow.KindContainer {
+	var link *flow.Link
+	if !flow.IsContainer(kind) {
 		for nodeID, candidate := range s.shapes {
-			if candidate.node.Kind == flow.KindContainer && point.In(inside(candidate.rect)) {
+			if flow.IsContainer(candidate.node.Kind) && point.In(innerOf(candidate)) {
 				parent = nodeID
 			}
 		}
 	}
-	s.add(ctx, kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)), parent, nil)
+	if lane, ok := laneAt(s.shapes[parent], point); ok && kind != flow.KindNote {
+		if _, used := s.shapes[parent].node.Next[lane.Port]; !used {
+			link = &flow.Link{From: parent, Output: lane.Port, To: ids.ULID{}}
+		}
+	}
+	s.add(ctx, kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)), parent, link)
 }
 
 // newBox is a new node's box at a place; containers and notes start at
 // their usual size.
 func newBox(kind string, place image.Point) flow.Box {
 	box := flow.Box{X: place.X, Y: place.Y, W: 0, H: 0}
-	switch kind {
-	case flow.KindContainer:
+	switch {
+	case flow.IsContainer(kind):
 		box.W, box.H = containerWidth, containerHeight
-	case flow.KindNote:
+	case kind == flow.KindNote:
 		box.W = noteWidth
 	}
 
@@ -1230,7 +1258,7 @@ func (s *State) portAt(point image.Point) (ids.ULID, string, bool) {
 func (s *State) resizeHandleAt(point image.Point) (ids.ULID, bool) {
 	for nodeID, candidate := range s.shapes {
 		corner := candidate.rect.Max
-		if candidate.node.Kind == flow.KindContainer && point.In(image.Rectangle{
+		if flow.IsContainer(candidate.node.Kind) && point.In(image.Rectangle{
 			Min: corner.Sub(image.Pt(resizeGrab, resizeGrab)), Max: corner,
 		}) {
 			return nodeID, true
@@ -1310,10 +1338,10 @@ func (s *State) drawOrder() []ids.ULID {
 	}
 	var containers, notes, others []ids.ULID
 	for _, node := range s.workflow.Nodes() {
-		switch node.Kind {
-		case flow.KindContainer:
+		switch {
+		case flow.IsContainer(node.Kind):
 			containers = append(containers, node.ID)
-		case flow.KindNote:
+		case node.Kind == flow.KindNote:
 			notes = append(notes, node.ID)
 		default:
 			others = append(others, node.ID)

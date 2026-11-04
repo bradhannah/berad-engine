@@ -146,7 +146,8 @@ func (b *routineBuilder) logServing(parent ids.ULID, customer flow.ValueRef) ids
 
 // fetchStock is the workflow the clerk's day calls: the clerk goes to the
 // place it is given, the shelf to start with, and finds stock there three
-// times in four, going back by Fetched or Out of stock.
+// times in four, lifting the crate with a shake and a chime together,
+// going back by Fetched or Out of stock.
 func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Workflow, ids.ULID, error) {
 	start, err := orch.NewID()
 	if err != nil {
@@ -163,11 +164,17 @@ func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.W
 	}})
 	fetched := made.wayOut("Fetched", portFetched)
 	out := made.wayOut("Out of stock", portNone)
-	crate := made.node(flow.KindShake, none, map[string]any{flow.ParamStrength: flow.ShakeGentle, flow.ParamSeconds: 1})
+	lift := made.node(flow.KindTogether, none, map[string]any{"name": "Lift the crate", flow.ParamLanes: []flow.Lane{
+		{Port: "l1", Label: "Shake"}, {Port: "l2", Label: "Chime"},
+	}})
+	crate := made.node(flow.KindShake, lift, map[string]any{flow.ParamStrength: flow.ShakeGentle, flow.ParamSeconds: 1})
+	thud := made.node(flow.KindPlaySound, lift, map[string]any{"cue": chimeCue, flow.ParamCarry: flow.CarryWhenDone})
 	made.link(start, flow.OutputNext, walk)
 	made.link(walk, flow.OutputNext, stock)
-	made.link(stock, "o1", crate)
-	made.link(crate, flow.OutputNext, fetched)
+	made.link(stock, "o1", lift)
+	made.link(lift, "l1", crate)
+	made.link(lift, "l2", thud)
+	made.link(lift, flow.OutputDone, fetched)
 	made.link(stock, "o2", out)
 	if made.err != nil {
 		return nil, ids.ULID{}, made.err

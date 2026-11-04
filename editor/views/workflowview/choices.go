@@ -69,6 +69,8 @@ func setSavedChoices(made *control, node flow.Node) {
 			made.options[index].remove.Disabled = len(options) == 1
 		}
 		made.addOption.Disabled = len(options) >= flow.MaxOptions
+	case flow.TypeLanes:
+		setSavedLanes(made, node)
 	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges,
 		flow.TypeText, flow.TypeCue,
 		flow.TypeValue, flow.TypeOperand,
@@ -146,6 +148,8 @@ func (s *State) layoutChoices(made *control, left, width, top int) int {
 		}
 		made.addOption.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 		top += ui.ButtonH + rowSpace
+	case flow.TypeLanes:
+		top = layoutLanes(made, left, width, top)
 	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges,
 		flow.TypeText, flow.TypeCue,
 		flow.TypeValue, flow.TypeOperand,
@@ -259,6 +263,19 @@ func newOptionLabel(options []flow.Share) string {
 			return name
 		}
 	}
+}
+
+// newOptionRows makes a random choice's option rows, each a name, a share
+// and Remove, and Add option.
+func newOptionRows(made *control, rows int, text func(string, bool) *ui.TextField) {
+	for index := range rows {
+		prefix := made.param.Name + "-" + strconv.Itoa(index+1)
+		made.options = append(made.options, optionRow{
+			port: "", label: text(prefix+"-label", false), share: text(prefix+"-share", false),
+			remove: ui.NewButton(prefix+"-remove", "Remove"),
+		})
+	}
+	made.addOption = ui.NewButton("add-option", "Add option")
 }
 
 // parseAmount reads a wait's amount in its unit.

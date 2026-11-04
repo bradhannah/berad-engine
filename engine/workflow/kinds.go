@@ -222,6 +222,7 @@ func Kinds() []Kind {
 			},
 			Outputs: []Output{{Name: OutputInside, Label: "first step"}, {Name: OutputExit, Label: "exit"}},
 		},
+		togetherKind(),
 		goToKind(next),
 		moveKind(next),
 		{
@@ -279,6 +280,9 @@ func playSoundKind(next []Output) Kind {
 			{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil},
 			{Name: "loudness", Label: "Loudness this time", Type: TypeChoice, Default: mustJSON(LoudnessAsCue),
 				Choices: choices},
+			{Name: ParamCarry, Label: "Carry on", Type: TypeChoice, Default: mustJSON(CarryAtOnce), Choices: []Choice{
+				{Value: CarryAtOnce, Label: "At once"}, {Value: CarryWhenDone, Label: "When it has played"},
+			}},
 		},
 		Outputs: next,
 	}
@@ -371,6 +375,9 @@ func Outputs(node Node) []Output {
 	if node.Kind == KindCall {
 		return callOutputs(node)
 	}
+	if node.Kind == KindTogether {
+		return togetherOutputs(node, declared)
+	}
 	if node.Kind == KindRandom {
 		options, err := node.Shares("options")
 		if err != nil {
@@ -450,7 +457,11 @@ func checkValue(param Param, value json.RawMessage) error {
 		return checkNumber(value, 1, numberLimit(param.Type))
 	case TypeDuration:
 		return checkDuration(value)
-	case TypeShares:
+	case TypeShares, TypeLanes:
+		if param.Type == TypeLanes {
+			return checkLanes(value)
+		}
+
 		return checkShares(value)
 	case TypeTimeRange:
 		return checkSpan(value)

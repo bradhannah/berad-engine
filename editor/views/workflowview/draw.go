@@ -138,6 +138,8 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 		switch s.shapes[nodeID].node.Kind {
 		case flow.KindContainer:
 			s.drawContainer(area, s.shapes[nodeID])
+		case flow.KindTogether:
+			s.drawTogether(area, s.shapes[nodeID])
 		case flow.KindNote:
 			s.drawNode(area, s.shapes[nodeID], docs)
 		}
@@ -211,11 +213,11 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 		}
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
-		if linked || out.output.Name == flow.OutputInside {
+		if linked || flow.IsInner(from.node, out.output.Name) {
 			continue
 		}
 		labelY := centre.Y - ui.LabelSize/ui.Half - ui.Half
-		s.theme.DrawSmall(area, endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, ui.ColorMuted())
+		s.theme.DrawSmall(area, s.endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, ui.ColorMuted())
 	}
 }
 
@@ -458,7 +460,10 @@ func (s *State) playSummary(node flow.Node) string {
 		cue = listed.Name
 	}
 	if step, found := loudness.Find(choiceOf(node, "loudness")); found {
-		return cue + " · " + strings.ToLower(step.Label) + " this time"
+		cue += " · " + strings.ToLower(step.Label) + " this time"
+	}
+	if choiceOf(node, flow.ParamCarry) == flow.CarryWhenDone {
+		cue += " · until played"
 	}
 
 	return cue
@@ -487,6 +492,29 @@ func plural(count int, one, many string) string {
 // drawContainer draws a time-bound container: a dashed box with a tinted
 // heading that names it and gives its times.
 func (s *State) drawContainer(area *ebiten.Image, drawn shape) {
+	s.drawContainerFrame(area, drawn, "Container")
+	head := s.screenRect(drawn.rect)
+	if bound, err := drawn.node.TimeRange("bound"); err == nil {
+		times := flow.FormatRange(bound) + " → exit"
+		right := head.Max.X - textPad - portRadius - s.markRoom(drawn)
+		s.theme.DrawMono(area, times, right-s.theme.MonoWidth(times), head.Min.Y+(containerHead-ui.MonoSize)/ui.Half-1,
+			ui.ColorInk())
+	}
+}
+
+// markRoom is the room a node's problem mark takes at the right of its
+// head, none when it has no problem.
+func (s *State) markRoom(drawn shape) int {
+	if _, problem := s.problems[drawn.node.ID]; problem {
+		return markInset + ui.Half*markRadius
+	}
+
+	return 0
+}
+
+// drawContainerFrame draws what every container has: its dashed border, its
+// head with its kind and name, its problem mark and its resize grip.
+func (s *State) drawContainerFrame(area *ebiten.Image, drawn shape, label string) {
 	rect := s.screenRect(drawn.rect)
 	ui.FillRect(area, rect, ui.HexAlpha(hexWhite, containerAlpha))
 	head := image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+containerHead)
@@ -498,19 +526,10 @@ func (s *State) drawContainer(area *ebiten.Image, drawn shape) {
 	strokeDashed(area, rect, containerLine, ui.ColorInk())
 	strokeDashed(area, image.Rect(head.Min.X, head.Max.Y, head.Max.X, head.Max.Y+1), ui.Border, ui.ColorInk())
 	textY := head.Min.Y + (containerHead-ui.TextSize)/ui.Half - 1
-	s.theme.DrawLabel(area, "Container", head.Min.X+textPad, head.Min.Y+(containerHead-ui.LabelSize)/ui.Half-1,
+	s.theme.DrawLabel(area, label, head.Min.X+textPad, head.Min.Y+(containerHead-ui.LabelSize)/ui.Half-1,
 		ui.ColorMuted())
-	nameX := head.Min.X + textPad + s.theme.LabelWidth("Container") + textPad
+	nameX := head.Min.X + textPad + s.theme.LabelWidth(label) + textPad
 	s.theme.DrawStrong(area, textParam(drawn.node, "name"), nameX, textY, ui.ColorInk())
-	if bound, err := drawn.node.TimeRange("bound"); err == nil {
-		times := flow.FormatRange(bound) + " → exit"
-		right := head.Max.X - textPad - portRadius
-		if _, problem := s.problems[drawn.node.ID]; problem {
-			right -= markInset + ui.Half*markRadius
-		}
-		s.theme.DrawMono(area, times, right-s.theme.MonoWidth(times), head.Min.Y+(containerHead-ui.MonoSize)/ui.Half-1,
-			ui.ColorInk())
-	}
 	s.drawMark(area, drawn)
 	corner := rect.Max
 	for step := 0; step < resizeGrab; step += gripStep {
@@ -586,6 +605,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 		return found, true
 	}
 	if found, handled := s.hasTintState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasLaneState(state); handled {
 		return found, true
 	}
 	if state == "legend" {
@@ -709,6 +731,8 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		}
 	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
 		s.drawChoices(screen, made, node)
+	case flow.TypeLanes:
+		s.drawLanes(screen, made)
 	case flow.TypeTimeRange:
 		s.drawTimes(screen, made.from, made.to)
 	case flow.TypeTimeRanges:
@@ -806,7 +830,8 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 		}
 	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
 		flow.TypeCue, flow.TypeValue, flow.TypeOperand,
-		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
+		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage,
+		flow.TypeLanes:
 	}
 }
 
@@ -837,6 +862,8 @@ func hintFor(kind string) string {
 			"shows what that works out to.",
 		flow.KindContainer: "Repeats what is inside while its time lasts, then leaves by its exit, even partway " +
 			"through a step.",
+		flow.KindTogether: "Starts every lane at once and goes on by all done when every lane is done. Lanes run in " +
+			"their order each tick; only one can move the NPC.",
 		flow.KindGoTo: "Walks to the anchor picked on a map, or to the place a place value holds as it starts.",
 		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
 		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
@@ -973,6 +1000,8 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 		if drawn, ok := s.nthNode(value); ok && !drawn.addOption.Empty() {
 			return ui.Center(drawn.addOption), true
 		}
+	case locateLane:
+		return s.locateLaneBand(value)
 	case "line":
 		return s.locateLine(value)
 	case "bend":

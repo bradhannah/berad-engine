@@ -162,6 +162,7 @@ func (s *State) canStart(floorData *floor.Floor, cell Cell) bool {
 // floor.
 func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 	s.choosing, s.starting = false, true
+	s.askAudio(ctx)
 	floorID := s.floor
 	ctx.Requests.PreviewStart(s.zone, func(result protocol.Result, err error) {
 		s.starting = false
@@ -320,7 +321,7 @@ func sameEntity(sent, now protocol.PreviewEntity) bool {
 	return slices.Equal(sent.Calls, now.Calls) && sent.ID == now.ID && sent.Floor == now.Floor && sent.X == now.X &&
 		sent.Y == now.Y && sent.Face == now.Face && sent.NPC == now.NPC && sent.Workflow == now.Workflow &&
 		sent.Node == now.Node && sent.Activity == now.Activity && sent.Status == now.Status && sent.Last == now.Last &&
-		sent.Changes == now.Changes && sent.Saying == now.Saying
+		sent.Changes == now.Changes && sent.Saying == now.Saying && slices.Equal(sent.Lanes, now.Lanes)
 }
 
 // sendState sends the preview's state, the player, the NPCs and the clock,
@@ -344,8 +345,8 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 	return protocol.PreviewEntity{
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
-		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""}, Changes: 0,
-		Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{}, Saying: "", SayingLeft: 0,
+		Last:    protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: ""},
+		Changes: 0, Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{}, Saying: "", SayingLeft: 0, Lanes: nil,
 	}
 }
 

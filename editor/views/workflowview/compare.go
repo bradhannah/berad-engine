@@ -205,7 +205,7 @@ func (made control) isBox(widget string) bool {
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTiles,
 		flow.TypeSeconds,
 		flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays,
-		flow.TypePort, flow.TypeMessage:
+		flow.TypePort, flow.TypeMessage, flow.TypeLanes:
 	}
 
 	return false

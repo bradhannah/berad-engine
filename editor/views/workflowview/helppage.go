@@ -22,8 +22,11 @@ func (s *State) helpTarget() (string, string) {
 		return "Add to the canvas", "Puts it in the middle of the canvas, joined to nothing."
 	}
 	label := labelOf(node.Kind)
-	if node.Kind == flow.KindContainer {
+	switch node.Kind {
+	case flow.KindContainer:
 		return "Add inside " + label, "Puts it inside the container, as its first step when it has none."
+	case flow.KindTogether:
+		return "Add inside " + label, "Puts it inside the Together, as the first step of its first empty lane."
 	}
 
 	return "Add after " + label, "Puts it in the flow after " + label + ", as a drop on its line would."

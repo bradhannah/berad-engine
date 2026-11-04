@@ -13,6 +13,7 @@ import (
 	"image"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -281,9 +282,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		if following {
 			s.flow.SetLive(entity.Node, entity.Last.From, entity.Last.Output, entity.Changes)
 			s.flow.SetStep(s.state.Step)
+			s.flow.SetLanes(entity.Lanes)
 		} else {
 			s.flow.SetLive(shown.node, ids.ULID{}, "", entity.Changes)
 			s.flow.SetStep(nil)
+			s.flow.SetLanes(nil)
 		}
 		s.flow.Update(input, ctx)
 	}
@@ -387,6 +390,7 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 		if entity.Status != "" {
 			now = entity.Status
 		}
+		now += lanesLine(entity.Lanes)
 		if way := s.wayLine(docs, entity); way != "" {
 			now += " · " + way
 		}
@@ -486,7 +490,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // "showing:<workflow>" while that workflow is drawn; and the log's states
 // (see hasLogState).
 func (s *State) hasState(state string, docs frame.Docs) bool {
-	if found, handled := s.hasLogState(state); handled {
+	if found, handled := s.hasPartState(state); handled {
 		return found
 	}
 	entity, watching := s.watched()
@@ -555,4 +559,54 @@ func (s *State) whereLine(docs frame.Docs, entity protocol.PreviewEntity) string
 
 	return fmt.Sprintf("cell %d, %d on %s", int(math.Round(entity.X)), int(math.Round(entity.Y)),
 		s.name(docs, entity.Floor, "a floor"))
+}
+
+// laneDoing is what a lane is doing, in a word or two when it is done.
+func laneDoing(lane protocol.PreviewLane) string {
+	if lane.Done {
+		return "done"
+	}
+
+	return lane.Doing
+}
+
+// hasLaneState answers "lane:<n>=<what it is doing>" and "lane-done:<n>"
+// for the watched NPC's Together's lanes.
+func hasLaneState(entity protocol.PreviewEntity, state string) bool {
+	if number, done := strings.CutPrefix(state, "lane-done:"); done {
+		index, err := strconv.Atoi(number)
+
+		return err == nil && index >= 1 && index <= len(entity.Lanes) && entity.Lanes[index-1].Done
+	}
+	number, doing, _ := strings.Cut(strings.TrimPrefix(state, "lane:"), "=")
+	index, err := strconv.Atoi(number)
+
+	return err == nil && index >= 1 && index <= len(entity.Lanes) && !entity.Lanes[index-1].Done &&
+		entity.Lanes[index-1].Doing == doing
+}
+
+// hasPartState answers the log's states (see hasLogState) and the watched
+// NPC's lanes', and whether the state is one of them.
+func (s *State) hasPartState(state string) (bool, bool) {
+	if found, handled := s.hasLogState(state); handled {
+		return found, true
+	}
+	if strings.HasPrefix(state, "lane:") || strings.HasPrefix(state, "lane-done:") {
+		entity, watching := s.watched()
+
+		return watching && hasLaneState(entity, state), true
+	}
+
+	return false, false
+}
+
+// lanesLine says what each lane of a Together is doing, after what the NPC
+// is doing: " · 1 Shake: Shake screen · 2 Chime: done".
+func lanesLine(lanes []protocol.PreviewLane) string {
+	var line strings.Builder
+	for index, lane := range lanes {
+		line.WriteString(" · " + strconv.Itoa(index+1) + " " + lane.Label + ": " + laneDoing(lane))
+	}
+
+	return line.String()
 }

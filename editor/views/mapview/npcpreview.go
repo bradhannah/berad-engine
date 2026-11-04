@@ -260,7 +260,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 			world := npcrun.World{
 				Names: names, Zone: zone, Workflow: run.workflow, Behaviour: run.source, Workflows: s.module,
 				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
-				Stage: s.preview.stage,
+				Stage: s.preview.stage, CueTicks: s.cueTicks,
 			}
 			run.npc.Step(world, s.preview.run.Tick())
 			asked = append(asked, run.npc.Sounds...)
@@ -270,7 +270,7 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 			loop.npc.Step(npcrun.World{
 				Names: names, Zone: zone, Workflow: loop.workflow, Behaviour: loop.source, Workflows: s.module,
 				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
-				Stage: s.preview.stage,
+				Stage: s.preview.stage, CueTicks: s.cueTicks,
 			}, s.preview.run.Tick())
 			asked = append(asked, loop.npc.Sounds...)
 			s.keepLines(loop.npc, s.zone.String())
@@ -385,7 +385,23 @@ func (s *State) liveNPCOf(placement ids.ULID) ids.ULID {
 func previewChange(change npcrun.Change) protocol.PreviewChange {
 	return protocol.PreviewChange{
 		From: change.From, Output: change.Output, To: change.To, Tick: change.Tick, Status: change.Status,
+		Lane: change.Lane,
 	}
+}
+
+// previewLanes are a Together's lanes as the preview's state carries them.
+func previewLanes(lanes []npcrun.Lane) []protocol.PreviewLane {
+	if len(lanes) == 0 {
+		return nil
+	}
+	carried := make([]protocol.PreviewLane, 0, len(lanes))
+	for _, lane := range lanes {
+		carried = append(carried, protocol.PreviewLane{
+			Port: lane.Port, Label: lane.Label, Node: lane.Node, Doing: lane.Doing, Done: lane.Done,
+		})
+	}
+
+	return carried
 }
 
 // npcEntity is an NPC as the preview's state carries it.
@@ -423,7 +439,7 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
 		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
-		Sprite: s.spriteNow(run.npc.NPC), Saying: "", SayingLeft: 0,
+		Sprite: s.spriteNow(run.npc.NPC), Saying: "", SayingLeft: 0, Lanes: previewLanes(run.npc.Lanes(s.running(run))),
 	}
 	if line, saying := run.npc.Saying(); saying {
 		entity.Saying, entity.SayingLeft = line.Text, float64(line.Left)/float64(line.Ticks)

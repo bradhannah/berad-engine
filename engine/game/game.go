@@ -72,6 +72,8 @@ type Game struct {
 	names    npcrun.Names
 	// stage is the message boxes and the shake every workflow shares.
 	stage *show.Stage
+	// cueTicks says how long each cue plays, for a Play sound that waits.
+	cueTicks func(cue string) int
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -131,7 +133,7 @@ func New(project Project) (*Game, error) {
 		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
-		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(),
+		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(), cueTicks: nil,
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -205,7 +207,7 @@ func (g *Game) Step(input play.Input) Step {
 		world := npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
 			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
-			Others: others, Stage: g.stage,
+			Others: others, Stage: g.stage, CueTicks: g.cueTicks,
 		}
 		character.Step(world, g.run.Tick())
 		cues = heard(cues, character.Sounds)
@@ -214,12 +216,17 @@ func (g *Game) Step(input play.Input) Step {
 		g.loop.Step(npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
 			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others, Stage: g.stage,
+			CueTicks: g.cueTicks,
 		}, g.run.Tick())
 		cues = heard(cues, g.loop.Sounds)
 	}
 
 	return Step{Outcome: outcome, Cues: cues}
 }
+
+// KnowCues tells the game how many ticks each cue plays for, from its
+// audio library, so a Play sound can wait until its sound has played.
+func (g *Game) KnowCues(cueTicks func(cue string) int) { g.cueTicks = cueTicks }
 
 // heard adds the cues asked for to those heard this tick, each once.
 func heard(cues, asked []npcrun.Sound) []npcrun.Sound {

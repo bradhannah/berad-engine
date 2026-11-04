@@ -251,7 +251,7 @@ func (s *State) drop(ctx *frame.Context, kind string, point image.Point) {
 // in the flow and has an output to carry it on.
 func splices(kind string) bool {
 	node, err := flow.NewNode(kind)
-	if err != nil || !flow.Runs(kind) || kind == flow.KindContainer || kind == flow.KindStart {
+	if err != nil || !flow.Runs(kind) || flow.IsContainer(kind) || kind == flow.KindStart {
 		return false
 	}
 
