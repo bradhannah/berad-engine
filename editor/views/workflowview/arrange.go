@@ -69,7 +69,7 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 			sizes[node.ID] = arrangeTogether(workflow, node, boxes, sized, cycle)
 		}
 	}
-	placed := arrangeLevel(workflow, ids.ULID{}, workflow.Start(), sizes, sized, cycle, image.Pt(arrangeX, arrangeY))
+	placed := arrangeTop(workflow, sizes, sized, cycle, image.Pt(arrangeX, arrangeY))
 	for nodeID, at := range placed {
 		node, _ := workflow.Node(nodeID)
 		boxes[nodeID] = boxAt(node, at, sizeOf(node, sizes, sized))
@@ -79,6 +79,43 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 	}
 
 	return boxes
+}
+
+// arrangeTop lays out the top level: the flow from the start, then under
+// it each receiver's path in a row of its own, in the order they were made,
+// then any steps neither reaches, each run in a row of its own; notes go
+// under everything.
+func arrangeTop(
+	workflow *flow.Workflow, sizes map[ids.ULID]image.Point, sized sizing, cycle map[routeKey]bool, origin image.Point,
+) map[ids.ULID]image.Point {
+	firsts := []ids.ULID{workflow.Start()}
+	for _, node := range workflow.Nodes() {
+		if node.Kind == flow.KindOnSignal && node.Parent.IsZero() {
+			firsts = append(firsts, node.ID)
+		}
+	}
+	if len(firsts) == 1 {
+		return arrangeLevel(workflow, ids.ULID{}, workflow.Start(), sizes, sized, cycle, origin)
+	}
+	graph := levelOf(workflow, ids.ULID{}, cycle)
+	firsts = append(firsts, graph.order...)
+	taken, corners, top := map[ids.ULID]bool{}, map[ids.ULID]image.Point{}, origin.Y
+	for _, first := range firsts {
+		if taken[first] {
+			continue
+		}
+		columns := graph.laneColumns(first, taken)
+		graph.reorder(columns)
+		band := graph.placeColumns(columns, sizes, sized, image.Pt(origin.X, top))
+		for nodeID, at := range band {
+			corners[nodeID] = at
+			node, _ := workflow.Node(nodeID)
+			top = max(top, at.Y+sizeOf(node, sizes, sized).Y+ui.Half*rowGap)
+		}
+	}
+	placeNotes(workflow, ids.ULID{}, corners, sizes, sized, origin)
+
+	return corners
 }
 
 // arrangeInside lays out a container's contents relative to the container's

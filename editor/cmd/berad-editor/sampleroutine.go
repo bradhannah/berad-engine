@@ -278,11 +278,14 @@ func clerksDay(
 }
 
 // answerBell adds the clerk's receiver for the bell: she says Just a
-// moment! and resumes what she was doing.
+// moment!, and once it is said resumes what she was doing.
 func (b *routineBuilder) answerBell(bell ids.ULID) {
 	none := ids.ULID{}
 	ring := b.node(flow.KindOnSignal, none, map[string]any{flow.ParamSignal: bell.String()})
-	coming, back := b.show(none, flow.KindSay, "Just a moment!"), b.node(flow.KindResume, none, nil)
+	coming := b.node(flow.KindSay, none, map[string]any{
+		flow.ParamMessage: []flow.Segment{{Text: "Just a moment!", Ref: nil}}, flow.ParamCarry: flow.CarryWhenDone,
+	})
+	back := b.node(flow.KindResume, none, nil)
 	b.link(ring, flow.OutputNext, coming)
 	b.link(coming, flow.OutputNext, back)
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -63,5 +64,39 @@ func TestSignalProblems(t *testing.T) {
 	lone := "Resume goes back to where a signal interrupted the NPC, so it belongs on a receiver's path."
 	if !f.has("problem:" + flow.KindResume + ":2=" + lone) {
 		t.Fatal("a Resume off any receiver's path is a problem")
+	}
+}
+
+// TestReceiversArrangeUnderTheFlow lays a receiver's path out in a row of
+// its own, under the flow from the start, starting at the left.
+func TestReceiversArrangeUnderTheFlow(t *testing.T) {
+	t.Parallel()
+	workflow, err := flow.New(frametest.ID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	made := func(seed byte, kind string) flow.Node {
+		node, err := flow.NewNode(kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		node.ID = frametest.ID(seed)
+
+		return node
+	}
+	if err := workflow.Insert([]flow.Node{
+		made(2, flow.KindWait), made(3, flow.KindWait), made(4, flow.KindOnSignal), made(5, flow.KindResume),
+	}, nil, []flow.Link{
+		{From: frametest.ID(1), Output: flow.OutputNext, To: frametest.ID(2)},
+		{From: frametest.ID(2), Output: flow.OutputNext, To: frametest.ID(3)},
+		{From: frametest.ID(4), Output: flow.OutputNext, To: frametest.ID(5)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	boxes := workflowview.Arrange(workflow, func(flow.Node, int) int { return 46 })
+	start, last, receiver := boxes[frametest.ID(1)], boxes[frametest.ID(3)], boxes[frametest.ID(4)]
+	resume := boxes[frametest.ID(5)]
+	if receiver.X != start.X || receiver.Y <= last.Y || resume.Y <= last.Y || resume.X <= receiver.X {
+		t.Fatalf("the receiver's path is a row under the flow: %+v %+v %+v", start, last, receiver)
 	}
 }
