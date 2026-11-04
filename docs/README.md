@@ -7,7 +7,7 @@
 | [Vocabulary](VOCABULARY.md) | One term per concept: spatial, art and editor terms |
 | [First-pass review](FIRST_PASS_REVIEW.md) | The architecture checked against known problems, with sources |
 | [Research notes](RESEARCH_NOTES.md) | Background research and unadopted proposals |
-| [Workflow design](WORKFLOW_DESIGN.md) | Where workflows are heading: container exits, kinds of workflow, values, calls and conversations (draft) |
+| [Workflow design](WORKFLOW_DESIGN.md) | Where workflows are heading: containers and Together, kinds of workflow, values, calls, speech, signals and conversations (draft) |
 
 ## Increments
 
@@ -46,3 +46,7 @@ accepted it.
 | [22. NPCs live in one zone](increments/0022-npc-zones.md) | NPCs live in one zone: an NPC's zone set in its details and chosen with a zone picker over the window; placed only in its zone; changing it asks first; places it can't reach flagged; NPCs take the stairs between floors | Built |
 | [23. Kinds of workflow, and where they run](increments/0023-workflow-kinds.md) | Kinds of workflow, and where they run: NPC behaviours and zone loops, each with its own nodes; a zone's loop set in its details and run while the zone is alive; a workflow running in one zone or any, its places, followers and loops checked against it; choosing offers what fits; changing it asks first | Built |
 | [24. Built-in values and the Log node](increments/0024-built-ins-and-log.md) | Built-in values and the Log node: an NPC's zone, behaviour and sprite as values; zone, workflow and sprite compared by identity; a workflow setting its own NPC's sprite; every value as text; a Log node writing lines to Watch | Built |
+| [25. Finding and placing nodes](increments/0025-palette.md) | Finding and placing nodes: the palette's search by what a node does, its one line on hover, its help page in the inspector on a click with Add after, and only dragging to place | Built |
+| [26. Speech, message boxes and screen shake](increments/0026-speech-and-boxes.md) | Speech, message boxes and screen shake: Say over the NPC's own head, Show message in a box that goes on its own or is closed, each in a queue and waited for or not; Shake screen moving the world | Built |
+| [27. Together](increments/0027-together.md) | Together: a container of lanes that start at once and go on when every lane is done; one lane moves the NPC; Play sound waiting until it has played; every lane in Watch | Built |
+| [28. Signals](increments/0028-signals.md) | Signals: declared signals sent to an NPC or everyone in its zone; receivers that interrupt at a safe moment, then Resume or take over; broken signal calls flagged and unheard receivers warned | Built |

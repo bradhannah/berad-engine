@@ -46,7 +46,7 @@ func withPlaySound(t *testing.T) *fixture {
 	t.Helper()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindPlaySound)
+	f.add("" + flow.KindPlaySound)
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if len(f.requests.AudioAsks) != 1 {
 		t.Fatalf("a workflow with a Play sound asks for the audio library once: %d", len(f.requests.AudioAsks))
@@ -187,7 +187,7 @@ func TestMissingCueIsAProblem(t *testing.T) {
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	empty := newFixture(t)
 	empty.click("node:start:1")
-	empty.click("palette:" + flow.KindPlaySound)
+	empty.add("" + flow.KindPlaySound)
 	empty.frame(ui.NewInput(image.Pt(0, 0)))
 	empty.requests.AudioAsks[0](protocol.AudioLibrary{Problem: "This project has no audio library yet.", Cues: nil}, nil)
 	empty.click("ui:cue")

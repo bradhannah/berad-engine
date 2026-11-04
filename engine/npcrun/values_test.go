@@ -11,6 +11,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/show"
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -97,6 +98,10 @@ type town struct {
 	tick      uint64
 	names     npcrun.Names
 	behaviour ids.ULID
+	stage     *show.Stage
+	// sent are the signals sent on the latest tick, delivered on the next.
+	sent    []npcrun.Sent
+	modules flow.Lookup
 }
 
 func newTown(t *testing.T, state *worldstate.Store) *town {
@@ -105,6 +110,7 @@ func newTown(t *testing.T, state *worldstate.Store) *town {
 	return &town{
 		npcs: nil, workflows: nil, state: state, zone: play.Levels{{ID: id(groundID), Floor: office(t)}},
 		clock: clock.New(eight, clock.MinutePerSecond), tick: 0, names: nil, behaviour: ids.ULID{},
+		stage: show.NewStage(), sent: nil, modules: nil,
 	}
 }
 
@@ -120,16 +126,20 @@ func (w *town) place(seed byte, at image.Point, workflow *flow.Workflow) *npcrun
 func (w *town) run(ticks int) {
 	for range ticks {
 		w.tick++
+		w.stage.Tick()
 		passed := w.clock.Advance()
 		others := make([]npcrun.Other, 0, len(w.npcs))
 		for _, each := range w.npcs {
 			others = append(others, npcrun.Other{Placement: each.Placement, NPC: each.NPC, Floor: each.Floor, Cell: each.Cell})
 		}
+		npcrun.Deliver(w.sent, w.npcs, id(zoneID))
+		w.sent = w.sent[:0]
 		for index, each := range w.npcs {
 			each.Step(npcrun.World{
 				Names: w.names, Zone: w.zone, Workflow: w.workflows[index], Behaviour: w.behaviour, Clock: w.clock,
-				Passed: passed, State: w.state, Here: id(zoneID), Others: others,
+				Passed: passed, State: w.state, Here: id(zoneID), Others: others, Stage: w.stage, Workflows: w.modules,
 			}, w.tick)
+			w.sent = append(w.sent, each.Sent...)
 		}
 	}
 }

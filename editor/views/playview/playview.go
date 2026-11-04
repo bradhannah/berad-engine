@@ -64,6 +64,8 @@ type State struct {
 	canvas *ebiten.Image
 	sharp  *ebiten.Image
 	scale  float64
+	// origin is where the canvas's top-left corner is drawn on the screen.
+	origin image.Point
 	tile   int
 	// clockStart is the time of day the clock starts at, as the Clock window
 	// sets it.
@@ -76,7 +78,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
 		launching: true, launches: 0, floors: nil, held: 0, shown: true, standIns: map[string]ids.ULID{},
 		npcSprites: map[ids.ULID]ids.ULID{}, art: newArtSet(), sound: newSounds(),
-		canvas: nil, sharp: nil, scale: 1, tile: 0, clockStart: protocol.DefaultClockStart,
+		canvas: nil, sharp: nil, scale: 1, origin: image.Pt(0, 0), tile: 0, clockStart: protocol.DefaultClockStart,
 	}
 }
 
@@ -127,6 +129,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	held := s.heldKeys(input)
+	if stage := s.game.Stage(); stage.Holding() &&
+		(input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) || input.Pressed) {
+		stage.Close()
+	}
 	step := s.game.Step(play.Input{Held: held, Pressed: held &^ s.held})
 	s.held = held
 	if step.Outcome == play.Lost {

@@ -26,7 +26,7 @@ func TestReturns(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindReturn)
+	f.add("" + flow.KindReturn)
 	f.drag(f.at("palette:"+flow.KindReturn), f.at("canvas:500,400"))
 	if first, second := f.wayOf(1), f.wayOf(2); first != (flow.WayOut{Port: "w1", Label: "finished"}) ||
 		second != (flow.WayOut{Port: "w2", Label: "finished 2"}) {
@@ -53,7 +53,7 @@ func TestReturns(t *testing.T) {
 	}
 	f.click("ui:revert")
 	f.drag(f.at("palette:"+flow.KindContainer), f.at("canvas:300,600"))
-	f.click("palette:" + flow.KindReturn)
+	f.add("" + flow.KindReturn)
 	if !f.has("problem:return:3=A Return goes at the top level. Inside a container it is not a way out " +
 		"until containers get named exits.") {
 		t.Fatal("a Return inside a container is flagged")

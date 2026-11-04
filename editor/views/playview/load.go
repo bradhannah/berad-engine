@@ -13,6 +13,7 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
+	"github.com/bradhannah/berad-engine/editor/views/signals"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -45,7 +46,7 @@ func (s *State) prepare(ctx *frame.Context) (game.Project, int, bool) {
 	snapshot := game.Project{
 		Settings: game.DefaultSettings(), Zone: nil, Floors: map[ids.ULID]*floor.Floor{},
 		NPCs: map[ids.ULID]npc.NPC{}, Workflows: map[ids.ULID]*flow.Workflow{}, Values: nil, Seconds: 0, Seed: 0,
-		Names: places.NewNames(ctx.Docs),
+		Names: places.NewNames(ctx.Docs), Signals: nil,
 	}
 	load := &loader{state: s, ctx: ctx, index: nil, ready: true}
 	ctx.Docs.View(project.IndexID(), func(document client.Document) {
@@ -187,6 +188,7 @@ func (l *loader) values(project *game.Project) {
 	} else {
 		l.ready = false
 	}
+	project.Signals, _ = signals.Declared(l.ctx.Docs)
 }
 
 // art reads the tile size and the record of which sprite shows each

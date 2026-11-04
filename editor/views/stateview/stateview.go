@@ -25,6 +25,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/signals"
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
 	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
@@ -116,26 +117,28 @@ type State struct {
 	findButton *ui.Button
 	findUses   map[string]int
 	lastGroup  string
+	// signal is the selected signal's name, line and Delete.
+	signal signalFields
 }
 
 // New returns the World state window for the project's world state.
 func New(window, document ids.ULID, theme *ui.Theme) *State {
 	adds := []*ui.Button{
 		ui.NewButton(addValueID, "Add value"), ui.NewButton(addGroupID, "Add group"),
-		ui.NewButton(addTemplateID, "Add template"),
+		ui.NewButton(addTemplateID, "Add template"), ui.NewButton(addSignalID, "Add signal"),
 	}
 	adds[0].Primary = true
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0),
 		list:  ui.NewList("values", ""),
-		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
+		shown: tree{rows: nil, items: nil, catalog: nil, signals: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
 		menu:   ui.Menu{Items: nil, Width: 0},
 		menuOf: "", revealPath: "", revealRename: false, nameAdded: false, find: nil,
 		findButton: ui.NewButton(findID, "Find a value"),
-		findUses:   nil, lastGroup: "",
+		findUses:   nil, lastGroup: "", signal: newSignalFields(theme),
 		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
@@ -224,7 +227,7 @@ func (s *State) layout() {
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
-	for _, document := range valuetree.Documents(ctx.Docs) {
+	for _, document := range slices.Concat(valuetree.Documents(ctx.Docs), signals.Documents(ctx.Docs)) {
 		s.subscribe(ctx, document)
 	}
 	loaded := s.refresh(ctx.Docs)
@@ -260,6 +263,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.revealRow()
 	s.nameNewRow()
+	if selected, found := s.selected(); found && isSignal(selected.kind) {
+		s.showSignal(ctx.Docs, selected)
+	} else {
+		s.signal.of = ids.ULID{}
+	}
 	if s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd()) {
 		s.openFind(ctx, "")
 
@@ -320,6 +328,8 @@ func (s *State) Unsaved(frame.Docs) int {
 		return s.form.Unsaved()
 	case s.pathOf != "":
 		return frame.UnsavedFields(s.path)
+	case !s.signal.of.IsZero():
+		return frame.UnsavedFields(s.signal.name, s.signal.description)
 	}
 
 	return 0
@@ -332,6 +342,9 @@ func (s *State) UnsavedName(frame.Docs) string {
 	}
 	if meaning, found := s.shown.items[s.pathOf]; found {
 		return meaning.owner.Name + "'s path name"
+	}
+	if !s.signal.of.IsZero() {
+		return "this signal"
 	}
 
 	return "this value"
@@ -346,6 +359,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 		s.focus.Set(nil)
 
 		return true
+	}
+	if !s.signal.of.IsZero() {
+		return s.saveSignal(ctx)
 	}
 	if s.named == "" {
 		return s.savePath(ctx)
@@ -436,6 +452,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return image.Pt(0, 0), false
 	case kind+":" == sectionPrefix:
 		return s.list.Locate(sectionPrefix + value)
+	case kind == signalLocate:
+		return s.locateSignal(value)
 	}
 
 	return s.locateWidget(strings.TrimPrefix(name, "ui:"))
@@ -447,6 +465,14 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	}
 	if widget == pathID && !s.path.Rect.Empty() {
 		return s.path.Center(), true
+	}
+	for _, field := range []*ui.TextField{s.signal.name, s.signal.description} {
+		if widget == field.ID && !field.Rect.Empty() {
+			return field.Center(), true
+		}
+	}
+	if widget == deleteSignalID && !s.signal.remove.Rect.Empty() {
+		return ui.Center(s.signal.remove.Rect), true
 	}
 	for _, button := range append(append(append([]*ui.Button{s.findButton}, s.adds...), s.templates...), s.takeOff) {
 		if button.ID == widget && !button.Rect.Empty() {
@@ -462,6 +488,9 @@ func (s *State) hasState(docs frame.Docs, state string) bool {
 		if found, handled := s.find.HasState(docs, s.screen(), state); handled {
 			return found
 		}
+	}
+	if found, handled := hasSignalState(docs, state); handled {
+		return found
 	}
 	switch {
 	case state == stateLoaded:
@@ -533,14 +562,15 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		button.Draw(screen, s.theme)
 	}
 	if where := s.addsNote(docs); loaded && where != "" {
-		room := s.findButton.Rect.Min.X - s.adds[2].Rect.Max.X - ui.Half*ui.Gap*ui.Half
-		s.theme.DrawText(screen, s.theme.FitText(where, room), s.adds[2].Rect.Max.X+ui.Half*ui.Gap,
-			s.adds[2].Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
+		last := s.adds[len(s.adds)-1].Rect
+		room := s.findButton.Rect.Min.X - last.Max.X - ui.Half*ui.Gap*ui.Half
+		s.theme.DrawText(screen, s.theme.FitText(where, room), last.Max.X+ui.Half*ui.Gap,
+			last.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
 	}
 	if loaded {
 		s.list.Draw(screen, s.theme)
 	}
-	s.drawInspector(screen)
+	s.drawInspector(screen, docs)
 	s.menu.Draw(screen, s.theme)
 	s.guard.Draw(screen, s.theme)
 	if s.dialog != nil {

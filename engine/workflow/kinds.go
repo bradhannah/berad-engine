@@ -222,6 +222,7 @@ func Kinds() []Kind {
 			},
 			Outputs: []Output{{Name: OutputInside, Label: "first step"}, {Name: OutputExit, Label: "exit"}},
 		},
+		togetherKind(),
 		goToKind(next),
 		moveKind(next),
 		{
@@ -235,6 +236,8 @@ func Kinds() []Kind {
 		playSoundKind(next),
 	}...)
 	kinds = append(kinds, valueKinds(next)...)
+	kinds = append(kinds, showKinds(next)...)
+	kinds = append(kinds, signalKinds(next)...)
 
 	return append(kinds, Kind{
 		Name: KindNote, Label: "Note", Group: GroupAnnotate,
@@ -278,6 +281,9 @@ func playSoundKind(next []Output) Kind {
 			{Name: "cue", Label: "Cue", Type: TypeCue, Default: mustJSON(""), Choices: nil},
 			{Name: "loudness", Label: "Loudness this time", Type: TypeChoice, Default: mustJSON(LoudnessAsCue),
 				Choices: choices},
+			{Name: ParamCarry, Label: "Carry on", Type: TypeChoice, Default: mustJSON(CarryAtOnce), Choices: []Choice{
+				{Value: CarryAtOnce, Label: "At once"}, {Value: CarryWhenDone, Label: "When it has played"},
+			}},
 		},
 		Outputs: next,
 	}
@@ -370,6 +376,9 @@ func Outputs(node Node) []Output {
 	if node.Kind == KindCall {
 		return callOutputs(node)
 	}
+	if node.Kind == KindTogether {
+		return togetherOutputs(node, declared)
+	}
 	if node.Kind == KindRandom {
 		options, err := node.Shares("options")
 		if err != nil {
@@ -395,6 +404,15 @@ func Outputs(node Node) []Output {
 	}
 
 	return append(outputs, declared.Outputs...)
+}
+
+// numberLimit is the most a whole-number parameter can be.
+func numberLimit(paramType ParamType) int {
+	if paramType == TypeSeconds {
+		return MaxSeconds
+	}
+
+	return MaxTiles
 }
 
 // CheckParams reports a node whose parameters do not match its kind: a
@@ -436,18 +454,22 @@ func checkValue(param Param, value json.RawMessage) error {
 		}
 
 		return nil
-	case TypeTiles:
-		return checkNumber(value, 1, MaxTiles)
+	case TypeTiles, TypeSeconds:
+		return checkNumber(value, 1, numberLimit(param.Type))
 	case TypeDuration:
 		return checkDuration(value)
-	case TypeShares:
+	case TypeShares, TypeLanes:
+		if param.Type == TypeLanes {
+			return checkLanes(value)
+		}
+
 		return checkShares(value)
 	case TypeTimeRange:
 		return checkSpan(value)
 	case TypeTimeRanges:
 		return checkRanges(value)
-	case TypeText, TypeCue:
-		return checkText(value, textLimit(param.Type))
+	case TypeText, TypeCue, TypeSignal, TypeNPC:
+		return checkWritten(param.Type, value)
 	case TypeValue, TypeOperand, TypeMessage:
 		return checkValues(param.Type, value)
 	case TypeWorkflow, TypeInputs, TypeKeeps, TypeWays, TypePort:

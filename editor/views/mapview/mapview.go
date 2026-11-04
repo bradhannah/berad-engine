@@ -895,6 +895,7 @@ func (s *State) updateGridMode(
 		s.updateMovingSound(input, ctx, floorData, cell, onFloor)
 	case input.Secondary && inGrid && !s.zoom.contains(input.Cursor):
 		s.openMenu(ctx, floorData, cell, onFloor, input.Cursor)
+	case s.closeBox(input):
 	default:
 		return s.watchClicked(input, ctx, cell, onFloor)
 	}
@@ -1517,7 +1518,9 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		s.zoom.layout(s.Grid(), s.camera)
 
 		return s.zoom.reset.Label == strings.TrimPrefix(state, "zoom:")+"%"
-	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"), strings.HasPrefix(state, "heard:"):
+	case state == "watching", state == "npcs-moved", strings.HasPrefix(state, "npc:"), strings.HasPrefix(state, "heard:"),
+		strings.HasPrefix(state, "speaking:"), strings.HasPrefix(state, "box="), strings.HasPrefix(state, "boxes="),
+		state == "shaking":
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
@@ -1558,6 +1561,11 @@ func (s *State) showsFloor(value string) bool {
 // changes guard, a dialog, or the right-click menu. over reports whether
 // one does.
 func (s *State) locateOver(kind, value string) (image.Point, bool, bool) {
+	if kind == speechPart || kind == boxPart {
+		point, found := s.locateShown(kind, value)
+
+		return point, found, true
+	}
 	switch {
 	case s.guard.Active():
 		point, found := s.guard.Locate(value, s.size)

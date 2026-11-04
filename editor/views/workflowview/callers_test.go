@@ -35,7 +35,7 @@ func TestCalledByAndTheLock(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:return")
+	f.add("return")
 	f.answerCallers("Shopkeeper day", "Guard rounds")
 	if !f.has("calledby=Called by 2: Shopkeeper day, Guard rounds · Ways out: finished, done") {
 		t.Fatal("the strip names who calls it and its ways out")

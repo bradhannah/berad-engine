@@ -38,10 +38,11 @@ func (p Purpose) Label() string {
 }
 
 // Allows reports whether a workflow of the kind runs nodes of a node kind:
-// a zone loop has no Go to, Move or Find NPC nearby, as a zone has no body.
+// a zone loop has no Go to, Move or Find NPC nearby, as a zone has no body,
+// and no Say, as it has no head to speak over.
 func (p Purpose) Allows(kind string) bool {
 	if p == PurposeZoneLoop {
-		return kind != KindGoTo && kind != KindMove && kind != KindFindNPC
+		return kind != KindGoTo && kind != KindMove && kind != KindFindNPC && kind != KindSay
 	}
 
 	return true

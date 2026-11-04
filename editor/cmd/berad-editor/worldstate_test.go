@@ -63,13 +63,13 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:set-value"), must("state:selected:set-value", 300),
+		click("node:start:1"), wait(5), addNode("set-value"), must("state:selected:set-value", 300),
 		click("ui:pick-value"), wait(5), typed("done"), wait(5), must("declare:world.done", 120),
 		click("declare:world.done"), wait(5), click("ui:picker-declare"), must("state:value:value=world.done", 300),
 		wait(5),
 		click("ui:operand-to"), keys("Cmd+A"), typed("1"), keys("Enter"), must("state:operand:to=1", 300), wait(10),
 		shoot(setShot),
-		click("palette:check-value"), must("state:selected:check-value", 300),
+		addNode("check-value"), must("state:selected:check-value", 300),
 		click("ui:pick-value"), wait(5), must("valuerow:world.done", 120), click("valuerow:world.done"),
 		must("state:value:value=world.done", 300), wait(10), shoot(checkShot),
 		keys("Escape"), wait(5), click("ui:add-local"), must("state:local=value:integer:0", 300), wait(10),
@@ -128,7 +128,7 @@ func TestShopkeeperServesACustomer(t *testing.T) {
 		return picked
 	}
 	pause := func() []step {
-		return script(click("palette:wait"), wait(10), retype("param-duration", "1"), click("ui:duration-seconds"), wait(10))
+		return script(addNode("wait"), wait(10), retype("param-duration", "1"), click("ui:duration-seconds"), wait(10))
 	}
 	browserScript := script(
 		openZone(), wait(30), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
@@ -148,23 +148,23 @@ func TestShopkeeperServesACustomer(t *testing.T) {
 	)
 	customerScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:find-npc"), must("state:selected:find-npc", 300),
+		click("node:start:1"), wait(5), addNode("find-npc"), must("state:selected:find-npc", 300),
 		choose("where", "npc.stall.busy", "declare:npc.stall.busy"), must("state:value:where=npc.stall.busy", 300),
 		retype("operand-is", "1"), must("state:operand:is=1", 300),
 		choose("into", "clerk", "declare:local.clerk"), must("state:value:into=local.clerk", 300),
-		click("palette:set-value"), must("state:selected:set-value", 300),
+		addNode("set-value"), must("state:selected:set-value", 300),
 		choose("value", "npc.stall.queued", "declare:npc.stall.queued"), must("state:operand:to=0", 300), pause(),
-		click("node:find-npc:1"), wait(5), click("palette:set-value"), must("state:selected:set-value", 300),
+		click("node:find-npc:1"), wait(5), addNode("set-value"), must("state:selected:set-value", 300),
 		choose("value", "queued", "valuerow:npc.stall.queued"), retype("operand-to", "1"),
 		must("state:operand:to=1", 300), pause(), click("ui:arrange"), wait(20), shoot(flowShot), wait(10), quit(),
 	)
 	clerkScript := script(
 		must("state:loaded", 600), wait(5),
-		click("node:start:1"), wait(5), click("palette:find-npc"), must("state:selected:find-npc", 300),
+		click("node:start:1"), wait(5), addNode("find-npc"), must("state:selected:find-npc", 300),
 		choose("where", "queued", "valuerow:npc.stall.queued"), retype("operand-is", "1"),
 		must("state:operand:is=1", 300),
 		choose("into", "customer", "declare:local.customer"), must("state:value:into=local.customer", 300),
-		click("palette:set-value"), must("state:selected:set-value", 300),
+		addNode("set-value"), must("state:selected:set-value", 300),
 		choose("value", "busy", "valuerow:npc.stall.busy"), retype("operand-to", "1"), must("state:operand:to=1", 300),
 		pause(), click("node:find-npc:1"), wait(5), pause(), wait(10), quit(),
 	)
@@ -228,7 +228,7 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 	for _, each := range []struct {
 		name, path, workflow string
 		nodes                int
-	}{{"clerk", "clerk", "clerk-s-day", 20}, {"customer", "customer", "customer-shops", 12}} {
+	}{{"clerk", "clerk", "clerk-s-day", 25}, {"customer", "customer", "customer-shops", 16}} {
 		envelope := readEnvelope(t, project, "npcs/"+each.name+"--*.json")
 		document, err := npcplugin.Decode(envelope.Data)
 		if err != nil {
@@ -259,11 +259,11 @@ func TestSampleShopRuns(t *testing.T) {
 	mapScript := script(
 		must("state:loaded", 600), wait(5), keys("P"), click("cell:3,1"), must("state:previewing", 300), wait(10),
 		click("live-npc:Customer"), wait(5), click("live-npc:Customer"), must("state:watching", 300), wait(10),
-		click("ui:watch"), wait(900), shoot(mapShot), keys("P"), wait(30), quit(),
+		click("ui:watch"), wait(2700), shoot(mapShot), keys("P"), wait(30), quit(),
 	)
 	watchScript := script(
 		must("state:previewing", 1800), must("state:watching:Customer", 600),
-		must("state:value:world.shop.customers_served=1", 900), must("state:value:npc.shop.served=true", 60),
+		must("state:value:world.shop.customers_served=1", 2700), must("state:value:npc.shop.served=true", 60),
 		shoot(watchShot), wait(10), quit(),
 	)
 	clockScript := script(must("state:running", 3600), wait(30), quit())

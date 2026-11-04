@@ -38,7 +38,7 @@ import (
 // and text types; version 1 is upgraded to it.
 const (
 	FormatName    = "world-state"
-	FormatVersion = 2
+	FormatVersion = 3
 )
 
 // Name is the world-state document's name in every project.
@@ -802,18 +802,20 @@ func NameDeclaration(display string) Declaration {
 }
 
 // Document is a project's world state: the world's values and their groups,
-// and the NPC and zone templates.
+// the NPC and zone templates, and the signals workflows send each other.
 type Document struct {
-	Values *Declarations
+	Values  *Declarations
+	Signals []Signal
 }
 
 // NewDocument returns a world state that declares nothing yet.
 func NewDocument() *Document {
-	return &Document{Values: NewDeclarations(HoldsWorldState)}
+	return &Document{Values: NewDeclarations(HoldsWorldState), Signals: nil}
 }
 
 type wireDocument struct {
-	Values json.RawMessage `json:"values"`
+	Values  json.RawMessage `json:"values"`
+	Signals []Signal        `json:"signals,omitempty"`
 }
 
 // Encode returns the saved data.
@@ -822,7 +824,7 @@ func (d *Document) Encode() (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := json.Marshal(wireDocument{Values: values})
+	data, err := json.Marshal(wireDocument{Values: values, Signals: d.Signals})
 	if err != nil {
 		return nil, fmt.Errorf("encode world state: %w", err)
 	}
@@ -831,7 +833,9 @@ func (d *Document) Encode() (json.RawMessage, error) {
 }
 
 // Clone returns an independent copy.
-func (d *Document) Clone() *Document { return &Document{Values: d.Values.Clone()} }
+func (d *Document) Clone() *Document {
+	return &Document{Values: d.Values.Clone(), Signals: slices.Clone(d.Signals)}
+}
 
 // Decode reads saved world state.
 func Decode(data json.RawMessage) (*Document, error) {
@@ -845,6 +849,10 @@ func Decode(data json.RawMessage) (*Document, error) {
 			return nil, err
 		}
 	}
+	if err := CheckSignals(wire.Signals); err != nil {
+		return nil, err
+	}
+	decoded.Signals = wire.Signals
 
 	return decoded, nil
 }
@@ -852,6 +860,6 @@ func Decode(data json.RawMessage) (*Document, error) {
 // Format returns the world-state format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: upgradeFrom1,
+		1: upgradeFrom1, 2: upgradeFrom2,
 	}}
 }

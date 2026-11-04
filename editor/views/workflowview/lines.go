@@ -94,7 +94,7 @@ const farLabelRun = 200
 func (s *State) farLabel(key routeKey) (string, bool) {
 	from, ok := s.workflow.Node(key.from)
 	outputs := flow.Outputs(from)
-	if !ok || len(outputs) < ui.Half || key.output == flow.OutputInside {
+	if !ok || len(outputs) < ui.Half || flow.IsInner(from, key.output) {
 		return "", false
 	}
 	corners, length := s.routes[key], 0

@@ -75,8 +75,13 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.drawLegend(screen)
 	}
 	s.drawToolbar(screen, docs)
+	if s.pal.help != "" {
+		frame.DrawInspector(screen)
+		s.drawHelp(screen)
+	} else {
+		s.drawInspector(screen, docs)
+	}
 	s.drawPalette(screen)
-	s.drawInspector(screen, docs)
 	if dialog := s.picker.Dialog(); dialog != nil {
 		dialog.Draw(screen, s.theme)
 	}
@@ -110,44 +115,6 @@ func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
 const zoneLoopLacks = "Not in a zone loop: Go to, Move and Find NPC nearby. A zone has no body to move, or to look " +
 	"around from."
 
-func (s *State) drawPalette(screen *ebiten.Image) {
-	content := frame.Content(s.size)
-	ui.Divider(screen, image.Pt(PaletteWidth-ui.Outline, toolbarHeight), image.Pt(PaletteWidth-ui.Outline, content.Max.Y))
-	group := ""
-	for _, entry := range s.palette {
-		if entry.kind.Group != group {
-			group = entry.kind.Group
-			s.theme.Heading(screen, group, ui.Inset, entry.rect.Min.Y-groupSpace/ui.Half-ui.Gap-1)
-		}
-		fill := ui.ColorBackground()
-		if s.cursor.In(entry.rect) {
-			fill = ui.ColorHover()
-		}
-		ui.FillRound(screen, entry.rect, paletteRadius, fill)
-		if entry.kind.Name == flow.KindNote {
-			strokeDashed(screen, entry.rect, ui.Border, ui.ColorInk())
-		} else {
-			ui.StrokeRound(screen, entry.rect, paletteRadius, ui.Border, ui.ColorInk())
-		}
-		s.theme.DrawTextIn(screen, entry.kind.Label, entry.rect, ui.ColorInk())
-	}
-	if s.workflow != nil && s.workflow.Purpose() == flow.PurposeZoneLoop && len(s.palette) > 0 {
-		top := s.palette[len(s.palette)-1].rect.Max.Y + groupSpace
-		for index, line := range s.theme.Wrap(zoneLoopLacks, PaletteWidth-ui.Inset*ui.Half) {
-			s.theme.DrawText(screen, line, ui.Inset, top+index*ui.LineHeight, ui.ColorMuted())
-		}
-	}
-	if s.adding != nil && !s.adding.at.In(frame.Content(s.size).Intersect(image.Rect(0, 0, PaletteWidth, s.size.Y))) {
-		corner := s.adding.at.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half))
-		ghost := image.Rect(corner.X, corner.Y, corner.X+nodeWidth, corner.Y+nodeHeight)
-		ui.FillRound(screen, ghost, ui.Radius, ui.HexAlpha(hexWhite, ghostAlpha))
-		ui.StrokeRound(screen, ghost, ui.Radius, ui.Border, ui.ColorSelect())
-		if kind, ok := flow.KindOf(s.adding.kind); ok {
-			s.theme.DrawTextIn(screen, kind.Label, ghost, ui.ColorSelect())
-		}
-	}
-}
-
 // drawCanvas draws the dotted ground, then connections behind the nodes.
 func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	area.Fill(ui.ColorCanvas())
@@ -171,6 +138,8 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 		switch s.shapes[nodeID].node.Kind {
 		case flow.KindContainer:
 			s.drawContainer(area, s.shapes[nodeID])
+		case flow.KindTogether:
+			s.drawTogether(area, s.shapes[nodeID])
 		case flow.KindNote:
 			s.drawNode(area, s.shapes[nodeID], docs)
 		}
@@ -244,11 +213,11 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 		}
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
-		if linked || out.output.Name == flow.OutputInside {
+		if linked || flow.IsInner(from.node, out.output.Name) {
 			continue
 		}
 		labelY := centre.Y - ui.LabelSize/ui.Half - ui.Half
-		s.theme.DrawSmall(area, endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, ui.ColorMuted())
+		s.theme.DrawSmall(area, s.endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, ui.ColorMuted())
 	}
 }
 
@@ -280,9 +249,8 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 	}
 	ui.Box(area, rect, face)
 	switch drawn.node.Kind {
-	case flow.KindStart:
-		s.theme.DrawLabel(area, flow.GroupFlow, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
-		s.theme.DrawStrong(area, "Start", rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
+	case flow.KindStart, flow.KindOnSignal:
+		s.drawReceiver(area, drawn, docs)
 	case flow.KindTimeSwitch, flow.KindRandom:
 		if drawn.node.Kind == flow.KindTimeSwitch {
 			s.theme.DrawStrong(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+(switchHead-ui.TextSize)/ui.Half-1,
@@ -294,7 +262,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	case flow.KindCall:
 		s.drawCallNode(area, drawn, docs)
-	case flow.KindLog:
+	case flow.KindLog, flow.KindSay, flow.KindShowMessage:
 		s.drawLogNode(area, drawn, docs)
 	case flow.KindReturn:
 		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
@@ -318,6 +286,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.theme.DrawText(area, clipped, rect.Min.X+textPad, rect.Min.Y+titleDrop, ui.ColorInk())
 	}
 	s.drawMark(area, drawn)
+	s.drawWarningMark(area, drawn)
 }
 
 // drawNoteNode draws a Note: a dashed box holding its text.
@@ -470,7 +439,8 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		return wayLabel(node)
 	case flow.KindCall:
 		return s.callTitle(node, docs)
-	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog:
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog, flow.KindSay, flow.KindShowMessage,
+		flow.KindShake, flow.KindSendSignal, flow.KindResume:
 		return s.valueSummary(node, docs)
 	default:
 		return ""
@@ -490,7 +460,10 @@ func (s *State) playSummary(node flow.Node) string {
 		cue = listed.Name
 	}
 	if step, found := loudness.Find(choiceOf(node, "loudness")); found {
-		return cue + " · " + strings.ToLower(step.Label) + " this time"
+		cue += " · " + strings.ToLower(step.Label) + " this time"
+	}
+	if choiceOf(node, flow.ParamCarry) == flow.CarryWhenDone {
+		cue += " · until played"
 	}
 
 	return cue
@@ -519,6 +492,29 @@ func plural(count int, one, many string) string {
 // drawContainer draws a time-bound container: a dashed box with a tinted
 // heading that names it and gives its times.
 func (s *State) drawContainer(area *ebiten.Image, drawn shape) {
+	s.drawContainerFrame(area, drawn, "Container")
+	head := s.screenRect(drawn.rect)
+	if bound, err := drawn.node.TimeRange("bound"); err == nil {
+		times := flow.FormatRange(bound) + " → exit"
+		right := head.Max.X - textPad - portRadius - s.markRoom(drawn)
+		s.theme.DrawMono(area, times, right-s.theme.MonoWidth(times), head.Min.Y+(containerHead-ui.MonoSize)/ui.Half-1,
+			ui.ColorInk())
+	}
+}
+
+// markRoom is the room a node's problem mark takes at the right of its
+// head, none when it has no problem.
+func (s *State) markRoom(drawn shape) int {
+	if _, problem := s.problems[drawn.node.ID]; problem {
+		return markInset + ui.Half*markRadius
+	}
+
+	return 0
+}
+
+// drawContainerFrame draws what every container has: its dashed border, its
+// head with its kind and name, its problem mark and its resize grip.
+func (s *State) drawContainerFrame(area *ebiten.Image, drawn shape, label string) {
 	rect := s.screenRect(drawn.rect)
 	ui.FillRect(area, rect, ui.HexAlpha(hexWhite, containerAlpha))
 	head := image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+containerHead)
@@ -530,19 +526,10 @@ func (s *State) drawContainer(area *ebiten.Image, drawn shape) {
 	strokeDashed(area, rect, containerLine, ui.ColorInk())
 	strokeDashed(area, image.Rect(head.Min.X, head.Max.Y, head.Max.X, head.Max.Y+1), ui.Border, ui.ColorInk())
 	textY := head.Min.Y + (containerHead-ui.TextSize)/ui.Half - 1
-	s.theme.DrawLabel(area, "Container", head.Min.X+textPad, head.Min.Y+(containerHead-ui.LabelSize)/ui.Half-1,
+	s.theme.DrawLabel(area, label, head.Min.X+textPad, head.Min.Y+(containerHead-ui.LabelSize)/ui.Half-1,
 		ui.ColorMuted())
-	nameX := head.Min.X + textPad + s.theme.LabelWidth("Container") + textPad
+	nameX := head.Min.X + textPad + s.theme.LabelWidth(label) + textPad
 	s.theme.DrawStrong(area, textParam(drawn.node, "name"), nameX, textY, ui.ColorInk())
-	if bound, err := drawn.node.TimeRange("bound"); err == nil {
-		times := flow.FormatRange(bound) + " → exit"
-		right := head.Max.X - textPad - portRadius
-		if _, problem := s.problems[drawn.node.ID]; problem {
-			right -= markInset + ui.Half*markRadius
-		}
-		s.theme.DrawMono(area, times, right-s.theme.MonoWidth(times), head.Min.Y+(containerHead-ui.MonoSize)/ui.Half-1,
-			ui.ColorInk())
-	}
 	s.drawMark(area, drawn)
 	corner := rect.Max
 	for step := 0; step < resizeGrab; step += gripStep {
@@ -605,6 +592,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		for index, line := range lines {
 			s.theme.DrawText(screen, line, left, above+index*ui.LineHeight, ui.ColorWarn())
 		}
+	} else {
+		s.drawWarning(screen, node.ID, left, bottom-len(hint)*ui.LineHeight-ui.Gap, panel.Dx()-ui.Half*ui.Inset)
 	}
 }
 
@@ -618,6 +607,12 @@ func (s *State) hasPartState(state string) (bool, bool) {
 		return found, true
 	}
 	if found, handled := s.hasTintState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasLaneState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasWarningState(state); handled {
 		return found, true
 	}
 	if state == "legend" {
@@ -729,18 +724,20 @@ func (s *State) titleWidth(value string) int {
 }
 
 func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
-	if made.hidden {
+	if !s.controlShown(made) {
 		return
 	}
 	s.theme.DrawStrong(screen, made.param.Label, left, made.label, ui.ColorInk())
 	switch made.param.Type {
-	case flow.TypeTiles, flow.TypeText:
+	case flow.TypeTiles, flow.TypeSeconds, flow.TypeText:
 		made.field.Draw(screen)
-		if made.param.Type == flow.TypeTiles {
-			s.drawUnit(screen, made.field, "tiles")
+		if unit := unitOf(made.param.Type); unit != "" {
+			s.drawUnit(screen, made.field, unit)
 		}
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeSignal, flow.TypeNPC:
 		s.drawChoices(screen, made, node)
+	case flow.TypeLanes:
+		s.drawLanes(screen, made)
 	case flow.TypeTimeRange:
 		s.drawTimes(screen, made.from, made.to)
 	case flow.TypeTimeRanges:
@@ -836,9 +833,10 @@ func (s *State) drawChoices(screen *ebiten.Image, made *control, node flow.Node)
 		if made.note {
 			s.drawCompareNote(screen, made, node)
 		}
-	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText,
 		flow.TypeCue, flow.TypeValue, flow.TypeOperand,
-		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
+		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage,
+		flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 	}
 }
 
@@ -855,6 +853,8 @@ func (s *State) noteLines(node flow.Node, width int) int {
 	lines := len(s.wrap(hintFor(node.Kind), width))
 	if problem, has := s.problems[node.ID]; has {
 		lines += len(s.wrap(problem, width))
+	} else if warning, warned := s.warnings[node.ID]; warned {
+		lines += len(s.wrap(warning, width))
 	}
 
 	return lines
@@ -869,6 +869,14 @@ func hintFor(kind string) string {
 			"shows what that works out to.",
 		flow.KindContainer: "Repeats what is inside while its time lasts, then leaves by its exit, even partway " +
 			"through a step.",
+		flow.KindOnSignal: "Runs when its signal is heard, at the NPC's next safe moment, interrupting what it was " +
+			"doing. End its path with Resume to go back, or lead into the flow to take over.",
+		flow.KindResume: "Goes back to where the signal interrupted the NPC: a Wait with the time it had left, a Go " +
+			"to by a new way from here.",
+		flow.KindSendSignal: "Sends a signal at once, to one NPC or to everyone in this zone; it lands on the next " +
+			"tick. Takes no time.",
+		flow.KindTogether: "Starts every lane at once and goes on by all done when every lane is done. Lanes run in " +
+			"their order each tick; only one can move the NPC.",
 		flow.KindGoTo: "Walks to the anchor picked on a map, or to the place a place value holds as it starts.",
 		flow.KindMove: "Moves this many tiles one way. If something is in the way, it stops there and carries on.",
 		flow.KindWait: "Waits this long. Game time pauses and speeds up with the preview clock; real time " +
@@ -876,6 +884,11 @@ func hintFor(kind string) string {
 		flow.KindPlaySound: "Plays the cue once, then carries on to the next node straight away. Leave its " +
 			"loudness as the cue is, unless a moment must stand out or sit back.",
 		flow.KindNote: "A note for authors. It is not part of the flow.",
+		flow.KindSay: "Says a line over this NPC's head for a while, without stopping the game; its lines " +
+			"wait their turn.",
+		flow.KindShowMessage: "Shows a message in a box at the foot of the screen that goes away on its own, " +
+			"or when the player closes it.",
+		flow.KindShake: "Shakes the world for a few seconds, not the boxes and speech over it, then carries on.",
 		flow.KindLog: "Writes a line to the Watch window, its values as they are now, and carries on at once. " +
 			"Players never see it.",
 		flow.KindCall: "Runs another workflow, then carries on from the output named for the way out it took, " +
@@ -967,12 +980,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return image.Pt(0, 0), false
 	case locateCue, locatePlay:
 		return s.locateCueRow(kind, value)
-	case "palette":
-		for _, entry := range s.palette {
-			if entry.kind.Name == value {
-				return ui.Center(entry.rect), true
-			}
-		}
+	case "palette", resultPart:
+		return s.locatePalette(value)
 	case "ui":
 		return s.locateWidget(value)
 	case locateMenu:
@@ -1004,6 +1013,8 @@ func (s *State) locateOnCanvas(kind, value string) (image.Point, bool) {
 		if drawn, ok := s.nthNode(value); ok && !drawn.addOption.Empty() {
 			return ui.Center(drawn.addOption), true
 		}
+	case locateLane:
+		return s.locateLaneBand(value)
 	case "line":
 		return s.locateLine(value)
 	case "bend":
@@ -1112,7 +1123,7 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 // its places and its values as well as the rest.
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
-		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState,
+		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState,
 	} {
 		if found, handled := has(state, docs); handled {
 			return found
@@ -1129,8 +1140,12 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if rest, isSwatch := strings.CutPrefix(widget, "swatch:"); isSwatch {
 		return s.locateSwatch(rest)
 	}
-	for _, button := range slices.Concat([]*ui.Button{s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine},
-		s.zoomCard.buttons()) {
+	if widget == paletteSearchID {
+		return ui.Center(s.pal.search.Rect), true
+	}
+	for _, button := range slices.Concat([]*ui.Button{
+		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add,
+	}, s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}

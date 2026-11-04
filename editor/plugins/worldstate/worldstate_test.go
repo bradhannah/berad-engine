@@ -97,3 +97,31 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		t.Fatalf("a change is all or nothing: %v", err)
 	}
 }
+
+// TestSignalsChange adds a signal, giving it an identity, renames it, and
+// refuses a second of the same name; the add's inverse removes it again.
+func TestSignalsChange(t *testing.T) {
+	t.Parallel()
+	document := stateplugin.NewDocument()
+	edit := stateplugin.Signals{}
+	add := encode(t, stateplugin.SignalsArgs{Add: []worldstate.Signal{{Name: "bread_called"}}})
+	prepared, err := edit.Prepare(document, add, func() (ids.ULID, error) { return ids.ULID{9}, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := edit.Apply(document, prepared)
+	if err != nil || len(document.State.Signals) != 1 || document.State.Signals[0].ID != (ids.ULID{9}) {
+		t.Fatalf("added with an identity: %+v %v", document.State.Signals, err)
+	}
+	rename := encode(t, stateplugin.SignalsArgs{Set: []worldstate.Signal{{ID: ids.ULID{9}, Name: "bread_ready"}}})
+	if _, err := edit.Apply(document, rename); err != nil || document.State.Signals[0].Name != "bread_ready" {
+		t.Fatalf("renamed: %+v %v", document.State.Signals, err)
+	}
+	twin := encode(t, stateplugin.SignalsArgs{Add: []worldstate.Signal{{ID: ids.ULID{8}, Name: "bread_ready"}}})
+	if _, err := edit.Apply(document, twin); !errors.Is(err, model.ErrArgs) || len(document.State.Signals) != 1 {
+		t.Fatalf("two of one name are refused: %v", err)
+	}
+	if _, err := edit.Apply(document, applied.Inverse); err != nil || len(document.State.Signals) != 0 {
+		t.Fatalf("the add's inverse removes it: %+v %v", document.State.Signals, err)
+	}
+}

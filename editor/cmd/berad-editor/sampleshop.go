@@ -36,22 +36,25 @@ const (
 	servedRow    = 0
 	waitRow      = 1
 	nobodyRow    = 2
+	toldRow      = 3
 	shopYes      = "true"
 	shopNo       = "false"
 	shopDuration = "duration"
 )
 
 // shopValues are what the sample shop declares: a shop template of whether
-// an NPC is waiting, serving or served, and a shop group holding how many
-// customers the world has served.
+// an NPC is waiting, serving or served, a shop group holding how many
+// customers the world has served, and the signals the customer rings the
+// bell with and the clerk says the shelf is empty with.
 type shopValues struct {
 	template, waiting, serving, served, group, count ids.ULID
+	bell, emptyShelf                                 ids.ULID
 }
 
 // sampleCustomer adds the customer: their workflow, the NPC with the shop
 // template applied, and their placement inside the door.
-func sampleCustomer(orch *orchestrator.Orchestrator, anchors sampleAnchors, values shopValues) error {
-	behaviour, err := customerWorkflow(orch, values, anchors)
+func sampleCustomer(orch *orchestrator.Orchestrator, anchors sampleAnchors, values shopValues, clerk ids.ULID) error {
+	behaviour, err := customerWorkflow(orch, values, anchors, clerk)
 	if err != nil {
 		return err
 	}
@@ -82,14 +85,14 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 		kind        worldstate.Type
 		description string
 	}{
-		{&values.template, nil, "shop", worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share."},
+		{&values.template, nil, shopName, worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share."},
 		{&values.waiting, &values.template, "waiting", worldstate.ScopeNPC, worldstate.TypeBool,
 			"Waiting at the desk to be served."},
 		{&values.serving, &values.template, "serving", worldstate.ScopeNPC, worldstate.TypeBool,
 			"Serving a customer at the desk."},
 		{&values.served, &values.template, "served", worldstate.ScopeNPC, worldstate.TypeBool,
 			"Served, and on the way out."},
-		{&values.group, nil, "shop", worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts."},
+		{&values.group, nil, shopName, worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts."},
 		{&values.count, &values.group, "customers_served", worldstate.ScopeWorld, worldstate.TypeInteger,
 			"Customers served so far."},
 	}
@@ -100,7 +103,11 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 		}
 		*each.id = made
 	}
-	err := orch.ChangeDocument(worldstate.ID(), func(document model.Document) error {
+	signals, err := shopSignals(orch, &values)
+	if err != nil {
+		return values, err
+	}
+	err = orch.ChangeDocument(worldstate.ID(), func(document model.Document) error {
 		state, ok := document.(*stateplugin.Document)
 		if !ok {
 			return fmt.Errorf("%w: the world state", errSample)
@@ -116,7 +123,7 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 				return fmt.Errorf("declare %s: %w", each.name, err)
 			}
 		}
-		state.State.Values = changed
+		state.State.Values, state.State.Signals = changed, signals
 
 		return nil
 	})
@@ -125,6 +132,36 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 	}
 
 	return values, nil
+}
+
+// shopName names the shop's template, its group of values and its group
+// of signals.
+const shopName = "shop"
+
+// shopSignals declares the shop's signals in a group of their own,
+// shop.bell_rung and shop.out_of_stock: the bell a customer rings, and the
+// shelf running out of stock.
+func shopSignals(orch *orchestrator.Orchestrator, values *shopValues) ([]worldstate.Signal, error) {
+	var group ids.ULID
+	for _, signal := range []*ids.ULID{&group, &values.bell, &values.emptyShelf} {
+		made, err := orch.NewID()
+		if err != nil {
+			return nil, fmt.Errorf("sample shop: %w", err)
+		}
+		*signal = made
+	}
+
+	return []worldstate.Signal{
+		{ID: group, Name: shopName, Description: "What happens in the shop.", Parent: ids.ULID{}, Group: true},
+		{
+			ID: values.bell, Name: "bell_rung", Description: "A customer rings the bell at the counter.",
+			Parent: group, Group: false,
+		},
+		{
+			ID: values.emptyShelf, Name: "out_of_stock", Description: "The shelf has run out of stock.",
+			Parent: group, Group: false,
+		},
+	}, nil
 }
 
 // placeShop places the customer on the ground floor, after the clerk.
@@ -149,10 +186,14 @@ func placeShop(orch *orchestrator.Orchestrator, floorID ids.ULID, placement floo
 	return nil
 }
 
-// customerWorkflow walks to the counter and waits there until it finds a
-// clerk serving within two tiles; then it is served, counts itself, leaves
-// by the door, and some seconds later wants serving again.
-func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, anchors sampleAnchors) (ids.ULID, error) {
+// customerWorkflow walks to the counter, rings the bell for the clerk once,
+// and waits there, looking again every second, until it finds a clerk
+// serving within two tiles; then it is served, counts itself, leaves by the
+// door, and some seconds later wants serving again. Told the shelf is
+// empty, it says so, and carries on.
+func customerWorkflow(
+	orch *orchestrator.Orchestrator, values shopValues, anchors sampleAnchors, clerkNPC ids.ULID,
+) (ids.ULID, error) {
 	build, err := newShopFlow(orch)
 	if err != nil {
 		return ids.ULID{}, err
@@ -167,7 +208,10 @@ func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, anchor
 		paramDestination: floor.AnchorRef{Floor: anchors.floor, Anchor: anchors.counter},
 	})
 	wait := build.add(flow.KindSetValue, walk, waitRow, setTo(npcValue(values.waiting), shopYes))
-	find := build.add(flow.KindFindNPC, wait, waitRow, map[string]any{
+	ring := build.add(flow.KindSendSignal, wait, waitRow, map[string]any{
+		flow.ParamSignal: values.bell.String(), flow.ParamSendTo: flow.ToNPC, flow.ParamNPC: clerkNPC.String(),
+	})
+	find := build.add(flow.KindFindNPC, ring, waitRow, map[string]any{
 		"within": shopWithin, "where": npcValue(values.serving), "is": json.RawMessage(shopYes),
 		"into": localValue(clerk),
 	})
@@ -184,9 +228,15 @@ func customerWorkflow(orch *orchestrator.Orchestrator, values shopValues, anchor
 	build.link(check, flow.OutputYes, away)
 	build.link(check, flow.OutputOtherwise, walk)
 	build.chain(away, back)
-	build.chain(walk, wait, find)
+	build.chain(walk, wait, ring, find)
+	told := build.add(flow.KindOnSignal, ids.ULID{}, toldRow, map[string]any{flow.ParamSignal: values.emptyShelf.String()})
+	sigh := build.add(flow.KindSay, told, toldRow, map[string]any{
+		flow.ParamMessage: []flow.Segment{{Text: "Oh, no stock!", Ref: nil}},
+	})
+	build.chain(told, sigh, build.add(flow.KindResume, sigh, toldRow, nil))
 	build.link(find, flow.OutputFound, done)
 	build.link(find, flow.OutputNone, pause)
+	build.link(pause, flow.OutputNext, find)
 	build.chain(done, served, count, leave)
 
 	return build.create("Customer shops")

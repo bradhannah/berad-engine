@@ -65,6 +65,7 @@ const (
 	hexRule       = 0xc9cbc5
 	hexRuleSoft   = 0xe4e5e1
 	hexWarn       = 0xb3261e
+	hexCaution    = 0x9a6400
 	hexHover      = 0xf0f0ec
 	hexLive       = 0xb4540a
 	hexLiveWash   = 0xfbf1e8
@@ -146,6 +147,10 @@ func ColorRuleSoft() color.RGBA { return Hex(hexRuleSoft) }
 
 // ColorWarn is the colour of warnings and unsaved marks.
 func ColorWarn() color.RGBA { return Hex(hexWarn) }
+
+// ColorCaution is the colour of what deserves a look but is not wrong, such
+// as a receiver nothing sends to: amber, beside problems' red.
+func ColorCaution() color.RGBA { return Hex(hexCaution) }
 
 // ColorHover is the background of a hovered button or row.
 func ColorHover() color.RGBA { return Hex(hexHover) }

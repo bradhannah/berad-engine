@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/signals"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -46,7 +48,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		docs.View(valueDoc, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
 		parts = append(parts, valueDoc.String()+":"+revision)
 	}
-	for _, floorID := range s.destinationFloors() {
+	for _, floorID := range slices.Concat(s.destinationFloors(), signals.Documents(docs)) {
 		revision := "-"
 		docs.View(floorID, func(document client.Document) { revision = strconv.FormatUint(document.Revision, 10) })
 		parts = append(parts, floorID.String()+":"+revision)
@@ -56,18 +58,36 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		return
 	}
 	s.problemKey = key
-	s.problems, s.localProblems = map[ids.ULID]string{}, s.localReach(docs)
+	s.problems, s.warnings, s.localProblems = map[ids.ULID]string{}, map[ids.ULID]string{}, s.localReach(docs)
 	for _, node := range s.workflow.Nodes() {
 		if problem := s.problemOf(node, docs); problem != "" {
 			s.problems[node.ID] = problem
 		}
+		if warning := s.signalWarning(node, docs); warning != "" {
+			s.warnings[node.ID] = warning
+		}
 	}
 }
 
-// problemOf says what is wrong with a node, or returns "": a Go to with no
-// destination or a broken one, a container with no first step, or a node
-// nothing links into.
+// problemOf says what is wrong with a node, or returns "": being in a lane
+// it can't be in, its own settings, or nothing linking into it.
 func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
+	if problem := s.laneProblem(node); problem != "" {
+		return problem
+	}
+	if problem := s.kindProblem(node, docs); problem != "" {
+		return problem
+	}
+	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {
+		return problemUnreached
+	}
+
+	return ""
+}
+
+// kindProblem says what is wrong with a node's own settings: a Go to with
+// no destination or a broken one, a container with no first step, and so on.
+func (s *State) kindProblem(node flow.Node, docs frame.Docs) string {
 	switch node.Kind {
 	case flow.KindGoTo:
 		if problem := s.goToProblem(node, docs); problem != "" {
@@ -81,7 +101,7 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := s.cueProblem(node); problem != "" {
 			return problem
 		}
-	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog:
+	case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC, flow.KindLog, flow.KindSay, flow.KindShowMessage:
 		if problem := s.valueProblem(node, docs); problem != "" {
 			return problem
 		}
@@ -89,13 +109,12 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 		if problem := returnProblem(node); problem != "" {
 			return problem
 		}
+	case flow.KindOnSignal, flow.KindResume, flow.KindSendSignal:
+		return s.signalProblem(node, docs)
 	case flow.KindCall:
 		if problem := s.callProblem(node, docs); problem != "" {
 			return problem
 		}
-	}
-	if takesEntries(node.Kind) && len(s.shapes[node.ID].entries) == 0 {
-		return problemUnreached
 	}
 
 	return ""

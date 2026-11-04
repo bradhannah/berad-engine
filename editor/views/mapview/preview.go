@@ -21,6 +21,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/show"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -80,6 +81,12 @@ type previewRun struct {
 	// protocol.RecentLines, and written counts every line so far.
 	lines   []protocol.PreviewLine
 	written uint64
+	// stage is the message boxes and the shake the workflows share.
+	stage *show.Stage
+	// signals are the signals sent on the latest tick, which land on the
+	// next, and named the signals the project declares, to name them.
+	signals []npcrun.Sent
+	named   []worldstate.Signal
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -159,6 +166,7 @@ func (s *State) canStart(floorData *floor.Floor, cell Cell) bool {
 // floor.
 func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 	s.choosing, s.starting = false, true
+	s.askAudio(ctx)
 	floorID := s.floor
 	ctx.Requests.PreviewStart(s.zone, func(result protocol.Result, err error) {
 		s.starting = false
@@ -176,6 +184,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
 			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0,
+			stage: show.NewStage(), signals: nil, named: nil,
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)
@@ -227,6 +236,12 @@ func (s *State) stepPreview(input *ui.Input, ctx *frame.Context) {
 		}
 		for input.Consume(key, ui.Plain()) {
 			continue
+		}
+	}
+	if s.preview.stage.Holding() {
+		held = 0
+		if input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) {
+			s.preview.stage.Close()
 		}
 	}
 	pressed := held &^ s.preview.held
@@ -291,12 +306,33 @@ func (s *State) follow(player play.Player) {
 	s.camera.pan(delta)
 }
 
+// sameState reports whether a preview's state is as it was sent.
+func sameState(sent, state protocol.PreviewState) bool {
+	return slices.EqualFunc(sent.Entities, state.Entities, sameEntity) && sent.Clock == state.Clock &&
+		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
+		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) &&
+		sameBox(sent.Box, state.Box) && sent.ShakeX == state.ShakeX && sent.ShakeY == state.ShakeY &&
+		sameLog(sent.Log, state.Log)
+}
+
+// sameLog reports whether a preview's lines end where they did when sent.
+func sameLog(sent, now []protocol.PreviewLine) bool {
+	return len(sent) == len(now) && (len(now) == 0 || sent[len(sent)-1] == now[len(now)-1])
+}
+
 // sameEntity reports whether an entity is as it was sent.
 func sameEntity(sent, now protocol.PreviewEntity) bool {
 	return slices.Equal(sent.Calls, now.Calls) && sent.ID == now.ID && sent.Floor == now.Floor && sent.X == now.X &&
 		sent.Y == now.Y && sent.Face == now.Face && sent.NPC == now.NPC && sent.Workflow == now.Workflow &&
 		sent.Node == now.Node && sent.Activity == now.Activity && sent.Status == now.Status && sent.Last == now.Last &&
-		sent.Changes == now.Changes
+		sameDoing(sent, now)
+}
+
+// sameDoing reports whether what an entity is doing, beside its node, is as
+// it was sent: its changes, its line, its lanes and its signals.
+func sameDoing(sent, now protocol.PreviewEntity) bool {
+	return sent.Changes == now.Changes && sent.Saying == now.Saying && slices.Equal(sent.Lanes, now.Lanes) &&
+		sent.Handling == now.Handling && sent.Resumes == now.Resumes && slices.Equal(sent.Held, now.Held)
 }
 
 // sendState sends the preview's state, the player, the NPCs and the clock,
@@ -307,11 +343,7 @@ func (s *State) sendState(ctx *frame.Context) {
 		return
 	}
 	state := s.previewState()
-	if sent := s.preview.sent; sent != nil && slices.EqualFunc(sent.Entities, state.Entities, sameEntity) &&
-		sent.Clock == state.Clock &&
-		sent.Rate == state.Rate && sent.ClockStopped == state.ClockStopped && sent.NPCsPaused == state.NPCsPaused &&
-		sent.Watched == state.Watched && sent.Stepping == state.Stepping && slices.Equal(sent.Step, state.Step) &&
-		len(sent.Log) == len(state.Log) && (len(state.Log) == 0 || sent.Log[len(sent.Log)-1] == state.Log[len(state.Log)-1]) {
+	if sent := s.preview.sent; sent != nil && sameState(*sent, state) {
 		return
 	}
 	s.preview.sent = &state
@@ -324,8 +356,9 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 	return protocol.PreviewEntity{
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
-		Last: protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: ""}, Changes: 0,
-		Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{},
+		Last:    protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: ""},
+		Changes: 0, Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{}, Saying: "", SayingLeft: 0, Lanes: nil,
+		Handling: "", HandlingFrom: "", Resumes: "", Held: nil,
 	}
 }
 

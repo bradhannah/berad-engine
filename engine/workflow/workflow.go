@@ -38,7 +38,7 @@ import (
 // tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 8
+	FormatVersion       = 9
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 3
 )
@@ -427,9 +427,34 @@ func Format() content.Format {
 		Name: FormatName, Current: FormatVersion,
 		Migrations: map[int]content.Migration{
 			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5, 6: upgradeFrom6,
-			7: upgradeFrom7,
+			7: upgradeFrom7, 8: upgradeFrom8,
 		},
 	}
+}
+
+// upgradeFrom8 gives every Play sound the way it carries on it had, at
+// once: version 9 let a Play sound carry on when its sound has played.
+func upgradeFrom8(data json.RawMessage) (json.RawMessage, error) {
+	var wire wireWorkflow
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+	for index, node := range wire.Nodes {
+		if node.Kind != KindPlaySound {
+			continue
+		}
+		upgraded, err := node.WithParam(ParamCarry, CarryAtOnce)
+		if err != nil {
+			return nil, err
+		}
+		wire.Nodes[index] = upgraded
+	}
+	upgraded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrData, err)
+	}
+
+	return upgraded, nil
 }
 
 // upgradeFrom7 reads a version 7 workflow unchanged: version 8 gave each
@@ -651,7 +676,7 @@ func checkPlace(node Node, nodes map[ids.ULID]Node) error {
 	if node.Parent.IsZero() {
 		return nil
 	}
-	if node.Kind == KindStart || node.Kind == KindContainer || nodes[node.Parent].Kind != KindContainer {
+	if IsStart(node.Kind) || IsContainer(node.Kind) || !IsContainer(nodes[node.Parent].Kind) {
 		return fmt.Errorf("%w: %s cannot sit in %s", ErrNode, node.ID, node.Parent)
 	}
 
@@ -662,9 +687,9 @@ func checkLink(from Node, output string, target Node) error {
 	switch {
 	case target.Kind == "":
 		return fmt.Errorf("%w: %s links to a node that is not there", ErrNode, from.ID)
-	case !Runs(target.Kind) || target.Kind == KindStart || !Runs(from.Kind):
+	case !Runs(target.Kind) || IsStart(target.Kind) || !Runs(from.Kind):
 		return fmt.Errorf("%w: notes and the start node cannot be linked to", ErrNode)
-	case from.Kind == KindContainer && output == OutputInside:
+	case IsInner(from, output):
 		if target.Parent != from.ID {
 			return fmt.Errorf("%w: a container's first step must be inside it", ErrNode)
 		}

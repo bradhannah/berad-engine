@@ -102,6 +102,7 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	bottom := panel.Max.Y - ui.Inset
 	s.form.Hide()
 	s.save.Rect, s.takeOff.Rect, s.path.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	s.signal.name.Rect, s.signal.description.Rect, s.signal.remove.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	for _, button := range s.templates {
 		button.Rect = ui.Zero()
 	}
@@ -129,6 +130,8 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	case selected.kind == itemApplied:
 		top := inspectorTop(panel) + noteLines*ui.LineHeight
 		s.takeOff.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
+	case isSignal(selected.kind):
+		s.layoutSignal(panel)
 	}
 }
 
@@ -140,15 +143,7 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 	}
 	switch selected.kind {
 	case itemDeclared:
-		switch changed, change := s.form.Update(input); change {
-		case valueform.ChangeValue:
-			s.change(ctx, selected.list, setOnly(changed), "")
-		case valueform.ChangeDelete:
-			s.startDelete(ctx, selected)
-		case valueform.ChangeDeclareNew:
-			s.openFind(ctx, strings.TrimSuffix(selected.path, selected.declared.Name))
-		case valueform.ChangeNone, valueform.ChangePickPlace, valueform.ChangeChoosePlace:
-		}
+		s.updateDeclared(input, ctx, selected)
 	case itemOwner:
 		for index, template := range s.templatesOf(selected.scope) {
 			if index < len(s.templates) && s.templates[index].Update(input) {
@@ -159,11 +154,29 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 		if s.takeOff.Update(input) {
 			s.toggleTemplate(ctx, selected, selected.declared)
 		}
+	case itemSignal, itemSignalGroup:
+		if s.signal.remove.Update(input) {
+			s.startSignalDelete(ctx, selected)
+		}
 	case itemTemplates, itemHeld, itemName:
 	}
 }
 
 // askUses asks where the selected declaration is used, once per
+// updateDeclared handles the selected declaration's form: a change to it,
+// Delete, or declaring a new value beside it.
+func (s *State) updateDeclared(input *ui.Input, ctx *frame.Context, selected item) {
+	switch changed, change := s.form.Update(input); change {
+	case valueform.ChangeValue:
+		s.change(ctx, selected.list, setOnly(changed), "")
+	case valueform.ChangeDelete:
+		s.startDelete(ctx, selected)
+	case valueform.ChangeDeclareNew:
+		s.openFind(ctx, strings.TrimSuffix(selected.path, selected.declared.Name))
+	case valueform.ChangeNone, valueform.ChangePickPlace, valueform.ChangeChoosePlace:
+	}
+}
+
 // declaration and change.
 func (s *State) askUses(ctx *frame.Context) {
 	selected, found := s.selected()
@@ -198,7 +211,7 @@ func (s *State) lockReason() string {
 }
 
 // drawInspector draws what the selected row has to show.
-func (s *State) drawInspector(screen *ebiten.Image) {
+func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	frame.DrawInspector(screen)
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
@@ -225,6 +238,8 @@ func (s *State) drawInspector(screen *ebiten.Image) {
 	case itemApplied, itemTemplates, itemHeld, itemName:
 		s.drawNote(screen, note(selected), left, top, width)
 		s.takeOff.Draw(screen, s.theme)
+	case itemSignal, itemSignalGroup:
+		s.drawSignal(screen, docs, panel, selected.kind == itemSignalGroup)
 	}
 }
 
@@ -245,6 +260,10 @@ func heading(selected item) string {
 		return "FROM A TEMPLATE"
 	case itemName:
 		return "NAME"
+	case itemSignal:
+		return "SIGNAL"
+	case itemSignalGroup:
+		return "SIGNAL GROUP"
 	case itemDeclared:
 	}
 	if selected.declared.Type.IsValue() {
@@ -269,7 +288,7 @@ func note(selected item) string {
 	case itemName:
 		return "Text, starting as " + selected.owner.Name + ", its name in the project browser. " +
 			"Workflows may set it, such as to a name the player learns."
-	case itemDeclared, itemOwner:
+	case itemDeclared, itemOwner, itemSignal, itemSignalGroup:
 	}
 
 	return ""

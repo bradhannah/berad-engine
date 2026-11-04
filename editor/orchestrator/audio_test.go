@@ -107,7 +107,7 @@ func TestAudioLibraryListsCuesWithCategories(t *testing.T) {
 	}
 	chime, gone, quiet := door.Recordings[0], door.Recordings[1], library.Cues[2].Recordings[0]
 	if chime.Status != protocol.RecordingReady || chime.Size != 10 || chime.Version == "" || chime.Extension != ".wav" ||
-		chime.CalibrationDB != -3 || chime.StartMs != 10 || chime.EndMs != 400 {
+		chime.CalibrationDB != -3 || chime.StartMs != 10 || chime.EndMs != 400 || chime.LengthMs != 390 {
 		t.Fatalf("a ready recording, in cycle order: %+v", chime)
 	}
 	if quiet.Status != protocol.RecordingNoFile || gone.Status != protocol.RecordingMissing {
@@ -153,5 +153,40 @@ func TestRecordingIsSentInParts(t *testing.T) {
 	changed, err := askRecording(t, c, "chime", 0)
 	if err != nil || changed.Version == first.Version || string(changed.Data) != "changed" {
 		t.Fatalf("a changed file has a new version: %+v %v", changed.Version, err)
+	}
+}
+
+// TestRecordingLengths gives a recording that plays whole the length of its
+// file, decoded, and one that cannot be decoded none; a cue lasts as long as
+// its longest recording.
+func TestRecordingLengths(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	createProject(t, dir)
+	h := start(t, dir, nil)
+	c := h.dial(t, "a")
+	provenance := `"provenance": {"originalFilename": "unknown", "sourceType": "unknown", "sourceUrl": "unknown",
+        "sourceCreator": "unknown", "license": "unknown", "importedFrom": "unknown", "processing": []}`
+	writeAudio(t, dir, "library.json", `{"schemaVersion": 3, "recordings": {
+		"tone": {"file": "sounds/tone.wav", `+provenance+`},
+		"noise": {"file": "sounds/noise.wav", `+provenance+`}},
+	  "cues": {"bell/ring": {"name": "Bell", "recordingIds": ["tone", "noise"], "selection": "cycle",
+		"volumeModifier": 1, "howToHear": "Ring."}},
+	  "taxonomy": {"recordingFamilies": {"signal": ["tone", "noise"]}, "cueProfiles": {"signal": ["bell/ring"]},
+		"profiles": {"signal": {"targetAcousticFamily": "signal", "phase": "start", "outcome": "neutral",
+		"mixRole": "interface", "emitters": ["panel"], "contexts": ["menu"]}}}, "routing": {}}`)
+	const halfSecond = 11025
+	writeAudio(t, dir, "sounds/tone.wav", string(toneWAV(halfSecond)))
+	writeAudio(t, dir, "sounds/noise.wav", "not a sound")
+	library := askAudio(t, c)
+	if len(library.Cues) != 1 {
+		t.Fatalf("one cue: %+v", library)
+	}
+	tone, noise := library.Cues[0].Recordings[0], library.Cues[0].Recordings[1]
+	if tone.LengthMs != 500 || noise.LengthMs != 0 {
+		t.Fatalf("half a second of tone, and nothing known of noise: %d %d", tone.LengthMs, noise.LengthMs)
+	}
+	if ticks := library.CueTicks("bell/ring"); ticks != 30 {
+		t.Fatalf("the bell lasts half a second's ticks: %d", ticks)
 	}
 }

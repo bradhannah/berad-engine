@@ -23,8 +23,10 @@ import (
 // one for 20 game minutes, then mostly calls Fetch stock to fetch from the
 // shelf, tidying it when there is stock, and now and then stretches. At
 // night the clerk stops serving, if closing came mid-serve, and waits by
-// the door an hour at a time. A note sums it up under the rest. It is
-// placeholder behaviour for trying the editor, not game content.
+// the door an hour at a time. Whenever a customer rings the bell, the clerk
+// says Just a moment! and goes back to what she was doing. A note sums it up
+// under the rest. It is placeholder behaviour for trying the editor, not
+// game content.
 const (
 	routineName  = "Clerk's day"
 	fetchName    = "Fetch stock"
@@ -129,6 +131,14 @@ func (b *routineBuilder) serving(parent ids.ULID, values shopValues, serving str
 	return b.node(flow.KindSetValue, parent, setTo(npcValue(values.serving), serving))
 }
 
+// shutNotice is the box the clerk shows on shutting the shop.
+const shutNotice = "The shop is shut for the night."
+
+// show adds a Say or a Show message of a line of text, carrying on at once.
+func (b *routineBuilder) show(parent ids.ULID, kind, text string) ids.ULID {
+	return b.node(kind, parent, map[string]any{flow.ParamMessage: []flow.Segment{{Text: text, Ref: nil}}})
+}
+
 // logServing writes to Watch whom the clerk serves.
 func (b *routineBuilder) logServing(parent ids.ULID, customer flow.ValueRef) ids.ULID {
 	return b.node(flow.KindLog, parent, map[string]any{flow.ParamMessage: []flow.Segment{
@@ -138,8 +148,12 @@ func (b *routineBuilder) logServing(parent ids.ULID, customer flow.ValueRef) ids
 
 // fetchStock is the workflow the clerk's day calls: the clerk goes to the
 // place it is given, the shelf to start with, and finds stock there three
-// times in four, going back by Fetched or Out of stock.
-func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.Workflow, ids.ULID, error) {
+// times in four, lifting the crate with a shake and a chime together,
+// going back by Fetched; or telling everyone in the zone the shelf is empty
+// and going back by Out of stock.
+func fetchStock(
+	orch *orchestrator.Orchestrator, anchors sampleAnchors, emptyShelf ids.ULID,
+) (*flow.Workflow, ids.ULID, error) {
 	start, err := orch.NewID()
 	if err != nil {
 		return nil, ids.ULID{}, fmt.Errorf("sample routine: %w", err)
@@ -155,10 +169,22 @@ func fetchStock(orch *orchestrator.Orchestrator, anchors sampleAnchors) (*flow.W
 	}})
 	fetched := made.wayOut("Fetched", portFetched)
 	out := made.wayOut("Out of stock", portNone)
+	lift := made.node(flow.KindTogether, none, map[string]any{"name": "Lift the crate", flow.ParamLanes: []flow.Lane{
+		{Port: "l1", Label: "Shake"}, {Port: "l2", Label: "Chime"},
+	}})
+	crate := made.node(flow.KindShake, lift, map[string]any{flow.ParamStrength: flow.ShakeGentle, flow.ParamSeconds: 1})
+	thud := made.node(flow.KindPlaySound, lift, map[string]any{"cue": chimeCue, flow.ParamCarry: flow.CarryWhenDone})
 	made.link(start, flow.OutputNext, walk)
 	made.link(walk, flow.OutputNext, stock)
-	made.link(stock, "o1", fetched)
-	made.link(stock, "o2", out)
+	made.link(stock, "o1", lift)
+	made.link(lift, "l1", crate)
+	made.link(lift, "l2", thud)
+	made.link(lift, flow.OutputDone, fetched)
+	empty := made.node(flow.KindSendSignal, none, map[string]any{
+		flow.ParamSignal: emptyShelf.String(), flow.ParamSendTo: flow.ToZone,
+	})
+	made.link(stock, "o2", empty)
+	made.link(empty, flow.OutputNext, out)
 	if made.err != nil {
 		return nil, ids.ULID{}, made.err
 	}
@@ -206,17 +232,17 @@ func clerksDay(
 	closing := made.node(flow.KindCheckValue, none, map[string]any{
 		flow.ParamValue: npcValue(values.serving), "against": json.RawMessage(shopYes),
 	})
-	shut := made.serving(none, values, shopNo)
+	shut, notice := made.serving(none, values, shopNo), made.show(none, flow.KindShowMessage, shutNotice)
 	toDoor, sleep := made.goTo(none, anchors, anchors.door), made.wait(none, nightHours, flow.UnitHours)
 	toDesk := made.goTo(shop, anchors, anchors.desk)
 	chime := made.node(flow.KindPlaySound, shop, map[string]any{"cue": chimeCue, "loudness": flow.LoudnessAsCue})
+	greet := made.show(shop, flow.KindSay, "Shop's open!")
 	customer := localValue(made.local("customer", worldstate.TypeNPC))
 	find := made.node(flow.KindFindNPC, shop, map[string]any{
 		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes), "into": customer,
 	})
 	serving, open := made.logServing(shop, customer), made.serving(shop, values, shopYes)
-	serve := made.wait(shop, serveMinutes, flow.UnitMinutes)
-	done := made.serving(shop, values, shopNo)
+	serve, done := made.wait(shop, serveMinutes, flow.UnitMinutes), made.serving(shop, values, shopNo)
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
 		{Port: "o1", Label: "tidy the shelf", Share: tidyShare}, {Port: "o2", Label: "stretch", Share: stretchShare},
 	}})
@@ -224,16 +250,18 @@ func clerksDay(
 	down := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionDown, "tiles": stretchCells})
 	rise := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionUp, "tiles": stretchCells})
 	note := made.node(flow.KindNote, none, map[string]any{"text": routineNote})
+	made.answerBell(values.bell)
 	for _, joined := range []struct {
 		from   ids.ULID
 		output string
 		to     ids.ULID
 	}{
 		{start, flow.OutputNext, hours}, {hours, "r1", shop}, {hours, flow.OutputOtherwise, closing},
-		{closing, flow.OutputYes, shut}, {closing, flow.OutputOtherwise, toDoor}, {shut, flow.OutputNext, toDoor},
+		{closing, flow.OutputYes, shut}, {closing, flow.OutputOtherwise, toDoor}, {shut, flow.OutputNext, notice},
+		{notice, flow.OutputNext, toDoor},
 		{toDoor, flow.OutputNext, sleep}, {sleep, flow.OutputNext, hours},
 		{shop, flow.OutputInside, toDesk}, {shop, flow.OutputExit, hours},
-		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, find},
+		{toDesk, flow.OutputNext, chime}, {chime, flow.OutputNext, greet}, {greet, flow.OutputNext, find},
 		{find, flow.OutputFound, serving}, {serving, flow.OutputNext, open}, {find, flow.OutputNone, choose},
 		{open, flow.OutputNext, serve}, {serve, flow.OutputNext, done}, {done, flow.OutputNext, choose},
 		{choose, "o1", toShelf}, {toShelf, portFetched, tidy}, {toShelf, portNone, toDesk},
@@ -247,6 +275,19 @@ func clerksDay(
 	}
 
 	return arrangedRoutine(start, made, note)
+}
+
+// answerBell adds the clerk's receiver for the bell: she says Just a
+// moment!, and once it is said resumes what she was doing.
+func (b *routineBuilder) answerBell(bell ids.ULID) {
+	none := ids.ULID{}
+	ring := b.node(flow.KindOnSignal, none, map[string]any{flow.ParamSignal: bell.String()})
+	coming := b.node(flow.KindSay, none, map[string]any{
+		flow.ParamMessage: []flow.Segment{{Text: "Just a moment!", Ref: nil}}, flow.ParamCarry: flow.CarryWhenDone,
+	})
+	back := b.node(flow.KindResume, none, nil)
+	b.link(ring, flow.OutputNext, coming)
+	b.link(coming, flow.OutputNext, back)
 }
 
 // arrangedRoutine puts the nodes in a workflow, laid out as Auto-arrange
@@ -282,7 +323,7 @@ func arrangedRoutine(start ids.ULID, made *routineBuilder, note ids.ULID) (*flow
 // sampleRoutine makes Fetch stock and the clerk's day, which calls it, and
 // gives the day to the clerk, with the shop's values.
 func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, anchors sampleAnchors, values shopValues) error {
-	fetch, place, err := fetchStock(orch, anchors)
+	fetch, place, err := fetchStock(orch, anchors, values.emptyShelf)
 	if err != nil {
 		return err
 	}

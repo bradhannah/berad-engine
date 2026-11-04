@@ -170,6 +170,14 @@ func (f *fixture) has(state string) bool {
 	return ok
 }
 
+// add adds a node of a kind as the palette does: a click shows its help,
+// and Add after puts it after the selected node.
+func (f *fixture) add(kind string) {
+	f.t.Helper()
+	f.click("palette:" + kind)
+	f.click("ui:help-add")
+}
+
 func (f *fixture) click(name string) {
 	f.t.Helper()
 	at := f.at(name)
@@ -253,8 +261,8 @@ func TestPaletteClicksBuildASequence(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindGoTo)
+	f.add("" + flow.KindWait)
 	start, goTo, wait := f.nth(flow.KindStart, 1), f.nth(flow.KindGoTo, 1), f.nth(flow.KindWait, 1)
 	if start.Next[flow.OutputNext] != goTo.ID || goTo.Next[flow.OutputNext] != wait.ID {
 		t.Fatalf("start → go to → wait expected: %+v %+v", start.Next, goTo.Next)
@@ -310,7 +318,7 @@ func TestDraggingMovesNodes(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.drag(f.at("palette:"+flow.KindContainer), f.at("canvas:300,200"))
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	container, inner := f.nth(flow.KindContainer, 1), f.nth(flow.KindWait, 1)
 	if inner.Parent != container.ID || container.Next[flow.OutputInside] != inner.ID {
 		t.Fatal("a palette click with a container selected adds its first step inside it")
@@ -338,7 +346,7 @@ func TestInspectorEditsParameters(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.typeInto("param-duration", "45")
 	if wait, _ := f.nth(flow.KindWait, 1).Duration("duration"); wait.Amount != 45 || wait.Unit != flow.UnitMinutes {
 		t.Fatalf("wait %+v", wait)
@@ -355,14 +363,14 @@ func TestInspectorEditsParameters(t *testing.T) {
 	}
 	f.keys("Escape")
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindTimeSwitch)
+	f.add("" + flow.KindTimeSwitch)
 	f.click("ui:add-time")
 	f.typeInto("ranges-2-from", "17:30")
 	spans, _ := f.nth(flow.KindTimeSwitch, 1).TimeRanges("ranges")
 	if len(spans) != 2 || spans[1].From != 17*60+30 || spans[1].Port == spans[0].Port {
 		t.Fatalf("times %+v", spans)
 	}
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	timeSwitch := f.nth(flow.KindTimeSwitch, 1)
 	if timeSwitch.Next[spans[0].Port] == (ids.ULID{}) {
 		t.Fatal("a click adds after the first free output")
@@ -380,7 +388,7 @@ func TestDestinationIsPickedOnAMap(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.click("ui:pick")
 	if len(f.requests.PickAsks) != 1 {
 		t.Fatal("Pick on map asks which maps could answer")
@@ -404,8 +412,8 @@ func TestDeleteAndArrange(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.keys("Backspace")
 	if !f.has("nodes:2") {
 		t.Fatal("Backspace removes the selected node")
@@ -434,15 +442,15 @@ func TestRandomWalk(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindRandom)
+	f.add("" + flow.KindRandom)
 	f.typeInto("options-1-label", "up")
 	f.typeInto("options-2-label", "down")
-	f.click("palette:" + flow.KindMove)
+	f.add("" + flow.KindMove)
 	f.click("node:random:1")
-	f.click("palette:" + flow.KindMove)
+	f.add("" + flow.KindMove)
 	f.click("ui:direction-down")
 	f.click("node:move:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.typeInto("param-duration", "2")
 	f.click("ui:duration-seconds")
 	if !f.has("entries:wait:1=1") {
@@ -477,7 +485,7 @@ func TestLinesCanBeSelectedAndDeleted(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	if !f.has("lit:start:1:next") {
 		t.Fatal("the selected node's lines are lit")
 	}
@@ -502,7 +510,7 @@ func TestProblemMarks(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	if !f.has("problem:go-to:1") || !f.has("problems:1") {
 		t.Fatal("a Go to with no destination is marked")
 	}
@@ -542,7 +550,7 @@ func TestLayoutIsNotRedoneWhenIdle(t *testing.T) {
 		t.Fatalf("laid out %d times while idle", f.state.LayoutCount()-laidOut)
 	}
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if f.state.LayoutCount() == laidOut {
 		t.Fatal("a change lays the workflow out again")
@@ -556,7 +564,7 @@ func TestPickingUpALineByItsArrowEnd(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:520,420"))
 	first, second := f.nth(flow.KindWait, 1), f.nth(flow.KindWait, 2)
 	firstBox, _ := f.workflow().Box(first.ID)
@@ -586,18 +594,26 @@ func TestPickingUpALineByItsArrowEnd(t *testing.T) {
 	}
 }
 
-// TestDroppingOnALineAddsASeparateNode drops a Wait from the palette on the
-// line from the start to a Move: the Wait is added on its own and the line
-// stays as it was.
-func TestDroppingOnALineAddsASeparateNode(t *testing.T) {
+// TestDroppingOnALinePutsItInTheFlow drops a Wait from the palette on the
+// line from the start to a Move: the line ends at the Wait, and the Wait
+// goes on to the Move, in one undo step. Dropped on empty canvas, a second
+// Wait stands alone.
+func TestDroppingOnALinePutsItInTheFlow(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindMove)
+	f.add("" + flow.KindMove)
 	f.drag(f.at("palette:"+flow.KindWait), f.at("line:start:1:next"))
 	wait, move := f.nth(flow.KindWait, 1), f.nth(flow.KindMove, 1)
-	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != move.ID || len(wait.Next) != 0 {
-		t.Fatalf("the line is unchanged and the wait stands alone: %+v", f.workflow().Nodes())
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != wait.ID || wait.Next[flow.OutputNext] != move.ID {
+		t.Fatalf("the wait goes between the start and the move: %+v", f.workflow().Nodes())
+	}
+	if !strings.HasPrefix(f.status(), "Put Wait between Start and Move.") {
+		t.Fatalf("the status says where it went: %q", f.status())
+	}
+	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:700,600"))
+	if alone := f.nth(flow.KindWait, 2); len(alone.Next) != 0 || f.has("entries:wait:2=1") {
+		t.Fatalf("a wait dropped on the canvas stands alone: %+v", alone)
 	}
 }
 
@@ -611,8 +627,8 @@ func loopFixture(t *testing.T) *fixture {
 	t.Helper()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindRandom)
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindRandom)
+	f.add("" + flow.KindWait)
 	f.drag(f.at("port:wait:1:next"), f.at("node:random:1"))
 	f.click("ui:arrange")
 
@@ -679,10 +695,10 @@ func TestMovingAForwardLineSideways(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindRandom)
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindRandom)
+	f.add("" + flow.KindWait)
 	f.click("node:random:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.click("ui:arrange")
 	grip := f.at("bend:random:1:o2")
 	f.drag(grip, grip.Add(image.Pt(20, 0)))
@@ -837,7 +853,7 @@ func TestLinesRunOverNotes(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.drag(f.at("palette:"+flow.KindNote), f.at("line:start:1:next"))
 	f.click("line:start:1:next")
 	if !f.has("line-selected") || f.has("selected:note") {
@@ -912,7 +928,7 @@ func TestEditingWhileZoomed(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.click("ui:zoom-out")
 	f.click("ui:zoom-out")
 	wait := f.nth(flow.KindWait, 1)
@@ -966,7 +982,7 @@ func TestFit(t *testing.T) {
 	f.click("node:start:1")
 	const waits = 8
 	for range waits {
-		f.click("palette:" + flow.KindWait)
+		f.add("" + flow.KindWait)
 	}
 	f.click("ui:zoom-fit")
 	if f.state.ZoomPercent() >= 100 {

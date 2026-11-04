@@ -44,6 +44,10 @@ const (
 	itemHeld
 	// itemName is an NPC's name.
 	itemName
+	// itemSignal is a signal workflows send and answer.
+	itemSignal
+	// itemSignalGroup is a group of signals.
+	itemSignalGroup
 )
 
 // item is one row's meaning: what it is, the list holding it, and the path
@@ -59,11 +63,13 @@ type item struct {
 	path     string
 }
 
-// tree is the window's rows and what each means.
+// tree is the window's rows and what each means, and the signals and
+// groups it shows.
 type tree struct {
 	rows    []ui.Row
 	items   map[string]item
 	catalog *worldstate.Catalog
+	signals []worldstate.Signal
 }
 
 // build makes the tree from the documents the window holds: the world's
@@ -73,9 +79,9 @@ func (s *State) build(docs frame.Docs) (tree, bool) {
 	catalog, ready := valuetree.Catalog(docs)
 	world, loaded := valuetree.World(docs)
 	if !ready || !loaded {
-		return tree{rows: nil, items: nil, catalog: nil}, false
+		return tree{rows: nil, items: nil, catalog: nil, signals: nil}, false
 	}
-	built := tree{rows: nil, items: map[string]item{}, catalog: catalog}
+	built := tree{rows: nil, items: map[string]item{}, catalog: catalog, signals: nil}
 	for _, scope := range worldstate.Scopes() {
 		section := sectionPrefix + string(scope)
 		row := ui.NewHeading(section, scope.Label())
@@ -94,6 +100,7 @@ func (s *State) build(docs frame.Docs) (tree, bool) {
 			s.ownerRows(&built, docs, world, owner)
 		}
 	}
+	s.signalRows(&built, docs)
 
 	return built, true
 }
@@ -129,6 +136,7 @@ func (t *tree) add(row ui.Row, meaning item) {
 func (s *State) templateRows(built *tree, world valuetree.List, scope worldstate.Scope) {
 	rowID := templatesPrefix + string(scope)
 	row := ui.NewRow(rowID, "Templates")
+	row.Icon = ui.IconTemplate
 	row.Strong, row.Indent, row.Toggle = true, 0, s.disclosure(rowID)
 	built.add(row, item{
 		kind: itemTemplates, scope: scope, list: world, declared: worldstate.New(ids.ULID{}, "", "", ""),
@@ -190,7 +198,7 @@ func (s *State) appliedRows(
 	}
 	rowID := appliedPrefix + ownerID.String() + ":" + template.String()
 	row := ui.NewRow(rowID, declared.Name)
-	row.Indent, row.Aside, row.Toggle = 1, "template", s.disclosure(rowID)
+	row.Indent, row.Aside, row.Toggle, row.Icon = 1, "template", s.disclosure(rowID), ui.IconTemplate
 	built.add(row, item{
 		kind: itemApplied, scope: owner.Scope, list: world, declared: declared, owner: owner, ownerID: ownerID,
 		path: ownerPath(owner, ownerID) + "." + declared.Name,
@@ -209,9 +217,7 @@ func (s *State) heldRows(
 		row := ui.NewRow(heldPrefix+ownerID.String()+":"+declared.ID.String(), declared.Name)
 		row.Indent, row.Detail = depth, detail(declared, built.catalog)
 		row.Strong = !declared.Type.IsValue()
-		if declared.Type == worldstate.TypeGroup {
-			row.Icon = ui.IconFolder
-		}
+		row.Icon = declaredIcon(declared.Type)
 		built.add(row, item{
 			kind: itemHeld, scope: owner.Scope, list: world, declared: declared, owner: owner, ownerID: ownerID,
 			path: worldstate.NamedPath(world.Values.Path(declared.ID), ownerName(owner, ownerID)),
@@ -240,9 +246,7 @@ func (s *State) declaredRows(
 			meaning.owner, meaning.ownerID = owner.owner, owner.id
 			meaning.path = worldstate.NamedPath(path, ownerName(owner.owner, owner.id))
 		}
-		if declared.Type == worldstate.TypeGroup {
-			row.Icon = ui.IconFolder
-		}
+		row.Icon = declaredIcon(declared.Type)
 		if !declared.Type.IsValue() {
 			row.Strong = true
 			if len(list.Values.Children(scope, declared.ID)) > 0 {
@@ -254,6 +258,20 @@ func (s *State) declaredRows(
 			s.declaredRows(built, list, scope, declared.ID, depth+1, owner)
 		}
 	}
+}
+
+// declaredIcon is a group's icon or a template's; a value has none.
+func declaredIcon(kind worldstate.Type) ui.Icon {
+	switch kind {
+	case worldstate.TypeGroup:
+		return ui.IconFolder
+	case worldstate.TypeTemplate:
+		return ui.IconTemplate
+	case worldstate.TypeInteger, worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeText,
+		worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
+	}
+
+	return ui.IconNone
 }
 
 // ownerPath is how an NPC or zone is named in a path, such as npc.george.
@@ -282,7 +300,7 @@ func noOwner() worldstate.Owner {
 func detail(declared worldstate.Declaration, catalog *worldstate.Catalog) string {
 	switch declared.Type {
 	case worldstate.TypeGroup:
-		return "group"
+		return newGroupName
 	case worldstate.TypeTemplate:
 		applied := 0
 		for _, owner := range catalog.Owners(declared.Scope) {

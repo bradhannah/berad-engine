@@ -167,7 +167,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		hosting:    newHosting(),
 		picks:      newPicks(),
 		preview:    nil,
-		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir},
+		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir, lengths: newRecordingLengths()},
 		edits:      newAudioEdits(), analyses: newAudioAnalyses(),
 		attentions: map[ids.ULID]string{},
 		removed:    map[string]bool{},

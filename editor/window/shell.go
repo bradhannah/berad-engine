@@ -56,11 +56,13 @@ type shell struct {
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
-// taking split of its width.
+// taking split of its width; tint is the number of the tint that tells it
+// from other tabs of its kind, zero until it has one.
 type tab struct {
 	panes []*pane
 	focus int
 	split float64
+	tint  int
 }
 
 // pane is one window shown in the shell: its host, its part of the shell's
@@ -118,6 +120,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.saveShot = s.queueShot
 	shown.host.frame.OnTop.On = s.onTop
 	shown.host.tabs = func() int { return len(s.tabs) }
+	shown.host.tabTint = s.tintNamed
 
 	return shown, nil
 }
@@ -168,6 +171,7 @@ func (s *shell) show(opened openedPane) {
 // input and the others none, so hidden tabs keep working.
 func (s *shell) Update() error {
 	s.receiveOpened()
+	s.tintTabs()
 	s.layout()
 	input := s.readInput(s.target(s.focused()))
 	s.updateBar(&input)

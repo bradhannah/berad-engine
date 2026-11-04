@@ -187,6 +187,7 @@ func (s *State) formShape(docs frame.Docs, node flow.Node) string {
 			shape.WriteString(param.Name + ":" + operandShape(node, declared, found) + ";")
 		}
 	}
+	shape.WriteString(identityShape(docs, node))
 	switch node.Kind {
 	case flow.KindCall:
 		shape.WriteString("call=" + s.callShape(node) + ";")
@@ -256,8 +257,10 @@ func (f *form) keyedFields() []keyedField {
 		}
 		for _, option := range made.options {
 			key := made.param.Name + "/" + option.port
-			listed = append(listed, keyedField{field: option.label, key: key + "/label"},
-				keyedField{field: option.share, key: key + "/share"})
+			listed = append(listed, keyedField{field: option.label, key: key + "/label"})
+			if option.share != nil {
+				listed = append(listed, keyedField{field: option.share, key: key + "/share"})
+			}
 		}
 	}
 
@@ -313,6 +316,13 @@ func rowCount(node flow.Node) int {
 		}
 
 		return len(options)
+	case flow.KindTogether:
+		lanes, err := node.Lanes()
+		if err != nil {
+			return 0
+		}
+
+		return len(lanes)
 	default:
 		return 0
 	}
@@ -340,7 +350,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 			cueBox: ui.Zero(), listen: nil, search: nil, list: nil, open: false, operands: nil, operandType: "",
 			unneeded: false, values: nil, hidden: false, note: false, sources: nil, refers: false, another: false}
 		switch param.Type {
-		case flow.TypeTiles:
+		case flow.TypeTiles, flow.TypeSeconds:
 			made.field = text("param-"+param.Name, false)
 		case flow.TypeChoice:
 			s.newChoiceControl(docs, node, &made)
@@ -348,14 +358,11 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 			made.field = text("param-"+param.Name, false)
 			made.units, made.clocks = durationButtons(param.Name)
 		case flow.TypeShares:
-			for index := range built.rows {
-				prefix := param.Name + "-" + strconv.Itoa(index+1)
-				made.options = append(made.options, optionRow{
-					port: "", label: text(prefix+"-label", false), share: text(prefix+"-share", false),
-					remove: ui.NewButton(prefix+"-remove", "Remove"),
-				})
-			}
-			made.addOption = ui.NewButton("add-option", "Add option")
+			newOptionRows(&made, built.rows, text)
+		case flow.TypeLanes:
+			newLaneRows(&made, built.rows, text)
+		case flow.TypeSignal, flow.TypeNPC:
+			newIdentityControl(docs, &made)
 		case flow.TypeText, flow.TypeMessage:
 			made.field, made.pick = text("param-"+param.Name, node.Kind == flow.KindNote), insertButton(param.Type)
 		case flow.TypeTimeRange:
@@ -382,6 +389,27 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	return built
 }
 
+// controlShown reports whether a control takes room in the inspector: not
+// hidden, and not a Seconds setting the selected node doesn't use now, as
+// a Say shown for as long as it takes to read.
+func (s *State) controlShown(made *control) bool {
+	node, _ := s.selectedNode()
+
+	return !made.hidden && (made.param.Type != flow.TypeSeconds || node.UsesSeconds()) && sendShows(node, made)
+}
+
+// unitOf is the unit written in a whole-number field.
+func unitOf(paramType flow.ParamType) string {
+	if paramType == flow.TypeSeconds {
+		return "seconds"
+	}
+	if paramType == flow.TypeTiles {
+		return "tiles"
+	}
+
+	return ""
+}
+
 // newReferenceControl makes the widgets of a parameter that refers to
 // something: an anchor, a cue, a value, or an operand that follows one.
 func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *control) {
@@ -402,9 +430,10 @@ func (s *State) newReferenceControl(docs frame.Docs, node flow.Node, made *contr
 			s.newOperandSources(made, node)
 			made.sources[0].Label = "Text"
 		}
-	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
+	case flow.TypeTiles, flow.TypeSeconds, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText,
+		flow.TypeTimeRange,
 		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort,
-		flow.TypeMessage:
+		flow.TypeMessage, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 	}
 }
 
@@ -429,11 +458,11 @@ func deleteNodeButton() *ui.Button {
 // setSaved shows a parameter's saved value in its fields.
 func (s *State) setSaved(made *control, node flow.Node, ctx *frame.Context) {
 	switch made.param.Type {
-	case flow.TypeTiles:
+	case flow.TypeTiles, flow.TypeSeconds:
 		if number, err := node.Number(made.param.Name); err == nil {
 			made.field.Field.SetSaved(strconv.Itoa(number))
 		}
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 		setSavedChoices(made, node)
 	case flow.TypeText:
 		if value, err := node.Text(made.param.Name); err == nil {
@@ -503,7 +532,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 	footer := s.notesTop(panel, width)
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
-		if made.hidden {
+		if !s.controlShown(made) {
 			made.clearRects()
 
 			continue
@@ -511,9 +540,9 @@ func (s *State) layoutForm(docs frame.Docs) {
 		made.label = top
 		top += ui.LineHeight
 		switch made.param.Type {
-		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares:
+		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 			top = s.layoutChoices(made, left, width, top)
-		case flow.TypeTiles, flow.TypeText:
+		case flow.TypeTiles, flow.TypeSeconds, flow.TypeText:
 			height := ui.ButtonH
 			if made.field.Multiline {
 				height = noteField
@@ -566,8 +595,10 @@ func (s *State) layoutReference(docs frame.Docs, made *control, room image.Recta
 		return s.layoutOperand(made, left, width, top)
 	case flow.TypeMessage:
 		return s.layoutMessage(docs, made, left, width, top)
-	case flow.TypeTiles, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTimeRange,
-		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
+	case flow.TypeTiles, flow.TypeSeconds, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText,
+		flow.TypeTimeRange,
+		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort,
+		flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
 	}
 
 	return top
@@ -632,10 +663,12 @@ func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control
 		s.updateRanges(input, ctx, made, node)
 	case flow.TypeAnchor:
 		s.updateAnchor(input, ctx, made, node)
-	case flow.TypeChoice, flow.TypeDuration:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeSignal, flow.TypeNPC:
 		s.updateChoices(input, ctx, made, node)
 	case flow.TypeShares:
 		s.updateOptions(input, ctx, made, node)
+	case flow.TypeLanes:
+		s.updateLanes(input, ctx, made, node)
 	case flow.TypeCue:
 		s.updateCue(input, ctx, made, node)
 	case flow.TypeValue:
@@ -646,7 +679,8 @@ func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control
 		if made.pick.Update(input) {
 			s.openValuePicker(node, made.param.Name, "to put in the message, as its text", "", false)
 		}
-	case flow.TypeTiles, flow.TypeText, flow.TypeTimeRange, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps,
+	case flow.TypeTiles, flow.TypeSeconds, flow.TypeText, flow.TypeTimeRange, flow.TypeWorkflow,
+		flow.TypeInputs, flow.TypeKeeps,
 		flow.TypeWays, flow.TypePort:
 	}
 }
@@ -906,17 +940,24 @@ func (s *State) guardSelection(ctx *frame.Context) {
 // the text.
 func parseFor(made *control, field *ui.TextField, value string, node flow.Node) (any, bool, string) {
 	switch made.param.Type {
-	case flow.TypeTiles:
+	case flow.TypeTiles, flow.TypeSeconds:
 		if field != made.field {
 			return nil, false, ""
 		}
 
-		return parseWhole(value, 1, flow.MaxTiles)
+		limit := flow.MaxTiles
+		if made.param.Type == flow.TypeSeconds {
+			limit = flow.MaxSeconds
+		}
+
+		return parseWhole(value, 1, limit)
 	case flow.TypeDuration:
 		return parseAmount(made, field, value, node)
 	case flow.TypeShares:
 		return parseOptionField(made, field, value, node)
-	case flow.TypeChoice:
+	case flow.TypeLanes:
+		return parseLaneField(made, field, value, node)
+	case flow.TypeChoice, flow.TypeSignal, flow.TypeNPC:
 		return nil, false, ""
 	case flow.TypeText:
 		if field != made.field {

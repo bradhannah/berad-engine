@@ -5,6 +5,7 @@ import (
 	"image"
 	"slices"
 
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -95,7 +96,7 @@ func (s shape) entryOf(from ids.ULID, output string) (image.Point, bool) {
 
 // takesEntries reports whether links can come into a kind of node.
 func takesEntries(kind string) bool {
-	return kind != flow.KindStart && kind != flow.KindNote
+	return !flow.IsStart(kind) && kind != flow.KindNote
 }
 
 // incomingLinks lists, for each node, the links that come into it.
@@ -188,19 +189,17 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, 
 	}
 	entries := entriesHeight(incoming)
 	switch node.Kind {
-	case flow.KindStart:
-		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(startWidth, nodeHeight))}
+	case flow.KindStart, flow.KindOnSignal:
+		width := startWidth
+		if node.Kind == flow.KindOnSignal {
+			width = nodeWidth
+		}
+		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, nodeHeight))}
 		made.ports = rightPorts(made.rect, outputs)
 	case flow.KindContainer:
-		width, height := max(box.W, containerMinW), max(box.H, containerMinH, entries)
-		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, height))}
-		for _, output := range outputs {
-			at := image.Pt(made.rect.Max.X, made.rect.Min.Y+containerHead/2)
-			if output.Name == flow.OutputInside {
-				at = image.Pt(made.rect.Min.X+containerPad, made.rect.Min.Y+containerHead)
-			}
-			made.ports = append(made.ports, port{output: output, at: at, row: image.Rect(0, 0, 0, 0)})
-		}
+		made = containerShape(made, box, outputs, entries)
+	case flow.KindTogether:
+		made = togetherShape(made, box, outputs, entries)
 	case flow.KindNote:
 		width := max(box.W, noteWidth)
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, noteHeight(node, width)))}
@@ -227,6 +226,23 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, 
 	default:
 		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, max(nodeHeight, entries)))}
 		made.ports = rightPorts(made.rect, outputs)
+	}
+
+	return made
+}
+
+// containerShape lays out a time-bound container: its first step's dot
+// under its head, and its exit on the right of its head.
+func containerShape(made shape, box flow.Box, outputs []flow.Output, entries int) shape {
+	origin := image.Pt(box.X, box.Y)
+	width, height := max(box.W, containerMinW), max(box.H, containerMinH, entries)
+	made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(width, height))}
+	for _, output := range outputs {
+		at := image.Pt(made.rect.Max.X, made.rect.Min.Y+containerHead/ui.Half)
+		if output.Name == flow.OutputInside {
+			at = image.Pt(made.rect.Min.X+containerPad, made.rect.Min.Y+containerHead)
+		}
+		made.ports = append(made.ports, port{output: output, at: at, row: image.Rect(0, 0, 0, 0)})
 	}
 
 	return made

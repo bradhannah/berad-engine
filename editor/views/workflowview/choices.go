@@ -44,7 +44,7 @@ func durationButtons(name string) ([]*ui.Button, []*ui.Button) {
 // the chosen buttons, the wait's amount and the options' names and shares.
 func setSavedChoices(made *control, node flow.Node) {
 	switch made.param.Type {
-	case flow.TypeChoice:
+	case flow.TypeChoice, flow.TypeSignal, flow.TypeNPC:
 		chosen, err := node.Choice(made.param.Name)
 		if err == nil {
 			markValues(made.choices, made.values, chosen)
@@ -69,7 +69,10 @@ func setSavedChoices(made *control, node flow.Node) {
 			made.options[index].remove.Disabled = len(options) == 1
 		}
 		made.addOption.Disabled = len(options) >= flow.MaxOptions
-	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText, flow.TypeCue,
+	case flow.TypeLanes:
+		setSavedLanes(made, node)
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges,
+		flow.TypeText, flow.TypeCue,
 		flow.TypeValue, flow.TypeOperand,
 		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
 	}
@@ -123,7 +126,7 @@ func (s *State) layoutButtonRows(buttons []*ui.Button, left, width, top int) int
 func (s *State) layoutChoices(made *control, left, width, top int) int {
 	row := func(buttons []*ui.Button) { top = s.layoutButtonRows(buttons, left, width, top) }
 	switch made.param.Type {
-	case flow.TypeChoice:
+	case flow.TypeChoice, flow.TypeSignal, flow.TypeNPC:
 		row(made.choices)
 		if made.note {
 			top += ui.LineHeight
@@ -145,7 +148,10 @@ func (s *State) layoutChoices(made *control, left, width, top int) int {
 		}
 		made.addOption.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 		top += ui.ButtonH + rowSpace
-	case flow.TypeAnchor, flow.TypeTiles, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText, flow.TypeCue,
+	case flow.TypeLanes:
+		top = layoutLanes(made, left, width, top)
+	case flow.TypeAnchor, flow.TypeTiles, flow.TypeSeconds, flow.TypeTimeRange, flow.TypeTimeRanges,
+		flow.TypeText, flow.TypeCue,
 		flow.TypeValue, flow.TypeOperand,
 		flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeMessage:
 	}
@@ -257,6 +263,19 @@ func newOptionLabel(options []flow.Share) string {
 			return name
 		}
 	}
+}
+
+// newOptionRows makes a random choice's option rows, each a name, a share
+// and Remove, and Add option.
+func newOptionRows(made *control, rows int, text func(string, bool) *ui.TextField) {
+	for index := range rows {
+		prefix := made.param.Name + "-" + strconv.Itoa(index+1)
+		made.options = append(made.options, optionRow{
+			port: "", label: text(prefix+"-label", false), share: text(prefix+"-share", false),
+			remove: ui.NewButton(prefix+"-remove", "Remove"),
+		})
+	}
+	made.addOption = ui.NewButton("add-option", "Add option")
 }
 
 // parseAmount reads a wait's amount in its unit.

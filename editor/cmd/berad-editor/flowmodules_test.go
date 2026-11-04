@@ -25,7 +25,7 @@ func TestMakingAndCallingAModule(t *testing.T) {
 		doubleClick("row:Clerk's day"), quitWhenAlone(),
 	)
 	moduleScript := script(
-		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), click("palette:"+flow.KindReturn),
+		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), addNode(""+flow.KindReturn),
 		must("state:selected:return", 300), wait(5), drag("palette:"+flow.KindReturn, "canvas:520,360", "canvas:520,360"),
 		wait(10), keys("Escape"), wait(5), click("ui:add-local"), wait(10), click("ui:value-role-input"), wait(5),
 		click("ui:value-type-place"), must("state:local=value:place:no place yet", 300), wait(10), shoot(moduleShot),
@@ -34,8 +34,8 @@ func TestMakingAndCallingAModule(t *testing.T) {
 		quit(),
 	)
 	dayScript := script(
-		must("state:loaded", 900), must("state:nodes:20", 60), wait(10), keys("Escape"), wait(5),
-		click("palette:"+flow.KindCall), must("state:selected:call-workflow", 300), wait(5), click("ui:call-workflow"),
+		must("state:loaded", 900), must("state:nodes:25", 60), wait(10), keys("Escape"), wait(5),
+		addNode(""+flow.KindCall), must("state:selected:call-workflow", 300), wait(5), click("ui:call-workflow"),
 		must("menu:workflow-named:Workflow 1", 120), click("menu:workflow-named:Workflow 1"), wait(60), shoot(callShot),
 		must("state:output:call-workflow:2:w2=finished 2", 600), wait(240), quit(),
 	)

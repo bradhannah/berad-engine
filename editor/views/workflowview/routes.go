@@ -113,7 +113,7 @@ func lines(workflow *flow.Workflow, shapes map[ids.ULID]shape) []line {
 			end.X -= portRadius
 			result = append(result, line{
 				key: routeKey{from: node.ID, output: out.output.Name}, to: targetID, from: out.at, end: end,
-				source: from.rect, target: target.rect, inside: out.output.Name == flow.OutputInside,
+				source: from.rect, target: target.rect, inside: flow.IsInner(node, out.output.Name),
 			})
 		}
 	}
@@ -312,7 +312,7 @@ func sortedKeys(gaps map[int][]line) []int {
 // runsBehindLines reports whether lines are drawn under a kind of node:
 // every running node but a container, which, like a note, sits behind them.
 func runsBehindLines(kind string) bool {
-	return kind != flow.KindContainer && kind != flow.KindNote
+	return !flow.IsContainer(kind) && kind != flow.KindNote
 }
 
 // linkAt returns the line the pointer is over, at a canvas point. Lines are

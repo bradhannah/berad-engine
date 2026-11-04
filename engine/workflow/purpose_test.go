@@ -53,12 +53,12 @@ func TestKindsAndZonesRoundTrip(t *testing.T) {
 	}
 }
 
-// TestAZoneLoopRunsNoBody refuses a Go to, a Move and a Find NPC nearby in
+// TestAZoneLoopRunsNoBody refuses a Go to, a Move, a Find NPC nearby and a Say in
 // a zone loop, which an NPC behaviour takes, and offers neither in its
 // palette.
 func TestAZoneLoopRunsNoBody(t *testing.T) {
 	t.Parallel()
-	for _, kind := range []string{workflow.KindGoTo, workflow.KindMove, workflow.KindFindNPC} {
+	for _, kind := range []string{workflow.KindGoTo, workflow.KindMove, workflow.KindFindNPC, workflow.KindSay} {
 		loop, err := workflow.NewFor(id(1), workflow.PurposeZoneLoop)
 		if err != nil {
 			t.Fatal(err)

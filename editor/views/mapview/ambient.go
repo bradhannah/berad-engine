@@ -59,6 +59,16 @@ func (s *State) askAudio(ctx *frame.Context) {
 	})
 }
 
+// cueTicks is how many ticks a cue plays for, from the library as last
+// listed; none until it is.
+func (s *State) cueTicks(cue string) int {
+	if s.ambient.library == nil {
+		return 0
+	}
+
+	return s.ambient.library.CueTicks(cue)
+}
+
 // ambientCues returns the library's ambient cues by name.
 func (s *State) ambientCues() []protocol.AudioCue {
 	if s.ambient.library == nil {

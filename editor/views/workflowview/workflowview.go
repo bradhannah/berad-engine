@@ -40,8 +40,8 @@ const ViewName = "workflow"
 const (
 	PaletteWidth  = 200
 	toolbarHeight = 40
-	paletteItem   = 28
-	paletteGap    = 6
+	paletteItem   = 24
+	paletteGap    = 4
 	paletteTop    = toolbarHeight + ui.Inset
 	groupSpace    = 26
 	arrangeWidth  = 110
@@ -87,11 +87,13 @@ type lineDrag struct {
 	moved   bool
 }
 
-// paletteEntry is one node kind offered on the left.
+// paletteEntry is one node kind offered on the left; lines are its one
+// line, wrapped, while it is a search's result.
 type paletteEntry struct {
 	kind  flow.Kind
 	rect  image.Rectangle
 	group bool
+	lines []string
 }
 
 // State is one Workflow window.
@@ -106,6 +108,9 @@ type State struct {
 	routes   map[routeKey][]image.Point
 	loops    map[routeKey]bool
 	problems map[ids.ULID]string
+	// warnings are what deserves a look on a node but is not wrong, such as
+	// a receiver nothing sends to.
+	warnings map[ids.ULID]string
 	// localProblems say why a place local's start is out of the reach of
 	// the NPCs that run the workflow, by the local's ID.
 	localProblems map[ids.ULID]string
@@ -148,7 +153,9 @@ type State struct {
 	wheel    float64
 	drawn    *ebiten.Image
 
-	palette    []paletteEntry
+	palette []paletteEntry
+	// pal is the palette's search, its tooltip and the help it shows.
+	pal        *palettePanel
 	arrange    *ui.Button
 	recentre   *ui.Button
 	deleteLine *ui.Button
@@ -225,13 +232,15 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		workflow: nil, shapes: map[ids.ULID]shape{}, routes: map[routeKey][]image.Point{}, loops: map[routeKey]bool{},
-		problems: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{}, laidOut: 0, hasLayout: false,
+		problems: map[ids.ULID]string{}, warnings: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{},
+		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
-		palette: nil, arrange: ui.NewButton("arrange", "Auto-arrange"), recentre: ui.NewButton("recentre", "Recentre"),
+		palette: nil, pal: newPalettePanel(theme), arrange: ui.NewButton("arrange", "Auto-arrange"),
+		recentre:   ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
@@ -256,7 +265,7 @@ func paletteFor(purpose flow.Purpose) []paletteEntry {
 	var entries []paletteEntry
 	for _, kind := range flow.KindsFor(purpose) {
 		if kind.Group != "" {
-			entries = append(entries, paletteEntry{kind: kind, rect: ui.Zero(), group: false})
+			entries = append(entries, paletteEntry{kind: kind, rect: ui.Zero(), group: false, lines: nil})
 		}
 	}
 
@@ -287,6 +296,8 @@ func (s *State) Focused() *ui.TextField {
 		return s.values.picker.Focused()
 	case s.places != nil:
 		return s.places.list.Focused()
+	case s.pal.focus.Current() != nil:
+		return s.pal.focus.Current()
 	}
 
 	return s.focus.Current()
@@ -407,16 +418,8 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.legend.Rect = image.Rect(s.recentre.Rect.Min.X-ui.Inset-legendWidth, s.arrange.Rect.Min.Y,
 		s.recentre.Rect.Min.X-ui.Inset, s.arrange.Rect.Max.Y)
 	s.legendBox = s.legendLayout()
-	top, group := paletteTop, ""
-	for index := range s.palette {
-		entry := &s.palette[index]
-		if entry.kind.Group != group {
-			group = entry.kind.Group
-			top += groupSpace
-		}
-		entry.rect = image.Rect(ui.Inset-ui.Half, top, PaletteWidth-ui.Inset, top+paletteItem)
-		top += paletteItem + paletteGap
-	}
+	s.layoutPalette()
+	s.layoutHelp()
 	s.layoutForm(docs)
 	s.layoutLocals()
 	s.deleteLine.Rect, s.resetLine.Rect = ui.Zero(), ui.Zero()
@@ -460,6 +463,7 @@ func (s *State) ask(ctx *frame.Context) {
 	s.askRunners(ctx)
 	s.subscribeHomes(ctx)
 	s.listAudio(ctx)
+	s.subscribeSignals(ctx)
 }
 
 // Update handles one frame of input.
@@ -488,12 +492,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.updateOverlay(input, ctx) {
 		return
 	}
-	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
-		s.Save(ctx)
-	}
-	if s.focus.Current() == nil {
-		s.keys(input, ctx)
-	}
+	s.updateTyping(input, ctx)
 	frame.CommonKeys(input, ctx)
 	if s.workflow == nil {
 		return
@@ -504,16 +503,33 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			s.subscribe(floorID, ctx)
 		}
 	}
-	s.updateLineButtons(input, ctx)
-	s.updateColours(input, ctx)
-	s.updateForm(input, ctx)
-	s.updateLocals(input, ctx)
+	if !s.updateHelp(input, ctx) {
+		s.updateLineButtons(input, ctx)
+		s.updateColours(input, ctx)
+		s.updateForm(input, ctx)
+		s.updateLocals(input, ctx)
+	}
 	s.updateToolbar(input, ctx)
 	s.updateZoom(input)
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu()
+}
+
+// updateTyping runs the palette's search, then the inspector's fields while
+// no help page covers them, then the window's own keys while no field has
+// focus.
+func (s *State) updateTyping(input *ui.Input, ctx *frame.Context) {
+	s.updateSearch(input, ctx)
+	if s.pal.help == "" {
+		if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
+			s.Save(ctx)
+		}
+	}
+	if s.focus.Current() == nil && s.pal.focus.Current() == nil {
+		s.keys(input, ctx)
+	}
 }
 
 // updateToolbar handles Auto-arrange, Recentre and the Legend toggle, and
@@ -572,6 +588,8 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	switch {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
 		s.picker.Cancel(ctx, cancelledHere)
+	case s.pal.help != "" && input.Consume(ui.KeyEscape, plain):
+		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
 	case input.Consume(ui.KeyEqual, ui.Cmd()):
@@ -607,40 +625,6 @@ func (s *State) removeLine(ctx *frame.Context) {
 	output := s.selectedLink.output
 	s.selectedLink = noRoute()
 	s.replace(ctx, from.WithLink(output, ids.ULID{}), "Line removed. Undo puts it back.")
-}
-
-// updatePalette adds a node when a palette entry is clicked, or dragged onto
-// the canvas and dropped.
-func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
-	if s.adding != nil {
-		s.adding.at = input.Cursor
-		if !input.Released && input.Down {
-			return
-		}
-		adding := s.adding
-		s.adding = nil
-		moved := adding.at.Sub(adding.start)
-		dragged := max(abs(moved.X), abs(moved.Y)) > dragStart
-		switch {
-		case dragged && adding.at.In(s.Canvas()):
-			s.addAt(ctx, adding.kind, s.toCanvas(adding.at))
-		case !dragged:
-			s.addAfterSelected(ctx, adding.kind)
-		}
-
-		return
-	}
-	if !input.Pressed {
-		return
-	}
-	for _, entry := range s.palette {
-		if input.Cursor.In(entry.rect) {
-			s.adding = &paletteDrag{kind: entry.kind.Name, start: input.Cursor, at: input.Cursor}
-			input.ClearPointer()
-
-			return
-		}
-	}
 }
 
 // updateCanvas handles panning and the gestures on nodes and ports.
@@ -704,7 +688,11 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	for _, nodeID := range s.drawOrder() {
 		if drawn := s.shapes[nodeID]; point.In(drawn.addOption) {
 			s.selected = nodeID
-			s.addOption(ctx, drawn.node)
+			if drawn.node.Kind == flow.KindTogether {
+				s.addLane(ctx, drawn.node)
+			} else {
+				s.addOption(ctx, drawn.node)
+			}
 
 			return
 		}
@@ -754,7 +742,7 @@ func (s *State) updateDrag(input *ui.Input, ctx *frame.Context, point image.Poin
 	}
 	target := point.Sub(drag.grab)
 	if container, inContainer := s.shapes[moving.node.Parent]; inContainer {
-		target = clampInto(target, moving.rect.Size(), inside(container.rect))
+		target = clampInto(target, moving.rect.Size(), innerOf(container))
 	}
 	delta := target.Sub(moving.rect.Min)
 	if delta == image.Pt(0, 0) {
@@ -773,7 +761,7 @@ func (s *State) movedBox(moving shape, delta image.Point) flow.Box {
 	box, placed := s.workflow.Box(moving.node.ID)
 	if !placed {
 		box = flow.Box{X: moving.rect.Min.X, Y: moving.rect.Min.Y, W: 0, H: 0}
-		if moving.node.Kind == flow.KindContainer {
+		if flow.IsContainer(moving.node.Kind) {
 			box.W, box.H = moving.rect.Dx(), moving.rect.Dy()
 		}
 	}
@@ -796,7 +784,8 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, point image.Po
 
 		return
 	}
-	right, bottom := max(point.X, container.rect.Min.X+containerMinW), max(point.Y, container.rect.Min.Y+containerMinH)
+	least := container.rect.Min.Add(containerMin(container.node))
+	right, bottom := max(point.X, least.X), max(point.Y, least.Y)
 	for _, child := range s.workflow.Children(s.resize.id) {
 		right = max(right, s.shapes[child].rect.Max.X+containerPad)
 		bottom = max(bottom, s.shapes[child].rect.Max.Y+containerPad/ui.Half)
@@ -912,9 +901,11 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 		return ""
 	case targetNode.Kind == flow.KindStart:
 		return "Nothing links back to the start: a branch that ends goes back there by itself."
+	case targetNode.Kind == flow.KindOnSignal:
+		return "Nothing links into a receiver: it runs when its signal is heard."
 	case !flow.Runs(targetNode.Kind):
 		return "Notes are not part of the flow, so nothing can link to them."
-	case from.Kind == flow.KindContainer && output == flow.OutputInside:
+	case flow.IsInner(from, output):
 		if targetNode.Parent != from.ID {
 			return "A container's first step must be inside it."
 		}
@@ -926,8 +917,9 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 }
 
 // addAfterSelected adds a node after the selected one, connected from its
-// first free output, or inside a selected container; with nothing selected
-// it goes in the middle of the view.
+// first free output, or put into the line of its first output when it has
+// none free; or inside a selected container; with nothing selected it goes
+// in the middle of the view.
 func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 	selected, ok := s.shapes[s.selected]
 	if !ok {
@@ -937,28 +929,24 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 
 		return
 	}
-	if kind == flow.KindNote {
-		place := image.Pt(selected.rect.Min.X, selected.rect.Min.Y-noteMinHeight-rowGap)
-		s.add(ctx, kind, place, selected.node.Parent, nil)
+	if kind == flow.KindNote || flow.IsStart(kind) {
+		place, parent := image.Pt(selected.rect.Min.X, selected.rect.Min.Y-noteMinHeight-rowGap), selected.node.Parent
+		if flow.IsStart(kind) {
+			place, parent = s.clearOf(image.Pt(selected.rect.Min.X, selected.rect.Max.Y+rowGap), ids.ULID{}), ids.ULID{}
+		}
+		s.add(ctx, kind, place, parent, nil)
 
 		return
 	}
-	if selected.node.Kind == flow.KindContainer && kind != flow.KindContainer {
-		place := inside(selected.rect).Min
-		var link *flow.Link
-		if _, used := selected.node.Next[flow.OutputInside]; !used {
-			link = &flow.Link{From: selected.node.ID, Output: flow.OutputInside, To: ids.ULID{}}
-		} else {
-			place = s.freeSpot(selected.node.ID, place)
-		}
-		s.add(ctx, kind, place, selected.node.ID, link)
+	if flow.IsContainer(selected.node.Kind) && !flow.IsContainer(kind) {
+		s.addInside(ctx, kind, selected)
 
 		return
 	}
 	place := image.Pt(selected.rect.Max.X+newGap, selected.rect.Min.Y)
 	var link *flow.Link
 	for _, candidate := range selected.ports {
-		if _, used := selected.node.Next[candidate.output.Name]; used || candidate.output.Name == flow.OutputInside {
+		if _, used := selected.node.Next[candidate.output.Name]; used || flow.IsInner(selected.node, candidate.output.Name) {
 			continue
 		}
 		link = &flow.Link{From: selected.node.ID, Output: candidate.output.Name, To: ids.ULID{}}
@@ -966,7 +954,35 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 
 		break
 	}
+	if link == nil && len(selected.ports) > 0 && splices(kind) {
+		s.splice(ctx, kind, routeKey{from: selected.node.ID, output: selected.ports[0].output.Name}, place)
+
+		return
+	}
 	s.add(ctx, kind, s.clearOf(place, selected.node.Parent), selected.node.Parent, link)
+}
+
+// addInside adds a node inside a selected container: as its first step, or
+// a Together's first empty lane's, when it has none; otherwise free, below
+// what is inside.
+func (s *State) addInside(ctx *frame.Context, kind string, selected shape) {
+	place := innerOf(selected).Min
+	first := port{output: flow.Output{Name: flow.OutputInside, Label: ""}, at: place, row: image.Rect(0, 0, 0, 0)}
+	var free bool
+	if selected.node.Kind == flow.KindTogether {
+		first, free = firstEmptyLane(selected)
+		place = image.Pt(place.X, first.at.Y-entryTop)
+	} else {
+		_, used := selected.node.Next[flow.OutputInside]
+		free = !used
+	}
+	var link *flow.Link
+	if free {
+		link = &flow.Link{From: selected.node.ID, Output: first.output.Name, To: ids.ULID{}}
+	} else {
+		place = s.freeSpot(selected.node.ID, innerOf(selected).Min)
+	}
+	s.add(ctx, kind, place, selected.node.ID, link)
 }
 
 // clearOf moves a new node's place down until it overlaps none of the nodes
@@ -997,27 +1013,35 @@ func (s *State) freeSpot(container ids.ULID, place image.Point) image.Point {
 	return place
 }
 
-// addAt adds a node where it is dropped, inside the container there, if any.
+// addAt adds a node where it is dropped, inside the container there, if
+// any, unless it is a receiver, which sits at the top level; dropped in an
+// empty lane of a Together, it is the lane's first step.
 func (s *State) addAt(ctx *frame.Context, kind string, point image.Point) {
 	parent := ids.ULID{}
-	if kind != flow.KindContainer {
+	var link *flow.Link
+	if !flow.IsContainer(kind) && !flow.IsStart(kind) {
 		for nodeID, candidate := range s.shapes {
-			if candidate.node.Kind == flow.KindContainer && point.In(inside(candidate.rect)) {
+			if flow.IsContainer(candidate.node.Kind) && point.In(innerOf(candidate)) {
 				parent = nodeID
 			}
 		}
 	}
-	s.add(ctx, kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)), parent, nil)
+	if lane, ok := laneAt(s.shapes[parent], point); ok && kind != flow.KindNote {
+		if _, used := s.shapes[parent].node.Next[lane.Port]; !used {
+			link = &flow.Link{From: parent, Output: lane.Port, To: ids.ULID{}}
+		}
+	}
+	s.add(ctx, kind, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)), parent, link)
 }
 
 // newBox is a new node's box at a place; containers and notes start at
 // their usual size.
 func newBox(kind string, place image.Point) flow.Box {
 	box := flow.Box{X: place.X, Y: place.Y, W: 0, H: 0}
-	switch kind {
-	case flow.KindContainer:
+	switch {
+	case flow.IsContainer(kind):
 		box.W, box.H = containerWidth, containerHeight
-	case flow.KindNote:
+	case kind == flow.KindNote:
 		box.W = noteWidth
 	}
 
@@ -1066,10 +1090,16 @@ func (s *State) add(ctx *frame.Context, kind string, place image.Point, parent i
 		return
 	}
 	node.Parent = parent
-	if kind == flow.KindReturn {
+	s.addNode(ctx, node, place, link)
+}
+
+// addNode sends the edit that adds a node already made, then selects it
+// and, given a link, connects it, all as one undo step.
+func (s *State) addNode(ctx *frame.Context, node flow.Node, place image.Point, link *flow.Link) {
+	if node.Kind == flow.KindReturn {
 		node = s.freshReturn(node)
 	}
-	box := newBox(kind, place)
+	box := newBox(node.Kind, place)
 	gesture := s.gesture()
 	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
 	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {
@@ -1239,7 +1269,7 @@ func (s *State) portAt(point image.Point) (ids.ULID, string, bool) {
 func (s *State) resizeHandleAt(point image.Point) (ids.ULID, bool) {
 	for nodeID, candidate := range s.shapes {
 		corner := candidate.rect.Max
-		if candidate.node.Kind == flow.KindContainer && point.In(image.Rectangle{
+		if flow.IsContainer(candidate.node.Kind) && point.In(image.Rectangle{
 			Min: corner.Sub(image.Pt(resizeGrab, resizeGrab)), Max: corner,
 		}) {
 			return nodeID, true
@@ -1319,10 +1349,10 @@ func (s *State) drawOrder() []ids.ULID {
 	}
 	var containers, notes, others []ids.ULID
 	for _, node := range s.workflow.Nodes() {
-		switch node.Kind {
-		case flow.KindContainer:
+		switch {
+		case flow.IsContainer(node.Kind):
 			containers = append(containers, node.ID)
-		case flow.KindNote:
+		case node.Kind == flow.KindNote:
 			notes = append(notes, node.ID)
 		default:
 			others = append(others, node.ID)

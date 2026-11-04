@@ -466,6 +466,12 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   the node's first output continues to the old target; its other outputs
   stay free, labelled as free outputs are. A target with several entries
   takes the line on its next free dot.
+- **Agreed (2026-11-03):** the palette says what a node does before it is
+  placed: a search matches what each node does as well as its name,
+  hovering an entry gives its one line, and clicking it shows its help page
+  in the inspector, with Add after. Only dragging places a node; a click no
+  longer adds one after the selected node. [Increment
+  25](increments/0025-palette.md) builds it.
 - **Agreed (2026-11-01):** Check value compares by its value's type, and
   shows only the comparisons that type allows. An integer compares with
   `=`, `≠`, `<`, `≤`, `>` and `≥`, as symbols, or is between two numbers,

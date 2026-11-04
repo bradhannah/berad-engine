@@ -62,20 +62,60 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 	sized := sizing{noteHeight: noteHeight, incoming: incoming}
 	cycle := loops(workflow)
 	for _, node := range workflow.Nodes() {
-		if node.Kind == flow.KindContainer {
+		switch node.Kind {
+		case flow.KindContainer:
 			sizes[node.ID] = arrangeInside(workflow, node, boxes, sized, cycle)
+		case flow.KindTogether:
+			sizes[node.ID] = arrangeTogether(workflow, node, boxes, sized, cycle)
 		}
 	}
-	placed := arrangeLevel(workflow, ids.ULID{}, workflow.Start(), sizes, sized, cycle, image.Pt(arrangeX, arrangeY))
+	placed := arrangeTop(workflow, sizes, sized, cycle, image.Pt(arrangeX, arrangeY))
 	for nodeID, at := range placed {
 		node, _ := workflow.Node(nodeID)
 		boxes[nodeID] = boxAt(node, at, sizeOf(node, sizes, sized))
-		if node.Kind == flow.KindContainer {
+		if flow.IsContainer(node.Kind) {
 			offsetChildren(workflow, nodeID, boxes, at)
 		}
 	}
 
 	return boxes
+}
+
+// arrangeTop lays out the top level: the flow from the start, then under
+// it each receiver's path in a row of its own, in the order they were made,
+// then any steps neither reaches, each run in a row of its own; notes go
+// under everything.
+func arrangeTop(
+	workflow *flow.Workflow, sizes map[ids.ULID]image.Point, sized sizing, cycle map[routeKey]bool, origin image.Point,
+) map[ids.ULID]image.Point {
+	firsts := []ids.ULID{workflow.Start()}
+	for _, node := range workflow.Nodes() {
+		if node.Kind == flow.KindOnSignal && node.Parent.IsZero() {
+			firsts = append(firsts, node.ID)
+		}
+	}
+	if len(firsts) == 1 {
+		return arrangeLevel(workflow, ids.ULID{}, workflow.Start(), sizes, sized, cycle, origin)
+	}
+	graph := levelOf(workflow, ids.ULID{}, cycle)
+	firsts = append(firsts, graph.order...)
+	taken, corners, top := map[ids.ULID]bool{}, map[ids.ULID]image.Point{}, origin.Y
+	for _, first := range firsts {
+		if taken[first] {
+			continue
+		}
+		columns := graph.laneColumns(first, taken)
+		graph.reorder(columns)
+		band := graph.placeColumns(columns, sizes, sized, image.Pt(origin.X, top))
+		for nodeID, at := range band {
+			corners[nodeID] = at
+			node, _ := workflow.Node(nodeID)
+			top = max(top, at.Y+sizeOf(node, sizes, sized).Y+ui.Half*rowGap)
+		}
+	}
+	placeNotes(workflow, ids.ULID{}, corners, sizes, sized, origin)
+
+	return corners
 }
 
 // arrangeInside lays out a container's contents relative to the container's
@@ -106,15 +146,27 @@ func arrangeLevel(
 	graph := levelOf(workflow, parent, cycle)
 	columns := graph.columns(first)
 	graph.reorder(columns)
+	corners := graph.placeColumns(columns, sizes, sized, origin)
+	placeNotes(workflow, parent, corners, sizes, sized, origin)
+
+	return corners
+}
+
+// placeColumns places columns of a level's nodes left to right from an
+// origin, each node lined up with the output it comes from, and returns
+// each node's top-left corner.
+func (g *level) placeColumns(
+	columns [][]ids.ULID, sizes map[ids.ULID]image.Point, sized sizing, origin image.Point,
+) map[ids.ULID]image.Point {
 	corners := map[ids.ULID]image.Point{}
 	left := origin.X
 	for _, column := range columns {
 		top, width, leaving := origin.Y, 0, 0
 		for _, nodeID := range column {
-			node := graph.nodes[nodeID]
+			node := g.nodes[nodeID]
 			size := sizeOf(node, sizes, sized)
 			want := top
-			if aligned, ok := graph.alignedTop(nodeID, corners, sizes, sized); ok {
+			if aligned, ok := g.alignedTop(nodeID, corners, sizes, sized); ok {
 				want = max(want, aligned)
 			}
 			corners[nodeID] = image.Pt(left, want)
@@ -124,7 +176,6 @@ func arrangeLevel(
 		}
 		left += width + max(columnGap, ui.Half*laneMargin+(leaving+1)*laneGap)
 	}
-	placeNotes(workflow, parent, corners, sizes, sized, origin)
 
 	return corners
 }
@@ -166,7 +217,7 @@ func levelOf(workflow *flow.Workflow, parent ids.ULID, cycle map[routeKey]bool) 
 		for index, output := range outputs {
 			target, linked := node.Next[output.Name]
 			_, here := graph.nodes[target]
-			if !linked || !here || output.Name == flow.OutputInside || cycle[routeKey{from: nodeID, output: output.Name}] {
+			if !linked || !here || flow.IsInner(node, output.Name) || cycle[routeKey{from: nodeID, output: output.Name}] {
 				continue
 			}
 			link := edge{
@@ -382,10 +433,10 @@ func sizeOf(node flow.Node, containers map[ids.ULID]image.Point, sized sizing) i
 // notes keep their size in the box.
 func boxAt(node flow.Node, at, size image.Point) flow.Box {
 	box := flow.Box{X: at.X, Y: at.Y, W: 0, H: 0}
-	switch node.Kind {
-	case flow.KindContainer:
+	switch {
+	case flow.IsContainer(node.Kind):
 		box.W, box.H = size.X, size.Y
-	case flow.KindNote:
+	case node.Kind == flow.KindNote:
 		box.W = size.X
 	}
 

@@ -52,6 +52,9 @@ func (s *State) rowMenu(row string, meaning item, found bool) ([]ui.MenuItem, ma
 			menuHeading(where), choice(menuAddValue, "Add value", false), choice(menuAddGroup, "Add group", false),
 		}
 	}
+	if items := signalMenu(row, meaning, found); items != nil {
+		return items, subs
+	}
 	if scope, section := strings.CutPrefix(row, sectionPrefix); section {
 		if worldstate.Scope(scope) == worldstate.ScopeWorld {
 			return adds("At the top of World", worldstate.ScopeWorld), subs
@@ -82,7 +85,7 @@ func (s *State) rowMenu(row string, meaning item, found bool) ([]ui.MenuItem, ma
 		return items, subs
 	case itemDeclared:
 		return s.declaredMenu(meaning, adds), subs
-	case itemApplied, itemHeld, itemName:
+	case itemApplied, itemHeld, itemName, itemSignal, itemSignalGroup:
 	}
 
 	return nil, subs
@@ -122,7 +125,12 @@ func (s *State) openRowMenu(input *ui.Input, row string, meaning item, found boo
 	s.menu.ClearSubs()
 	s.menu.Items, s.menu.Width = items, ui.MenuWidth(items, s.theme)
 	if slices.ContainsFunc(items, func(each ui.MenuItem) bool { return each.ID == menuMoveInto }) {
-		into := s.intoItems(meaning)
+		var into []ui.MenuItem
+		if isSignal(meaning.kind) {
+			into = signalIntoItems(s.shown.signals, meaning.ownerID)
+		} else {
+			into = s.intoItems(meaning)
+		}
 		s.menu.SetSub(menuMoveInto, into, ui.MenuWidth(into, s.theme))
 	}
 	for id, sub := range subs {
@@ -208,6 +216,9 @@ func (s *State) addsWhere(into target) string {
 // addsNote says where Add value and Add group add, beside them, or "" when
 // they cannot.
 func (s *State) addsNote(docs frame.Docs) string {
+	if selected, found := s.selected(); found && isSignal(selected.kind) {
+		return "adds " + signalWhere(s.shown.signals, s.signalParent(docs))
+	}
 	into, ok := s.addTarget(docs)
 	if !ok || s.shown.catalog == nil {
 		return ""

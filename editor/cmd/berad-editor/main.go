@@ -292,7 +292,7 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 	if err := sampleRoutine(orch, clerk, anchors, values); err != nil {
 		return ids.ULID{}, err
 	}
-	if err := sampleCustomer(orch, anchors, values); err != nil {
+	if err := sampleCustomer(orch, anchors, values, clerk); err != nil {
 		return ids.ULID{}, err
 	}
 	zoneID, err := sampleZone(orch, sample, floors)

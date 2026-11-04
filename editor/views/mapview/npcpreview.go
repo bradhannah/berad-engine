@@ -22,6 +22,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
+	"github.com/bradhannah/berad-engine/editor/views/showdraw"
+	"github.com/bradhannah/berad-engine/editor/views/signals"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -249,28 +251,14 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 		ticks = stepBudget
 	}
 	var asked []npcrun.Sound
-	names := places.NewNames(ctx.Docs)
+	s.preview.named, _ = signals.Declared(ctx.Docs)
+	base := npcrun.World{
+		Names: places.NewNames(ctx.Docs), Zone: zone, Workflow: nil, Behaviour: ids.ULID{}, Workflows: s.module,
+		Clock: s.preview.clock, Passed: 0, State: s.preview.values, Here: s.zone, Others: nil,
+		Stage: s.preview.stage, CueTicks: s.cueTicks, Signals: s.preview.named,
+	}
 	for range ticks {
-		passed := s.preview.clock.Advance()
-		asked = asked[:0]
-		others := othersOf(runners)
-		for _, run := range runners {
-			world := npcrun.World{
-				Names: names, Zone: zone, Workflow: run.workflow, Behaviour: run.source, Workflows: s.module,
-				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
-			}
-			run.npc.Step(world, s.preview.run.Tick())
-			asked = append(asked, run.npc.Sounds...)
-			s.keepLines(run.npc, run.npc.Placement.String())
-		}
-		if loop := s.preview.loop; loop.workflow != nil {
-			loop.npc.Step(npcrun.World{
-				Names: names, Zone: zone, Workflow: loop.workflow, Behaviour: loop.source, Workflows: s.module,
-				Clock: s.preview.clock, Passed: passed, State: s.preview.values, Here: s.zone, Others: others,
-			}, s.preview.run.Tick())
-			asked = append(asked, loop.npc.Sounds...)
-			s.keepLines(loop.npc, s.zone.String())
-		}
+		asked = s.stepTick(runners, base)
 		if s.preview.stepping && s.stepped() {
 			s.hear(ctx, asked)
 
@@ -381,7 +369,88 @@ func (s *State) liveNPCOf(placement ids.ULID) ids.ULID {
 func previewChange(change npcrun.Change) protocol.PreviewChange {
 	return protocol.PreviewChange{
 		From: change.From, Output: change.Output, To: change.To, Tick: change.Tick, Status: change.Status,
+		Lane: change.Lane,
 	}
+}
+
+// stepTick runs one tick of every NPC and the zone's loop, the signals sent
+// on the latest tick landing first, and returns the sounds they asked for.
+func (s *State) stepTick(runners []*npcRun, base npcrun.World) []npcrun.Sound {
+	base.Passed = s.preview.clock.Advance()
+	s.preview.stage.Tick()
+	base.Others = othersOf(runners)
+	npcrun.Deliver(s.preview.signals, s.signalled(runners), s.zone)
+	s.preview.signals = s.preview.signals[:0]
+	var asked []npcrun.Sound
+	step := func(run *npcRun, writer string) {
+		world := base
+		world.Workflow, world.Behaviour = run.workflow, run.source
+		run.npc.Step(world, s.preview.run.Tick())
+		s.preview.signals = append(s.preview.signals, run.npc.Sent...)
+		asked = append(asked, run.npc.Sounds...)
+		s.keepLines(run.npc, writer)
+	}
+	for _, run := range runners {
+		step(run, run.npc.Placement.String())
+	}
+	if loop := s.preview.loop; loop.workflow != nil {
+		step(loop, s.zone.String())
+	}
+
+	return asked
+}
+
+// signalEntity adds what an NPC's signals are doing to its entity: the one
+// it is handling, from whom, what it will resume, and those held.
+func (s *State) signalEntity(entity *protocol.PreviewEntity, run *npcRun) {
+	if heard, handling := run.npc.Handling(); handling {
+		entity.Handling = s.signalName(heard.Signal)
+		if !heard.From.IsZero() {
+			entity.HandlingFrom = s.names.Name(heard.From, "")
+		}
+		_, entity.Resumes = run.npc.Resumes(run.workflow, s.module)
+	}
+	for _, held := range run.npc.Held() {
+		entity.Held = append(entity.Held, s.signalName(held.Signal))
+	}
+}
+
+// signalName names a signal by its path in the world state, as last read.
+func (s *State) signalName(signal ids.ULID) string {
+	if path := worldstate.SignalPath(s.preview.named, signal); path != "" {
+		return path
+	}
+
+	return signal.String()
+}
+
+// signalled lists the runners a signal can reach: the NPCs, then the
+// zone's loop when it has one.
+func (s *State) signalled(runners []*npcRun) []*npcrun.NPC {
+	heard := make([]*npcrun.NPC, 0, len(runners)+1)
+	for _, run := range runners {
+		heard = append(heard, run.npc)
+	}
+	if loop := s.preview.loop; loop.workflow != nil {
+		heard = append(heard, loop.npc)
+	}
+
+	return heard
+}
+
+// previewLanes are a Together's lanes as the preview's state carries them.
+func previewLanes(lanes []npcrun.Lane) []protocol.PreviewLane {
+	if len(lanes) == 0 {
+		return nil
+	}
+	carried := make([]protocol.PreviewLane, 0, len(lanes))
+	for _, lane := range lanes {
+		carried = append(carried, protocol.PreviewLane{
+			Port: lane.Port, Label: lane.Label, Node: lane.Node, Doing: lane.Doing, Done: lane.Done,
+		})
+	}
+
+	return carried
 }
 
 // npcEntity is an NPC as the preview's state carries it.
@@ -414,13 +483,20 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 		})
 	}
 
-	return protocol.PreviewEntity{
+	entity := protocol.PreviewEntity{
 		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
 		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
 		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
 		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
-		Sprite: s.spriteNow(run.npc.NPC),
+		Sprite: s.spriteNow(run.npc.NPC), Saying: "", SayingLeft: 0, Lanes: previewLanes(run.npc.Lanes(s.running(run))),
+		Handling: "", HandlingFrom: "", Resumes: "", Held: nil,
 	}
+	s.signalEntity(&entity, run)
+	if line, saying := run.npc.Saying(); saying {
+		entity.Saying, entity.SayingLeft = line.Text, float64(line.Left)/float64(line.Ticks)
+	}
+
+	return entity
 }
 
 // spriteNow is the sprite an NPC shows in the preview now: its sprite value,
@@ -490,13 +566,15 @@ func (s *State) previewState() protocol.PreviewState {
 		entities = append(entities, s.loopEntity())
 	}
 	game := s.preview.clock
-
-	return protocol.PreviewState{
+	state := protocol.PreviewState{
 		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
 		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
 		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step), Values: s.watchedValues(),
-		Log: slices.Clone(s.preview.lines),
+		Log: slices.Clone(s.preview.lines), Box: showdraw.BoxOf(s.preview.stage), ShakeX: 0, ShakeY: 0,
 	}
+	state.ShakeX, state.ShakeY = s.preview.stage.Offset()
+
+	return state
 }
 
 // keepLines numbers the lines an NPC's or the zone loop's Logs wrote this
@@ -795,6 +873,9 @@ func (s *State) watchedLine() string {
 // "watching" while an NPC is watched, "npc:<name>=C,R" when the named NPC
 // stands on that cell, and "heard:<cue>" once the preview has played a cue.
 func (s *State) hasNPCState(state string, docs frame.Docs) bool {
+	if found, handled := s.hasShownState(state); handled {
+		return found
+	}
 	switch {
 	case strings.HasPrefix(state, "heard:"):
 		return s.preview != nil && s.preview.heard[strings.TrimPrefix(state, "heard:")] > 0

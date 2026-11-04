@@ -18,7 +18,7 @@ func TestGoToAPlaceValue(t *testing.T) {
 	f.click("ui:add-local")
 	f.click("ui:value-type-place")
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindGoTo)
+	f.add("" + flow.KindGoTo)
 	f.click("ui:goes-value")
 	if _, shown := f.state.Locate("ui:pick", f.docs); shown {
 		t.Fatal("going to a place value, it shows no anchor to pick")

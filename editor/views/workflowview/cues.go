@@ -35,6 +35,7 @@ const (
 const (
 	problemNoCue      = "No cue chosen yet."
 	problemMissingCue = "Its cue is not in the audio library. Choose another, or add it in Audio."
+	problemLoopingCue = "Its cue loops, so it never finishes playing: carry on at once, or choose a sound effect."
 )
 
 // cueCategories are the chooser's groups, in order.
@@ -127,8 +128,12 @@ func (s *State) cueProblem(node flow.Node) string {
 	case s.audio.Problem != "":
 		return s.audio.Problem
 	}
-	if _, found := s.listedCue(cueID); !found {
+	listed, found := s.listedCue(cueID)
+	if !found {
 		return problemMissingCue
+	}
+	if choiceOf(node, flow.ParamCarry) == flow.CarryWhenDone && listed.Category != protocol.CategorySFX {
+		return problemLoopingCue
 	}
 
 	return ""

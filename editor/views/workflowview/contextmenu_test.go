@@ -29,8 +29,8 @@ func TestRightClickDeletes(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
-	f.click("palette:" + flow.KindWait)
-	f.click("palette:" + flow.KindWait)
+	f.add("" + flow.KindWait)
+	f.add("" + flow.KindWait)
 	f.keys("Escape")
 	f.rightClick("node:wait:2")
 	if !f.menuOffers("delete-node") || f.state.Selected() != f.nth(flow.KindWait, 2).ID {

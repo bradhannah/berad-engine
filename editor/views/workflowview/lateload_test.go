@@ -24,7 +24,7 @@ func TestAModuleLoadedLate(t *testing.T) {
 	}))
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	f.keys("Escape")
-	f.click("palette:" + flow.KindCall)
+	f.add("" + flow.KindCall)
 	f.click("ui:call-workflow")
 	f.click("menu:workflow-named:Go to work")
 	f.withModule()
