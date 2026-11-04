@@ -83,7 +83,7 @@ func (s *State) addTarget(docs frame.Docs) (target, bool) {
 		own, ok := valuetree.Owned(docs, selected.ownerID)
 
 		return target{list: own, scope: selected.scope, parent: ids.ULID{}}, ok
-	case itemTemplates, itemSignal:
+	case itemTemplates, itemSignal, itemSignalGroup:
 	}
 
 	return target{list: world, scope: selected.scope, parent: ids.ULID{}}, false
@@ -104,17 +104,21 @@ func (s *State) templateScope() (worldstate.Scope, bool) {
 func (s *State) updateAdds(input *ui.Input, ctx *frame.Context) {
 	into, canAdd := s.addTarget(ctx.Docs)
 	scope, canTemplate := s.templateScope()
-	s.adds[0].Disabled, s.adds[1].Disabled, s.adds[2].Disabled = !canAdd, !canAdd, !canTemplate
+	selected, found := s.selected()
+	inSignals := found && isSignal(selected.kind)
+	s.adds[0].Disabled, s.adds[1].Disabled, s.adds[2].Disabled = !canAdd, !canAdd && !inSignals, !canTemplate
 	switch {
 	case s.adds[0].Update(input):
 		s.declare(ctx, into, "value", worldstate.TypeInteger)
+	case s.adds[1].Update(input) && inSignals:
+		s.addSignal(ctx, s.signalParent(ctx.Docs), true)
 	case s.adds[1].Update(input):
 		s.declare(ctx, into, "group", worldstate.TypeGroup)
 	case s.adds[2].Update(input):
 		world, _ := valuetree.World(ctx.Docs)
 		s.declare(ctx, target{list: world, scope: scope, parent: ids.ULID{}}, "template", worldstate.TypeTemplate)
 	case s.adds[3].Update(input):
-		s.addSignal(ctx)
+		s.addSignal(ctx, s.signalParent(ctx.Docs), false)
 	}
 }
 
@@ -264,11 +268,11 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 	if choice == "" {
 		return
 	}
-	going, moving, signal := s.deleting, s.moving, s.signal.deleting
-	s.dialog, s.deleting, s.moving, s.signal.deleting = nil, nil, nil, ids.ULID{}
-	if choice == deleteID && !signal.IsZero() {
-		if meaning, found := s.selected(); found && meaning.ownerID == signal {
-			s.deleteSignal(ctx, signal, meaning.path)
+	going, moving, signal, signalName := s.deleting, s.moving, s.signal.deleting, s.signal.deletingName
+	s.dialog, s.deleting, s.moving, s.signal.deleting = nil, nil, nil, nil
+	if len(signal) > 0 {
+		if choice == deleteID {
+			s.deleteSignals(ctx, signal, signalName)
 		}
 
 		return

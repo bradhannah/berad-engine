@@ -40,7 +40,7 @@ func (s *shell) place(shown *pane) {
 			}
 		}
 	}
-	s.tabs = append(s.tabs, &tab{panes: []*pane{shown}, focus: 0, split: defaultSplit})
+	s.tabs = append(s.tabs, &tab{panes: []*pane{shown}, focus: 0, split: defaultSplit, tint: 0})
 	s.active = len(s.tabs) - 1
 }
 

@@ -415,12 +415,10 @@ func (s *State) signalEntity(entity *protocol.PreviewEntity, run *npcRun) {
 	}
 }
 
-// signalName names a signal by the world state, as last read.
+// signalName names a signal by its path in the world state, as last read.
 func (s *State) signalName(signal ids.ULID) string {
-	for _, declared := range s.preview.named {
-		if declared.ID == signal {
-			return declared.Name
-		}
+	if path := worldstate.SignalPath(s.preview.named, signal); path != "" {
+		return path
 	}
 
 	return signal.String()

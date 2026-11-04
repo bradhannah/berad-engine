@@ -102,7 +102,7 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	bottom := panel.Max.Y - ui.Inset
 	s.form.Hide()
 	s.save.Rect, s.takeOff.Rect, s.path.Rect = ui.Zero(), ui.Zero(), ui.Zero()
-	s.signal.name.Rect, s.signal.about.Rect, s.signal.remove.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	s.signal.name.Rect, s.signal.description.Rect, s.signal.remove.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	for _, button := range s.templates {
 		button.Rect = ui.Zero()
 	}
@@ -130,7 +130,7 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	case selected.kind == itemApplied:
 		top := inspectorTop(panel) + noteLines*ui.LineHeight
 		s.takeOff.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-	case selected.kind == itemSignal:
+	case isSignal(selected.kind):
 		s.layoutSignal(panel)
 	}
 }
@@ -154,7 +154,7 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 		if s.takeOff.Update(input) {
 			s.toggleTemplate(ctx, selected, selected.declared)
 		}
-	case itemSignal:
+	case itemSignal, itemSignalGroup:
 		if s.signal.remove.Update(input) {
 			s.startSignalDelete(ctx, selected)
 		}
@@ -238,8 +238,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	case itemApplied, itemTemplates, itemHeld, itemName:
 		s.drawNote(screen, note(selected), left, top, width)
 		s.takeOff.Draw(screen, s.theme)
-	case itemSignal:
-		s.drawSignal(screen, docs, panel)
+	case itemSignal, itemSignalGroup:
+		s.drawSignal(screen, docs, panel, selected.kind == itemSignalGroup)
 	}
 }
 
@@ -262,6 +262,8 @@ func heading(selected item) string {
 		return "NAME"
 	case itemSignal:
 		return "SIGNAL"
+	case itemSignalGroup:
+		return "SIGNAL GROUP"
 	case itemDeclared:
 	}
 	if selected.declared.Type.IsValue() {
@@ -286,7 +288,7 @@ func note(selected item) string {
 	case itemName:
 		return "Text, starting as " + selected.owner.Name + ", its name in the project browser. " +
 			"Workflows may set it, such as to a name the player learns."
-	case itemDeclared, itemOwner, itemSignal:
+	case itemDeclared, itemOwner, itemSignal, itemSignalGroup:
 	}
 
 	return ""

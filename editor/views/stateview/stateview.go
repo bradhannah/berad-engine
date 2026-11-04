@@ -131,7 +131,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, document: document, theme: theme, size: image.Pt(0, 0),
 		list:  ui.NewList("values", ""),
-		shown: tree{rows: nil, items: nil, catalog: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
+		shown: tree{rows: nil, items: nil, catalog: nil, signals: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
@@ -263,7 +263,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.revealRow()
 	s.nameNewRow()
-	if selected, found := s.selected(); found && selected.kind == itemSignal {
+	if selected, found := s.selected(); found && isSignal(selected.kind) {
 		s.showSignal(ctx.Docs, selected)
 	} else {
 		s.signal.of = ids.ULID{}
@@ -329,7 +329,7 @@ func (s *State) Unsaved(frame.Docs) int {
 	case s.pathOf != "":
 		return frame.UnsavedFields(s.path)
 	case !s.signal.of.IsZero():
-		return frame.UnsavedFields(s.signal.name, s.signal.about)
+		return frame.UnsavedFields(s.signal.name, s.signal.description)
 	}
 
 	return 0
@@ -466,7 +466,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if widget == pathID && !s.path.Rect.Empty() {
 		return s.path.Center(), true
 	}
-	for _, field := range []*ui.TextField{s.signal.name, s.signal.about} {
+	for _, field := range []*ui.TextField{s.signal.name, s.signal.description} {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}
@@ -562,9 +562,10 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		button.Draw(screen, s.theme)
 	}
 	if where := s.addsNote(docs); loaded && where != "" {
-		room := s.findButton.Rect.Min.X - s.adds[2].Rect.Max.X - ui.Half*ui.Gap*ui.Half
-		s.theme.DrawText(screen, s.theme.FitText(where, room), s.adds[2].Rect.Max.X+ui.Half*ui.Gap,
-			s.adds[2].Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
+		last := s.adds[len(s.adds)-1].Rect
+		room := s.findButton.Rect.Min.X - last.Max.X - ui.Half*ui.Gap*ui.Half
+		s.theme.DrawText(screen, s.theme.FitText(where, room), last.Max.X+ui.Half*ui.Gap,
+			last.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
 	}
 	if loaded {
 		s.list.Draw(screen, s.theme)

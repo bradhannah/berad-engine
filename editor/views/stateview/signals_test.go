@@ -1,6 +1,7 @@
 package stateview_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/client"
@@ -79,4 +80,53 @@ func TestSignalsAreAddedRenamedAndDeleted(t *testing.T) {
 	if !f.has("signals=0") {
 		t.Fatal("an unused signal is deleted at once")
 	}
+}
+
+// TestSignalGroups adds a group of signals from the SIGNALS heading's
+// menu, which offers no template, and a signal inside it from the group's;
+// moves a signal into the group by its menu and out again by dragging it
+// onto the heading; refuses a move beside another of its name; and deletes
+// the group with what it holds.
+func TestSignalGroups(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.rightClick("section:signals")
+	if _, template := f.state.Locate("menu:add-template", f.ctx.Docs); template {
+		t.Fatal("the SIGNALS heading's menu adds signals, not templates")
+	}
+	f.click("menu:add-signal-group")
+	f.typeInto("signal-name", "shop")
+	f.addBy("signal:shop", "add-signal", "")
+	f.typeInto("signal-name", "bell_rung")
+	if !f.has("selected=shop.bell_rung") || !f.has("adds=adds in shop") {
+		t.Fatalf("a signal added inside its group, named by its path: %s", f.status())
+	}
+	f.addBy("section:signals", "add-signal", "")
+	f.typeInto("signal-name", "door_open")
+	f.moveBy("door_open", "into:shop")
+	if !f.has("signals=2") || !f.located("signal:shop.door_open") {
+		t.Fatalf("moved into the group: %+v", f.signals())
+	}
+	f.drag("signal:shop.door_open", "section:signals", 2)
+	if !f.located("signal:door_open") {
+		t.Fatalf("dragged back to the top: %+v", f.signals())
+	}
+	f.addBy("section:signals", "add-signal", "")
+	f.typeInto("signal-name", "bell_rung")
+	f.moveBy("bell_rung", "into:shop")
+	if !strings.Contains(f.status(), "There is a bell_rung in shop already") || !f.located("signal:bell_rung") {
+		t.Fatalf("a move beside another of its name is refused: %s", f.status())
+	}
+	f.click("signal:shop")
+	f.click("ui:delete-signal")
+	if !f.has("signals=2") || f.located("signal:shop") {
+		t.Fatalf("the group goes with what it holds: %+v", f.signals())
+	}
+}
+
+// located reports whether a named part of the window can be found.
+func (f *fixture) located(name string) bool {
+	_, found := f.state.Locate(name, f.ctx.Docs)
+
+	return found
 }

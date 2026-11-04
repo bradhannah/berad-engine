@@ -19,8 +19,8 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// Declared returns the signals the world state declares, by name, and
-// whether it has loaded.
+// Declared returns the signals and groups the world state declares, by
+// path, and whether it has loaded.
 func Declared(docs frame.Docs) ([]worldstate.Signal, bool) {
 	var declared []worldstate.Signal
 	loaded := false
@@ -29,17 +29,27 @@ func Declared(docs frame.Docs) ([]worldstate.Signal, bool) {
 			declared, loaded = slices.Clone(stateDoc.State.Signals), true
 		}
 	})
-	slices.SortFunc(declared, func(a, b worldstate.Signal) int { return cmp.Compare(a.Name, b.Name) })
+	paths := map[ids.ULID]string{}
+	for _, signal := range declared {
+		paths[signal.ID] = worldstate.SignalPath(declared, signal.ID)
+	}
+	slices.SortFunc(declared, func(a, b worldstate.Signal) int { return cmp.Compare(paths[a.ID], paths[b.ID]) })
 
 	return declared, loaded
 }
 
-// Name names a signal, or says it is missing.
+// Sendable returns the declared signals, not their groups, by path.
+func Sendable(declared []worldstate.Signal) []worldstate.Signal {
+	return slices.DeleteFunc(slices.Clone(declared), func(signal worldstate.Signal) bool { return signal.Group })
+}
+
+// Name names a signal by its path, such as shop.bell_rung, or says it is
+// missing.
 func Name(docs frame.Docs, signal ids.ULID) string {
 	declared, _ := Declared(docs)
-	for _, each := range declared {
+	for _, each := range Sendable(declared) {
 		if each.ID == signal {
-			return each.Name
+			return worldstate.SignalPath(declared, signal)
 		}
 	}
 

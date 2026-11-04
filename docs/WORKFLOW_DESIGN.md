@@ -285,6 +285,8 @@ drawn back to either only repeats what the rule already does.
   28](increments/0028-signals.md) builds signals.
 - **Agreed (2026-11-04): only the zone running hears a signal.** There is
   no sending to everyone beyond it; another zone is told through a value.
+- **Agreed (2026-11-04): signals sit in groups, as values do,** and a
+  signal is named by its path, such as shop.bell_rung.
 
 ## Conversations
 

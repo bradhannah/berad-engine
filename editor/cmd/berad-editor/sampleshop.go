@@ -85,14 +85,14 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 		kind        worldstate.Type
 		description string
 	}{
-		{&values.template, nil, "shop", worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share."},
+		{&values.template, nil, shopName, worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share."},
 		{&values.waiting, &values.template, "waiting", worldstate.ScopeNPC, worldstate.TypeBool,
 			"Waiting at the desk to be served."},
 		{&values.serving, &values.template, "serving", worldstate.ScopeNPC, worldstate.TypeBool,
 			"Serving a customer at the desk."},
 		{&values.served, &values.template, "served", worldstate.ScopeNPC, worldstate.TypeBool,
 			"Served, and on the way out."},
-		{&values.group, nil, "shop", worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts."},
+		{&values.group, nil, shopName, worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts."},
 		{&values.count, &values.group, "customers_served", worldstate.ScopeWorld, worldstate.TypeInteger,
 			"Customers served so far."},
 	}
@@ -134,10 +134,16 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 	return values, nil
 }
 
-// shopSignals declares the shop's signals: the bell a customer rings, and
-// the shelf running out of stock.
+// shopName names the shop's template, its group of values and its group
+// of signals.
+const shopName = "shop"
+
+// shopSignals declares the shop's signals in a group of their own,
+// shop.bell_rung and shop.out_of_stock: the bell a customer rings, and the
+// shelf running out of stock.
 func shopSignals(orch *orchestrator.Orchestrator, values *shopValues) ([]worldstate.Signal, error) {
-	for _, signal := range []*ids.ULID{&values.bell, &values.emptyShelf} {
+	var group ids.ULID
+	for _, signal := range []*ids.ULID{&group, &values.bell, &values.emptyShelf} {
 		made, err := orch.NewID()
 		if err != nil {
 			return nil, fmt.Errorf("sample shop: %w", err)
@@ -146,8 +152,15 @@ func shopSignals(orch *orchestrator.Orchestrator, values *shopValues) ([]worldst
 	}
 
 	return []worldstate.Signal{
-		{ID: values.bell, Name: "bell_rung", About: "A customer rings the bell at the counter."},
-		{ID: values.emptyShelf, Name: "out_of_stock", About: "The shelf has run out of stock."},
+		{ID: group, Name: shopName, Description: "What happens in the shop.", Parent: ids.ULID{}, Group: true},
+		{
+			ID: values.bell, Name: "bell_rung", Description: "A customer rings the bell at the counter.",
+			Parent: group, Group: false,
+		},
+		{
+			ID: values.emptyShelf, Name: "out_of_stock", Description: "The shelf has run out of stock.",
+			Parent: group, Group: false,
+		},
 	}, nil
 }
 

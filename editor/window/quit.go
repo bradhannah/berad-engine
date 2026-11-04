@@ -179,7 +179,8 @@ func (h *host) reportUnsaved() {
 
 // Locate finds a named part of the window for input scripts: the quit
 // dialog's buttons while it shows, how many tabs the editor window has
-// ("state:tabs:1"), the status bar's On top toggle, or the view's parts.
+// ("state:tabs:1"), a tab's tint ("state:tab-tint:<title>=<tint>"), the
+// status bar's On top toggle, or the view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
@@ -188,6 +189,11 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
 		return image.Pt(0, 0), strconv.Itoa(h.tabs()) == count
+	}
+	if tinted, ok := strings.CutPrefix(name, "state:tab-tint:"); ok && h.tabTint != nil {
+		title, tint, _ := strings.Cut(tinted, "=")
+
+		return image.Pt(0, 0), h.tabTint(title) == tint
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" {
 		return point, found

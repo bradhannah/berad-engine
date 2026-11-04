@@ -27,13 +27,15 @@ const (
 // brings forward; boxes is set when it carries a close box for that tab, and
 // count when it stands for several.
 type barTab struct {
-	rect  image.Rectangle
-	tab   int
-	icons []ui.Icon
-	label string
-	count int
-	boxes bool
-	front bool
+	rect   image.Rectangle
+	tab    int
+	icons  []ui.Icon
+	label  string
+	count  int
+	boxes  bool
+	front  bool
+	tint   ui.Tint
+	tinted bool
 }
 
 // barHeight is how tall the bar is: one row, or two while the kind in front
@@ -58,6 +60,7 @@ func (s *shell) barTabs() []barTab {
 		shown := barTab{
 			rect: image.Rect(at*width, 0, (at+1)*width, rowHeight), tab: index, icons: s.icons(index, true),
 			label: kindName(group.view), count: len(group.tabs), boxes: false, front: false,
+			tint: ui.Tint{Name: "", Wash: ui.ColorPanel(), Ink: ui.ColorInk()}, tinted: false,
 		}
 		if len(group.tabs) == 1 {
 			shown.label, shown.count, shown.boxes = shortTitle(s.tabTitle(index), false), 0, s.closable(index)
@@ -79,9 +82,11 @@ func (s *shell) documentTabs(group kindGroup) []barTab {
 	width := min(documentWidth, s.size.X/len(group.tabs))
 	tabs := make([]barTab, 0, len(group.tabs))
 	for at, index := range group.tabs {
+		tint, tinted := s.tintOf(index)
 		tabs = append(tabs, barTab{
 			rect: image.Rect(at*width, rowHeight, (at+1)*width, rowHeight*ui.Half), tab: index,
 			icons: s.icons(index, false), label: labels[at], count: 0, boxes: s.closable(index), front: index == s.active,
+			tint: tint, tinted: tinted,
 		})
 	}
 
@@ -177,8 +182,13 @@ func (s *shell) drawBar(screen *ebiten.Image) {
 
 func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	rect := shown.rect
-	if shown.front {
+	switch {
+	case shown.tinted:
+		drawTint(screen, rect, shown.tint)
+	case shown.front:
 		ui.FillRect(screen, rect, ui.ColorBackground())
+	}
+	if shown.front {
 		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ui.ColorSelect())
 	}
 	left := rect.Min.X + tabPad

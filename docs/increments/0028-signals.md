@@ -219,11 +219,6 @@ Chosen while planning, for its author to check:
 - **Watch shows a signal on its NOW line,** what it will resume and any
   signal held following it, rather than in rows of their own.
 - **A runner never hears a signal it sent,** even to everyone in its zone.
-- **No Everyone (agreed 2026-11-04, after building):** Send signal was
-  built with a fourth choice, Everyone, as wireframed. As only the zone
-  running hears a signal, it reached no one Everyone in this zone didn't,
-  so it was taken out; another zone is told through a value. Verified: a
-  workflow test refuses a Send to everyone.
 - **A signal sent over and over keeps its receiver busy:** one held while
   the last is handled lands as soon as the NPC resumes. The sample's
   customer first rang the bell every second it waited, which kept the
@@ -232,9 +227,53 @@ Chosen while planning, for its author to check:
   the shop waits up to 45 seconds, not 15, for the first customer served.
 - **Locating for tests:** a receiver is located as any node,
   "node:on-signal:<n>", and the warnings as "warning:<kind>:<n>" and
-  "warnings:<count>"; a signal in the World state window is
-  "signal:<name>", and the states "signals=<count>", "handling=<signal>",
-  "resumes=<what>" and "held=<signal>".
+  "warnings:<count>"; a signal or group in the World state window is
+  "signal:<path>", and the states "signals=<count>", "handling=<signal>",
+  "resumes=<what>" and "held=<signal>"; a tab's tint is
+  "tab-tint:<title>=<tint>".
+
+## Changed after testing
+
+Trying the build in the sample on 2026-11-04 asked for these. Each is
+built.
+
+- **No Everyone:** Send signal was built with a fourth choice, Everyone,
+  as wireframed. As only the zone running hears a signal, it reached no
+  one Everyone in this zone didn't, so it was taken out; another zone is
+  told through a value. Verified: a workflow test refuses a Send to
+  everyone.
+- **Signals sit in groups, as values do:** a group holds signals and
+  other groups, no deeper than values' groups; a name need differ only
+  from those beside it, and a signal is named everywhere by its path, such
+  as shop.bell_rung: in Send signal's and On signal's choices and faces,
+  in problems, in Watch and in the log. A group is added from the SIGNALS
+  heading's or a group's right-click menu, or with Add group while a
+  signal is selected. A signal or group moves by Move into or by dragging
+  it, and a group is deleted with what it holds, asking first when
+  anything in it is used. The sample's two signals are in a shop group.
+  World states stay version 3, which no release has read. Verified:
+  engine tests name a signal by its path, find one by it, list what a
+  group holds, and refuse a signal in no group, in a signal, in itself or
+  beside one of its name; a view test adds a group and a signal in it from
+  their menus, moves a signal in by its menu and out by dragging it,
+  refuses a move beside one of its name, and deletes the group with what
+  it holds; the real-window test of the bell reads shop.bell_rung in Watch
+  and in the problem.
+- **Description, not About:** a signal's or group's line is its
+  description, as a value's is.
+- **The SIGNALS heading's menu** adds a signal or a group. It offered Add
+  template, which did nothing there.
+- **The note of where the toolbar adds** follows Add signal. It was drawn
+  after Add template, over Add signal.
+- **Templates are marked:** the Templates rows, each template and each
+  template applied to an NPC or zone carry the template icon.
+- **Open tabs of one kind are told apart:** each tab on the bar's second
+  row is washed in a tint, with a band of it along its top: the first no
+  other open tab of its kind has, kept while the tab stays open. The tints
+  are the workflow canvas's seven, now the theme's. Verified: a window
+  test gives each tab of a kind its own tint, a new tab the tint a closed
+  one left, and a tab one when all are taken; the real-window test of the
+  bell finds Clerk's day green and Customer shops amber.
 
 ## Not in this increment
 

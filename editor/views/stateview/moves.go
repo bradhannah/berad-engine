@@ -94,7 +94,7 @@ func kindName(kind worldstate.Type) string {
 		return "template"
 	}
 
-	return "group"
+	return newGroupName
 }
 
 // sectionName names where a row's moves stay: the world, a template, or an
@@ -125,7 +125,9 @@ func containsID(within []ids.ULID, id ids.ULID) bool {
 // chooseFromMenu carries out a choice from the right-click menu on its
 // row.
 func (s *State) chooseFromMenu(ctx *frame.Context, chosen string) {
-	if chosen == "" || s.chooseAdd(ctx, chosen) {
+	menuOf, found := s.shown.items[s.menuOf]
+	if chosen == "" || (s.menuOf == signalsSection || found && isSignal(menuOf.kind)) && s.chooseSignal(ctx, chosen) ||
+		s.chooseAdd(ctx, chosen) {
 		return
 	}
 	selected, found := s.selected()
@@ -248,6 +250,9 @@ func (s *State) askMove(selected item, moved, group string, uses []protocol.Use,
 // it already is, and itself or what it holds.
 func (s *State) dropInto(dragged, target string) (string, bool) {
 	moving, found := s.shown.items[dragged]
+	if found && isSignal(moving.kind) {
+		return s.signalDropInto(s.shown.signals, moving, target)
+	}
 	if !found || moving.kind != itemDeclared || moving.declared.Type == worldstate.TypeTemplate {
 		return "", false
 	}
@@ -293,6 +298,11 @@ func (s *State) faded(dragged, row string) bool {
 	if !found {
 		return false
 	}
+	if isSignal(moving.kind) {
+		other, known := s.shown.items[row]
+
+		return row != signalsSection && (!known || !isSignal(other.kind))
+	}
 	root := valuetree.Root(moving.list.Values, moving.declared.ID)
 	if row == topRow(moving, root) {
 		return false
@@ -307,6 +317,9 @@ func (s *State) faded(dragged, row string) bool {
 func (s *State) dragLabel(dragged, over string) string {
 	moving := s.shown.items[dragged]
 	group, ok := s.dropInto(dragged, over)
+	if isSignal(moving.kind) {
+		return signalDragLabel(moving.path[strings.LastIndex(moving.path, ".")+1:], group, ok)
+	}
 	if !ok {
 		return moving.declared.Name
 	}
@@ -322,13 +335,18 @@ func (s *State) dragLabel(dragged, over string) string {
 // dropped moves a row dropped on a group or its section's row, and opens a
 // closed group a drag rests on.
 func (s *State) dropped(ctx *frame.Context, result ui.ListResult) {
-	if result.Rested != "" && s.toggled[result.Rested] && strings.HasPrefix(result.Rested, declaredPrefix) {
+	if result.Rested != "" && s.toggled[result.Rested] &&
+		(strings.HasPrefix(result.Rested, declaredPrefix) || strings.HasPrefix(result.Rested, signalPrefix)) {
 		s.toggled[result.Rested] = false
 	}
 	if result.Dragged == "" || s.guard.Active() || s.Unsaved(ctx.Docs) > 0 {
 		return
 	}
-	if group, ok := s.dropInto(result.Dragged, result.Dropped); ok {
-		s.moveInto(ctx, s.shown.items[result.Dragged], group)
+	group, ok := s.dropInto(result.Dragged, result.Dropped)
+	switch moving := s.shown.items[result.Dragged]; {
+	case ok && isSignal(moving.kind):
+		s.moveSignal(ctx, moving, group)
+	case ok:
+		s.moveInto(ctx, moving, group)
 	}
 }

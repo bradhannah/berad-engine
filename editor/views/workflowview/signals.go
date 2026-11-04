@@ -34,13 +34,16 @@ const (
 	warningUnheard       = "Nothing sends %s yet, so this receiver never runs."
 )
 
-// signalChoices are the declared signals, by name, as a signal setting
-// offers them.
+// signalChoices are the declared signals, by path, as a signal setting
+// offers them; their groups are not sent.
 func signalChoices(docs frame.Docs) []flow.Choice {
 	declared, _ := signals.Declared(docs)
-	choices := make([]flow.Choice, 0, len(declared))
-	for _, signal := range declared {
-		choices = append(choices, flow.Choice{Value: signal.ID.String(), Label: signal.Name})
+	sendable := signals.Sendable(declared)
+	choices := make([]flow.Choice, 0, len(sendable))
+	for _, signal := range sendable {
+		choices = append(choices, flow.Choice{
+			Value: signal.ID.String(), Label: worldstate.SignalPath(declared, signal.ID),
+		})
 	}
 
 	return choices
@@ -202,11 +205,14 @@ func (s *State) receiverProblem(node flow.Node, docs frame.Docs) string {
 	return ""
 }
 
-// declaredSignal reports whether the world state declares a signal.
+// declaredSignal reports whether the world state declares a signal, not a
+// group of them.
 func declaredSignal(docs frame.Docs, signal ids.ULID) bool {
 	declared, _ := signals.Declared(docs)
 
-	return slices.ContainsFunc(declared, func(each worldstate.Signal) bool { return each.ID == signal })
+	return slices.ContainsFunc(signals.Sendable(declared), func(each worldstate.Signal) bool {
+		return each.ID == signal
+	})
 }
 
 // sendProblem says what is wrong with a Send signal: no signal or one not

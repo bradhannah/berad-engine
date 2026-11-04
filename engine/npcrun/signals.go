@@ -150,13 +150,11 @@ func (n *NPC) fromWhom(world World, heard Heard) string {
 	return " from " + n.names(world).NPC(heard.From)
 }
 
-// signalName names a signal by its declaration, or by its identity when it
-// is not declared.
+// signalName names a signal by its path, or by its identity when it is not
+// declared.
 func signalName(world World, signal ids.ULID) string {
-	for _, declared := range world.Signals {
-		if declared.ID == signal {
-			return declared.Name
-		}
+	if path := worldstate.SignalPath(world.Signals, signal); path != "" {
+		return path
 	}
 
 	return signal.String()

@@ -26,35 +26,16 @@ type tint struct {
 	ink  color.RGBA
 }
 
-// The tints' colours: the editor's family hues, and amber.
-const (
-	hexGreenWash  = 0xe3f0ec
-	hexGreenInk   = 0x3d7a4b
-	hexAmberWash  = 0xfdf1dc
-	hexAmberInk   = 0x9a6700
-	hexTealWash   = 0xdff2f3
-	hexTealInk    = 0x267378
-	hexPurpleWash = 0xece6f5
-	hexPurpleInk  = 0x6a4f9e
-	hexPinkWash   = 0xf7e4ef
-	hexPinkInk    = 0x8a4b72
-	hexBrownWash  = 0xf1e9e1
-	hexBrownInk   = 0x7a6248
-	hexSlateWash  = 0xe6ebef
-	hexSlateInk   = 0x4c6377
-)
-
-// tints lists the tints in the order the inspector offers them.
+// tints lists the tints in the order the inspector offers them: the
+// theme's.
 func tints() []tint {
-	return []tint{
-		{name: "green", wash: ui.Hex(hexGreenWash), ink: ui.Hex(hexGreenInk)},
-		{name: "amber", wash: ui.Hex(hexAmberWash), ink: ui.Hex(hexAmberInk)},
-		{name: "teal", wash: ui.Hex(hexTealWash), ink: ui.Hex(hexTealInk)},
-		{name: "purple", wash: ui.Hex(hexPurpleWash), ink: ui.Hex(hexPurpleInk)},
-		{name: "pink", wash: ui.Hex(hexPinkWash), ink: ui.Hex(hexPinkInk)},
-		{name: "brown", wash: ui.Hex(hexBrownWash), ink: ui.Hex(hexBrownInk)},
-		{name: "slate", wash: ui.Hex(hexSlateWash), ink: ui.Hex(hexSlateInk)},
+	shared := ui.Tints()
+	listed := make([]tint, 0, len(shared))
+	for _, each := range shared {
+		listed = append(listed, tint{name: each.Name, wash: each.Wash, ink: each.Ink})
 	}
+
+	return listed
 }
 
 // tintNamed finds a tint by name; "" and TintNone name none.
