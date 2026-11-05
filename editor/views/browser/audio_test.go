@@ -59,12 +59,12 @@ func TestAudioSectionDeletesACue(t *testing.T) {
 	t.Parallel()
 	f := withAudio(t)
 	f.click("row:Door opens", false)
-	f.requests.Uses = nil
+	f.requests.Uses, f.requests.UsesOf = nil, nil
 	f.click("ui:delete", false)
-	if len(f.requests.Uses) != 1 {
+	if len(f.whereUsed()) != 1 {
 		t.Fatal("deleting asks where the cue is used")
 	}
-	f.requests.Uses[0]([]protocol.Use{{Name: "Doorman", Label: "a Play sound node"}}, nil)
+	f.whereUsed()[0]([]protocol.Use{{Name: "Doorman", Label: "a Play sound node"}}, nil)
 	f.click("ui:delete", false)
 	deletes := f.requests.AudioOf(protocol.AudioDeleteCue)
 	var item protocol.AudioItem

@@ -7,6 +7,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -23,9 +25,22 @@ func (f *fixture) rightClick(name string) {
 // rightClickBelow presses the right button below the list's last row.
 func (f *fixture) rightClickBelow() {
 	f.t.Helper()
-	input := ui.NewInput(image.Pt(40, 600))
+	input := ui.NewInput(image.Pt(300, 600))
 	input.Secondary = true
 	f.frame(input)
+}
+
+// whereUsed returns the where-used questions the window asked, leaving out
+// those its workflows' problem checks ask, of who calls each workflow.
+func (f *fixture) whereUsed() []func([]protocol.Use, error) {
+	var asked []func([]protocol.Use, error)
+	for index, question := range f.requests.UsesOf {
+		if question.Item != workflowplugin.CallItem {
+			asked = append(asked, f.requests.Uses[index])
+		}
+	}
+
+	return asked
 }
 
 // created decodes the one document a test made.

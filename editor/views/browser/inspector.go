@@ -59,7 +59,7 @@ func kindOfEntry(entry project.Entry) kind {
 func kindOf(format string) kind {
 	switch format {
 	case zone.FormatName:
-		return kind{label: "Zone", noun: "zone", icon: ui.IconZone, open: "Open map"}
+		return kind{label: zoneWord, noun: "zone", icon: ui.IconZone, open: "Open map"}
 	case floor.FormatName:
 		return kind{label: "Floor", noun: "floor", icon: ui.IconFloor, open: "Open map"}
 	case flow.FormatName:

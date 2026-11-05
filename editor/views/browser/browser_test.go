@@ -129,10 +129,10 @@ func TestDeleteFloorAsksThenRemovesItFromItsZone(t *testing.T) {
 	f := newFixture(t)
 	f.click("row:Ground", false)
 	f.click("ui:delete", false)
-	if len(f.requests.Uses) != 1 {
-		t.Fatalf("where-used questions %d", len(f.requests.Uses))
+	if len(f.whereUsed()) != 1 {
+		t.Fatalf("where-used questions %d", len(f.whereUsed()))
 	}
-	f.requests.Uses[0](nil, nil)
+	f.whereUsed()[0](nil, nil)
 	f.click("ui:delete", false)
 	removes := f.requests.Of(zoneplugin.RemoveFloorEdit)
 	deletes := f.requests.Of(project.DeleteEdit)

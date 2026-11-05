@@ -138,3 +138,7 @@ func (c *Check) UsedBy() string {
 
 	return strings.Join(parts, " · ")
 }
+
+// Called reports whether other workflows call this one, once the
+// orchestrator has said.
+func (c *Check) Called() bool { return len(c.state.callers.names) > 0 }

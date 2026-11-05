@@ -268,11 +268,11 @@ func TestDeleteSpriteTakesItsTile(t *testing.T) {
 	withArt(f)
 	f.click("row:Lantern", false)
 	f.click("ui:delete", false)
-	if len(f.requests.Uses) != 2 {
-		t.Fatalf("where-used questions %d", len(f.requests.Uses))
+	if len(f.whereUsed()) != 2 {
+		t.Fatalf("where-used questions %d", len(f.whereUsed()))
 	}
-	f.requests.Uses[0]([]protocol.Use{{Document: art.StandInsID(), Name: art.StandInsName, Label: "shows Small pickup"}}, nil)
-	f.requests.Uses[1](nil, nil)
+	f.whereUsed()[0]([]protocol.Use{{Document: art.StandInsID(), Name: art.StandInsName, Label: "shows Small pickup"}}, nil)
+	f.whereUsed()[1](nil, nil)
 	lines := strings.Join(f.state.DialogLines(), "\n")
 	if !strings.Contains(lines, "shows Small pickup") || strings.Contains(lines, "floor") {
 		t.Fatalf("dialog %q", lines)
@@ -298,8 +298,8 @@ func TestDefaultPaletteKeepsItsName(t *testing.T) {
 	}
 	f.click("ui:delete", false)
 	f.keys("Cmd+Backspace")
-	if len(f.requests.Uses) != 0 || !strings.HasPrefix(f.status(), "Every project holds “Default”") {
-		t.Fatalf("not deleted: %d %q", len(f.requests.Uses), f.status())
+	if len(f.whereUsed()) != 0 || !strings.HasPrefix(f.status(), "Every project holds “Default”") {
+		t.Fatalf("not deleted: %d %q", len(f.whereUsed()), f.status())
 	}
 	f.rightClick("row:Default")
 	f.click("menu:context-rename", false)
