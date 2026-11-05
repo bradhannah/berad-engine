@@ -102,3 +102,52 @@ Proposal from the editor inventory discussion: one editor over one shared
 project, with focused views that link to each other (clicking an NPC in a
 workflow opens its definition; clicking a location focuses the map), and
 workflows written against "self" plus parameters with a "preview as" choice.
+
+## The Project window at scale (researched 2026-11-04)
+
+Asked for by its author: options for a Project window that still works
+when a project holds thousands of things, such as 64 zones, 410 NPCs, 520
+workflows, 380 sprites and 240 sounds. Today's single tree works for the
+sample's 25 things. At that size a section is a long scroll, folders hide
+what is in them, and nothing says which things matter to the work at hand.
+These are proposals, wireframed on the canvas "Workflow canvas
+wireframes", row "The Project at scale"; none is decided.
+
+What the research says:
+
+- **People reach things in small, known steps** more often than by a
+  query, even when search is good; search wins when they can name the
+  thing. Teevan et al., "The perfect search engine is not enough", CHI
+  2004; Bergman et al., ACM TOIS, 2008.
+- **Every step needs scent:** each choice should show how much lies behind
+  it, and counts are the cheapest way. Pirolli and Card, "Information
+  foraging", Psychological Review, 1999.
+- **One hierarchy is not enough:** a workflow belongs to a zone, an NPC, a
+  folder and a quest at once. Facets slice by any of them and never reach
+  a dead end. Yee, Swearingen, Li and Hearst, "Faceted metadata for image
+  search and browsing", CHI 2003.
+- **Show what matters now:** rank by interest, from recent work and
+  closeness to what is selected, and fold the rest. Furnas, "Generalized
+  fisheye views", CHI 1986; Kersten and Murphy's task context in Mylyn,
+  FSE 2006.
+- **Overview first:** zoom and filter, then details on demand.
+  Shneiderman, "The eyes have it", IEEE Visual Languages, 1996, and his
+  tree-maps, ACM TOG, 1992.
+- **Places are remembered:** people find things by where they put them.
+  Robertson et al., "Data Mountain", UIST 1998.
+
+The options:
+
+| Option | What it is | Best for |
+| --- | --- | --- |
+| Facets | A column of properties with counts, such as kind, zone, how a workflow runs, tags, when it changed and its problems; ticking narrows a table of results, and a set of ticks can be saved as a view | Slicing thousands of things by any property |
+| A working set | The things a named task touches, ranked by interest, the rest folded away; each task keeps its own set | Picking up where you left off |
+| Relations | A selected thing's neighbourhood: where it runs, who follows it, what it calls and uses, each a step, with a trail back | Moving between things that belong together |
+| An overview | A tree-map of the project, sized by count and coloured by kind, with recent work marked; clicking zooms in | Seeing where everything is, and where the work is |
+| An atlas | Zones laid out as the author pictures the world, each holding its NPCs and workflows, with shared assets on shelves | Content that belongs to a place |
+| Columns | Miller columns, one level each, ending in a preview | Deep folders, walked with the keyboard |
+| Quick open | Cmd+P from any tab, ranked by how often and how lately something was opened | Reaching a thing you can name |
+
+They combine: facets as the Project window, a working set in a left panel,
+relations in the inspector, and quick open everywhere.
+

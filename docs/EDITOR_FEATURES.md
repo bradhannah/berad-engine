@@ -38,6 +38,20 @@ under consideration), **open** (undecided).
   there are several; the pinned clock sits at its right end; and Watch opens
   beside a Map of its zone, in that Map's tab. Each view runs in a pane of a
   tab. There are no separate windows, and nothing pops out into one.
+- **Agreed (2026-11-04):** **the inspector folds.** An Inspector toggle in
+  the status bar folds every tab's inspector to a strip at the right edge,
+  and clicking the strip opens it again. (Rejected: an inspector floating
+  beside the selection, quick settings on the node, one docked along the
+  bottom, auto-hide, and a layout fitted to the window's width; each meant
+  another layout to keep in step.)
+- **Agreed (2026-11-04):** on a wide window **a list keeps a readable
+  width,** each row's detail in a column close to its name, and the
+  inspector stands beside the list instead of at the far edge. World
+  state's Values and Signals do so first. *Open:* how the Project window
+  serves projects of thousands of things; options are in [research
+  notes](RESEARCH_NOTES.md#the-project-window-at-scale-researched-2026-11-04).
+  [Increment 29](increments/0029-lines-state-and-picking.md) builds the
+  readable lists and the fold.
   (Rejected: a window process for each view, as the editor ran until
   increment 12.)
 - **Agreed:** Cmd+W closes the focused pane, and a tab's close box closes its
@@ -366,6 +380,13 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   scopes, every type and how many places use each value; a pick shows the
   value in the tree, and a name that matches nothing is declared from it in
   the world, a zone, an NPC or a template, then shown.
+- **Agreed (2026-11-04):** **World state is a section** of the Project
+  window holding **Values** and **Signals**, each opening its own window,
+  so later kinds of world state join the section rather than crowding one
+  window. Both windows are filed under World state on the window bar.
+  (Rejected: one World state window whose top level is VALUES and
+  SIGNALS.) [Increment 29](increments/0029-lines-state-and-picking.md)
+  builds it.
 
 ## Workflows
 
@@ -461,11 +482,17 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   container brings its contents, and a dragged group stops at a container's
   wall, as one node does. Arrow keys nudge the selection, and Arrange can
   lay out the selection alone.
-- **Agreed (2026-11-01):** dropping a node onto a line, from the palette or
-  from the canvas, puts it in the flow: the line ends at the new node, and
-  the node's first output continues to the old target; its other outputs
-  stay free, labelled as free outputs are. A target with several entries
-  takes the line on its next free dot.
+- **Replaced (2026-11-04):** dropping a node onto a line, from the palette
+  or from the canvas, put it in the flow: the line ended at the new node,
+  and the node's first output continued to the old target. In use it kept
+  catching lines whose ends were far away.
+- **Agreed (2026-11-04):** the author draws the lines. A node dropped from
+  the palette lands where it falls, connected to nothing, even on a line;
+  Add after connects the new node to a free output of the selected one, or,
+  with none free, places it beside, connected to nothing. A back line runs
+  just under its own two nodes and dips below a node only where it would
+  run through it, and only for nodes in its own container. [Increment
+  29](increments/0029-lines-state-and-picking.md) builds it.
 - **Agreed (2026-11-03):** the palette says what a node does before it is
   placed: a search matches what each node does as well as its name,
   hovering an entry gives its one line, and clicking it shows its help page
@@ -502,6 +529,15 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   Find NPC nearby's Only one whose and Keep it in, and an integer's Another
   value. (Rejected: a popover anchored to the box; shorter for a short
   list, cramped again for a long one.)
+- **Agreed (2026-11-04):** a signal is chosen in a **signal picker**, a
+  dialog over the window like the value picker, as a project soon has too
+  many signals for a button each. Its search matches any part of a path.
+  With nothing typed, the signals this workflow sends or answers come
+  first, then every signal under folding groups, each saying how often it
+  is sent and answered. Send signal's and On signal's inspectors keep only
+  the box. (Rejected: columns of groups and signals, and type-ahead in the
+  box.) [Increment 29](increments/0029-lines-state-and-picking.md) builds
+  it.
 - **Candidate:** reusable blocks of text, paragraphs long, kept in the
   project view rather than in one workflow (its author's "static strings").
   *Open:* what they are for, given that the Texts view holds a game's texts.
