@@ -172,6 +172,8 @@ type State struct {
 	// opened in one, opened again in the next.
 	values    *valuePicker
 	lastGroup string
+	// signalPick is the signal picker while it is open.
+	signalPick *signalPick
 	// places is the list of places while it is open; lit is the place
 	// control whose box glows, its place just set, for litLeft frames more.
 	places  *placeList
@@ -243,7 +245,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		recentre:   ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
-		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
+		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "", signalPick: nil,
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		places: nil, lit: "", litLeft: 0, shown: true,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
@@ -294,6 +296,8 @@ func (s *State) Focused() *ui.TextField {
 	switch {
 	case s.values != nil:
 		return s.values.picker.Focused()
+	case s.signalPick != nil:
+		return s.signalPick.picker.Focused()
 	case s.places != nil:
 		return s.places.list.Focused()
 	case s.pal.focus.Current() != nil:

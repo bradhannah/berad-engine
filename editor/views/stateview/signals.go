@@ -95,7 +95,7 @@ func (s *State) signalTreeRows(
 	for _, signal := range worldstate.SignalChildren(declared, parent) {
 		rowID := signalPrefix + signal.ID.String()
 		row := ui.NewRow(rowID, signal.Name)
-		row.Indent, row.Detail = depth, signalUses(uses[signal.ID])
+		row.Indent, row.Detail = depth, signals.Counted(uses[signal.ID])
 		kind := itemSignal
 		if signal.Group {
 			kind, row.Icon, row.Strong, row.Detail = itemSignalGroup, ui.IconFolder, true, newGroupName
@@ -108,20 +108,6 @@ func (s *State) signalTreeRows(
 			s.signalTreeRows(built, declared, uses, signal.ID, depth+1)
 		}
 	}
-}
-
-// signalUses says how many workflows send and answer a signal.
-func signalUses(uses []signals.Use) string {
-	sent, answered := 0, 0
-	for _, use := range uses {
-		if use.Kind == flow.KindSendSignal {
-			sent++
-		} else {
-			answered++
-		}
-	}
-
-	return "sent " + strconv.Itoa(sent) + " · answered " + strconv.Itoa(answered)
 }
 
 // signalParent is the group the toolbar's adds go into while a signal or

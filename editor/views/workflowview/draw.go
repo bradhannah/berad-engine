@@ -93,6 +93,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.values != nil {
 		s.drawValuePicker(screen, docs)
 	}
+	if s.signalPick != nil {
+		s.signalPick.picker.Draw(screen, s.screen())
+	}
 	s.drawZones(screen, docs)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
@@ -734,7 +737,7 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		if unit := unitOf(made.param.Type); unit != "" {
 			s.drawUnit(screen, made.field, unit)
 		}
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeSignal, flow.TypeNPC:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeNPC:
 		s.drawChoices(screen, made, node)
 	case flow.TypeLanes:
 		s.drawLanes(screen, made)
@@ -750,8 +753,8 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		s.drawAnchor(screen, docs, made, node, left)
 	case flow.TypeCue:
 		s.drawCue(screen, made, node)
-	case flow.TypeValue:
-		s.drawValue(screen, docs, made, node)
+	case flow.TypeValue, flow.TypeSignal:
+		s.drawBoxed(screen, docs, made, node)
 	case flow.TypeOperand:
 		s.drawOperand(screen, docs, made, node, left)
 	case flow.TypeMessage:
@@ -1102,6 +1105,10 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 		point, found := s.locateInPicker(docs, kind, value)
 
 		return point, found, true
+	case s.signalPick != nil && kind != locateState:
+		point, found := s.locateInSignalPicker(kind, value)
+
+		return point, found, true
 	case s.places != nil && kind != locateState:
 		point, found := s.locatePlaces(docs, kind, value)
 
@@ -1255,6 +1262,8 @@ func (s *State) hasState(state string) bool {
 		return ok && node.Kind == strings.TrimPrefix(state, "selected:")
 	case state == "picking":
 		return s.picker.Picking()
+	case state == "signal-picker":
+		return s.signalPick != nil
 	case state == "destination":
 		node, ok := s.selectedNode()
 		destination, err := node.Anchor("destination")

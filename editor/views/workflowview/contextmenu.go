@@ -77,6 +77,8 @@ func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
 		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	case s.values != nil:
 		s.updateValuePicker(input, ctx)
+	case s.signalPick != nil:
+		s.updateSignalPicker(input, ctx)
 	case s.places != nil:
 		s.updatePlaces(input, ctx)
 	case s.dialog != nil:
