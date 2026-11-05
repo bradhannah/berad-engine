@@ -524,7 +524,7 @@ func (s *State) openWorkflowMenu(ctx *frame.Context) {
 		})
 	}
 	s.contextMenu.Items, s.contextMenu.Width = items, ui.MenuWidth(items, s.theme)
-	s.contextMenu.Open(s.form.call.box, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	s.contextMenu.Open(s.form.call.box, frame.AboveStatus(s.size))
 }
 
 // workflowRunsIn returns the zone another workflow runs in: zero for any

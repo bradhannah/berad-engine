@@ -296,6 +296,12 @@ func Content(size image.Point) image.Rectangle {
 	return image.Rect(0, 0, size.X-InspectorWidth, size.Y-StatusHeight)
 }
 
+// AboveStatus is a window's area above its status bar, which a menu opened
+// over the window stays inside.
+func AboveStatus(size image.Point) image.Rectangle {
+	return image.Rect(0, 0, size.X, size.Y-StatusHeight)
+}
+
 // Inspector returns the inspector panel's area (D13: embedded on the right of
 // every window).
 func Inspector(size image.Point) image.Rectangle {

@@ -648,7 +648,7 @@ func (s *State) openShowMenu(docs frame.Docs) {
 		items = append(items, ui.MenuItem{ID: showItem + entry.ID.String(), Label: entry.Name, Icon: ui.IconSprite,
 			Disabled: false, Danger: false, Rule: index == 0})
 	}
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	window := frame.AboveStatus(s.size)
 	s.showMenu.Items = items
 	s.showMenu.Width = min(ui.MenuWidth(items, s.theme), window.Dx()-ui.Half*ui.Inset)
 	s.showMenu.OpenAt(image.Pt(s.showOn.Rect.Min.X, s.showOn.Rect.Max.Y+ui.Gap), window)

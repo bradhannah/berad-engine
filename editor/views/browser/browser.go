@@ -101,9 +101,11 @@ type State struct {
 	subs   map[ids.ULID]bool
 	list   *ui.List
 	// closed holds the sections and zones whose rows are hidden; it is this
-	// window's session state, never saved.
-	closed map[string]bool
-	focus  ui.Focus
+	// window's session state, never saved. revealed is the row last
+	// scrolled into view on being selected.
+	closed   map[string]bool
+	revealed string
+	focus    ui.Focus
 	// search filters the list; name and tags edit what is selected, and
 	// named is the row whose name and tags the fields hold. tileSize edits
 	// the settings' tile size, and columns and rows the screen's size.
@@ -167,8 +169,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		list:       ui.NewList("documents", ""),
-		closed:     map[string]bool{},
+		list:   ui.NewList("documents", ""),
+		closed: map[string]bool{}, revealed: "",
 		focus:      ui.Focus{},
 		search:     ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
 		name:       ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
@@ -328,9 +330,24 @@ func (s *State) layout(docs frame.Docs) {
 	s.search.Rect = image.Rect(ui.Inset, searchTop, content.Max.X-ui.Inset, searchTop+ui.ButtonH)
 	s.list.Rect = image.Rect(0, toolbarHeight+searchHeight, content.Max.X, content.Max.Y)
 	s.list.Rows = s.rows(docs)
+	s.revealSelected()
 	index := s.index(docs)
 	s.list.CanDrop = func(dragged, target string) bool { return s.canDrop(index, dragged, target) }
 	s.layoutInspector(docs)
+}
+
+// revealSelected scrolls a newly selected row into view once it is listed,
+// as a document just made, which can land below the rows shown.
+func (s *State) revealSelected() {
+	if s.list.Selected == s.revealed {
+		return
+	}
+	for _, row := range s.list.Rows {
+		if row.ID == s.list.Selected {
+			s.list.Reveal(row.ID)
+			s.revealed = row.ID
+		}
+	}
 }
 
 // selected returns the selected document's entry.
@@ -612,7 +629,7 @@ func (s *State) openMenu(docs frame.Docs) {
 			s.menu.Items[index].Disabled = !hasZone
 		}
 	}
-	s.menu.Open(s.newMenu.Rect, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	s.menu.Open(s.newMenu.Rect, frame.AboveStatus(s.size))
 }
 
 // create makes what a New ▾ item or a section's [+] names.
@@ -1122,7 +1139,8 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 // "ui:notes", "ui:tile-size", an item of New ▾ or the right-click menu while
 // it is open, or a dialog button or list row. "ui:new-zone",
 // "ui:new-workflow", "ui:new-npc", "ui:new-text", "ui:new-sound" and
-// "ui:new-sprite" are their section's [+].
+// "ui:new-sprite" are their section's [+]. A row or section located is
+// scrolled into view first, as an author scrolls to it.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
@@ -1146,6 +1164,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "row", "toggle":
 		return s.locateRow(kind, value)
 	case "section":
+		s.list.Reveal(sectionPrefix + value)
+
 		return s.list.Locate(sectionPrefix + value)
 	case "ui":
 		return s.locateWidget(value)
@@ -1189,6 +1209,7 @@ func (s *State) locateRow(kind, label string) (image.Point, bool) {
 		if row.Label != label || row.Heading {
 			continue
 		}
+		s.list.Reveal(row.ID)
 		if kind == "toggle" {
 			return s.list.LocateToggle(row.ID)
 		}
@@ -1203,6 +1224,8 @@ func (s *State) locateRow(kind, label string) (image.Point, bool) {
 // buttons.
 func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if section := newSection(widget); section != "" {
+		s.list.Reveal(section)
+
 		return s.list.LocateAdd(section)
 	}
 	if point, found := s.save.Locate(widget); found {

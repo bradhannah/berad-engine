@@ -731,7 +731,7 @@ func (s *State) otherPalettes(ctx *frame.Context) []project.Entry {
 
 // openMenu opens the window's menu below a button, for a purpose.
 func (s *State) openMenu(purpose string, items []ui.MenuItem, anchor image.Rectangle) {
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	window := frame.AboveStatus(s.size)
 	s.menu.Items = items
 	s.menu.Width = min(ui.MenuWidth(items, s.theme), window.Dx()-ui.Half*ui.Inset)
 	s.menu.Open(anchor, window)

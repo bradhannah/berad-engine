@@ -91,7 +91,7 @@ func (s *State) openFamilies() {
 // openMenu opens the menu below a button, as wide as its widest choice.
 func (s *State) openMenu(anchor image.Rectangle) {
 	menu := &s.inspector.classes.menu
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	window := frame.AboveStatus(s.size)
 	menu.Width = min(ui.MenuWidth(menu.Items, s.theme), window.Dx()-ui.Half*ui.Inset)
 	menu.Open(image.Rect(window.Max.X-menu.Width-ui.Inset, anchor.Min.Y, window.Max.X-ui.Inset, anchor.Max.Y), window)
 }

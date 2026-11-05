@@ -119,7 +119,7 @@ func (s *State) openShows(docs frame.Docs) {
 			Rule: len(items) <= ruledItems,
 		})
 	}
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	window := frame.AboveStatus(s.size)
 	s.showsMenu.Items = items
 	s.showsMenu.Width = min(ui.MenuWidth(items, s.theme), window.Dx()-ui.Half*ui.Inset)
 	s.showsMenu.OpenAt(image.Pt(s.shows.Rect.Min.X, s.shows.Rect.Max.Y+ui.Gap), window)

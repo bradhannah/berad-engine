@@ -112,7 +112,7 @@ func (s *State) openContextMenu(docs frame.Docs) {
 		return
 	}
 	s.contextMenu.Items, s.contextMenu.Width = items, ui.MenuWidth(items, s.theme)
-	s.contextMenu.OpenAt(click.at, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	s.contextMenu.OpenAt(click.at, frame.AboveStatus(s.size))
 	s.contextAt = click.at
 }
 
@@ -224,7 +224,7 @@ func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
 		s.startRename(ctx.Docs)
 	case contextMove:
 		if s.moveItems(ctx.Docs) {
-			s.moveMenu.OpenAt(s.contextAt, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+			s.moveMenu.OpenAt(s.contextAt, frame.AboveStatus(s.size))
 		}
 	case contextDelete:
 		s.deleteSelected(ctx)

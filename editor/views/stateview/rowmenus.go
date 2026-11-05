@@ -136,7 +136,7 @@ func (s *State) openRowMenu(input *ui.Input, row string, meaning item, found boo
 	for id, sub := range subs {
 		s.menu.SetSub(id, sub, ui.MenuWidth(sub, s.theme))
 	}
-	s.menu.OpenAt(input.Cursor, s.screen())
+	s.menu.OpenAt(input.Cursor, frame.AboveStatus(s.size))
 }
 
 // menuTarget is where the menu's row adds: inside its group or template,
