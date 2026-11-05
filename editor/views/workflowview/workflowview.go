@@ -251,7 +251,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
-		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
+		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false,
