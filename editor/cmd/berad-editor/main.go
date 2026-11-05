@@ -23,6 +23,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	viewsplugin "github.com/bradhannah/berad-engine/editor/plugins/views"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
@@ -107,7 +108,7 @@ func usage(stderr io.Writer) {
 func plugins() (*plugin.Registry, error) {
 	registry, err := plugin.NewRegistry(
 		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
-		npcplugin.Plugin(), artplugin.Plugin(), gameplugin.Plugin(), stateplugin.Plugin(),
+		npcplugin.Plugin(), artplugin.Plugin(), gameplugin.Plugin(), stateplugin.Plugin(), viewsplugin.Plugin(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("plug-ins: %w", err)
