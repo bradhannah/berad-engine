@@ -11,7 +11,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
-	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
@@ -183,8 +182,8 @@ func (s *State) showHelp(kind string) {
 }
 
 // updatePalette shows an entry's help when it is clicked, places a node when
-// one is dragged onto the canvas, putting it in the flow when dropped onto a
-// line, scrolls the palette, and times the pointer resting on an entry.
+// one is dragged onto the canvas, scrolls the palette, and times the pointer
+// resting on an entry.
 func (s *State) updatePalette(input *ui.Input, ctx *frame.Context) {
 	if s.adding != nil {
 		s.adding.at = input.Cursor
@@ -237,78 +236,10 @@ func (s *State) tooltipShown() (string, bool) {
 	return s.pal.hover, s.pal.hover != "" && s.pal.rested >= tooltipDelay && s.adding == nil
 }
 
-// drop places a dragged node where it is dropped: into the flow when it is
-// dropped onto a line it can go in, else free.
+// drop places a dragged node where it is dropped, connected to nothing:
+// the author draws its lines.
 func (s *State) drop(ctx *frame.Context, kind string, point image.Point) {
-	if key, ok := s.spliceTarget(kind, point); ok {
-		s.splice(ctx, kind, key, point.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half)))
-
-		return
-	}
 	s.addAt(ctx, kind, point)
-}
-
-// splices reports whether a kind of node can go into a line: one that runs
-// in the flow and has an output to carry it on.
-func splices(kind string) bool {
-	node, err := flow.NewNode(kind)
-	if err != nil || !flow.Runs(kind) || kind == flow.KindContainer || flow.IsStart(kind) {
-		return false
-	}
-
-	return len(flow.Outputs(node)) > 0
-}
-
-// spliceTarget returns the line a node dropped at a canvas point would go
-// into, if any.
-func (s *State) spliceTarget(kind string, point image.Point) (routeKey, bool) {
-	if s.workflow == nil || !splices(kind) {
-		return noRoute(), false
-	}
-	key, onLine := s.linkAt(point)
-	if from, found := s.workflow.Node(key.from); !onLine || !found || flow.IsContainer(kind) && !from.Parent.IsZero() {
-		return noRoute(), false
-	}
-	if _, linked := s.targetOf(key); !linked {
-		return noRoute(), false
-	}
-
-	return key, true
-}
-
-// splice adds a node into a line: the line ends at the new node, and its
-// first output goes on to the line's old target, in one undo step.
-func (s *State) splice(ctx *frame.Context, kind string, key routeKey, place image.Point) {
-	from, found := s.workflow.Node(key.from)
-	target, linked := s.targetOf(key)
-	node, err := flow.NewNode(kind)
-	if !found || !linked || err != nil {
-		return
-	}
-	if flow.IsContainer(kind) && !from.Parent.IsZero() {
-		ctx.Frame.Status(labelOf(kind) + " sits at the top level, not inside a container.")
-
-		return
-	}
-	node.Parent = from.Parent
-	if out, ok := wayOn(node); ok {
-		node = node.WithLink(out, target)
-	}
-	s.addNode(ctx, node, s.clearOf(place, from.Parent), &flow.Link{From: from.ID, Output: key.output, To: ids.ULID{}})
-	ctx.Frame.Status("Put " + labelOf(kind) + " between " + s.kindLabel(from.ID) + " and " + s.kindLabel(target) +
-		". Undo takes it out.")
-}
-
-// wayOn is the output a node goes on by in a line: its first, or a
-// Together's all done, never one that leads inside it.
-func wayOn(node flow.Node) (string, bool) {
-	for _, output := range flow.Outputs(node) {
-		if !flow.IsInner(node, output.Name) {
-			return output.Name, true
-		}
-	}
-
-	return "", false
 }
 
 // labelOf names a kind of node.
@@ -316,16 +247,6 @@ func labelOf(kind string) string {
 	declared, _ := flow.KindOf(kind)
 
 	return declared.Label
-}
-
-// kindLabel names a node of the workflow by its kind.
-func (s *State) kindLabel(nodeID ids.ULID) string {
-	node, ok := s.workflow.Node(nodeID)
-	if !ok {
-		return "a node"
-	}
-
-	return labelOf(node.Kind)
 }
 
 // drawPalette draws the search, the entries or the results, the zone loop's
@@ -436,20 +357,6 @@ func (s *State) drawMarked(area *ebiten.Image, text string, left, top int, query
 func (s *State) drawDragged(screen *ebiten.Image) {
 	if s.adding == nil || s.adding.at.In(image.Rect(0, 0, PaletteWidth, s.size.Y)) {
 		return
-	}
-	if key, ok := s.spliceTarget(s.adding.kind, s.toCanvas(s.adding.at)); ok {
-		corners := s.routes[key]
-		for index := 1; index < len(corners); index++ {
-			ui.Line(screen, s.onScreen(corners[index-1]), s.onScreen(corners[index]), ui.Half*lineWidth,
-				ui.ColorSelect())
-		}
-		target, _ := s.targetOf(key)
-		note := "Drop to put it between " + s.kindLabel(key.from) + " and " + s.kindLabel(target)
-		at := s.adding.at.Add(image.Pt(-s.theme.TextWidth(note)/ui.Half, -nodeHeight))
-		pill := image.Rect(at.X-ui.Gap, at.Y-ui.Gap/ui.Half, at.X+s.theme.TextWidth(note)+ui.Gap,
-			at.Y+ui.TextSize+ui.Gap)
-		ui.FillRound(screen, pill, ui.Radius, ui.ColorSelect())
-		s.theme.DrawText(screen, note, at.X, at.Y, ui.ColorBackground())
 	}
 	corner := s.adding.at.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half))
 	ghost := image.Rect(corner.X, corner.Y, corner.X+nodeWidth, corner.Y+nodeHeight+ui.LineHeight)

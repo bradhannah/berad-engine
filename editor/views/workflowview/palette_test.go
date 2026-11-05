@@ -62,8 +62,9 @@ func TestSearchingThePalette(t *testing.T) {
 }
 
 // TestHelpAndHover shows a node's help on a click, placing nothing, goes
-// back, adds a Wait after the start, puts a Move between them with Add
-// after, and shows a tooltip once the pointer rests on an entry.
+// back, adds a Wait after the start, then a Move with Add after, which, the
+// start having no free output, sits beside it connected to nothing; and
+// shows a tooltip once the pointer rests on an entry.
 func TestHelpAndHover(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -80,8 +81,8 @@ func TestHelpAndHover(t *testing.T) {
 	f.click("node:start:1")
 	f.add(flow.KindMove)
 	start, move, wait := f.nth(flow.KindStart, 1), f.nth(flow.KindMove, 1), f.nth(flow.KindWait, 1)
-	if start.Next[flow.OutputNext] != move.ID || move.Next[flow.OutputNext] != wait.ID {
-		t.Fatalf("Add after puts the move between the start and the wait: %+v", f.workflow().Nodes())
+	if start.Next[flow.OutputNext] != wait.ID || len(move.Next) != 0 {
+		t.Fatalf("Add after leaves the start leading to the wait, the move unconnected: %+v", f.workflow().Nodes())
 	}
 	rest := ui.NewInput(f.at("palette:" + flow.KindLog))
 	for range 40 {

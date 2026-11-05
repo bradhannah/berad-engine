@@ -374,8 +374,8 @@ func (s *State) drawLocals(screen *ebiten.Image, docs frame.Docs) {
 // drawHowToSelect says how to select or add a node, from top down.
 func (s *State) drawHowToSelect(screen *ebiten.Image, left, top int) {
 	for index, line := range []string{
-		"Select a node to change it. To add one,", "drag it from the palette onto a line", "or the canvas; click it there to",
-		"read what it does first.",
+		"Select a node to change it. To add one,", "drag it from the palette onto the", "canvas; click it there to read what",
+		"it does first.",
 	} {
 		s.theme.DrawText(screen, line, left, top+index*ui.LineHeight, ui.ColorMuted())
 	}

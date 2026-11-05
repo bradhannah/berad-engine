@@ -917,9 +917,9 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 }
 
 // addAfterSelected adds a node after the selected one, connected from its
-// first free output, or put into the line of its first output when it has
-// none free; or inside a selected container; with nothing selected it goes
-// in the middle of the view.
+// first free output, or beside it, connected to nothing, when it has none
+// free; or inside a selected container; with nothing selected it goes in the
+// middle of the view.
 func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 	selected, ok := s.shapes[s.selected]
 	if !ok {
@@ -953,11 +953,6 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 		place.Y = candidate.at.Y - nodeHeight/ui.Half
 
 		break
-	}
-	if link == nil && len(selected.ports) > 0 && splices(kind) {
-		s.splice(ctx, kind, routeKey{from: selected.node.ID, output: selected.ports[0].output.Name}, place)
-
-		return
 	}
 	s.add(ctx, kind, s.clearOf(place, selected.node.Parent), selected.node.Parent, link)
 }

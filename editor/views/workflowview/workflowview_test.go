@@ -594,22 +594,19 @@ func TestPickingUpALineByItsArrowEnd(t *testing.T) {
 	}
 }
 
-// TestDroppingOnALinePutsItInTheFlow drops a Wait from the palette on the
-// line from the start to a Move: the line ends at the Wait, and the Wait
-// goes on to the Move, in one undo step. Dropped on empty canvas, a second
-// Wait stands alone.
-func TestDroppingOnALinePutsItInTheFlow(t *testing.T) {
+// TestDroppingOnALineConnectsNothing drops a Wait from the palette on the
+// line from the start to a Move: the line still leads to the Move, and the
+// Wait stands alone, for the author to connect. Dropped on empty canvas, a
+// second Wait stands alone too.
+func TestDroppingOnALineConnectsNothing(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("node:start:1")
 	f.add("" + flow.KindMove)
 	f.drag(f.at("palette:"+flow.KindWait), f.at("line:start:1:next"))
 	wait, move := f.nth(flow.KindWait, 1), f.nth(flow.KindMove, 1)
-	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != wait.ID || wait.Next[flow.OutputNext] != move.ID {
-		t.Fatalf("the wait goes between the start and the move: %+v", f.workflow().Nodes())
-	}
-	if !strings.HasPrefix(f.status(), "Put Wait between Start and Move.") {
-		t.Fatalf("the status says where it went: %q", f.status())
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != move.ID || len(wait.Next) != 0 || f.has("entries:wait:1=1") {
+		t.Fatalf("the start still leads to the move, and the wait stands alone: %+v", f.workflow().Nodes())
 	}
 	f.drag(f.at("palette:"+flow.KindWait), f.at("canvas:700,600"))
 	if alone := f.nth(flow.KindWait, 2); len(alone.Next) != 0 || f.has("entries:wait:2=1") {
