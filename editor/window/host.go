@@ -89,7 +89,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
 			Docs: nil, Requests: nil, Sounds: nil, Soundscape: nil, Files: nil, Clipboard: nil,
-			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil,
+			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil, InspectorFolded: false,
 		},
 		surface: shownIn, script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,
@@ -133,8 +133,8 @@ func (h *host) Update() error {
 		input = h.surface.Input(h.view.Focused())
 	}
 	h.frame.UpdateStatus(&input, h.visible)
-	h.ctx.Size = h.viewSize()
 	h.updateFolded(&input)
+	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
 	h.windowKeys(&input)
 	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
@@ -562,7 +562,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 // Layout uses the window's real size, one screen pixel per pixel.
 func (h *host) Layout(outsideWidth, outsideHeight int) (int, int) {
 	h.visible = image.Pt(outsideWidth, outsideHeight)
-	h.ctx.Size = h.viewSize()
+	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
 
 	return outsideWidth, outsideHeight
 }
@@ -590,7 +590,6 @@ func (h *host) updateFolded(input *ui.Input) {
 	h.stripHover = true
 	if input.Pressed {
 		h.frame.ShowInspector.On = true
-		h.ctx.Size = h.viewSize()
 	}
 	input.ClearPointer()
 	input.WheelX, input.WheelY = 0, 0

@@ -212,14 +212,21 @@ func (s *State) lockReason() string {
 
 // drawInspector draws what the selected row has to show.
 func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
-	frame.DrawInspector(screen)
-	panel := frame.Inspector(s.size)
+	panel := s.panel()
+	ui.Divider(screen, panel.Min, image.Pt(panel.Min.X, panel.Max.Y))
+	if panel.Max.X < s.size.X {
+		ui.Divider(screen, image.Pt(panel.Max.X, panel.Min.Y), image.Pt(panel.Max.X, panel.Max.Y))
+	}
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	selected, found := s.selected()
 	if !found {
+		hint := "Select a value, a group, a template, an NPC or a zone."
+		if s.part == PartSignals {
+			hint = "Select a signal or a group."
+		}
 		s.theme.Heading(screen, "INSPECTOR", left, panel.Min.Y+ui.Inset)
-		s.theme.DrawText(screen, "Select a value, a group, a template, an NPC or a zone.", left,
-			panel.Min.Y+ui.Inset+ui.LineHeight, ui.ColorMuted())
+		s.theme.DrawText(screen, s.theme.FitText(hint, width), left, panel.Min.Y+ui.Inset+ui.LineHeight,
+			ui.ColorMuted())
 
 		return
 	}

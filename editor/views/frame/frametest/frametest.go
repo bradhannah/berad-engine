@@ -403,7 +403,7 @@ func Context(docs *Docs, requests *Requests, size image.Point) *frame.Context {
 		},
 		Soundscape: &Soundscape{Layers: map[string]sound.Layer{}, Started: nil, Monitor: sound.FullMonitor()},
 		Files:      &Files{Chosen: "", Asked: 0}, Clipboard: nil, Window: ID(windowSeed), Size: size,
-		Frame: frame.NewFrame(time.Now),
+		Frame: frame.NewFrame(time.Now), InspectorFolded: false,
 	}
 }
 

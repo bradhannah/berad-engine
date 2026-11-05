@@ -1,6 +1,7 @@
 package stateview_test
 
 import (
+	"image"
 	"strings"
 	"testing"
 
@@ -8,6 +9,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
+	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -154,5 +157,21 @@ func TestValuesAndSignalsAreApart(t *testing.T) {
 	if values.state.Title(values.ctx.Docs) != "World state: Values" ||
 		signals.state.Title(signals.ctx.Docs) != "World state: Signals" {
 		t.Fatal("each window's title names its part")
+	}
+}
+
+// TestTheInspectorStandsBesideTheList shows a selected signal's inspector
+// right after the list on a wide window, and at the right edge, past the
+// window, while the inspector is folded.
+func TestTheInspectorStandsBesideTheList(t *testing.T) {
+	t.Parallel()
+	f := signalsFixture(t)
+	f.click("ui:add-signal")
+	beside := f.at("ui:signal-name")
+	f.ctx.InspectorFolded = true
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	folded := f.at("ui:signal-name")
+	if beside.X > f.ctx.Size.X/2+frame.InspectorWidth || folded.X < f.ctx.Size.X-frame.InspectorWidth {
+		t.Fatalf("the name field is beside the list at %v, and at the edge when folded at %v", beside, folded)
 	}
 }

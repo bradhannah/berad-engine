@@ -57,8 +57,12 @@ const (
 	PartSignals
 )
 
-// Layout, in screen pixels.
+// Layout, in screen pixels. The list keeps a readable width, listWidth, with
+// its details in a column detailAt from its left, and the inspector stands
+// beside it.
 const (
+	listWidth = 720
+	detailAt  = 320
 	addWidth  = 120
 	headerTop = ui.Inset + ui.LineHeight + ui.LineHeight
 	listTop   = headerTop + ui.ButtonH + ui.Gap
@@ -87,7 +91,9 @@ const (
 
 // State is a World state window: its Values or its Signals.
 type State struct {
-	part     Part
+	part Part
+	// folded is set while the inspector is folded to its strip.
+	folded   bool
 	window   ids.ULID
 	document ids.ULID
 	theme    *ui.Theme
@@ -163,8 +169,8 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 	}
 	adds[0].Primary = true
 	view := &State{
-		part: part, window: window, document: document, theme: theme, size: image.Pt(0, 0),
-		list:  ui.NewList("values", ""),
+		part: part, folded: false, window: window, document: document, theme: theme, size: image.Pt(0, 0),
+		list:  listWithDetails(),
 		shown: tree{rows: nil, items: nil, catalog: nil, signals: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
@@ -185,6 +191,14 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 	view.list.Faded, view.list.DragLabel = view.faded, view.dragLabel
 
 	return view
+}
+
+// listWithDetails is the tree's list, its details close to the names.
+func listWithDetails() *ui.List {
+	list := ui.NewList("values", "")
+	list.DetailAt = detailAt
+
+	return list
 }
 
 // Title is the window title: World state, then the part it shows.
@@ -263,10 +277,27 @@ func (s *State) selected() (item, bool) {
 	return meaning, found && s.list.Selected != ""
 }
 
+// panel is the inspector's area: beside the list when the window has room
+// for both, at the window's right edge when it has not or while the
+// inspector is folded.
+func (s *State) panel() image.Rectangle {
+	edge := frame.Inspector(s.size)
+	if s.folded || edge.Min.X <= listWidth {
+		return edge
+	}
+
+	return image.Rect(listWidth, edge.Min.Y, listWidth+frame.InspectorWidth, edge.Max.Y)
+}
+
+// listRight is where the list and the toolbar above it end.
+func (s *State) listRight() int {
+	return min(frame.Inspector(s.size).Min.X, listWidth) - ui.Inset
+}
+
 func (s *State) layout() {
 	content := frame.Content(s.size)
-	panel := frame.Inspector(s.size)
-	right := panel.Min.X - ui.Inset
+	panel := s.panel()
+	right := s.listRight()
 	for index, button := range s.adds {
 		left := ui.Inset + index*(addWidth+ui.Gap)
 		button.Rect = image.Rect(left, headerTop, left+addWidth, headerTop+ui.ButtonH)
@@ -278,7 +309,7 @@ func (s *State) layout() {
 
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
-	s.size = ctx.Size
+	s.size, s.folded = ctx.Size, ctx.InspectorFolded
 	for _, document := range slices.Concat(valuetree.Documents(ctx.Docs), signals.Documents(ctx.Docs)) {
 		s.subscribe(ctx, document)
 	}
@@ -612,7 +643,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	for _, button := range s.adds {
 		button.Draw(screen, s.theme)
 	}
-	right := frame.Inspector(s.size).Min.X - ui.Inset
+	right := s.listRight()
 	if s.part == PartValues {
 		s.findButton.Draw(screen, s.theme)
 		right = s.findButton.Rect.Min.X

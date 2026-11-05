@@ -242,10 +242,14 @@ const (
 // dragged, rows Faded names are drawn faded, and DragLabel, when set, says
 // what is carried beside the pointer, over a row or none.
 type List struct {
-	ID        string
-	Rect      image.Rectangle
-	Rows      []Row
-	Selected  string
+	ID       string
+	Rect     image.Rectangle
+	Rows     []Row
+	Selected string
+	// DetailAt, when above zero, puts tree rows' details in a column that
+	// far from the list's left, close to the names, rather than at the
+	// right edge; a name too long for it pushes its detail along.
+	DetailAt  int
 	CanDrop   func(dragged, target string) bool
 	Faded     func(dragged, row string) bool
 	DragLabel func(dragged, over string) string
@@ -258,8 +262,9 @@ type List struct {
 // NewList returns an empty list with a row selected, or none for "".
 func NewList(id, selected string) *List {
 	return &List{
-		ID: id, Rect: Zero(), Rows: nil, Selected: selected, CanDrop: nil, Faded: nil, DragLabel: nil, scroll: 0,
-		hover: "", hoverAdd: false, drag: noDrag(),
+		ID: id, Rect: Zero(), Rows: nil, Selected: selected, DetailAt: 0, CanDrop: nil, Faded: nil, DragLabel: nil,
+		scroll: 0,
+		hover:  "", hoverAdd: false, drag: noDrag(),
 	}
 }
 
@@ -665,7 +670,10 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 	if row.Marked {
 		theme.DrawText(area, "●", labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSelect())
 	}
-	if row.Detail != "" {
+	if row.Detail != "" && l.DetailAt > 0 {
+		at := max(rect.Min.X+l.DetailAt, labelLeft+theme.StrongWidth(row.Label)+labelGap)
+		theme.DrawText(area, theme.FitText(row.Detail, rect.Max.X-Inset/Half-at), at, labelTop, ColorSubdued())
+	} else if row.Detail != "" {
 		right := rect.Max.X - Inset/Half - Gap*Half
 		theme.DrawText(area, row.Detail, right-theme.TextWidth(row.Detail), labelTop, ColorSubdued())
 	}

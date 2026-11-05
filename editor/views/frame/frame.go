@@ -183,6 +183,11 @@ type Context struct {
 	Size   image.Point
 	// Frame is the shared status bar and window state.
 	Frame *Frame
+	// InspectorFolded is set while the inspector is folded to its strip.
+	// Size is then wider than the window by all but the strip, so an
+	// inspector at the right edge falls past it; a view that places its
+	// inspector anywhere else puts it at the right edge while this is set.
+	InspectorFolded bool
 }
 
 // View is one kind of editor window: Map, Project browser, Text.
