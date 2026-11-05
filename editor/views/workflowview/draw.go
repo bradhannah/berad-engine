@@ -156,7 +156,9 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	for _, nodeID := range order {
 		s.drawPorts(area, s.shapes[nodeID])
 		s.drawEntries(area, s.shapes[nodeID])
+		s.drawLooseTag(area, s.shapes[nodeID])
 	}
+	s.drawCrossings(area)
 	if selected, ok := s.shapes[s.selected]; ok {
 		ui.StrokeRound(area, s.screenRect(selected.rect).Inset(-selectGap), ui.Radius+selectGap, selectWidth,
 			ui.ColorSelect())
@@ -174,8 +176,8 @@ func (s *State) screenRect(rect image.Rectangle) image.Rectangle {
 }
 
 // drawEntries draws a node's entry dots: filled for each link coming in, and
-// the hollow spare for the next one, washed blue while a link being drawn is
-// over a node that can take it.
+// the hollow spare for the next one, ringed red on a node nothing links to,
+// washed blue while a link being drawn is over a node that can take it.
 func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 	if !takesEntries(drawn.node.Kind) {
 		return
@@ -190,6 +192,9 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 	}
 	centre := s.toScreen(drawn.spare)
 	fill, ring := ui.ColorBackground(), ui.ColorInk()
+	if s.loose(drawn) {
+		ring = ui.ColorWarn()
+	}
 	if s.link != nil && s.linkTarget() == drawn.node.ID {
 		fill, ring = ui.ColorSelectWash(), ui.ColorSelect()
 	}
@@ -198,13 +203,13 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 }
 
 // drawPorts draws each output's port: filled when connected, hollow with
-// where the flow goes instead when not.
+// where the flow goes instead when not, red on a node nothing links to.
 func (s *State) drawPorts(area *ebiten.Image, from shape) {
 	for _, out := range from.ports {
 		centre := s.toScreen(out.at)
 		key := routeKey{from: from.node.ID, output: out.output.Name}
 		_, linked := from.node.Next[out.output.Name]
-		fill, ring := ui.ColorBackground(), ui.ColorInk()
+		fill, ring, label := ui.ColorBackground(), ui.ColorInk(), ui.ColorMuted()
 		if coloured, ok := s.outcomeTint(key); ok {
 			ring = coloured.ink
 		}
@@ -213,6 +218,8 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 			fill, ring = ui.ColorSelect(), ui.ColorSelect()
 		case linked:
 			fill = ring
+		case s.loose(from):
+			ring, label = ui.ColorWarn(), ui.ColorWarn()
 		}
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
@@ -220,7 +227,7 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 			continue
 		}
 		labelY := centre.Y - ui.LabelSize/ui.Half - ui.Half
-		s.theme.DrawSmall(area, s.endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, ui.ColorMuted())
+		s.theme.DrawSmall(area, s.endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, label)
 	}
 }
 
@@ -616,6 +623,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 		return found, true
 	}
 	if found, handled := s.hasWarningState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasCrossingState(state); handled {
 		return found, true
 	}
 	if state == "legend" {
