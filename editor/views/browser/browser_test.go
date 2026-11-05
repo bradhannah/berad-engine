@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/npc"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 var (
@@ -159,6 +160,29 @@ func TestOpening(t *testing.T) {
 		if opened.View != want[index].view || opened.Target != want[index].target || opened.NewView {
 			t.Fatalf("open %d: %+v", index, opened)
 		}
+	}
+}
+
+// TestWorldStateSection opens Values and Signals from the World state
+// section, each in its own window on the world-state document, and folds
+// the section away.
+func TestWorldStateSection(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("row:Values", true)
+	f.click("row:Signals", true)
+	want := []string{"world-state", "world-signals"}
+	if len(f.requests.Opened) != len(want) {
+		t.Fatalf("opened %+v", f.requests.Opened)
+	}
+	for index, opened := range f.requests.Opened {
+		if opened.View != want[index] || opened.Target != worldstate.ID() {
+			t.Fatalf("open %d: %+v", index, opened)
+		}
+	}
+	f.click("section:world-state", false)
+	if _, shown := f.state.Locate("row:Signals", f.ctx.Docs); shown {
+		t.Fatal("folding World state hides Values and Signals")
 	}
 }
 

@@ -98,9 +98,14 @@ func kindName(view string) string {
 	return view
 }
 
-// kindOf is the kind a tab is filed under: its first pane's.
+// kindOf is the kind a tab is filed under: its first pane's, with World
+// state's Values and Signals filed together.
 func kindOf(each *tab) string {
-	return each.panes[0].view
+	if view := each.panes[0].view; view != stateview.SignalsViewName {
+		return view
+	}
+
+	return stateview.ViewName
 }
 
 // kindGroup is one kind's open tabs, as indexes into the shell's tabs, in the

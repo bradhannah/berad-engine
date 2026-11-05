@@ -130,12 +130,12 @@ func (s *State) layoutInspector(docs frame.Docs) {
 }
 
 // layoutRow places the inspector for a row that is not a document or a
-// folder: Settings, World state or a cue. It reports whether one was.
+// folder: Settings, Values, Signals or a cue. It reports whether one was.
 func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.layoutSettings(docs, left, width)
-	case worldStateRow:
+	case worldStateRow, worldSignalsRow:
 		s.layoutWorldState(left, width)
 	default:
 		if _, isCue := s.selectedCue(); !isCue {
@@ -365,13 +365,13 @@ func (s *State) commitName(ctx *frame.Context) {
 		func() { s.name.Field.Failed() })
 }
 
-// drawRow draws the Settings or World state row's inspector, and reports
-// whether one was selected.
+// drawRow draws the Settings, Values or Signals row's inspector, and
+// reports whether one was selected.
 func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.drawSettings(screen, docs, left)
-	case worldStateRow:
+	case worldStateRow, worldSignalsRow:
 		s.drawWorldState(screen, left)
 	default:
 		return false

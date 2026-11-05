@@ -12,7 +12,7 @@ import (
 )
 
 // TestWorldStateMovesAndFinds declares world.done from a workflow's Set
-// value, then in the World state window moves it by its right-click menu
+// value, then in World state's Values window moves it by its right-click menu
 // into a new group, asked first as the workflow uses it, and names the
 // group progress; adds a bool named ready from progress's menu; finds done's
 // type locked; adds a value in progress and drags it out onto World;
@@ -29,7 +29,7 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 	addShot, lockShot := shotPath(t, "state-group-menu.png"), shotPath(t, "state-type-locked.png")
 	browserScript := script(
 		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
-		doubleClick("row:World state"), quitWhenAlone(),
+		doubleClick("row:Values"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),

@@ -150,3 +150,23 @@ func TestTabsGroupByKind(t *testing.T) {
 		t.Fatalf("document labels %q", labels)
 	}
 }
+
+// TestWorldStatePartsAreOneKind files World state's Values and Signals
+// under World state, with a second row that names each part.
+func TestWorldStatePartsAreOneKind(t *testing.T) {
+	t.Parallel()
+	values := titled("world-state", "World state: Values")
+	signals := titled("world-signals", "World state: Signals")
+	shown := &shell{size: image.Pt(1200, 832), tabs: []*tab{{panes: []*pane{values}}, {panes: []*pane{signals}}},
+		active: 1}
+	kinds := shown.kinds()
+	if len(kinds) != 1 || kinds[0].view != "world-state" || len(kinds[0].tabs) != 2 {
+		t.Fatalf("kinds %+v", kinds)
+	}
+	tabs := shown.barTabs()
+	labels := shown.documentLabels(kinds[0])
+	if len(tabs) != 3 || tabs[0].label != "World state" || tabs[0].count != 2 || !shown.documentRow() ||
+		labels[0] != "Values" || labels[1] != "Signals" {
+		t.Fatalf("top row %+v, second row %q", tabs, labels)
+	}
+}

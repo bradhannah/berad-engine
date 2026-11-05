@@ -868,11 +868,16 @@ func documentView(format string) (string, bool) {
 	return view, ok
 }
 
-// openRow opens what the selected row shows: the World state window for
-// the World state row, or what openSelected opens.
+// openRow opens what the selected row shows: World state's Values or
+// Signals window for its rows, or what openSelected opens.
 func (s *State) openRow(ctx *frame.Context) {
-	if s.list.Selected == worldStateRow {
+	switch s.list.Selected {
+	case worldStateRow:
 		ctx.Requests.Open(worldStateView, worldstate.ID(), false)
+
+		return
+	case worldSignalsRow:
+		ctx.Requests.Open(worldSignalsView, worldstate.ID(), false)
 
 		return
 	}

@@ -72,9 +72,10 @@ type tree struct {
 	signals []worldstate.Signal
 }
 
-// build makes the tree from the documents the window holds: the world's
-// values, then each scope's templates and NPCs or zones with their own
-// values, their templates and, for an NPC, its name.
+// build makes the tree from the documents the window holds. Values shows
+// the world's values, then each scope's templates and NPCs or zones with
+// their own values, their templates and, for an NPC, its name; Signals
+// shows the signals.
 func (s *State) build(docs frame.Docs) (tree, bool) {
 	catalog, ready := valuetree.Catalog(docs)
 	world, loaded := valuetree.World(docs)
@@ -82,6 +83,11 @@ func (s *State) build(docs frame.Docs) (tree, bool) {
 		return tree{rows: nil, items: nil, catalog: nil, signals: nil}, false
 	}
 	built := tree{rows: nil, items: map[string]item{}, catalog: catalog, signals: nil}
+	if s.part == PartSignals {
+		s.signalRows(&built, docs)
+
+		return built, true
+	}
 	for _, scope := range worldstate.Scopes() {
 		section := sectionPrefix + string(scope)
 		row := ui.NewHeading(section, scope.Label())
@@ -100,7 +106,6 @@ func (s *State) build(docs frame.Docs) (tree, bool) {
 			s.ownerRows(&built, docs, world, owner)
 		}
 	}
-	s.signalRows(&built, docs)
 
 	return built, true
 }

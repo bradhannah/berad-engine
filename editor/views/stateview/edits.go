@@ -100,25 +100,30 @@ func (s *State) templateScope() (worldstate.Scope, bool) {
 	return selected.scope, true
 }
 
-// updateAdds handles Add value, Add group and Add template.
+// updateAdds handles the toolbar: Add value, Add group and Add template in
+// Values, Add signal and Add group in Signals.
 func (s *State) updateAdds(input *ui.Input, ctx *frame.Context) {
+	if s.part == PartSignals {
+		switch {
+		case s.adds[0].Update(input):
+			s.addSignal(ctx, s.signalParent(ctx.Docs), false)
+		case s.adds[1].Update(input):
+			s.addSignal(ctx, s.signalParent(ctx.Docs), true)
+		}
+
+		return
+	}
 	into, canAdd := s.addTarget(ctx.Docs)
 	scope, canTemplate := s.templateScope()
-	selected, found := s.selected()
-	inSignals := found && isSignal(selected.kind)
-	s.adds[0].Disabled, s.adds[1].Disabled, s.adds[2].Disabled = !canAdd, !canAdd && !inSignals, !canTemplate
+	s.adds[0].Disabled, s.adds[1].Disabled, s.adds[2].Disabled = !canAdd, !canAdd, !canTemplate
 	switch {
 	case s.adds[0].Update(input):
 		s.declare(ctx, into, "value", worldstate.TypeInteger)
-	case s.adds[1].Update(input) && inSignals:
-		s.addSignal(ctx, s.signalParent(ctx.Docs), true)
 	case s.adds[1].Update(input):
 		s.declare(ctx, into, "group", worldstate.TypeGroup)
 	case s.adds[2].Update(input):
 		world, _ := valuetree.World(ctx.Docs)
 		s.declare(ctx, target{list: world, scope: scope, parent: ids.ULID{}}, "template", worldstate.TypeTemplate)
-	case s.adds[3].Update(input):
-		s.addSignal(ctx, s.signalParent(ctx.Docs), false)
 	}
 }
 

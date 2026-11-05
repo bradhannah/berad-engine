@@ -23,7 +23,7 @@ import (
 // Problems and warnings of the signal nodes.
 const (
 	problemNoSignal      = "Choose the signal."
-	problemMissingSignal = "Its signal is not declared. Choose another, or declare it under SIGNALS in World state."
+	problemMissingSignal = "Its signal is not declared. Choose another, or declare it in World state's Signals window."
 	problemTwoReceivers  = "Another On signal here answers this signal already; only one answers each."
 	problemLoneResume    = "Resume goes back to where a signal interrupted the NPC, so it belongs on a receiver's path."
 	problemNoAddressee   = "Choose the NPC to send it to."

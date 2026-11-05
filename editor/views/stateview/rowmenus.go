@@ -216,7 +216,7 @@ func (s *State) addsWhere(into target) string {
 // addsNote says where Add value and Add group add, beside them, or "" when
 // they cannot.
 func (s *State) addsNote(docs frame.Docs) string {
-	if selected, found := s.selected(); found && isSignal(selected.kind) {
+	if s.part == PartSignals {
 		return "adds " + signalWhere(s.shown.signals, s.signalParent(docs))
 	}
 	into, ok := s.addTarget(docs)

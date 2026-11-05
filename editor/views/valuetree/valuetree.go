@@ -1,5 +1,5 @@
 // Package valuetree reads and changes a project's declared values for the
-// windows that show them: the World state window, and the Workflow window's
+// windows that show them: World state's Values window, and the Workflow window's
 // value choosers and local values. It builds the catalog of every value from
 // the documents a window holds, and turns a dotted name, such as
 // quests.dragon_slain, into the change that declares it, or moves a
