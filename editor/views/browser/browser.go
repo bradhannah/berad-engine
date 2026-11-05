@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -728,7 +729,7 @@ func names(entries []project.Entry) []string {
 func newDocument(format, name string, scope ids.ULID, data json.RawMessage) documentArgs {
 	return documentArgs{project.DocumentArgs{
 		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Folder: "", Tags: nil,
-		Kind: "", Data: data, Layout: nil,
+		Kind: "", Data: data, Layout: nil, Changed: time.Time{},
 	}}
 }
 

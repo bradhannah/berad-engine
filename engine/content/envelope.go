@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -35,8 +36,9 @@ var ErrDuplicateFormat = errors.New("format already registered")
 var ErrMigration = errors.New("document upgrade failed")
 
 // Envelope wraps every saved document with its format, format version,
-// permanent ID, display name and revision, and any tags an author gave it to
-// find it by. Tags carry no meaning for a game.
+// permanent ID, display name and revision, any tags an author gave it to
+// find it by, and when its content last changed. Tags and Changed carry no
+// meaning for a game; Changed is zero when it is not known.
 type Envelope struct {
 	Format   string          `json:"format"`
 	Version  int             `json:"version"`
@@ -44,6 +46,7 @@ type Envelope struct {
 	Name     string          `json:"name"`
 	Revision uint64          `json:"revision"`
 	Tags     []string        `json:"tags,omitempty"`
+	Changed  time.Time       `json:"changed,omitzero"`
 	Data     json.RawMessage `json:"data"`
 }
 

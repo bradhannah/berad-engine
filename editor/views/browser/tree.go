@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -296,7 +297,7 @@ func (s *State) zoneRows(
 		if !found {
 			floorEntry = project.Entry{
 				ID: floors[position], Name: "missing floor", Format: floor.FormatName, Folder: "", Tags: nil,
-				Kind: "",
+				Kind: "", Changed: time.Time{},
 			}
 		}
 		detail := ""

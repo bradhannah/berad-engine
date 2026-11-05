@@ -54,9 +54,11 @@ type DocumentInfo struct {
 	Revision uint64
 	Path     string
 	// Folder is the folder holding the document within its type, and Tags
-	// the tags an author gave it.
-	Folder string
-	Tags   []string
+	// the tags an author gave it. Changed is when its content last changed,
+	// zero when not known.
+	Folder  string
+	Tags    []string
+	Changed time.Time
 }
 
 type documentEntry struct {
@@ -231,6 +233,7 @@ func (o *Orchestrator) load() error {
 				Path:     document.path,
 				Folder:   folderOf(document.envelope.Format, document.path),
 				Tags:     document.envelope.Tags,
+				Changed:  document.envelope.Changed,
 			},
 			version:  document.envelope.Version,
 			document: decoded,
@@ -284,7 +287,7 @@ func (o *Orchestrator) replay() error {
 		if _, err := kind.Apply(target.document, entry.Args); err != nil {
 			return fmt.Errorf("replay %s on %s: %w", entry.Edit, entry.Document, err)
 		}
-		target.info.Revision = entry.Revision
+		target.info.Revision, target.info.Changed = entry.Revision, o.cfg.Clock()
 		target.dirty = true
 	}
 	if len(entries) > 0 {
@@ -341,6 +344,7 @@ func (o *Orchestrator) CreateDocument(name string, document model.Document) (ids
 	entry := &documentEntry{
 		info: DocumentInfo{
 			ID: documentID, Name: name, Format: document.Format(), Revision: 0, Path: path, Folder: "", Tags: nil,
+			Changed: o.cfg.Clock(),
 		},
 		version:  documentType.Format.Current,
 		document: document,
@@ -370,7 +374,7 @@ func (o *Orchestrator) ChangeDocument(documentID ids.ULID, change func(model.Doc
 	if err := change(entry.document); err != nil {
 		return fmt.Errorf("change %s: %w", entry.info.Name, err)
 	}
-	entry.dirty = true
+	entry.dirty, entry.info.Changed = true, o.cfg.Clock()
 
 	return o.save(entry)
 }
@@ -526,6 +530,7 @@ func (o *Orchestrator) save(entry *documentEntry) error {
 		Name:     entry.info.Name,
 		Revision: entry.info.Revision,
 		Tags:     entry.info.Tags,
+		Changed:  entry.info.Changed,
 		Data:     data,
 	}
 	if err := o.project.writeDocument(entry.info.Path, envelope); err != nil {
@@ -556,7 +561,7 @@ func (o *Orchestrator) saveLayout(entry *documentEntry) error {
 	}
 	envelope := content.Envelope{
 		Format: documentType.Layout.Name, Version: documentType.Layout.Current, ID: entry.info.ID,
-		Name: entry.info.Name, Revision: 0, Tags: nil, Data: layout,
+		Name: entry.info.Name, Revision: 0, Tags: nil, Changed: time.Time{}, Data: layout,
 	}
 
 	return o.project.writeDocument(layoutPath(entry.info.Path), envelope)

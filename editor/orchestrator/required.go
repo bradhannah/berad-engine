@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -55,6 +56,7 @@ func (o *Orchestrator) addRequired() error {
 			info: DocumentInfo{
 				ID: required.ID, Name: required.Name, Format: required.Format, Revision: 0,
 				Path: documentPath(required.Format, "", required.Name, required.ID), Folder: "", Tags: nil,
+				Changed: time.Time{},
 			},
 			version:  documentType.Format.Current,
 			document: document,
