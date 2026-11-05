@@ -139,7 +139,20 @@ Chosen while building, for its author to check:
   sent and answered is now worded in one place, the signals package. Unit
   tests choose signals through the picker and find one by typing. The
   signals real-window test opens the picker from the clerk's receiver.
-- **Checks:** no lint findings. The editor's unit tests pass.
+- **Found by the full real-window suite:**
+  - World state's new rows pushed the Project list's Palettes and Templates
+    below the rows a test window shows. A newly selected row now scrolls
+    into view once it is listed, as does a row an input script locates.
+  - The pixel editor's Template menu opened down under the status bar,
+    where the Inspector toggle now sits, so its last item could not be
+    seen. A menu opened below a button now opens above it when there is
+    no room below, and every menu stays above the status bar.
+  - Scripts that put a node into a line with Add after now do it by hand,
+    as an author does. "<kind>:last" names the newest node of a kind, and
+    Watch's "log-line:<text>" the newest line reading so, since the newest
+    line can be another NPC's.
+- **Checks:** no lint findings, and `make check` passes. The real-window suite
+  passes, 58 tests, among them the new one that folds the inspector.
 
 ## Not in this increment
 
