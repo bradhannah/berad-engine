@@ -339,6 +339,19 @@ func addNode(kind string) []step {
 	return script(click("palette:"+kind), wait(5), click("ui:help-add"))
 }
 
+// insertAfter puts a new node of a kind into the line from an output, as an
+// author does by hand now that nothing goes into a line by itself: Add
+// after places it beside the selected node, its way on is dragged to what
+// the output led to, the output is dragged to it, and it is selected.
+func insertAfter(kind, way, output, target string) []step {
+	added := "node:" + kind + ":last"
+
+	return script(
+		addNode(kind), wait(10), drag("port:"+kind+":last:"+way, "node:"+target), wait(10),
+		drag("port:"+output, added), wait(10), click(added), wait(5),
+	)
+}
+
 // rightClick presses the right button on a named part of the window.
 func rightClick(at string) step { return step{Repeat: 2, At: at, Secondary: true} }
 

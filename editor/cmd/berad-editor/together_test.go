@@ -26,7 +26,8 @@ func TestLanesRunTogether(t *testing.T) {
 	)
 	customerScript := script(
 		must("state:loaded", 600), wait(60), click("ui:zoom-fit"), wait(10), click("node:"+flow.KindOnSignal+":1"),
-		wait(5), click("ui:delete-node"), wait(10), click("node:start:1"), wait(5), addNode(flow.KindTogether),
+		wait(5), click("ui:delete-node"), wait(10), click("node:start:1"), wait(5),
+		insertAfter(flow.KindTogether, flow.OutputDone, "start:1:next", flow.KindCheckValue+":1"),
 		must("state:selected:"+flow.KindTogether, 300), must("state:lanes:"+flow.KindTogether+":1=2", 60),
 		click("ui:add-lane"), must("state:lanes:"+flow.KindTogether+":1=3", 300),
 		addNode(flow.KindPlaySound), must("state:selected:"+flow.KindPlaySound, 300), click("ui:cue"),

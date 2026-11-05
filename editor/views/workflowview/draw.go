@@ -1066,9 +1066,20 @@ func (s *State) locatePort(value string) (image.Point, bool) {
 	return out.at, found
 }
 
-// nthNode finds "<kind>:<n>", the nth node of a kind in creation order.
+// nthNode finds "<kind>:<n>", the nth node of a kind in creation order, or
+// "<kind>:last", the newest.
 func (s *State) nthNode(value string) (shape, bool) {
 	kind, number, _ := strings.Cut(value, ":")
+	if number == lastNode && s.workflow != nil {
+		last, found := noShape(), false
+		for _, node := range s.workflow.Nodes() {
+			if node.Kind == kind {
+				last, found = s.shapes[node.ID], true
+			}
+		}
+
+		return last, found
+	}
 	wanted, err := strconv.Atoi(number)
 	if err != nil || s.workflow == nil {
 		return noShape(), false
@@ -1084,6 +1095,9 @@ func (s *State) nthNode(value string) (shape, bool) {
 
 	return noShape(), false
 }
+
+// lastNode names the newest node of a kind in "<kind>:last".
+const lastNode = "last"
 
 // locateState is the locate kind that asks after a state, not a part.
 const locateState = "state"

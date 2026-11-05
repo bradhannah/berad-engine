@@ -243,12 +243,23 @@ func (s *State) drawLog(screen *ebiten.Image, docs frame.Docs) {
 	}
 }
 
-// locateLine finds "log-line:<n>", the workflow and node of the nth line
-// shown, counting up from the newest, 1.
+// locateLine finds the workflow and node of a line shown: "log-line:<n>",
+// the nth counting up from the newest, 1; or "log-line:<text>", the newest
+// reading so.
 func (s *State) locateLine(value string) (image.Point, bool) {
-	number, err := strconv.Atoi(strings.TrimPrefix(value, linePart))
+	wanted := strings.TrimPrefix(value, linePart)
 	shown := s.log.shown
-	if err != nil || number < 1 || number > len(shown) {
+	number, err := strconv.Atoi(wanted)
+	if err != nil {
+		for index := len(shown) - 1; index >= 0; index-- {
+			if shown[index].line.Text == wanted {
+				return ui.Center(shown[index].link), true
+			}
+		}
+
+		return image.Pt(0, 0), false
+	}
+	if number < 1 || number > len(shown) {
 		return image.Pt(0, 0), false
 	}
 
