@@ -51,8 +51,10 @@ type shell struct {
 	stats *frameStats
 	// lastTab is each kind's tab last in front.
 	lastTab map[string]*tab
-	// onTop is whether the window is kept above other applications' windows.
-	onTop bool
+	// onTop is whether the window is kept above other applications' windows,
+	// and folded whether every tab's inspector is folded to its strip.
+	onTop  bool
+	folded bool
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -90,7 +92,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
-		lastTab: map[string]*tab{}, onTop: false,
+		lastTab: map[string]*tab{}, onTop: false, folded: false,
 	}
 }
 
@@ -119,6 +121,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
 	shown.host.frame.OnTop.On = s.onTop
+	shown.host.frame.ShowInspector.On = !s.folded
 	shown.host.tabs = func() int { return len(s.tabs) }
 	shown.host.tabTint = s.tintNamed
 
@@ -185,6 +188,7 @@ func (s *shell) Update() error {
 	}
 	s.attend()
 	s.followOnTop()
+	s.followInspector()
 	s.remember()
 	s.followClock()
 	s.retitle()
@@ -363,6 +367,27 @@ func (s *shell) followOnTop() {
 	}
 	for _, shown := range panes {
 		shown.host.frame.OnTop.On = s.onTop
+	}
+}
+
+// followInspector shows or folds every tab's inspector together: any pane's
+// Inspector toggle, or a click on its folded strip, changes it for the whole
+// window, and every pane's toggle shows it. The clock's panel has no
+// inspector to fold.
+func (s *shell) followInspector() {
+	var panes []*pane
+	for _, each := range s.tabs {
+		panes = append(panes, each.panes...)
+	}
+	for _, shown := range panes {
+		if shown.host.frame.ShowInspector.On == s.folded {
+			s.folded = !shown.host.frame.ShowInspector.On
+
+			break
+		}
+	}
+	for _, shown := range panes {
+		shown.host.frame.ShowInspector.On = !s.folded
 	}
 }
 
