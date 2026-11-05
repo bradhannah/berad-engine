@@ -161,7 +161,8 @@ Chosen while building, for its author to check:
   wireframed on the canvas, in the row "The Project at scale", and
   summarised in [research notes](../RESEARCH_NOTES.md): facets, a working
   set, stepping along relations, an overview, an atlas by place, columns,
-  and quick open. None is chosen yet.
+  and quick open. Facets was chosen afterwards, for [increment
+  30](0030-project-facets.md).
 - **Declaring a signal from the picker,** the second board of its row.
 - **Remembering a folded inspector** between sessions.
 - **A picker for NPCs.**

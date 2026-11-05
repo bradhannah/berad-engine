@@ -111,7 +111,8 @@ workflows, 380 sprites and 240 sounds. Today's single tree works for the
 sample's 25 things. At that size a section is a long scroll, folders hide
 what is in them, and nothing says which things matter to the work at hand.
 These are proposals, wireframed on the canvas "Workflow canvas
-wireframes", row "The Project at scale"; none is decided.
+wireframes", row "The Project at scale"; facets was chosen, as the end of
+this section says.
 
 What the research says:
 
@@ -150,4 +151,9 @@ The options:
 
 They combine: facets as the Project window, a working set in a left panel,
 relations in the inspector, and quick open everywhere.
+
+Chosen on 2026-11-05: facets, built in [increment
+30](increments/0030-project-facets.md). The atlas is kept as an idea, with a
+graph of how things relate, for when the strong associations between things
+are settled.
 

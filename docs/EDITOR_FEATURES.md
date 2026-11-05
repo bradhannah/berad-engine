@@ -47,11 +47,21 @@ under consideration), **open** (undecided).
 - **Agreed (2026-11-04):** on a wide window **a list keeps a readable
   width,** each row's detail in a column close to its name, and the
   inspector stands beside the list instead of at the far edge. World
-  state's Values and Signals do so first. *Open:* how the Project window
-  serves projects of thousands of things; options are in [research
-  notes](RESEARCH_NOTES.md#the-project-window-at-scale-researched-2026-11-04).
-  [Increment 29](increments/0029-lines-state-and-picking.md) builds the
-  readable lists and the fold.
+  state's Values and Signals do so first. [Increment
+  29](increments/0029-lines-state-and-picking.md) builds the readable lists
+  and the fold.
+- **Agreed (2026-11-05):** the Project window is sliced by **facets**:
+  Kind, Zone, Runs as, Folder, Tags, Changed and Problems, each value with
+  how many things ticking it would list, so no tick leads to nothing. The
+  list stays the tree until something is typed or ticked, then shows a
+  table of what is left. A set of ticks is saved with the project as a
+  view. Every document records when it last changed, and every workflow's
+  problems are known without opening it. (Set aside, from the [research
+  notes](RESEARCH_NOTES.md#the-project-window-at-scale-researched-2026-11-04):
+  a working set, stepping along relations, an overview, columns and quick
+  open; the atlas is kept as an idea, with a graph of how things relate,
+  for when the strong associations between them are settled.) [Increment
+  30](increments/0030-project-facets.md) builds it.
   (Rejected: a window process for each view, as the editor ran until
   increment 12.)
 - **Agreed:** Cmd+W closes the focused pane, and a tab's close box closes its
@@ -493,6 +503,13 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   just under its own two nodes and dips below a node only where it would
   run through it, and only for nodes in its own container. [Increment
   29](increments/0029-lines-state-and-picking.md) builds it.
+- **Agreed (2026-11-05):** a node over a line shows it is not joined to it.
+  A line that crosses a node is drawn over it at 40% strength, through its
+  dots, and a node nothing links to rings its loose dots red and says "Not
+  linked: never runs" under itself. (Rejected: solid lines over nodes,
+  which strike through them; the line showing through as dashes, which
+  mean a loop; a gap in the line; a shadow under the node.) [Increment
+  30](increments/0030-project-facets.md) builds it.
 - **Agreed (2026-11-03):** the palette says what a node does before it is
   placed: a search matches what each node does as well as its name,
   hovering an entry gives its one line, and clicking it shows its help page
