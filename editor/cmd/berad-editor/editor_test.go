@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
@@ -123,7 +122,9 @@ func TestHeadlessOpenCreatesAndSavesSample(t *testing.T) {
 	if listed := zoneDoc.(*zoneplugin.Document).Zone.Palettes(); len(listed) != 1 || listed[0] != gloomyFile.ID {
 		t.Fatalf("the sample zone lists the sample's palette, gloomy: %v", listed)
 	}
-	readEnvelope(t, project, "texts/notes--*.json")
+	if _, err := os.Stat(filepath.Join(project, "texts")); !os.IsNotExist(err) {
+		t.Fatalf("the sample has no text documents: %v", err)
+	}
 	checkSampleShop(t, project, ground)
 	lantern := readEnvelope(t, project, "sprites/lantern--*.json")
 	sprite, err := art.DecodeSprite(lantern.Data)
@@ -426,7 +427,7 @@ func runEditor(t *testing.T, binary, project string, panes scripts) {
 // openZone is the project browser opening the sample zone in a Map: the
 // editor opens with the project browser alone.
 func openZone() []step {
-	return script(must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"))
+	return script(must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"))
 }
 
 // quitWhenAlone waits until the project browser's tab is the only one left,
@@ -536,48 +537,6 @@ func TestWallFamiliesForARoomAndARun(t *testing.T) {
 	t.Logf("upper floor with the floor below: %s", shot)
 }
 
-// TestAnchorTextAndPickOnMap adds and names an anchor in the Map, opens
-// the text document from the project browser, writes in it (a new line with
-// Cmd+Enter, an accent the way press-and-hold sends it, Enter to save), then
-// picks the anchor as its location through the orchestrator.
-func TestAnchorTextAndPickOnMap(t *testing.T) {
-	requireGUI(t)
-	binary := buildEditor(t)
-	project := filepath.Join(t.TempDir(), "project")
-	mapScript := script(
-		expect("state:loaded", 600), wait(5),
-		keys("A"), click("cell:4,6"), wait(30), typed("Well"), keys("Enter"), wait(20),
-		expect("state:picking", 1800), wait(5), click("cell:4,6"), wait(40), quit(),
-	)
-	browserScript := script(openZone(), wait(30), click("row:Notes"), keys("Enter"), wait(30), quitWhenAlone())
-	textScript := script(
-		expect("state:loaded", 600), wait(5),
-		click("ui:body"), keys("Cmd+Down"), keys("Cmd+Enter"),
-		typed("caf"), typed("e"), step{Repeat: 2, Replace: &ui.Replacement{Before: 1, After: 0, Text: "é", Caret: 2}},
-		typed(" ok"), keys("Cmd+S"), must("state:saved", 300), wait(120),
-		click("ui:pick"), expect("state:located", 1800), wait(10), quit(),
-	)
-	runEditor(t, binary, project, scripts{"map": {mapScript}, "browser": {browserScript}, "text": {textScript}})
-
-	ground, groundEnvelope := readFloor(t, project, "ground-floor")
-	well, found := ground.AnchorAt(4, 6)
-	if !found || well.Name != "Well" {
-		t.Fatalf("anchor %+v %v", well, found)
-	}
-	envelope := readEnvelope(t, project, "texts/notes--*.json")
-	decoded, err := textdoc.Decode(envelope.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	notes := decoded.(*textdoc.Document)
-	if !strings.HasSuffix(notes.Body, "\ncafé ok") {
-		t.Fatalf("body %q", notes.Body)
-	}
-	if notes.Location.Floor != groundEnvelope.ID || notes.Location.Anchor != well.ID {
-		t.Fatalf("location %+v, want the Well anchor", notes.Location)
-	}
-}
-
 // TestQuitAsksThenClosesEveryTab names a new anchor in the Map without
 // saving, then presses Cmd+Q in the project browser: the browser asks
 // whether the editor should quit, naming the unsaved anchor, and Save and
@@ -606,41 +565,47 @@ func TestQuitAsksThenClosesEveryTab(t *testing.T) {
 	t.Logf("screenshot: %s", shot)
 }
 
-// TestBrowserCreatesRenamesAndDeletes creates a zone, renames it in the
-// inspector by typing a name and clicking Save, deletes the text document
-// after confirming, and undoes the deletion. Its status bar keeps the editor
-// window on top and lets it go again.
+// TestBrowserCreatesRenamesAndDeletes creates a zone and renames it in the
+// inspector, typing an accent the way press-and-hold sends it and clicking
+// Save, then makes a workflow, deletes it after confirming, and undoes the
+// deletion. Its status bar keeps the editor window on top and lets it go
+// again.
 func TestBrowserCreatesRenamesAndDeletes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "browser.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5),
+		expect("row:Sample zone", 600), wait(5),
 		click("ui:new-zone"), expect("row:Zone 1", 300), click("row:Zone 1"),
-		click("ui:name"), keys("Cmd+A"), typed("Harbour"), shoot(shot), click("ui:save"),
-		must("row:Harbour", 300),
-		click("row:Notes"), click("ui:delete"), wait(30), click("ui:delete"), wait(30),
-		keys("Cmd+Z"), expect("row:Notes", 300), wait(10),
+		click("ui:name"), keys("Cmd+A"), typed("Harbour caf"), typed("e"),
+		step{Repeat: 2, Replace: &ui.Replacement{Before: 1, After: 0, Text: "é", Caret: 2}},
+		shoot(shot), click("ui:save"), must("row:Harbour café", 300),
+		click("ui:new-workflow"), must("row:Workflow 1", 300), wait(10),
+		click("ui:delete"), wait(30), click("ui:delete"), wait(30),
+		keys("Cmd+Z"), expect("row:Workflow 1", 300), wait(10),
 		click("ui:on-top"), must("state:on-top", 60), wait(10), click("ui:on-top"), wait(5), quitWhenAlone(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 
-	harbour := readEnvelope(t, project, "zones/harbour--*.json")
+	harbour := readEnvelope(t, project, "zones/harbour-caf*--*.json")
+	if harbour.Name != "Harbour café" {
+		t.Fatalf("the zone's name, with its accent: %q", harbour.Name)
+	}
 	zoneDoc, err := zoneplugin.Decode(harbour.Data)
 	if err != nil || len(zoneDoc.(*zoneplugin.Document).Zone.Floors()) != 1 {
 		t.Fatalf("new zone %v", err)
 	}
 	readFloor(t, project, "floor-1")
-	readEnvelope(t, project, "texts/notes--*.json")
+	readEnvelope(t, project, "workflows/workflow-1--*[^t].json")
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }
 
-// TestBrowserFoldersTagsAndSearch makes a text folder from New ▾ and names
-// it, drags the text document into it, makes a folder inside that one and
-// moves the document there with Move to…, tags the document and finds it by
-// searching for the tag. The saved file is in the inner folder, with its
+// TestBrowserFoldersTagsAndSearch makes a workflow folder from New ▾ and
+// names it, drags the sample's Fetch stock into it, makes a folder inside
+// that one and moves the workflow there with Move to…, tags it and finds it
+// by searching for the tag. The saved file is in the inner folder, with its
 // tag.
 func TestBrowserFoldersTagsAndSearch(t *testing.T) {
 	requireGUI(t)
@@ -648,23 +613,23 @@ func TestBrowserFoldersTagsAndSearch(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot, menuShot := shotPath(t, "browser-folders.png"), shotPath(t, "browser-move.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5),
-		click("ui:new"), click("ui:new-folder-text"), wait(30), typed("Letters"), keys("Enter"),
-		must("row:Letters", 300), wait(5),
-		drag("row:Notes", "row:Letters"), wait(30),
-		click("row:Letters"), click("ui:new-folder"), wait(30), typed("Drafts"), keys("Enter"),
-		must("row:Drafts", 300), wait(5),
-		click("row:Notes"), click("ui:move-to"), must("menu:Letters/Drafts", 60), shoot(menuShot),
-		click("menu:Letters/Drafts"), wait(30),
-		click("row:Notes"), click("ui:tags"), typed("quest"), keys("Enter"), wait(30),
-		click("ui:search"), typed("#quest"), must("row:Notes", 60), shoot(shot),
+		expect("row:Sample zone", 600), wait(5),
+		click("ui:new"), click("ui:new-folder-workflow"), wait(30), typed("Errands"), keys("Enter"),
+		must("row:Errands", 300), wait(5),
+		drag("row:Fetch stock", "row:Errands"), wait(30),
+		click("row:Errands"), click("ui:new-folder"), wait(30), typed("Daily"), keys("Enter"),
+		must("row:Daily", 300), wait(5),
+		click("row:Fetch stock"), click("ui:move-to"), must("menu:Errands/Daily", 60), shoot(menuShot),
+		click("menu:Errands/Daily"), wait(30),
+		click("row:Fetch stock"), click("ui:tags"), typed("quest"), keys("Enter"), wait(30),
+		click("ui:search"), typed("#quest"), must("row:Fetch stock", 60), shoot(shot),
 		keys("Escape"), keys("Escape"), wait(5), quitWhenAlone(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}})
 
-	notes := readEnvelope(t, project, "texts/Letters/Drafts/notes--*.json")
-	if len(notes.Tags) != 1 || notes.Tags[0] != "quest" {
-		t.Fatalf("the notes are in Letters/Drafts with their tag: %+v", notes.Tags)
+	fetch := readEnvelope(t, project, "workflows/Errands/Daily/fetch-stock--*[^t].json")
+	if len(fetch.Tags) != 1 || fetch.Tags[0] != "quest" {
+		t.Fatalf("Fetch stock is in Errands/Daily with its tag: %+v", fetch.Tags)
 	}
 	noCrashes(t, project)
 	t.Logf("screenshots: %s %s", shot, menuShot)
@@ -679,7 +644,7 @@ func TestBrowserRightClickMenu(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "browser-right-click.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5),
+		expect("row:Sample zone", 600), wait(5),
 		rightClick("section:workflows"), must("menu:new-folder-workflow", 60),
 		click("menu:new-folder-workflow"), wait(30), typed("Routines"), keys("Enter"),
 		must("row:Routines", 300), wait(5),
@@ -705,7 +670,7 @@ func TestBrowserMakesASpriteInAFolder(t *testing.T) {
 	shot, settingsShot := shotPath(t, "browser-sprite.png"), shotPath(t, "browser-settings.png")
 	paletteShot := shotPath(t, "browser-palette.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5),
+		expect("row:Sample zone", 600), wait(5),
 		click("row:Settings"), click("ui:tile-size"), keys("Cmd+A"), typed("24"), shoot(settingsShot),
 		click("ui:save"), must("row:Settings", 60), wait(30),
 		click("row:Default"), wait(5), shoot(paletteShot),
@@ -747,7 +712,7 @@ func TestPixelEditorPaintsAndUndoes(t *testing.T) {
 	painted, undone := shotPath(t, "pixel-editor.png"), shotPath(t, "pixel-editor-undone.png")
 	glassShot := shotPath(t, "pixel-editor-glass.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5),
+		expect("row:Sample zone", 600), wait(5),
 		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
 		must("row:Sprite 1", 300), wait(30), click("ui:open"), quitWhenAlone(),
 	)
@@ -1062,7 +1027,7 @@ func TestWorkflowRandomWalk(t *testing.T) {
 		return script(click("ui:"+field), wait(3), keys("Cmd+A"), typed(text), keys("Enter"), wait(10))
 	}
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
+		expect("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		expect("state:loaded", 600), wait(5),
@@ -1305,7 +1270,7 @@ func TestPaletteEditorEditsAPalette(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "palette-editor-made.png")
 	browserScript := script(
-		expect("row:Notes", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300),
+		expect("row:Sample zone", 600), wait(5), click("ui:new-palette"), must("row:Palette 1", 300),
 		must("state:tabs:2", 600), quitWhenAlone(),
 	)
 	paletteScript := script(

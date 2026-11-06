@@ -30,7 +30,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/playview"
 	"github.com/bradhannah/berad-engine/editor/views/stateview"
 	"github.com/bradhannah/berad-engine/editor/views/templateview"
-	"github.com/bradhannah/berad-engine/editor/views/textview"
 	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -102,7 +101,7 @@ func Run(args Args, registry *plugin.Registry) error {
 // orchestrator asks to show the windows it opens.
 func connect(ctx context.Context, args Args, registry *plugin.Registry, hosts bool) (*client.Client, error) {
 	switch args.View {
-	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
+	case mapview.ViewName, browser.ViewName, workflowview.ViewName, watchview.ViewName,
 		clockview.ViewName, audioview.ViewName, pixelview.ViewName, paletteview.ViewName, stateview.ViewName,
 		stateview.SignalsViewName, playview.ViewName, templateview.ViewName:
 	default:
@@ -155,8 +154,6 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return audioview.New(window, theme)
 	case clockview.ViewName:
 		return clockview.New(theme)
-	case textview.ViewName:
-		return textview.New(window, args.Target, theme)
 	case workflowview.ViewName:
 		return workflowview.New(window, args.Target, theme)
 	case watchview.ViewName:

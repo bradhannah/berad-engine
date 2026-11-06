@@ -21,7 +21,7 @@ func TestMakingAndCallingAModule(t *testing.T) {
 	moduleShot, callShot, calledShot := shotPath(t, "module.png"), shotPath(t, "call.png"),
 		shotPath(t, "module-called.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(120),
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(120),
 		doubleClick("row:Clerk's day"), quitWhenAlone(),
 	)
 	moduleScript := script(
@@ -76,7 +76,7 @@ func TestClerkCallsFetchStock(t *testing.T) {
 	watchShot, backShot, stripShot := shotPath(t, "watch-call.png"), shotPath(t, "watch-back.png"),
 		shotPath(t, "fetch-stock.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Fetch stock"), must("state:tabs:2", 600), wait(10),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Fetch stock"), must("state:tabs:2", 600), wait(10),
 		doubleClick("row:Sample zone"), quitWhenAlone(),
 	)
 	fetchScript := script(
@@ -113,7 +113,7 @@ func TestPickingACallsPlace(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	mapShot, dayShot := shotPath(t, "picking-map.png"), shotPath(t, "picking-back.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), must("state:tabs:2", 600), wait(30),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), must("state:tabs:2", 600), wait(30),
 		doubleClick("row:Clerk's day"), quitWhenAlone(),
 	)
 	dayScript := script(

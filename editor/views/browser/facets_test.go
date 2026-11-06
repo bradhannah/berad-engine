@@ -24,14 +24,14 @@ func TestFacetsNarrowTheListToATable(t *testing.T) {
 		t.Fatal("each value says how many things have it")
 	}
 	f.click("facet:Kind/Workflows", false)
-	if !f.has("table") || !f.has("showing=2 of 6") || !f.has("ticked:Kind/Workflows") {
-		t.Fatal("ticking Workflows shows the two workflows of six things")
+	if !f.has("table") || !f.has("showing=2 of 5") || !f.has("ticked:Kind/Workflows") {
+		t.Fatal("ticking Workflows shows the two workflows of five things")
 	}
 	if !f.has("count:Kind/NPCs=1") || !f.has("cell:Night watch/Kind=NPC behaviour") {
 		t.Fatal("NPCs still counts the NPC ticking it would add, and a workflow says its kind")
 	}
 	f.click("facet:Folder/Market / Guards", false)
-	if !f.has("showing=1 of 6") || !f.has("cell:Night watch/Folder=Market / Guards") {
+	if !f.has("showing=1 of 5") || !f.has("cell:Night watch/Folder=Market / Guards") {
 		t.Fatal("ticking Market / Guards leaves Night watch")
 	}
 	if _, listed := f.state.Locate("facet:Tags/#market", f.ctx.Docs); listed {
@@ -51,7 +51,7 @@ func TestSearchingShowsATable(t *testing.T) {
 	f := newFixture(t)
 	withFolders(f)
 	f.typeInto("search", "night")
-	if !f.has("table") || !f.has("showing=1 of 6") {
+	if !f.has("table") || !f.has("showing=1 of 5") {
 		t.Fatal("night finds Night watch")
 	}
 	f.press("Escape")
@@ -88,7 +88,7 @@ func TestSavingAView(t *testing.T) {
 	}
 	f.click("chip:Kind: Workflows", false)
 	f.click("view:All workflows", false)
-	if !f.has("showing=2 of 6") {
+	if !f.has("showing=2 of 5") {
 		t.Fatal("the view ticks Workflows again")
 	}
 	f.click("ui:delete-view", false)

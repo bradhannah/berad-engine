@@ -31,7 +31,7 @@ func TestSafelyTurnsAPanicIntoAnError(t *testing.T) {
 // forward when it was the one that went.
 func TestRemovingATabKeepsTheTabInFront(t *testing.T) {
 	t.Parallel()
-	first, second, third := &pane{view: "browser"}, &pane{view: "map"}, &pane{view: "text"}
+	first, second, third := &pane{view: "browser"}, &pane{view: "map"}, &pane{view: "workflow"}
 	shown := &shell{tabs: []*tab{{panes: []*pane{first}}, {panes: []*pane{second}}, {panes: []*pane{third}}}, active: 2}
 	shown.remove(second)
 	if len(shown.tabs) != 2 || shown.focused() != third {
@@ -116,7 +116,7 @@ func TestTabsGroupByKind(t *testing.T) {
 	t.Parallel()
 	project := titled("browser", "Project")
 	town := titled("map", "Map: Town — Ground  (view aaaaaa)")
-	notes := titled("text", "Text: Notes  (window bbbbbb)")
+	notes := titled("workflow", "Workflow: Notes  (window bbbbbb)")
 	harbour := titled("map", "Map: Harbour  (view cccccc)")
 	townAgain := titled("map", "Map: Town — Ground  (view dddddd)")
 	shown := &shell{size: image.Pt(1200, 832), tabs: []*tab{
@@ -125,11 +125,11 @@ func TestTabsGroupByKind(t *testing.T) {
 	}, active: 2}
 	kinds := shown.kinds()
 	if len(kinds) != 3 || kinds[0].view != "browser" || kinds[1].view != "map" || len(kinds[1].tabs) != 3 ||
-		kinds[2].view != "text" {
+		kinds[2].view != "workflow" {
 		t.Fatalf("kinds %+v", kinds)
 	}
 	if shown.documentRow() || shown.barHeight() != rowHeight {
-		t.Fatal("one text document in front needs no second row")
+		t.Fatal("one workflow in front needs no second row")
 	}
 	tabs := shown.barTabs()
 	if len(tabs) != 3 || tabs[1].label != "Maps" || tabs[1].count != 3 || tabs[2].label != "Notes" || !tabs[2].front {

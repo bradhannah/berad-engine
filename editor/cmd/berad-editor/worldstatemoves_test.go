@@ -28,7 +28,7 @@ func TestWorldStateMovesAndFinds(t *testing.T) {
 		shotPath(t, "state-find.png"), shotPath(t, "state-find-declare.png")
 	addShot, lockShot := shotPath(t, "state-group-menu.png"), shotPath(t, "state-type-locked.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
 		doubleClick("row:Values"), quitWhenAlone(),
 	)
 	workflowScript := script(

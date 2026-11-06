@@ -8,7 +8,6 @@ import (
 
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -23,7 +22,6 @@ import (
 )
 
 var (
-	textID  = frametest.ID(1)
 	zoneID  = frametest.ID(2)
 	floorID = frametest.ID(3)
 	clerkID = frametest.ID(4)
@@ -55,10 +53,9 @@ func newFixture(t *testing.T) *fixture {
 	}
 	docs.Put(zoneID, "Town", zone)
 	docs.Put(floorID, "Ground", ground)
-	docs.Put(textID, "Notes", textdoc.NewDocument())
 	docs.Put(clerkID, "Ada Clerk", npcplugin.NewDocument())
 	docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
-		{ID: textID, Name: "Notes", Format: textdoc.FormatName}, {ID: zoneID, Name: "Town", Format: "zone"},
+		{ID: zoneID, Name: "Town", Format: "zone"},
 		{ID: floorID, Name: "Ground", Format: floor.FormatName}, {ID: clerkID, Name: "Ada Clerk", Format: npc.FormatName},
 		{ID: dayID, Name: "Clerk day", Format: flow.FormatName},
 	}))
@@ -142,20 +139,20 @@ func TestDeleteFloorAsksThenRemovesItFromItsZone(t *testing.T) {
 }
 
 // TestOpening opens a zone in a Map window, a floor in its zone's Map window
-// and a text document in a Text window.
+// and a workflow in a Workflow window.
 func TestOpening(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("row:Town", true)
 	f.click("row:Ground", true)
-	f.click("row:Notes", true)
+	f.click("row:Clerk day", true)
 	if len(f.requests.Opened) != 3 {
 		t.Fatalf("opened %+v", f.requests.Opened)
 	}
 	want := []struct {
 		view   string
 		target any
-	}{{"map", zoneID}, {"map", zoneID}, {"text", textID}}
+	}{{"map", zoneID}, {"map", zoneID}, {"workflow", dayID}}
 	for index, opened := range f.requests.Opened {
 		if opened.View != want[index].view || opened.Target != want[index].target || opened.NewView {
 			t.Fatalf("open %d: %+v", index, opened)
@@ -189,7 +186,7 @@ func TestWorldStateSection(t *testing.T) {
 func TestRenameInTheInspector(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.click("ui:name", false)
 	f.keys("Cmd+A")
 	f.typeText("Ideas")
@@ -199,7 +196,7 @@ func TestRenameInTheInspector(t *testing.T) {
 		t.Fatalf("renames %d", len(renames))
 	}
 	var args project.RenameArgs
-	if err := renames[0].Decode(&args); err != nil || args.ID != textID || args.Name != "Ideas" {
+	if err := renames[0].Decode(&args); err != nil || args.ID != clerkID || args.Name != "Ideas" {
 		t.Fatalf("rename %+v %v", args, err)
 	}
 }
@@ -209,7 +206,7 @@ func TestRenameInTheInspector(t *testing.T) {
 func TestSaveBarSavesAndReverts(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Clerk day", false)
 	if f.state.Unsaved(f.ctx.Docs) != 0 {
 		t.Fatal("nothing typed yet")
 	}
@@ -324,8 +321,8 @@ func TestTreeShowsTypesAndHidesRows(t *testing.T) {
 	if _, shown := f.state.Locate("row:Ground", f.ctx.Docs); !shown {
 		t.Fatal("Right opens the selected zone")
 	}
-	f.click("section:text", false)
-	if _, shown := f.state.Locate("row:Notes", f.ctx.Docs); shown {
+	f.click("section:npcs", false)
+	if _, shown := f.state.Locate("row:Ada Clerk", f.ctx.Docs); shown {
 		t.Fatal("a closed section hides its rows")
 	}
 	f.click("row:Ground", false)
@@ -335,8 +332,8 @@ func TestTreeShowsTypesAndHidesRows(t *testing.T) {
 	}
 }
 
-// TestNewMenuAndSectionAdd create a workflow from New ▾ and a text document
-// from its section's [+]; a floor needs a zone selected.
+// TestNewMenuAndSectionAdd create a workflow from New ▾ and an NPC from its
+// section's [+]; a floor needs a zone selected.
 func TestNewMenuAndSectionAdd(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -347,7 +344,7 @@ func TestNewMenuAndSectionAdd(t *testing.T) {
 	}
 	f.click("ui:new", false)
 	f.click("menu:new-workflow", false)
-	f.click("ui:new-text", false)
+	f.click("ui:new-npc", false)
 	created := f.requests.Of(project.CreateEdit)
 	formats := []string{}
 	for _, create := range created {
@@ -357,7 +354,7 @@ func TestNewMenuAndSectionAdd(t *testing.T) {
 		}
 		formats = append(formats, args.Format)
 	}
-	if len(formats) != 2 || formats[0] != flow.FormatName || formats[1] != textdoc.FormatName {
+	if len(formats) != 2 || formats[0] != flow.FormatName || formats[1] != npc.FormatName {
 		t.Fatalf("created %v", formats)
 	}
 	f.click("row:Ground", false)
@@ -373,13 +370,13 @@ func TestNewMenuAndSectionAdd(t *testing.T) {
 func TestSelectingAwayAsksAboutUnsavedChanges(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.click("ui:name", false)
 	f.typeText(" two")
 	f.click("row:Town", false)
 	f.click("ui:cancel", false)
-	if row, _ := f.state.SelectedRow(); row.Label != "Notes" || f.state.Unsaved(f.ctx.Docs) != 1 {
-		t.Fatalf("Cancel stays on Notes with the change: %q", row.Label)
+	if row, _ := f.state.SelectedRow(); row.Label != "Ada Clerk" || f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatalf("Cancel stays on Ada Clerk with the change: %q", row.Label)
 	}
 	f.click("row:Town", false)
 	f.click("ui:save-changes", false)
@@ -389,10 +386,10 @@ func TestSelectingAwayAsksAboutUnsavedChanges(t *testing.T) {
 	}
 	f.click("ui:name", false)
 	f.typeText(" centre")
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.click("ui:discard-changes", false)
-	if row, _ := f.state.SelectedRow(); row.Label != "Notes" || len(f.requests.Of(project.RenameEdit)) != 1 {
-		t.Fatalf("Don't save selects Notes and saves nothing: %q", row.Label)
+	if row, _ := f.state.SelectedRow(); row.Label != "Ada Clerk" || len(f.requests.Of(project.RenameEdit)) != 1 {
+		t.Fatalf("Don't save selects Ada Clerk and saves nothing: %q", row.Label)
 	}
 	f.click("ui:name", false)
 	f.typeText("!")

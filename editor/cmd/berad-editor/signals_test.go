@@ -18,7 +18,7 @@ func TestTheBellInterruptsTheClerk(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	watchShot, brokenShot := shotPath(t, "signal-watch.png"), shotPath(t, "signal-broken.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Customer shops"), must("state:tabs:3", 600), must("state:tab-tint:Clerk's day=green", 60),
 		must("state:tab-tint:Customer shops=amber", 60), doubleClick("row:Sample zone"),
 		must("state:tabs:4", 600), quitWhenAlone(),

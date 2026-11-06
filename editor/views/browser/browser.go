@@ -1,7 +1,7 @@
 // Package browser is the project browser window: the project's zones with
-// their floors, its workflows, NPCs and text documents, in folders, the
-// audio library's cues, which open in the Audio window, its sprites and
-// palettes, and its settings. Authors create, rename, delete and open
+// their floors, its workflows and NPCs, in folders, the audio library's
+// cues, which open in the Audio window, its sprites and palettes, and its
+// settings. Authors create, rename, delete and open
 // documents here, from the toolbar, the inspector or a right-click menu,
 // keep them in folders and tag them, search them, reorder a zone's floors,
 // choose each NPC's behaviour and write its notes, and set the tile size.
@@ -21,7 +21,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	viewsplugin "github.com/bradhannah/berad-engine/editor/plugins/views"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
@@ -51,7 +50,6 @@ const ViewName = "browser"
 // Views the browser opens.
 const (
 	mapView      = "map"
-	textView     = "text"
 	workflowView = "workflow"
 	spriteView   = "sprite"
 )
@@ -78,7 +76,6 @@ const (
 	newWorkflow = "new-workflow"
 	newZoneLoop = "new-zone-loop"
 	newNPC      = "new-npc"
-	newText     = "new-text"
 )
 
 type dialogKind int
@@ -241,7 +238,6 @@ func menuItems() []ui.MenuItem {
 		{ID: newZoneLoop, Label: flow.PurposeZoneLoop.Label(), Icon: ui.IconZoneLoop, Disabled: false, Danger: false,
 			Rule: false},
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
-		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
 		{ID: newSprite, Label: "Sprite", Icon: ui.IconSprite, Disabled: false, Danger: false, Rule: false},
 		{ID: newPalette, Label: "Palette", Icon: ui.IconPalette, Disabled: false, Danger: false, Rule: false},
@@ -251,8 +247,6 @@ func menuItems() []ui.MenuItem {
 		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
 		{ID: newFolderPrefix + npc.FormatName, Label: npcLabel + " folder", Icon: ui.IconFolder, Disabled: false,
-			Danger: false, Rule: false},
-		{ID: newFolderPrefix + textdoc.FormatName, Label: "Text folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
 		{ID: newFolderPrefix + art.SpriteFormatName, Label: "Sprite folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
@@ -694,8 +688,6 @@ func (s *State) create(ctx *frame.Context, item string) {
 		s.createWorkflow(ctx, flow.PurposeZoneLoop)
 	case newNPC:
 		s.createNPC(ctx)
-	case newText:
-		s.createText(ctx)
 	case newSound:
 		s.addSound(ctx)
 	case newSprite:
@@ -884,21 +876,6 @@ func (s *State) addFloor(
 	}, nil)
 }
 
-func (s *State) createText(ctx *frame.Context) {
-	name := uniqueName("Text", names(s.entries(ctx.Docs, textdoc.FormatName)))
-	data, err := textdoc.NewDocument().Encode()
-	if err != nil {
-		ctx.Frame.Status(err.Error())
-
-		return
-	}
-	args := newDocument(textdoc.FormatName, name, ids.ULID{}, data)
-	args.Folder = s.targetFolder(ctx.Docs, textdoc.FormatName)
-	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
-		s.list.Selected = result.Created.String()
-	}, nil)
-}
-
 // createWorkflow creates a workflow of a kind, holding only its start node.
 func (s *State) createWorkflow(ctx *frame.Context, purpose flow.Purpose) {
 	base := "Workflow"
@@ -917,7 +894,7 @@ func (s *State) createWorkflow(ctx *frame.Context, purpose flow.Purpose) {
 // formats that open in a view of their own.
 func documentView(format string) (string, bool) {
 	view, ok := map[string]string{
-		textdoc.FormatName: textView, flow.FormatName: workflowView, art.SpriteFormatName: spriteView,
+		flow.FormatName: workflowView, art.SpriteFormatName: spriteView,
 		art.PaletteFormatName: paletteView, artplugin.TemplateFormatName: templateView,
 	}[format]
 

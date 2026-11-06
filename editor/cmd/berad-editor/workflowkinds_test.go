@@ -19,7 +19,7 @@ func TestASampleZoneLoop(t *testing.T) {
 	loopShot, detailsShot, watchShot := shotPath(t, "zone-loop.png"), shotPath(t, "zone-loop-details.png"),
 		shotPath(t, "zone-loop-watch.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new"), wait(5), click("menu:new-zone-loop"), wait(30),
+		must("row:Sample zone", 600), wait(5), click("ui:new"), wait(5), click("menu:new-zone-loop"), wait(30),
 		must("state:row-loop:Zone loop 1", 300), click("ui:open"), must("state:tabs:2", 600), wait(30),
 		click("row:Sample zone"), wait(30), click("ui:choose-zone-loop"), must("state:dialog-row=Zone loop 1", 300),
 		click("row:Zone loop 1"), wait(5), click("ui:use"), wait(30), shoot(detailsShot),
@@ -72,7 +72,7 @@ func TestRunningTheCustomerElsewhere(t *testing.T) {
 	askShot, flaggedShot, detailsShot := shotPath(t, "runs-in-ask.png"), shotPath(t, "runs-in-flagged.png"),
 		shotPath(t, "runs-in-npc-flag.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-zone"), wait(30), click("row:Customer"), wait(60),
+		must("row:Sample zone", 600), wait(5), click("ui:new-zone"), wait(30), click("row:Customer"), wait(60),
 		doubleClick("row:Customer"), must("state:tabs:2", 600), wait(30), click("row:Customer"),
 		must("state:flag=Customer shops runs in Zone 1, and Customer lives in Sample zone.", 3600), wait(10),
 		shoot(detailsShot), quitWhenAlone(),

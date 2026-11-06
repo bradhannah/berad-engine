@@ -50,7 +50,7 @@ func TestPixelEditorDrawsToATemplate(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	spriteShot, templateShot := shotPath(t, "template-lantern.png"), shotPath(t, "template-editor.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("row:Lantern"), wait(30), click("ui:open"), quitWhenAlone(),
+		must("row:Sample zone", 600), wait(5), click("row:Lantern"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	spriteScript := script(
 		must("state:loaded", 600), must("state:template:Pickup", 600), wait(5),

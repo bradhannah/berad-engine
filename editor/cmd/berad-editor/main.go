@@ -21,7 +21,6 @@ import (
 	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	viewsplugin "github.com/bradhannah/berad-engine/editor/plugins/views"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
@@ -107,7 +106,7 @@ func usage(stderr io.Writer) {
 // plugins is the explicit plug-in list for this program.
 func plugins() (*plugin.Registry, error) {
 	registry, err := plugin.NewRegistry(
-		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), textdoc.Plugin(), workflowplugin.Plugin(),
+		project.Plugin(), tilefloor.Plugin(), zoneplugin.Plugin(), workflowplugin.Plugin(),
 		npcplugin.Plugin(), artplugin.Plugin(), gameplugin.Plugin(), stateplugin.Plugin(), viewsplugin.Plugin(),
 	)
 	if err != nil {
@@ -272,7 +271,7 @@ func ensureDocuments(
 
 // createSample creates placeholder content: a zone with a walled building on
 // the ground floor and its upper floor, an anchor at a desk, a lantern shown
-// as the small pickup, and a text document; so Launch plays it, a player
+// as the small pickup; so Launch plays it, a player
 // start, brick walls, figures for the player and a clerk, the hum in the
 // building and the tune throughout; and a shop, where a customer comes to
 // the desk to be served by the clerk, both living in the zone. It holds no
@@ -304,11 +303,6 @@ func createSample(orch *orchestrator.Orchestrator) (ids.ULID, error) {
 		return ids.ULID{}, err
 	}
 	if err := orch.SettleHomes(); err != nil {
-		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
-	}
-	notes := textdoc.NewDocument()
-	notes.Body = "Write here. Enter saves; Cmd+Enter or Ctrl+J starts a new line."
-	if _, err := orch.CreateDocument("Notes", notes); err != nil {
 		return ids.ULID{}, fmt.Errorf("create sample: %w", err)
 	}
 

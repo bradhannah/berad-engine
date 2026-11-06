@@ -157,7 +157,7 @@ func TestRightClickOnAZoneAddsAFloor(t *testing.T) {
 func TestRightClickBelowTheRows(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.rightClickBelow()
 	if _, ok := f.state.SelectedRow(); ok {
 		t.Fatal("a right-click below the rows selects nothing")
@@ -165,9 +165,9 @@ func TestRightClickBelowTheRows(t *testing.T) {
 	if _, ok := f.state.Locate("menu:new-floor", f.ctx.Docs); ok {
 		t.Fatal("no floor without a zone")
 	}
-	f.click("menu:new-text", false)
+	f.click("menu:new-npc", false)
 	if args := f.created(); args.Folder != "" {
-		t.Fatalf("new text at the top: %+v", args)
+		t.Fatalf("a new NPC at the top: %+v", args)
 	}
 }
 
@@ -176,14 +176,14 @@ func TestRightClickBelowTheRows(t *testing.T) {
 func TestRightClickWaitsForUnsavedChanges(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
 	f.typeInto("name", " draft")
 	f.rightClick("row:Clerk day")
 	if _, ok := f.state.Locate("menu:context-open", f.ctx.Docs); ok {
 		t.Fatal("the menu waits until the unsaved name is dealt with")
 	}
-	if row, ok := f.state.SelectedRow(); !ok || row.Label != "Notes" {
-		t.Fatalf("Notes stays selected while the guard asks: %+v", row)
+	if row, ok := f.state.SelectedRow(); !ok || row.Label != "Ada Clerk" {
+		t.Fatalf("Ada Clerk stays selected while the guard asks: %+v", row)
 	}
 }

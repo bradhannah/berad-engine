@@ -21,7 +21,7 @@ func TestLanesRunTogether(t *testing.T) {
 	canvasShot, watchShot := shotPath(t, "together-canvas.png"), shotPath(t, "together-watch.png")
 	together := "node:" + flow.KindTogether + ":1"
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	customerScript := script(

@@ -17,7 +17,7 @@ func TestFacetsNarrowTheProject(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	facetsShot, tableShot := shotPath(t, "project-facets.png"), shotPath(t, "project-table.png")
 	browserScript := script(
-		must("row:Notes", 600), must("state:facets", 60), wait(60), shoot(facetsShot),
+		must("row:Sample zone", 600), must("state:facets", 60), wait(60), shoot(facetsShot),
 		click("facet:Kind/Workflows"), must("state:table", 60), must("state:cell:Clerk's day/Kind=NPC behaviour", 60),
 		click("ui:save-view"), wait(5), keys("Cmd+A"), typed("Workflows"), keys("Enter"),
 		must("state:view=Workflows", 300), click("chip:Kind: Workflows"), wait(5), click("view:Workflows"),

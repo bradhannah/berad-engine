@@ -25,7 +25,7 @@ func TestLaunchPlaysTheSample(t *testing.T) {
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	started, upstairs := shotPath(t, "play-start.png"), shotPath(t, "play-upstairs.png")
-	browserScript := script(must("row:Notes", 600), wait(5), keys("Cmd+R"), must("state:tabs:2", 1800), quitWhenAlone())
+	browserScript := script(must("row:Sample zone", 600), wait(5), keys("Cmd+R"), must("state:tabs:2", 1800), quitWhenAlone())
 	playScript := script(
 		must("state:playing", 1800), mustInFront("state:sprite:player", 120), must("state:sprite:wall.a", 60),
 		must("state:player:0,2", 60), must("state:layer:sample/tune", 900), must("state:layer:sample/hum", 900),
@@ -60,7 +60,7 @@ func TestSampleRoutineShowsEachNode(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "clerks-day.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), quitWhenAlone(),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), quitWhenAlone(),
 	)
 	workflowScript := script(must("state:loaded", 900), must("state:nodes:25", 60), wait(20), shoot(shot), quit())
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})

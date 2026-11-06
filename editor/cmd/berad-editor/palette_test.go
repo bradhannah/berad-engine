@@ -18,7 +18,7 @@ func TestFindingAndPlacingNodes(t *testing.T) {
 	searchShot, helpShot, tooltipShot, dropShot := shotPath(t, "palette-search.png"), shotPath(t, "palette-help.png"),
 		shotPath(t, "palette-tooltip.png"), shotPath(t, "palette-drop.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), click("ui:palette-search"), wait(5),

@@ -10,7 +10,6 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -24,7 +23,7 @@ var watchID = frametest.ID(6)
 func withFolders(f *fixture) {
 	docs := f.ctx.Docs.(*frametest.Docs)
 	docs.Put(project.IndexID(), "Project", project.NewIndexWithFolders([]project.Entry{
-		{ID: textID, Name: "Notes", Format: textdoc.FormatName}, {ID: zoneID, Name: "Town", Format: "zone"},
+		{ID: zoneID, Name: "Town", Format: "zone"},
 		{ID: floorID, Name: "Ground", Format: "tilefloor"}, {ID: clerkID, Name: "Ada Clerk", Format: "npc"},
 		{ID: dayID, Name: "Clerk day", Format: flow.FormatName, Folder: "Market"},
 		{ID: watchID, Name: "Night watch", Format: flow.FormatName, Folder: "Market/Guards", Tags: []string{"night", "guards"}},
@@ -104,8 +103,8 @@ func TestSearchFilters(t *testing.T) {
 	if got := f.workflowRows(); !slices.Equal(got, []string{"Market/0", "Guards/1", "Night watch/2"}) {
 		t.Fatalf("night: %v", got)
 	}
-	if _, ok := f.state.Locate("row:Notes", f.ctx.Docs); ok {
-		t.Fatal("Notes does not match")
+	if _, ok := f.state.Locate("row:Ada Clerk", f.ctx.Docs); ok {
+		t.Fatal("Ada Clerk does not match")
 	}
 	f.press("Escape")
 	f.typeInto("search", "guards")
@@ -176,9 +175,9 @@ func TestMovingAndDragging(t *testing.T) {
 	if moves := f.requests.Of(project.MoveEdit); len(moves) != 2 || moves[1].Decode(&move) != nil || move.Folder != "Wilds" {
 		t.Fatalf("dragged onto Wilds: %+v", move)
 	}
-	f.drag("row:Clerk day", "section:text")
+	f.drag("row:Clerk day", "section:npcs")
 	if moves := f.requests.Of(project.MoveEdit); len(moves) != 2 {
-		t.Fatal("a workflow does not move into Text")
+		t.Fatal("a workflow does not move into NPCs")
 	}
 	f.drag("row:Guards", "section:workflows")
 	var change project.FolderArgs

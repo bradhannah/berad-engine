@@ -10,7 +10,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -104,7 +103,7 @@ type kindInfo struct {
 // kindOrder lists the kinds the table lists, in the Kind facet's order.
 func kindOrder() []string {
 	return []string{
-		zone.FormatName, floor.FormatName, flow.FormatName, npc.FormatName, textdoc.FormatName, art.SpriteFormatName,
+		zone.FormatName, floor.FormatName, flow.FormatName, npc.FormatName, art.SpriteFormatName,
 		art.PaletteFormatName, artplugin.TemplateFormatName, kindSound,
 	}
 }
@@ -117,7 +116,7 @@ const zoneWord = "Zone"
 func kindInfoOf(format string) (kindInfo, bool) {
 	many, listed := map[string]string{
 		zone.FormatName: "Zones", floor.FormatName: "Floors", flow.FormatName: "Workflows", npc.FormatName: "NPCs",
-		textdoc.FormatName: "Text", art.SpriteFormatName: "Sprites", art.PaletteFormatName: "Palettes",
+		art.SpriteFormatName: "Sprites", art.PaletteFormatName: "Palettes",
 		artplugin.TemplateFormatName: "Templates", kindSound: "Sounds",
 	}[format]
 	if format == kindSound {

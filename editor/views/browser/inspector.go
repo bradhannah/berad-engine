@@ -9,7 +9,6 @@ import (
 
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -66,8 +65,6 @@ func kindOf(format string) kind {
 		return kind{label: "Workflow", noun: "workflow", icon: ui.IconWorkflow, open: "Open workflow"}
 	case npc.FormatName:
 		return kind{label: npcLabel, noun: npcLabel, icon: ui.IconNPC, open: ""}
-	case textdoc.FormatName:
-		return kind{label: "Text document", noun: "text document", icon: ui.IconText, open: "Open text"}
 	case art.SpriteFormatName:
 		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: "Open sprite"}
 	case art.PaletteFormatName:
@@ -198,7 +195,7 @@ func (s *State) layoutActions(docs frame.Docs, entry project.Entry, left, width,
 		s.down.Rect = image.Rect(left+half+buttonGap, top, left+width, top+ui.ButtonH)
 		_, inZone := s.zoneOf(docs, entry.ID)
 		s.open.Disabled, s.up.Disabled, s.down.Disabled = !inZone, !inZone, !inZone
-	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName, art.PaletteFormatName,
+	case flow.FormatName, art.SpriteFormatName, art.PaletteFormatName,
 		artplugin.TemplateFormatName:
 		s.open.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	}

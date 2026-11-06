@@ -21,7 +21,7 @@ func TestLoggingInWatch(t *testing.T) {
 	logShot, spriteShot, watchShot := shotPath(t, "log-node.png"), shotPath(t, "log-sprite.png"),
 		shotPath(t, "log-watch.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Clerk"), must("state:tabs:3", 600), wait(60), doubleClick("row:Sample zone"),
 		must("state:tabs:4", 600), quitWhenAlone(),
 	)

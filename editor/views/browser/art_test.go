@@ -11,7 +11,6 @@ import (
 	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
@@ -54,7 +53,7 @@ func withArt(f *fixture) {
 // putArtIndex lists the fixture's documents with the art, and any more.
 func putArtIndex(docs *frametest.Docs, more ...project.Entry) {
 	docs.Put(project.IndexID(), "Project", project.NewIndexWithFolders(append([]project.Entry{
-		{ID: textID, Name: "Notes", Format: textdoc.FormatName}, {ID: zoneID, Name: "Town", Format: "zone"},
+		{ID: zoneID, Name: "Town", Format: "zone"},
 		{ID: floorID, Name: "Ground", Format: floor.FormatName}, {ID: clerkID, Name: "Ada Clerk", Format: npc.FormatName},
 		{ID: dayID, Name: "Clerk day", Format: flow.FormatName},
 		{ID: lanternID, Name: "Lantern", Format: art.SpriteFormatName, Folder: "Lights", Tags: []string{"light"}},

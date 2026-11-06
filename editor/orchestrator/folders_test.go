@@ -8,7 +8,6 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -29,7 +28,7 @@ func makeFolder(t *testing.T, c *client.Client, format, path string) {
 func createText(t *testing.T, c *client.Client, name, folder string) ids.ULID {
 	t.Helper()
 	result := mustCommand(t, c, project.IndexID(), project.CreateEdit, "", project.DocumentArgs{
-		Format: textdoc.FormatName, Name: name, Folder: folder, Data: encodeDocument(t, textdoc.NewDocument()),
+		Format: noteFormat, Name: name, Folder: folder, Data: encodeDocument(t, newNote()),
 	})
 	return result.Created
 }
@@ -62,15 +61,15 @@ func TestFoldersAndTagsAreSavedAsFolders(t *testing.T) {
 	createProject(t, dir)
 	h := start(t, dir, nil)
 	browser := h.dialView(t, "browser", project.IndexID(), "", project.IndexID())
-	makeFolder(t, browser, textdoc.FormatName, "Town")
-	makeFolder(t, browser, textdoc.FormatName, "Town/Notes")
-	makeFolder(t, browser, textdoc.FormatName, "Wilds")
+	makeFolder(t, browser, noteFormat, "Town")
+	makeFolder(t, browser, noteFormat, "Town/Notes")
+	makeFolder(t, browser, noteFormat, "Wilds")
 	plan := createText(t, browser, "Plan", "Town")
 	diary := createText(t, browser, "Diary", "")
 	mustCommand(t, browser, project.IndexID(), project.MoveEdit, "", project.MoveArgs{ID: diary, Folder: "town/notes"})
 	mustCommand(t, browser, project.IndexID(), project.TagsEdit, "", project.TagsArgs{ID: plan, Tags: []string{"quest", "#town"}})
 	mustCommand(t, browser, project.IndexID(), project.FolderEdit, "",
-		project.FolderArgs{Format: textdoc.FormatName, From: "Town", To: "Village"})
+		project.FolderArgs{Format: noteFormat, From: "Town", To: "Village"})
 	if entry, _ := indexEntry(browser, diary); entry.Folder != "Village/Notes" {
 		t.Fatalf("the diary moved with its folder: %q", entry.Folder)
 	}
@@ -85,34 +84,34 @@ func TestFoldersAndTagsAreSavedAsFolders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	saved := readOne(t, dir, "texts/Village/plan--*.json")
+	saved := readOne(t, dir, "notes/Village/plan--*.json")
 	if !slices.Equal(saved.Tags, []string{"quest", "town"}) {
 		t.Fatalf("tags saved with the document: %q", saved.Tags)
 	}
-	readOne(t, dir, "texts/Village/Notes/diary--*.json")
-	if info, err := os.Stat(filepath.Join(dir, "texts", "Wilds")); err != nil || !info.IsDir() {
+	readOne(t, dir, "notes/Village/Notes/diary--*.json")
+	if info, err := os.Stat(filepath.Join(dir, "notes", "Wilds")); err != nil || !info.IsDir() {
 		t.Fatalf("the empty folder is kept: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "texts", "Town")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "notes", "Town")); !os.IsNotExist(err) {
 		t.Fatalf("the renamed folder is gone: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "texts", "Wilds", ".DS_Store"), []byte("finder"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "notes", "Wilds", ".DS_Store"), []byte("finder"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	reopened := start(t, dir, nil)
 	view := reopened.dialView(t, "browser", project.IndexID(), "", project.IndexID())
-	if got := folders(view, textdoc.FormatName); !slices.Equal(got, []string{"Village", "Village/Notes", "Wilds"}) {
+	if got := folders(view, noteFormat); !slices.Equal(got, []string{"Village", "Village/Notes", "Wilds"}) {
 		t.Fatalf("folders read back: %v", got)
 	}
 	if entry, _ := indexEntry(view, plan); entry.Folder != "Village" || !slices.Equal(entry.Tags, []string{"quest", "town"}) {
 		t.Fatalf("the plan read back: %+v", entry)
 	}
-	mustCommand(t, view, project.IndexID(), project.FolderEdit, "", project.FolderArgs{Format: textdoc.FormatName, From: "Wilds"})
+	mustCommand(t, view, project.IndexID(), project.FolderEdit, "", project.FolderArgs{Format: noteFormat, From: "Wilds"})
 	if err := reopened.stop(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "texts", "Wilds")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "notes", "Wilds")); !os.IsNotExist(err) {
 		t.Fatalf("the deleted folder is removed, with only Finder's file in it: %v", err)
 	}
 }
@@ -125,11 +124,11 @@ func TestFolderChangesUndo(t *testing.T) {
 	createProject(t, dir)
 	h := start(t, dir, nil)
 	browser := h.dialView(t, "browser", project.IndexID(), "", project.IndexID())
-	makeFolder(t, browser, textdoc.FormatName, "Town")
+	makeFolder(t, browser, noteFormat, "Town")
 	plan := createText(t, browser, "Plan", "Town")
 	mustCommand(t, browser, project.IndexID(), project.TagsEdit, "", project.TagsArgs{ID: plan, Tags: []string{"quest"}})
 	mustCommand(t, browser, project.IndexID(), project.FolderEdit, "",
-		project.FolderArgs{Format: textdoc.FormatName, From: "Town", To: "Village"})
+		project.FolderArgs{Format: noteFormat, From: "Town", To: "Village"})
 	if _, err := undo(t, browser); err != nil {
 		t.Fatal(err)
 	}
@@ -152,19 +151,19 @@ func TestFoldersSurviveACrash(t *testing.T) {
 	createProject(t, dir)
 	h := start(t, dir, nil)
 	browser := h.dialView(t, "browser", project.IndexID(), "", project.IndexID())
-	makeFolder(t, browser, textdoc.FormatName, "Town")
-	makeFolder(t, browser, textdoc.FormatName, "Empty")
+	makeFolder(t, browser, noteFormat, "Town")
+	makeFolder(t, browser, noteFormat, "Empty")
 	plan := createText(t, browser, "Plan", "")
 	mustCommand(t, browser, project.IndexID(), project.MoveEdit, "", project.MoveArgs{ID: plan, Folder: "Town"})
 	mustCommand(t, browser, project.IndexID(), project.TagsEdit, "", project.TagsArgs{ID: plan, Tags: []string{"quest"}})
 	mustCommand(t, browser, project.IndexID(), project.FolderEdit, "",
-		project.FolderArgs{Format: textdoc.FormatName, From: "Town", To: "Village"})
+		project.FolderArgs{Format: noteFormat, From: "Town", To: "Village"})
 
 	crashed := t.TempDir()
 	copyTree(t, dir, crashed)
 	reopened := start(t, crashed, nil)
 	view := reopened.dialView(t, "browser", project.IndexID(), "", project.IndexID())
-	if got := folders(view, textdoc.FormatName); !slices.Equal(got, []string{"Empty", "Village"}) {
+	if got := folders(view, noteFormat); !slices.Equal(got, []string{"Empty", "Village"}) {
 		t.Fatalf("folders after the crash: %v", got)
 	}
 	if entry, _ := indexEntry(view, plan); entry.Folder != "Village" || !slices.Equal(entry.Tags, []string{"quest"}) {
@@ -173,5 +172,5 @@ func TestFoldersSurviveACrash(t *testing.T) {
 	if err := reopened.stop(); err != nil {
 		t.Fatal(err)
 	}
-	readOne(t, crashed, "texts/Village/plan--*.json")
+	readOne(t, crashed, "notes/Village/plan--*.json")
 }

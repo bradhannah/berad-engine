@@ -19,7 +19,7 @@ func TestShowingThePlayer(t *testing.T) {
 	nodesShot, speechShot, shakeShot := shotPath(t, "show-nodes.png"), shotPath(t, "show-speech.png"),
 		shotPath(t, "show-shake.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	customerScript := script(

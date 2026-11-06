@@ -14,7 +14,7 @@ func TestTheInspectorFolds(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	foldedShot := shotPath(t, "inspector-folded.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600),
 		must("state:inspector-folded", 1200), must("state:inspector", 1200), quitWhenAlone(),
 	)
 	workflowScript := script(

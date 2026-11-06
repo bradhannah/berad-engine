@@ -22,7 +22,7 @@ func onTopPane(view string) *pane {
 // every pane's toggle shows it.
 func TestOnTopIsTheWholeWindows(t *testing.T) {
 	t.Parallel()
-	browser, text := onTopPane("browser"), onTopPane("text")
+	browser, text := onTopPane("browser"), onTopPane("workflow")
 	s := &shell{tabs: []*tab{{panes: []*pane{browser}}, {panes: []*pane{text}}}}
 	text.host.frame.OnTop.On = true
 	s.followOnTop()

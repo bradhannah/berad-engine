@@ -6,7 +6,6 @@ import (
 
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -29,7 +28,7 @@ const (
 func typeLabel(format string) string {
 	return map[string]string{
 		zone.FormatName: "zone", flow.FormatName: "workflow", npc.FormatName: npcLabel,
-		textdoc.FormatName: "text document", art.SpriteFormatName: "sprite", art.PaletteFormatName: "palette",
+		art.SpriteFormatName: "sprite", art.PaletteFormatName: "palette",
 		artplugin.TemplateFormatName: "template",
 	}[format]
 }
@@ -38,7 +37,7 @@ func typeLabel(format string) string {
 func typeIcon(format string) ui.Icon {
 	return map[string]ui.Icon{
 		zone.FormatName: ui.IconZone, flow.FormatName: ui.IconWorkflow, npc.FormatName: ui.IconNPC,
-		textdoc.FormatName: ui.IconText, art.SpriteFormatName: ui.IconSprite, art.PaletteFormatName: ui.IconPalette,
+		art.SpriteFormatName: ui.IconSprite, art.PaletteFormatName: ui.IconPalette,
 		artplugin.TemplateFormatName: ui.IconTemplate,
 	}[format]
 }
@@ -170,10 +169,9 @@ func dangerous(item ui.MenuItem) ui.MenuItem {
 	return item
 }
 
-// documentItems lists a zone's, workflow's, NPC's, text document's,
-// sprite's or palette's right-click menu. A zone can gain a floor; an NPC
-// opens its behaviour. A document every project holds keeps its name and
-// cannot be deleted.
+// documentItems lists a zone's, workflow's, NPC's, sprite's or palette's
+// right-click menu. A zone can gain a floor; an NPC opens its behaviour. A
+// document every project holds keeps its name and cannot be deleted.
 func (s *State) documentItems(docs frame.Docs, entry project.Entry) []ui.MenuItem {
 	open := contextItem(contextOpen, "Open", ui.IconNone)
 	open.Disabled = kindOf(entry.Format).open == ""
