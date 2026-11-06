@@ -85,9 +85,6 @@ func (m matcher) entry(entry project.Entry) bool {
 	return entry.Folder != "" && slices.ContainsFunc(strings.Split(entry.Folder, project.FolderSeparator), m.folderName)
 }
 
-// folder reports whether a folder's own name matches.
-func (m matcher) folder(path string) bool { return !m.tags && m.folderName(project.FolderName(path)) }
-
 func (m matcher) folderName(name string) bool { return strings.Contains(strings.ToLower(name), m.text) }
 
 // words reports whether a row that is not a document, such as Settings,

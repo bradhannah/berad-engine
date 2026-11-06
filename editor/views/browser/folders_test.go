@@ -36,24 +36,6 @@ func withFolders(f *fixture) {
 
 func (f *fixture) frame(input ui.Input) { f.state.Update(&input, f.ctx) }
 
-// workflowRows lists the Workflows section's rows as "label/indent".
-func (f *fixture) workflowRows() []string {
-	var shown []string
-	inside := false
-	for _, row := range f.state.Rows(f.ctx.Docs) {
-		if row.Section {
-			inside = row.ID == "section:workflows"
-
-			continue
-		}
-		if inside {
-			shown = append(shown, row.Label+"/"+string(rune('0'+row.Indent)))
-		}
-	}
-
-	return shown
-}
-
 func (f *fixture) typeInto(field, text string) {
 	f.t.Helper()
 	f.click("ui:"+field, false)
@@ -76,50 +58,70 @@ func (f *fixture) at(name string) image.Point {
 	return point
 }
 
-// TestFoldersInTheTree lists each folder before what it holds and folders
-// before documents, indented under their folder, and a folder closes.
-func TestFoldersInTheTree(t *testing.T) {
+// TestFoldersAmongThePlaces lists a kind's folders among the places, each
+// before the folders it holds and saying how many things it holds, and a
+// folder closes. A folder shows its folders, then its things.
+func TestFoldersAmongThePlaces(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withFolders(f)
-	want := []string{"Market/0", "Guards/1", "Night watch/2", "Clerk day/1", "Wilds/0"}
-	if got := f.workflowRows(); !slices.Equal(got, want) {
-		t.Fatalf("rows %v", got)
+	want := []string{"Workflows/0", "Market/1", "Guards/2", "Wilds/1"}
+	if got := f.placesIn("section:workflows"); !slices.Equal(got, want) {
+		t.Fatalf("places %v", got)
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
 	f.click("toggle:Market", false)
-	if got := f.workflowRows(); !slices.Equal(got, []string{"Market/0", "Wilds/0"}) {
+	if got := f.placesIn("section:workflows"); !slices.Equal(got, []string{"Workflows/0", "Market/1", "Wilds/1"}) {
 		t.Fatalf("Market closed: %v", got)
+	}
+	if got := f.rowsIn("section:workflows"); !slices.Equal(got, []string{"Market/0", "Wilds/0"}) {
+		t.Fatalf("Workflows holds its folders: %v", got)
+	}
+	if got := f.rowsIn("folder:workflow:Market"); !slices.Equal(got, []string{"Guards/0", "Clerk day/0"}) {
+		t.Fatalf("Market holds Guards, then Clerk day: %v", got)
 	}
 }
 
-// TestSearchFilters keeps what matches by name, folder name or tag, with
-// its folders, and "#" searches tags only; Escape clears the search.
+// placesIn lists a kind and its folders among the places as "label/indent".
+func (f *fixture) placesIn(kind string) []string {
+	var shown []string
+	inside := false
+	for _, row := range f.state.Places(f.ctx.Docs) {
+		if row.Indent == 0 {
+			inside = row.ID == kind
+		}
+		if inside {
+			shown = append(shown, row.Label+"/"+string(rune('0'+row.Indent)))
+		}
+	}
+
+	return shown
+}
+
+// TestSearchFilters keeps what matches by name, folder name or tag, and "#"
+// searches tags only; Escape clears the search.
 func TestSearchFilters(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withFolders(f)
 	f.typeInto("search", "night")
-	if got := f.workflowRows(); !slices.Equal(got, []string{"Market/0", "Guards/1", "Night watch/2"}) {
+	if got := f.matchLabels(); !slices.Equal(got, []string{"Night watch"}) {
 		t.Fatalf("night: %v", got)
-	}
-	if _, ok := f.state.Locate("row:Ada Clerk", f.ctx.Docs); ok {
-		t.Fatal("Ada Clerk does not match")
 	}
 	f.press("Escape")
 	f.typeInto("search", "guards")
-	if got := f.workflowRows(); !slices.Equal(got, []string{"Market/0", "Guards/1", "Night watch/2"}) {
+	if got := f.matchLabels(); !slices.Equal(got, []string{"Night watch"}) {
 		t.Fatalf("a folder's name: %v", got)
 	}
 	f.press("Escape")
 	f.typeInto("search", "#town")
-	if got := f.workflowRows(); len(got) != 0 {
+	if got := f.matchLabels(); len(got) != 0 {
 		t.Fatalf("no tag says town: %v", got)
 	}
 	f.press("Escape")
 	f.press("Escape")
-	if got := f.workflowRows(); len(got) != 5 {
-		t.Fatalf("Escape clears the search: %v", got)
+	if f.has("narrowed") {
+		t.Fatal("Escape clears the search")
 	}
 }
 
@@ -151,7 +153,7 @@ func TestNewThingsGoInTheSelectedFolder(t *testing.T) {
 	docs.Put(project.IndexID(), "Project", project.NewIndexWithFolders(index.Entries(),
 		append(index.AllFolders(), project.Folder{Format: flow.FormatName, Path: "Market/Guards/Folder 1"})))
 	f.frame(ui.NewInput(image.Pt(0, 0)))
-	if row, ok := f.state.SelectedRow(); !ok || row.ID != "folder:workflow:Market/Guards/Folder 1" || f.state.Focused() == nil {
+	if row, ok := f.state.SelectedRow(f.ctx.Docs); !ok || row.ID != "folder:workflow:Market/Guards/Folder 1" || f.state.Focused() == nil {
 		t.Fatalf("the new folder is selected with its name focused: %+v %v", row, ok)
 	}
 }
@@ -242,7 +244,7 @@ func TestTagsSaveAndSearch(t *testing.T) {
 	f.click("row:Night watch", false)
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
 	f.click("ui:tag:guards", false)
-	if got := f.workflowRows(); !slices.Equal(got, []string{"Market/0", "Guards/1", "Night watch/2"}) {
+	if got := f.matchLabels(); !slices.Equal(got, []string{"Night watch"}) {
 		t.Fatalf("#guards: %v", got)
 	}
 	f.click("ui:tags", false)

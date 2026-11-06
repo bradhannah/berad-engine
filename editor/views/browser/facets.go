@@ -23,18 +23,14 @@ import (
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
-// The facets column (increment 30). Every property things in the project
-// have is a facet, each value with how many things have it. Ticking values
-// narrows the list to a table of what has them: any value ticked within a
-// facet, and every facet ticked. A value nothing left has is not offered, so
-// a tick never leads nowhere.
+// The facets (increment 30). Every property things in the project have is a
+// facet, each value with how many things have it. Ticking values narrows
+// what is listed to what has them: any value ticked within a facet, and
+// every facet ticked. A value nothing left has is not offered, so a tick
+// never leads nowhere. Increment 32 offers them from the bar.
 
-// Sizes of the facets column, in pixels.
+// How the facets are offered.
 const (
-	facetWidth = 240
-	// facetRoom is the least width the list keeps beside the facets; a
-	// narrower window shows no facets, and its search box runs across.
-	facetRoom = 400
 	// facetShown is how many values a facet lists before "N more…".
 	facetShown = 6
 	// checksPerFrame is how many workflows' problems are looked at again
@@ -53,8 +49,8 @@ const (
 	facetProblems = "problems"
 )
 
-// Row IDs in the facets column: a facet's heading, a value as
-// "tick:<facet>:<value>", a facet's "N more…", and a saved view.
+// Row IDs: a facet's heading, a value as "tick:<facet>:<value>", a facet's
+// "N more…", and a saved view.
 const (
 	facetPrefix  = "facet:"
 	tickPrefix   = "tick:"
@@ -86,7 +82,7 @@ type facetDef struct {
 	id, label string
 }
 
-// facetDefs lists the facets in the order the column shows them.
+// facetDefs lists the facets in the order the bar shows them.
 func facetDefs() []facetDef {
 	return []facetDef{
 		{facetKind, "Kind"}, {facetZone, zoneWord}, {facetRuns, "Runs as"}, {facetFolder, "Folder"},
@@ -115,7 +111,7 @@ const zoneWord = "Zone"
 // whether the table lists that kind.
 func kindInfoOf(format string) (kindInfo, bool) {
 	many, listed := map[string]string{
-		zone.FormatName: "Zones", floor.FormatName: "Floors", flow.FormatName: "Workflows", npc.FormatName: "NPCs",
+		zone.FormatName: "Zones", floor.FormatName: floorsLabel, flow.FormatName: "Workflows", npc.FormatName: "NPCs",
 		art.SpriteFormatName: "Sprites", art.PaletteFormatName: "Palettes",
 		artplugin.TemplateFormatName: "Templates", kindSound: "Sounds",
 	}[format]
@@ -456,17 +452,6 @@ func (s *State) tick(facet, value string, on bool) {
 	}
 }
 
-// facetRows lists the facets column: the saved views, then each facet with
-// the values things have, ticked ones always among them.
-func (s *State) facetRows(docs frame.Docs, things []thing, labels facetLabels) []ui.Row {
-	rows := s.viewRows(docs)
-	for _, def := range facetDefs() {
-		rows = append(rows, s.facetGroup(def, s.counts(things, def.id), labels[def.id])...)
-	}
-
-	return rows
-}
-
 // facetGroup lists one facet: its heading, then its values, most common
 // first or in the facet's own order, the first few unless it shows all.
 func (s *State) facetGroup(def facetDef, counts map[string]int, labels map[string]facetValue) []ui.Row {
@@ -551,35 +536,6 @@ func moreRow(facet string, hidden int, fewer bool) []ui.Row {
 	}
 
 	return nil
-}
-
-// updateFacets handles the facets column: a click ticks a value or takes its
-// tick away, shows a facet's other values, or applies a saved view; a
-// heading folds its facet.
-func (s *State) updateFacets(input *ui.Input, ctx *frame.Context) {
-	if s.facets.Rect.Empty() {
-		return
-	}
-	result := s.facets.Update(input)
-	if result.Toggled != "" {
-		s.closed[result.Toggled] = !s.closed[result.Toggled]
-	}
-	chosen := s.facets.Selected
-	s.facets.Selected = ""
-	if !result.Changed {
-		return
-	}
-	s.focus.Set(nil)
-	switch {
-	case strings.HasPrefix(chosen, tickPrefix):
-		facet, value, _ := strings.Cut(strings.TrimPrefix(chosen, tickPrefix), ":")
-		s.tick(facet, value, !s.ticks[facet][value])
-	case strings.HasPrefix(chosen, morePrefix):
-		facet := strings.TrimPrefix(chosen, morePrefix)
-		s.more[facet] = !s.more[facet]
-	case strings.HasPrefix(chosen, viewPrefix):
-		s.applyView(ctx.Docs, strings.TrimPrefix(chosen, viewPrefix))
-	}
 }
 
 // updateChecks keeps a problem check for each workflow, and looks at a few

@@ -30,7 +30,12 @@ func TestTemplatesSectionMakesAndOpensTemplates(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withTemplate(f)
-	section, _ := f.row("section:templates")
+	var section ui.Row
+	for _, row := range f.state.Places(f.ctx.Docs) {
+		if row.ID == "section:templates" {
+			section = row
+		}
+	}
 	if section.Label != "Templates" || section.Detail != "1" || !section.Add {
 		t.Fatalf("the Templates section has a count and a [+]: %+v", section)
 	}

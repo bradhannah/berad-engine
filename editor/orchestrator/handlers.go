@@ -386,6 +386,16 @@ func (o *Orchestrator) sessionUpdate(from *window, message protocol.Message) {
 
 		return
 	}
+	switch update.Topic {
+	case protocol.TopicHomeOpened:
+		return
+	case protocol.TopicHomeKept:
+		if err := o.keepHome(update.Value); err != nil {
+			o.reply(from, message.Request, err.Error(), 0)
+
+			return
+		}
+	}
 	o.session[update.Topic] = update.Value
 	for _, other := range o.windows {
 		if other.id != from.id {
@@ -420,6 +430,7 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 			if open.hello.View == request.View && open.hello.Target == request.Target {
 				o.send(open, mustMessage(protocol.KindAttention, 0, protocol.Attention{Item: request.Item}))
 				o.reply(from, message.Request, "", 0)
+				o.noteOpened(request.Target)
 
 				return
 			}
@@ -435,6 +446,7 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 		o.attentions[launched] = request.Item
 	}
 	o.reply(from, message.Request, "", 0)
+	o.noteOpened(request.Target)
 }
 
 // reply answers a request; an empty reason means success.

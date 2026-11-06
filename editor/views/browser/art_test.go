@@ -64,17 +64,12 @@ func putArtIndex(docs *frametest.Docs, more ...project.Entry) {
 	}, more...), []project.Folder{{Format: art.SpriteFormatName, Path: "Lights"}}))
 }
 
-// rowsIn lists a section's rows as "label/indent".
-func (f *fixture) rowsIn(section string) []string {
+// rowsIn shows a place and lists its rows as "label/indent".
+func (f *fixture) rowsIn(place string) []string {
+	f.state.Show(place)
 	var shown []string
-	inside := false
 	for _, row := range f.state.Rows(f.ctx.Docs) {
-		if row.Section {
-			inside = row.ID == section
-
-			continue
-		}
-		if inside {
+		if !row.Heading {
 			shown = append(shown, row.Label+"/"+string(rune('0'+row.Indent)))
 		}
 	}
@@ -98,59 +93,79 @@ func (f *fixture) status() string {
 	return message
 }
 
-// TestArtSections lists the Settings row first with the tile size, then,
-// after Audio, Sprites with its folders and a [+], and Palettes with one,
-// Default marked.
-// A sprite's tile, the settings and the stand-in sprites are not listed as
-// documents.
-func TestArtSections(t *testing.T) {
+// TestArtPlaces lists Sprites and Palettes among the places, each with how
+// many it holds and a [+]. Sprites shows its folder, and the folder its
+// sprite; Palettes shows Default, marked; Settings shows the tile size. A
+// sprite's tile, the settings and the stand-in sprites are not listed as
+// things. A search finds the sprite by its tag, and Settings by its words.
+func TestArtPlaces(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withArt(f)
-	rows := f.state.Rows(f.ctx.Docs)
-	if first := rows[0]; first.ID != "settings" || first.Label != "Settings" || first.Detail != "Tile size 24" ||
-		first.Icon != ui.IconSettings {
-		t.Fatalf("the Settings row comes first: %+v", first)
-	}
 	if !slices.Contains(f.requests.Subscribed, art.SettingsID()) {
 		t.Fatal("the browser subscribes to the art settings")
 	}
-	sprites, _ := f.row("section:sprites")
-	palettes, _ := f.row("section:palettes")
+	places := map[string]ui.Row{}
+	for _, row := range f.state.Places(f.ctx.Docs) {
+		places[row.ID] = row
+	}
+	sprites, palettes := places["section:sprites"], places["section:palettes"]
 	if sprites.Detail != "1" || !sprites.Add || palettes.Detail != "1" || !palettes.Add {
-		t.Fatalf("Sprites and Palettes have a [+]: %+v %+v", sprites, palettes)
+		t.Fatalf("Sprites and Palettes say how many and have a [+]: %+v %+v", sprites, palettes)
 	}
-	if defaults, _ := f.row(art.DefaultPaletteID().String()); defaults.Detail != "default · read only" {
-		t.Fatalf("Default is marked: %+v", defaults)
+	if got := f.rowsIn("section:sprites"); !slices.Equal(got, []string{"Lights/0"}) {
+		t.Fatalf("Sprites holds its folder: %v", got)
 	}
-	if got := f.rowsIn("section:sprites"); !slices.Equal(got, []string{"Lights/0", "Lantern/1"}) {
-		t.Fatalf("sprites %v", got)
+	if got := f.rowsIn("folder:sprite:Lights"); !slices.Equal(got, []string{"Lantern/0"}) {
+		t.Fatalf("Lights holds Lantern: %v", got)
+	}
+	lantern, _ := f.row(lanternID.String())
+	if lantern.Icon != ui.IconSprite || lantern.Aside != "#light" {
+		t.Fatalf("the sprite's icon and tag: %+v", lantern)
 	}
 	if got := f.rowsIn("section:palettes"); !slices.Equal(got, []string{"Default/0"}) {
 		t.Fatalf("palettes %v", got)
 	}
-	lantern, _ := f.row(lanternID.String())
-	shared, _ := f.row(art.DefaultPaletteID().String())
-	if lantern.Icon != ui.IconSprite || lantern.Aside != "#light" || shared.Icon != ui.IconPalette {
-		t.Fatalf("icons and tags: %+v %+v", lantern, shared)
+	if defaults, _ := f.row(art.DefaultPaletteID().String()); defaults.Detail != "default · read only" ||
+		defaults.Icon != ui.IconPalette {
+		t.Fatalf("Default is marked: %+v", defaults)
+	}
+	f.state.Show("settings")
+	if settings, _ := f.row("settings"); settings.Detail != "Tile size 24" || settings.Icon != ui.IconSettings {
+		t.Fatalf("Settings says the tile size: %+v", settings)
 	}
 	if ui.IconColor(ui.IconSprite) != ui.ColorArt() || ui.IconColor(ui.IconPalette) != ui.ColorArt() {
 		t.Fatal("sprites and palettes share the art colour")
 	}
-	for _, hidden := range []string{lanternTileID.String(), art.SettingsID().String(), art.StandInsID().String()} {
-		if _, listed := f.row(hidden); listed {
-			t.Fatalf("%s is not listed", hidden)
+	for _, place := range []string{"section:sprites", "folder:sprite:Lights", "section:palettes", "section:templates"} {
+		f.state.Show(place)
+		for _, hidden := range []string{lanternTileID.String(), art.SettingsID().String(), art.StandInsID().String()} {
+			if _, listed := f.row(hidden); listed {
+				t.Fatalf("%s is not listed in %s", hidden, place)
+			}
 		}
 	}
 	f.typeInto("search", "#light")
-	if _, ok := f.row("settings"); ok || !slices.Equal(f.rowsIn("section:sprites"), []string{"Lights/0", "Lantern/1"}) {
-		t.Fatalf("a tag search finds the sprite and not the settings: %v", f.rowsIn("section:sprites"))
+	if !f.has("place=Matches") || !slices.Contains(f.matchLabels(), "Lantern") || slices.Contains(f.matchLabels(), "Settings") {
+		t.Fatalf("a tag search finds the sprite and not the settings: %v", f.matchLabels())
 	}
 	f.press("Escape")
 	f.typeInto("search", "tile")
-	if _, ok := f.row("settings"); !ok || len(f.rowsIn("section:sprites")) != 0 {
-		t.Fatalf("searching for tile finds the settings only: %v", f.rowsIn("section:sprites"))
+	if got := f.matchLabels(); !slices.Equal(got, []string{"Settings"}) {
+		t.Fatalf("searching for tile finds the settings only: %v", got)
 	}
+}
+
+// matchLabels lists the things Matches shows, by name.
+func (f *fixture) matchLabels() []string {
+	var labels []string
+	for _, row := range f.state.Rows(f.ctx.Docs) {
+		if !row.Heading {
+			labels = append(labels, row.Label)
+		}
+	}
+
+	return labels
 }
 
 // TestNewSpriteMakesItsTile makes a sprite in the selected folder: first its
@@ -193,7 +208,7 @@ func TestNewSpriteMakesItsTile(t *testing.T) {
 		project.Entry{ID: newSprite, Name: "Sprite 1", Format: art.SpriteFormatName, Folder: "Lights"})
 	creates[1].Succeed(newSprite)
 	f.frame(ui.NewInput(image.Pt(0, 0)))
-	if row, ok := f.state.SelectedRow(); !ok || row.ID != newSprite.String() || row.Indent != 1 {
+	if row, ok := f.state.SelectedRow(f.ctx.Docs); !ok || row.ID != newSprite.String() || !f.has("place=Lights") {
 		t.Fatalf("the new sprite is selected, in Lights: %+v", row)
 	}
 	if !slices.Contains(f.requests.Subscribed, newSprite) {

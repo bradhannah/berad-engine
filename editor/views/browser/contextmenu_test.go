@@ -79,7 +79,7 @@ func TestRightClickOnAFolder(t *testing.T) {
 	f := newFixture(t)
 	withFolders(f)
 	f.rightClick("row:Guards")
-	if row, ok := f.state.SelectedRow(); !ok || row.ID != "folder:workflow:Market/Guards" {
+	if row, ok := f.state.SelectedRow(f.ctx.Docs); !ok || row.ID != "folder:workflow:Market/Guards" {
 		t.Fatalf("a right-click selects the folder: %+v", row)
 	}
 	f.click("menu:new-workflow", false)
@@ -159,7 +159,7 @@ func TestRightClickBelowTheRows(t *testing.T) {
 	f := newFixture(t)
 	f.click("row:Ada Clerk", false)
 	f.rightClickBelow()
-	if _, ok := f.state.SelectedRow(); ok {
+	if _, ok := f.state.SelectedRow(f.ctx.Docs); ok {
 		t.Fatal("a right-click below the rows selects nothing")
 	}
 	if _, ok := f.state.Locate("menu:new-floor", f.ctx.Docs); ok {
@@ -183,7 +183,7 @@ func TestRightClickWaitsForUnsavedChanges(t *testing.T) {
 	if _, ok := f.state.Locate("menu:context-open", f.ctx.Docs); ok {
 		t.Fatal("the menu waits until the unsaved name is dealt with")
 	}
-	if row, ok := f.state.SelectedRow(); !ok || row.Label != "Ada Clerk" {
+	if row, ok := f.state.SelectedRow(f.ctx.Docs); !ok || row.Label != "Ada Clerk" {
 		t.Fatalf("Ada Clerk stays selected while the guard asks: %+v", row)
 	}
 }

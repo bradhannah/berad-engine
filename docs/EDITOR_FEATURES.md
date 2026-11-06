@@ -38,6 +38,8 @@ under consideration), **open** (undecided).
   there are several; the pinned clock sits at its right end; and Watch opens
   beside a Map of its zone, in that Map's tab. Each view runs in a pane of a
   tab. There are no separate windows, and nothing pops out into one.
+  (Rejected: a window process for each view, as the editor ran until
+  increment 12.)
 - **Agreed (2026-11-04):** **the inspector folds.** An Inspector toggle in
   the status bar folds every tab's inspector to a strip at the right edge,
   and clicking the strip opens it again. (Rejected: an inspector floating
@@ -62,8 +64,21 @@ under consideration), **open** (undecided).
   open; the atlas is kept as an idea, with a graph of how things relate,
   for when the strong associations between them are settled.) [Increment
   30](increments/0030-project-facets.md) builds it.
-  (Rejected: a window process for each view, as the editor ran until
-  increment 12.)
+- **Agreed (2026-11-06):** after trying the facets, **the Project is Home,
+  then folders beside what they hold.** Home, at the top left and what the
+  window opens on, lists recent things across every kind, pinned things,
+  what needs attention and saved views; recents and pins are kept per
+  person. A tree of folders on the left holds folders, never things; the
+  main pane shows the folder picked in a view that suits it: pictures for
+  sprites, tiles and palettes; rows with columns for workflows; cards for
+  NPCs and zones; waveforms with loudness for sounds; and a preview, one
+  large with the rest in a strip. The facets become a bar of dropdowns that
+  narrows the tree to the folders holding matches. (Replaced: increment
+  30's facets column, and the table a tick switched to, since a flat table
+  does not scale and a tick changed what the list was. Set aside: a
+  narrowing tree beside the facets, grouping by any facet, and working
+  inside one place at a time.) [Increment
+  32](increments/0032-project-by-folders.md) builds it.
 - **Agreed:** Cmd+W closes the focused pane, and a tab's close box closes its
   tab; Cmd+Q, or closing the project browser's tab or the editor window, asks
   whether the author is done and, if so, closes the editor. With unsaved
