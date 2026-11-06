@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -28,7 +29,7 @@ func (s *State) contentRows(docs frame.Docs, index *project.Index, things []thin
 	kept := s.keptIDs(things)
 	switch s.place {
 	case placeHome:
-		return nil
+		return s.homeRows(docs, index, time.Now())
 	case placeMatches:
 		return s.matchRows(docs, index, things)
 	case sectionWorldState:

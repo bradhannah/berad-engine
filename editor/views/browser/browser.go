@@ -166,6 +166,7 @@ type State struct {
 	// shows; placeBefore is the one picked before narrowing showed Matches,
 	// and wasNarrowed whether it did last frame.
 	places      *ui.List
+	home        homeState
 	barBottom   int
 	place       string
 	placeBefore string
@@ -217,7 +218,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
-		places: ui.NewList("places", placeHome), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
+		places: ui.NewList("places", placeHome), home: newHomeState(), barBottom: 0, place: placeHome,
+		placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
 		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0,
@@ -308,6 +310,9 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.AudioChanged != nil {
 		s.askAudio(ctx)
+	}
+	if update.Session != nil {
+		s.heardHome(update.Session)
 	}
 	if update.Event == nil && update.Snapshot == nil {
 		return
@@ -544,6 +549,10 @@ func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 	}
 	if result.Context {
 		s.rightClicked(result.ContextRow, input.Cursor)
+	}
+	if view, isView := strings.CutPrefix(s.list.Selected, viewPrefix); isView {
+		s.list.Selected = ""
+		s.applyView(ctx.Docs, view)
 	}
 	if result.Activated {
 		s.openRow(ctx)

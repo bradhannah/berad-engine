@@ -42,6 +42,8 @@ const (
 	// IconSignal is the signals workflows send and answer: a dot with
 	// waves going out from it.
 	IconSignal
+	// IconHome is the Project window's Home: a house.
+	IconHome
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -97,7 +99,7 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorLive()
 	case IconSprite, IconPalette, IconTemplate:
 		return ColorArt()
-	case IconPlace:
+	case IconPlace, IconHome:
 		return ColorSelect()
 	case IconNone, IconProject, IconClock, IconSettings:
 	}
@@ -149,7 +151,7 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 		drawFolder(screen, corner, ink)
 	case IconSound:
 		drawSpeaker(screen, left, top, ink)
-	case IconProject, IconClock, IconWatch:
+	case IconProject, IconClock, IconWatch, IconHome:
 		drawWindowIcon(screen, icon, left, top, ink)
 	case IconSprite, IconPalette, IconSettings, IconTemplate:
 		drawArtIcon(screen, icon, left, top, ink)
@@ -227,9 +229,19 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 		drawClock(screen, left, top, ink)
 	case IconWatch:
 		drawEye(screen, left, top, ink)
+	case IconHome:
+		drawHouse(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconSprite,
 		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal:
 	}
+}
+
+// drawHouse draws a house: a roof over a body.
+func drawHouse(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	middle, eaves := left+IconSize/Half, top+IconSize/Half
+	vector.StrokeLine(screen, left+1, eaves, middle, top+1, iconStroke, ink, true)
+	vector.StrokeLine(screen, middle, top+1, left+IconSize-1, eaves, iconStroke, ink, true)
+	vector.StrokeRect(screen, left+iconDot+1, eaves-1, IconSize-Half*(iconDot+1), IconSize/Half, iconStroke, ink, true)
 }
 
 // drawArtIcon draws the icon of a sprite, a palette, the settings or a
@@ -245,7 +257,7 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 	case IconTemplate:
 		drawFrame(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal:
+		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome:
 	}
 }
 

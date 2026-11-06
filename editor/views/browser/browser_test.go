@@ -317,8 +317,8 @@ func TestNPCInspector(t *testing.T) {
 func TestPlacesAndWhatTheyHold(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	if !f.has("place=Home") || len(f.labels()) != 0 {
-		t.Fatalf("the window opens on Home: %v", f.labels())
+	if !f.has("place=Home") || len(f.labels()) != 1 {
+		t.Fatalf("the window opens on Home, with nothing done yet: %v", f.labels())
 	}
 	places := map[string]ui.Row{}
 	order := []string{}

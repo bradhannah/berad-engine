@@ -191,6 +191,8 @@ func (s *State) documentItems(docs frame.Docs, entry project.Entry) []ui.MenuIte
 	remove := ruled(dangerous(contextItem(contextDelete, "Delete", ui.IconNone)))
 	rename.Disabled, remove.Disabled = fixed, fixed
 
+	items = append(items, s.homeItems(entry)...)
+
 	return append(items, rename, contextItem(contextMove, "Move to…", ui.IconNone), remove)
 }
 
@@ -203,11 +205,11 @@ func (s *State) floorItems(docs frame.Docs, entry project.Entry) []ui.MenuItem {
 	addFloor := ruled(contextItem(newFloor, "Add floor", ui.IconFloor))
 	addFloor.Disabled = !inZone
 
-	return []ui.MenuItem{
-		open, addFloor,
+	items := append([]ui.MenuItem{open, addFloor}, s.homeItems(entry)...)
+
+	return append(items,
 		ruled(contextItem(contextRename, "Rename", ui.IconNone)),
-		ruled(dangerous(contextItem(contextDelete, "Delete", ui.IconNone))),
-	}
+		ruled(dangerous(contextItem(contextDelete, "Delete", ui.IconNone))))
 }
 
 // chooseFromContext carries out a right-click menu choice on the selection.
@@ -226,6 +228,12 @@ func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
 		}
 	case contextDelete:
 		s.deleteSelected(ctx)
+	case contextPin:
+		s.togglePin(ctx)
+	case contextReveal:
+		if entry, ok := s.selected(ctx.Docs); ok {
+			s.reveal(ctx.Docs, entry.ID)
+		}
 	default:
 		s.create(ctx, chosen)
 	}

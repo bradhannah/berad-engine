@@ -430,6 +430,29 @@ func placeParent(place string) string {
 	return ""
 }
 
+// reveal shows the place that holds a document and selects it, as Home's
+// rows do; narrowing that would hide it ends.
+func (s *State) reveal(docs frame.Docs, documentID ids.ULID) bool {
+	index := s.index(docs)
+	entry, found := index.Entry(documentID)
+	if !found {
+		return false
+	}
+	place, known := s.placeFor(docs, index, entry)
+	if !known {
+		return false
+	}
+	if s.narrowed() {
+		s.clearNarrowing()
+		s.wasNarrowed = false
+	}
+	s.show(place)
+	s.list.Selected = entry.ID.String()
+	s.list.Reveal(s.list.Selected)
+
+	return true
+}
+
 // locatePlace finds a place by its name, or its triangle.
 func (s *State) locatePlace(kind, label string) (image.Point, bool) {
 	for _, row := range s.places.Rows {
