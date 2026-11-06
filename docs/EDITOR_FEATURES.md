@@ -584,9 +584,16 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   change a typed-in value later, rather than hunt for where it was typed.
   Paths say which they are, as `const.` and `var.`, wherever the two mix,
   and not inside their own lists. An NPC's or a zone's constant can hold a
-  value of its own for each one, edited on its inspector and in a table in
-  the Constants window, which is World state's third part. Markup comes with
+  value of its own for each one, edited on its inspector and in the
+  Constants window, which is World state's third part. Markup comes with
   them. [Increment 33](increments/0033-constants.md) plans them.
+- **Agreed (2026-11-06):** constants follow templates, as values do. A
+  template holds constants beside its values, and every NPC or zone it is
+  on holds them, with a value of its own kept in its own file; an NPC or a
+  zone can also have constants of its own. Long text is written in a sheet
+  over the window, beside a preview of how the game draws it. Making a
+  constant from a typed-in value lists the other places typed the same, to
+  tick and switch, with one Undo for all of it.
 - **Removed (2026-11-06):** Text documents, a placeholder kept to prove the
   text field and picking a place, are gone, as constants will hold a game's
   text ([increment 31](increments/0031-no-text-documents.md)).
