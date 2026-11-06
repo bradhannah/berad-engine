@@ -10,13 +10,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // Version is the protocol version exchanged in the handshake.
-const Version = 16
+const Version = 17
 
 // ErrPayload reports a payload that does not match its message kind.
 var ErrPayload = errors.New("invalid message payload")
@@ -187,6 +188,43 @@ const DefaultClockStart = 8 * 3600
 // ClockStart is the time of day, in seconds, the next preview starts at.
 type ClockStart struct {
 	Seconds float64 `json:"seconds"`
+}
+
+// TopicHomeOpened is the session topic of the documents opened lately, a
+// HomeOpened, newest first. The orchestrator keeps it, for this person
+// alone, in the project's own state; windows only read it.
+const TopicHomeOpened = "home-opened"
+
+// TopicHomeKept is the session topic of what the author keeps in the Project
+// window, a HomeKept: the pinned documents and how each folder is shown. The
+// Project window sets it, and the orchestrator keeps it beside what was
+// opened.
+const TopicHomeKept = "home-kept"
+
+// HomeOpen is a document opened in a tab, and when.
+type HomeOpen struct {
+	Document ids.ULID  `json:"document"`
+	At       time.Time `json:"at"`
+}
+
+// HomeOpened lists the documents opened lately, newest first, each once.
+type HomeOpened struct {
+	Opened []HomeOpen `json:"opened"`
+}
+
+// FolderChoice is how a folder is shown: the view chosen for it and the
+// column its rows are sorted by; empty fields keep the defaults.
+type FolderChoice struct {
+	View       string `json:"view,omitempty"`
+	Sort       string `json:"sort,omitempty"`
+	Descending bool   `json:"descending,omitempty"`
+}
+
+// HomeKept is what the author keeps: the pinned documents, in order, and
+// each folder's choice, by the folder's key.
+type HomeKept struct {
+	Pins    []ids.ULID              `json:"pins"`
+	Folders map[string]FolderChoice `json:"folders"`
 }
 
 // NoticeWindowCrashed is the notice kind for a window that closed unexpectedly.

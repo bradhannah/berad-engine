@@ -74,7 +74,12 @@ func openProject(dir string, logger *slog.Logger) (*project, error) {
 		}
 	}
 
-	return &project{root: root, logger: logger}, nil
+	opened := &project{root: root, logger: logger}
+	if err := opened.ignoreState(); err != nil {
+		return nil, err
+	}
+
+	return opened, nil
 }
 
 func (p *project) close() error {

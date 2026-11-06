@@ -7,6 +7,7 @@ import (
 	"net"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -204,6 +205,30 @@ func TestPayloadsRoundTrip(t *testing.T) {
 		decoded, again, err := check()
 		if err != nil || !reflect.DeepEqual(decoded, again) {
 			t.Fatalf("%s: %+v != %+v (%v)", message.Kind, decoded, again, err)
+		}
+	}
+}
+
+// TestHomeTopicsRoundTrip checks that Home's two session values decode back
+// to what was encoded.
+func TestHomeTopicsRoundTrip(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 11, 6, 9, 30, 0, 0, time.UTC)
+	values := []any{
+		protocol.HomeOpened{Opened: []protocol.HomeOpen{{Document: testID, At: at}}},
+		protocol.HomeKept{
+			Pins:    []ids.ULID{testID},
+			Folders: map[string]protocol.FolderChoice{"workflow:Shops": {View: "rows", Sort: "Changed", Descending: true}},
+		},
+	}
+	for _, value := range values {
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		back := reflect.New(reflect.TypeOf(value))
+		if err := json.Unmarshal(data, back.Interface()); err != nil || !reflect.DeepEqual(back.Elem().Interface(), value) {
+			t.Fatalf("%T: %+v != %+v (%v)", value, back.Elem().Interface(), value, err)
 		}
 	}
 }

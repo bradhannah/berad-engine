@@ -94,6 +94,7 @@ type Orchestrator struct {
 	docs       map[ids.ULID]*documentEntry
 	history    *history
 	session    map[string]json.RawMessage
+	home       homeFile
 	windows    map[ids.ULID]*window
 	subscribed map[ids.ULID]map[ids.ULID]*window
 	recent     map[ids.ULID]*ring
@@ -163,6 +164,7 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		docs:       map[ids.ULID]*documentEntry{},
 		history:    newHistory(cfg.UndoLimit),
 		session:    map[string]json.RawMessage{},
+		home:       newHomeFile(),
 		windows:    map[ids.ULID]*window{},
 		subscribed: map[ids.ULID]map[ids.ULID]*window{},
 		recent:     map[ids.ULID]*ring{},
@@ -197,8 +199,12 @@ func (o *Orchestrator) open() error {
 	if err != nil {
 		return err
 	}
+	if err := o.load(); err != nil {
+		return err
+	}
+	o.loadHome()
 
-	return o.load()
+	return nil
 }
 
 func (o *Orchestrator) load() error {
