@@ -89,3 +89,80 @@ func TestSelectingAnotherNodeAsks(t *testing.T) {
 		t.Fatal("Don't save selects the start and saves nothing")
 	}
 }
+
+// TestInsertValueKeepsTheCaret puts a constant where the caret was in a
+// line typed and saved, though clicking Insert value… took the focus; the
+// field keeps it, so typing goes on after the constant.
+func TestInsertValueKeepsTheCaret(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "Hello there")
+	f.click("ui:param-message")
+	f.keys("Home")
+	f.click("ui:insert-value")
+	f.typeText("greeting")
+	f.click("valuerow:const.npc.shop.greeting")
+	if !f.has("line={const.npc.shop.greeting}Hello there") {
+		t.Fatal("the constant goes where the caret was, not at the end")
+	}
+	f.typeText(" ")
+	if !f.has("line={const.npc.shop.greeting} Hello there") || !f.has("unsaved=1") {
+		t.Fatal("typing goes on after it, all waiting for Save")
+	}
+}
+
+// TestThePreviewReadsTheField reads the line typed and not saved yet, and
+// says what keeps one naming no value from being read.
+func TestThePreviewReadsTheField(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeOnly("param-message", "Back in {const.world.restock_minutes} minutes")
+	if !f.has("reads=Back in 30 minutes") || !f.has("unsaved=1") {
+		t.Fatal("the line as it would read follows what is typed")
+	}
+	f.typeOnly("param-message", "Back in {const.world.restock}")
+	if !f.has("reads-problem=No value is called const.world.restock. Put one in with Insert value…") {
+		t.Fatal("a path naming no value says so where the line would read")
+	}
+}
+
+// TestAConstantChosenAsksBeforeLeaving chooses a constant for a Wait, then
+// clicks the start: the window asks, as for typing, and Don't save leaves
+// the Wait as it was.
+func TestAConstantChosenAsksBeforeLeaving(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindWait)
+	f.withConstants()
+	f.click("ui:constant-duration")
+	f.typeText("restock")
+	f.click("valuerow:const.world.restock_minutes")
+	f.click("node:start:1")
+	f.click("ui:discard-changes")
+	wait, err := f.nth(flow.KindWait, 1).Duration("duration")
+	if !f.has("selected:"+flow.KindStart) || err != nil || !wait.Constant.IsZero() {
+		t.Fatalf("Don't save moves on and leaves the Wait typed: %+v %v", wait, err)
+	}
+}
+
+// TestAConstantChosenSurvivesARebuild chooses a constant for a random
+// choice's first share, then adds an option, which rebuilds the form: the
+// constant is still chosen, and Save keeps it with the new option.
+func TestAConstantChosenSurvivesARebuild(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindRandom)
+	f.withConstants()
+	f.click("ui:constant-options-1")
+	f.typeText("restock")
+	f.click("valuerow:const.world.restock_minutes")
+	f.click("ui:add-option")
+	if !f.has("constant:options-1=const.world.restock_minutes") || !f.has("unsaved=1") {
+		t.Fatal("the constant chosen outlasts the form being rebuilt")
+	}
+	f.click("ui:save")
+	options, err := f.nth(flow.KindRandom, 1).Shares("options")
+	if err != nil || len(options) != 3 || options[0].Constant.Value != restockID {
+		t.Fatalf("Save keeps it beside the new option: %+v %v", options, err)
+	}
+}

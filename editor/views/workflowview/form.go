@@ -120,12 +120,17 @@ type form struct {
 	// bottom is where the last control ends, where the colour rows go.
 	bottom int
 	// slots are where a constant can stand in for each typed-in number,
-	// and makeText makes a constant from words selected in a message.
-	slots    map[string]*numberSlot
-	makeText *ui.Button
-	// words are the words last selected in the message's field, kept as
-	// a click on Make a constant… takes the field's focus.
+	// and makeText makes a constant from words selected in a message;
+	// keptSlots are the constants chosen for numbers and not saved before
+	// the form was rebuilt, by their lasting keys.
+	slots     map[string]*numberSlot
+	keptSlots map[string]flow.ValueRef
+	makeText  *ui.Button
+	// words are the words last selected in the message's field, and caret
+	// where its caret last was, kept as a click on Make a constant… or
+	// Insert value… takes the field's focus.
 	words *selectedWords
+	caret *caretMark
 }
 
 // syncForm keeps the inspector built for the selected node and showing its
@@ -168,11 +173,12 @@ func (s *State) rebuildForm(docs frame.Docs, node flow.Node) map[string]string {
 		return nil
 	}
 	var drafts map[string]string
+	var kept map[string]flow.ValueRef
 	if s.form != nil && s.form.node == node.ID {
-		drafts = s.form.drafts()
+		drafts, kept = s.form.drafts(), s.form.slotDrafts()
 	}
 	s.form = s.buildForm(docs, node)
-	s.form.shape = shape
+	s.form.shape, s.form.keptSlots = shape, kept
 	switch node.Kind {
 	case flow.KindCall:
 		s.form.call = s.newCallPanel(node)
@@ -284,6 +290,33 @@ func (f *form) keyed() map[string]*ui.TextField {
 	return fields
 }
 
+// slotDrafts keeps the constants chosen for numbers and not saved, by their
+// lasting keys.
+func (f *form) slotDrafts() map[string]flow.ValueRef {
+	kept := map[string]flow.ValueRef{}
+	for _, slot := range f.slots {
+		if slot.unsaved() {
+			kept[slot.lasting] = *slot.draft
+		}
+	}
+
+	return kept
+}
+
+// unsavedSlots counts the numbers a constant was chosen for, or gone back to
+// typing, with no Save asked for yet; one with a number typed too counts
+// once.
+func (f *form) unsavedSlots() int {
+	count := 0
+	for _, slot := range f.slots {
+		if slot.unsaved() && !slot.field.Field.Unsaved() {
+			count++
+		}
+	}
+
+	return count
+}
+
 // drafts keeps the unsaved text of each field by its lasting key.
 func (f *form) drafts() map[string]string {
 	kept := map[string]string{}
@@ -340,7 +373,7 @@ func rowCount(node flow.Node) int {
 func newForm(node flow.Node, kind flow.Kind) *form {
 	built := &form{
 		node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, call: nil, remove: nil, bottom: 0,
-		slots: map[string]*numberSlot{}, makeText: nil, words: nil,
+		slots: map[string]*numberSlot{}, keptSlots: nil, makeText: nil, words: nil, caret: nil,
 	}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
@@ -382,8 +415,10 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 			newLaneRows(&made, built.rows, text)
 		case flow.TypeNPC:
 			newIdentityControl(docs, &made)
-		case flow.TypeText, flow.TypeMessage:
-			made.field, made.pick = text("param-"+param.Name, node.Kind == flow.KindNote), insertButton(param.Type)
+		case flow.TypeText:
+			made.field = text("param-"+param.Name, node.Kind == flow.KindNote)
+		case flow.TypeMessage:
+			made.field, made.pick = s.messageField("param-"+param.Name), insertButton(param.Type)
 		case flow.TypeTimeRange:
 			made.from, made.to = text(param.Name+"-from", false), text(param.Name+"-to", false)
 		case flow.TypeTimeRanges:
@@ -672,7 +707,8 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	node, ok := s.selectedNode()
-	if !ok || s.updateSlots(input, ctx, node) || s.updateMakeText(input, ctx, node) {
+	s.trackCaret()
+	if !ok || s.updateSlots(input, node) || s.updateMakeText(input, ctx, node) {
 		return
 	}
 	for index := range s.form.controls {
@@ -814,12 +850,13 @@ func (s *State) Unsaved(frame.Docs) int {
 		return 0
 	}
 
-	return frame.UnsavedFields(s.form.fields()...)
+	return frame.UnsavedFields(s.form.fields()...) + s.form.unsavedSlots()
 }
 
-// Save saves every typed change to the selected node as one changed node: a
-// single command, so one undo step. If a field cannot be read, nothing is
-// saved, that field takes focus and the status says why.
+// Save saves every change to the selected node waiting for Save, typed or
+// chosen, as one changed node: a single command, so one undo step. If a
+// field cannot be read, nothing is saved, that field takes focus and the
+// status says why.
 func (s *State) Save(ctx *frame.Context) bool {
 	if _, local := s.selectedLocal(); local && s.localsActive() {
 		return s.saveLocal(ctx)
@@ -828,27 +865,21 @@ func (s *State) Save(ctx *frame.Context) bool {
 	if !ok || s.form == nil {
 		return true
 	}
-	changed, saving := node, []*ui.TextField{}
-	for _, field := range s.form.fields() {
-		if !field.Field.Unsaved() {
-			continue
-		}
-		next, problem := s.applyField(ctx.Docs, changed, field)
-		if problem != "" {
-			s.focus.Set(field)
-			ctx.Frame.Status(problem)
-
-			return false
-		}
-		changed, saving = next, append(saving, field)
+	changed, saving, read := s.applyFields(ctx, node)
+	if !read {
+		return false
 	}
-	if len(saving) == 0 {
+	changed, slots := s.applySlots(changed)
+	if len(saving) == 0 && len(slots) == 0 {
 		s.focus.Set(nil)
 
 		return true
 	}
 	for _, field := range saving {
 		field.Field.Commit()
+	}
+	for _, slot := range slots {
+		slot.saving = true
 	}
 	data, err := json.Marshal(workflowplugin.ReplaceArgs{Node: changed})
 	if err != nil {
@@ -862,6 +893,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 			for _, field := range saving {
 				field.Field.Failed()
 			}
+			for _, slot := range slots {
+				slot.saving = false
+			}
 			ctx.Frame.Report("")(result, err)
 
 			return
@@ -870,6 +904,44 @@ func (s *State) Save(ctx *frame.Context) bool {
 	})
 
 	return true
+}
+
+// applyFields reads what was typed in each field into the node, returning
+// it with the fields read; or, if one cannot be read, gives that field
+// focus, says why and reports that.
+func (s *State) applyFields(ctx *frame.Context, node flow.Node) (flow.Node, []*ui.TextField, bool) {
+	changed, saving := node, []*ui.TextField{}
+	for _, field := range s.form.fields() {
+		if !field.Field.Unsaved() {
+			continue
+		}
+		next, problem := s.applyField(ctx.Docs, changed, field)
+		if problem != "" {
+			s.focus.Set(field)
+			ctx.Frame.Status(problem)
+
+			return node, nil, false
+		}
+		changed, saving = next, append(saving, field)
+	}
+
+	return changed, saving, true
+}
+
+// applySlots puts each constant chosen for a number, or each number gone
+// back to typing, into the node, returning it with the slots put in.
+func (s *State) applySlots(node flow.Node) (flow.Node, []*numberSlot) {
+	var slots []*numberSlot
+	for _, slot := range s.form.slots {
+		if !slot.unsaved() {
+			continue
+		}
+		if next, ok := withNumberConstant(node, slot.param, slot.option, *slot.draft); ok {
+			node, slots = next, append(slots, slot)
+		}
+	}
+
+	return node, slots
 }
 
 // applyField reads a field's typed value into a node, or says what is wrong
@@ -933,7 +1005,8 @@ func (s *State) formName() string {
 	return s.form.kind.Label
 }
 
-// discardForm drops the selected node's typed changes.
+// discardForm drops the selected node's changes waiting for Save, typed
+// or chosen.
 func (s *State) discardForm() {
 	s.focus.Set(nil)
 	if s.form == nil {
@@ -943,6 +1016,9 @@ func (s *State) discardForm() {
 	}
 	for _, field := range s.form.fields() {
 		field.Field.Revert()
+	}
+	for _, slot := range s.form.slots {
+		slot.draft, slot.saving = nil, false
 	}
 }
 

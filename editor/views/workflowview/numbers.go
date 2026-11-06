@@ -29,16 +29,26 @@ const (
 // numberSlot is where a constant can stand in for a typed-in number, in the
 // inspector: a number's field, or a random choice's option's share. use
 // opens the picker for a constant; clear goes back to the number typed;
-// chip shows the constant standing in.
+// chip shows the constant standing in. A constant chosen, or going back to
+// the number typed, waits for Save as typing does: draft holds it until
+// the node shows it, saving is set once Save has sent it, and lasting
+// names the slot across the form being rebuilt.
 type numberSlot struct {
 	param    string
 	option   int
+	lasting  string
 	field    *ui.TextField
 	use      *ui.Button
 	clear    *ui.Button
 	chip     image.Rectangle
 	constant flow.ValueRef
+	draft    *flow.ValueRef
+	saving   bool
 }
+
+// unsaved reports whether a constant was chosen, or the number typed gone
+// back to, and no Save has been asked for it yet.
+func (n *numberSlot) unsaved() bool { return n.draft != nil && !n.saving }
 
 // slotKey names a slot: its parameter, and an option's number.
 func slotKey(param string, option int) string {
@@ -49,17 +59,23 @@ func slotKey(param string, option int) string {
 	return param + "-" + strconv.Itoa(option+1)
 }
 
-// slotOf returns a slot for a field, made once while the form stands.
-func (s *State) slotOf(param string, option int, field *ui.TextField) *numberSlot {
+// slotOf returns a slot for a field, made once while the form stands, with
+// the constant chosen for it before the form was rebuilt. lasting names it
+// across rebuilds: its parameter, and an option's output.
+func (s *State) slotOf(param string, option int, lasting string, field *ui.TextField) *numberSlot {
 	key := slotKey(param, option)
 	if made, found := s.form.slots[key]; found {
-		made.field = field
+		made.field, made.lasting = field, lasting
 
 		return made
 	}
 	made := &numberSlot{
-		param: param, option: option, field: field, use: ui.NewButton(slotUsePre+key, "◆"),
-		clear: ui.NewButton(slotClearOn+key, "×"), chip: ui.Zero(), constant: flow.NoConstant(),
+		param: param, option: option, lasting: lasting, field: field, use: ui.NewButton(slotUsePre+key, "◆"),
+		clear: ui.NewButton(slotClearOn+key, "×"), chip: ui.Zero(), constant: flow.NoConstant(), draft: nil,
+		saving: false,
+	}
+	if kept, found := s.form.keptSlots[lasting]; found {
+		made.draft = &kept
 	}
 	s.form.slots[key] = made
 
@@ -88,11 +104,11 @@ func (s *State) placeSlots(node flow.Node, made *control) {
 	name := made.param.Name
 	if made.param.Type == flow.TypeTiles || made.param.Type == flow.TypeSeconds {
 		amount, _ := node.Amount(name) //nolint:errcheck // One that can't be read has no constant.
-		s.placeSlot(s.slotOf(name, -1, made.field), amount.Constant)
+		s.placeSlot(s.slotOf(name, -1, name, made.field), amount.Constant)
 	}
 	if made.param.Type == flow.TypeDuration {
 		wait, _ := node.Duration(name) //nolint:errcheck // As above.
-		s.placeSlot(s.slotOf(name, -1, made.field), wait.Constant)
+		s.placeSlot(s.slotOf(name, -1, name, made.field), wait.Constant)
 	}
 	if made.param.Type != flow.TypeShares {
 		return
@@ -103,21 +119,28 @@ func (s *State) placeSlots(node flow.Node, made *control) {
 		if option < len(options) {
 			constant = options[option].Constant
 		}
-		s.placeSlot(s.slotOf(name, option, row.share), constant)
+		s.placeSlot(s.slotOf(name, option, name+"/"+row.port, row.share), constant)
 	}
 }
 
 // placeSlot puts a slot's button at the end of its field, which keeps the
-// rest; or, with a constant standing in, the chip where the field was and ×
-// at its end.
-func (s *State) placeSlot(slot *numberSlot, constant flow.ValueRef) {
-	slot.constant = constant
+// rest; or, with a constant standing in, saved or chosen, the chip where
+// the field was and × at its end. What was chosen stops being a draft once
+// the node shows it.
+func (s *State) placeSlot(slot *numberSlot, saved flow.ValueRef) {
+	if slot.draft != nil && *slot.draft == saved {
+		slot.draft, slot.saving = nil, false
+	}
+	slot.constant = saved
+	if slot.draft != nil {
+		slot.constant = *slot.draft
+	}
 	field := slot.field.Rect
 	if field.Empty() {
 		return
 	}
 	button := image.Rect(field.Max.X-slotButton, field.Min.Y, field.Max.X, field.Max.Y)
-	if constant.IsZero() {
+	if slot.constant.IsZero() {
 		slot.use.Rect = button
 		slot.field.Rect.Max.X = button.Min.X - ui.Half
 
@@ -130,7 +153,7 @@ func (s *State) placeSlot(slot *numberSlot, constant flow.ValueRef) {
 
 // updateSlots opens the picker for a constant, from a slot's button or its
 // chip, or goes back to the number typed; it reports whether it did.
-func (s *State) updateSlots(input *ui.Input, ctx *frame.Context, node flow.Node) bool {
+func (s *State) updateSlots(input *ui.Input, node flow.Node) bool {
 	for _, slot := range s.form.slots {
 		switch {
 		case slot.use.Update(input):
@@ -138,7 +161,7 @@ func (s *State) updateSlots(input *ui.Input, ctx *frame.Context, node flow.Node)
 
 			return true
 		case slot.clear.Update(input):
-			s.setNumberConstant(ctx, node, slot.param, slot.option, flow.NoConstant())
+			s.setSlotDraft(node, slot.param, slot.option, flow.NoConstant())
 
 			return true
 		case input.Pressed && input.Cursor.In(slot.chip):
@@ -166,7 +189,7 @@ func (s *State) openNumberPicker(node flow.Node, slot *numberSlot) {
 	config := valuepicker.Config{
 		Title: "Choose a constant", For: "to stand for this number", Placeholder: "Find a whole-number constant",
 		Empty: "No whole-number constant matches. Make one in World state's Constants window.", Only: "",
-		Kinds: []worldstate.Type{worldstate.TypeInteger}, Start: strconv.Itoa(typedNumber(node, slot.param, slot.option)),
+		Kinds: []worldstate.Type{worldstate.TypeInteger}, Start: strconv.Itoa(s.typedNow(node, slot)),
 		Rail: pickerRail(roleCheck), Selected: selected, Query: "",
 		LastGroup: &s.lastGroup, PickLabel: "Use", PickHint: "uses it", DeclareAs: "Declare and use",
 		DeclareLead: "It is used as soon as it is declared.",
@@ -177,29 +200,75 @@ func (s *State) openNumberPicker(node flow.Node, slot *numberSlot) {
 	}
 }
 
-// setNumberConstant puts a constant in for a typed-in number, or with none
-// goes back to the number typed.
-func (s *State) setNumberConstant(ctx *frame.Context, node flow.Node, param string, option int, ref flow.ValueRef) {
+// setSlotDraft chooses a constant to stand in for a typed-in number, or with
+// none goes back to the number typed: a change that waits for Save, as
+// typing does. A number typed that the node could not keep goes as a
+// constant stands in for it, so Save never stops at a field the constant
+// hides.
+func (s *State) setSlotDraft(node flow.Node, param string, option int, ref flow.ValueRef) {
+	if s.form == nil || s.form.node != node.ID {
+		return
+	}
+	slot, found := s.form.slots[slotKey(param, option)]
+	if !found {
+		return
+	}
+	slot.draft, slot.saving = nil, false
+	if ref != savedConstant(node, param, option) {
+		slot.draft = &ref
+	}
+	if _, fits := typedFits(node, param, slot.field.Field.Value()); !ref.IsZero() && !fits {
+		slot.field.Field.Revert()
+	}
+}
+
+// savedConstant is the constant a node has standing in for one of its
+// numbers, or none.
+func savedConstant(node flow.Node, param string, option int) flow.ValueRef {
 	switch paramType(node, param) {
 	case flow.TypeDuration:
 		if wait, err := node.Duration(param); err == nil {
-			wait.Constant = ref
-			s.saveParam(ctx, node, param, wait)
+			return wait.Constant
 		}
 	case flow.TypeShares:
 		if options, err := node.Shares(param); err == nil && option >= 0 && option < len(options) {
-			options[option].Constant = ref
-			s.saveParam(ctx, node, param, options)
+			return options[option].Constant
 		}
 	case flow.TypeTiles, flow.TypeSeconds:
 		if amount, err := node.Amount(param); err == nil {
-			amount.Constant = ref
-			s.saveParam(ctx, node, param, amount)
+			return amount.Constant
 		}
 	case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort, flow.TypeAnchor,
 		flow.TypeChoice, flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeText, flow.TypeCue, flow.TypeMessage,
 		flow.TypeSignal, flow.TypeNPC, flow.TypeLanes, flow.TypeValue, flow.TypeOperand:
 	}
+
+	return flow.NoConstant()
+}
+
+// typedFits reads a number typed for a parameter, reporting whether the
+// node could keep it: a whole number within the parameter's limits.
+func typedFits(node flow.Node, param, typed string) (int, bool) {
+	number, err := strconv.Atoi(strings.TrimSpace(typed))
+	if err != nil {
+		return 0, false
+	}
+	low, high := flow.Limits(paramType(node, param))
+	if wait, err := node.Duration(param); err == nil && paramType(node, param) == flow.TypeDuration {
+		low, high = flow.WaitLimits(wait)
+	}
+
+	return number, number >= low && number <= high
+}
+
+// typedNow is the number typed for a slot: what its field holds, when the
+// node could keep it, or else the number saved.
+func (s *State) typedNow(node flow.Node, slot *numberSlot) int {
+	if number, fits := typedFits(node, slot.param, slot.field.Field.Value()); fits {
+		return number
+	}
+
+	return typedNumber(node, slot.param, slot.option)
 }
 
 // numberConstantLabel is how a constant standing in for a number reads: its
@@ -217,12 +286,17 @@ func (s *State) numberConstantLabel(docs frame.Docs, ref flow.ValueRef) string {
 	return path + " · " + value
 }
 
-// drawSlots draws each slot's button, or its constant's chip.
+// drawSlots draws each slot's button, or its constant's chip, marked as a
+// field is while what was chosen waits for Save.
 func (s *State) drawSlots(screen *ebiten.Image, docs frame.Docs) {
 	for _, slot := range s.form.slots {
 		slot.use.Draw(screen, s.theme)
 		slot.clear.Draw(screen, s.theme)
 		if slot.chip.Empty() {
+			if slot.unsaved() && !slot.field.Field.Dirty() {
+				ui.DrawUnsavedMark(screen, slot.field.Rect)
+			}
+
 			continue
 		}
 		ui.FillRound(screen, slot.chip, ui.Radius, ui.ColorSelectWash())
@@ -230,6 +304,9 @@ func (s *State) drawSlots(screen *ebiten.Image, docs frame.Docs) {
 		inner := slot.chip.Inset(slotChipPad)
 		s.theme.DrawTextIn(screen, s.theme.FitText(s.numberConstantLabel(docs, slot.constant), inner.Dx()),
 			image.Rect(inner.Min.X, slot.chip.Min.Y, inner.Max.X, slot.chip.Max.Y), ui.ColorInk())
+		if slot.unsaved() {
+			ui.DrawUnsavedMark(screen, slot.chip)
+		}
 	}
 }
 

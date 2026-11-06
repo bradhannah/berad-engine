@@ -30,8 +30,9 @@ func TestLoggingInWatch(t *testing.T) {
 		insertAfter(flow.KindLog, flow.OutputNext, "start:1:next", flow.KindCheckValue+":1"),
 		must("state:selected:log", 300), wait(10), click("ui:param-message"), wait(5), typed("Shopping as "), wait(5),
 		click("ui:insert-value"), must("valuerow:npc.name", 300), click("valuerow:npc.name"),
-		must("state:message=Shopping as {var.npc.name}", 300), must("state:reads=Shopping as Customer", 300), wait(10),
-		shoot(logShot), click("node:start:1"), must("state:selected:start", 60), must("state:selected:log", 3600),
+		must("state:line=Shopping as {var.npc.name}", 300), must("state:reads=Shopping as Customer", 300), wait(10),
+		shoot(logShot), click("ui:save"), must("state:message=Shopping as {var.npc.name}", 300), wait(5),
+		click("node:start:1"), must("state:selected:start", 60), must("state:selected:log", 3600),
 		wait(30), quit(),
 	)
 	clerkScript := script(

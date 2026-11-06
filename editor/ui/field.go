@@ -399,9 +399,16 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 	}
 	w.drawText(area, value)
 	if w.Field.Dirty() && !w.Unmarked {
-		mark := image.Rect(w.Rect.Max.X-unsavedMark-Gap, w.Rect.Min.Y+Gap, w.Rect.Max.X-Gap, w.Rect.Min.Y+Gap+unsavedMark)
-		FillRect(screen, mark, ColorWarn())
+		DrawUnsavedMark(screen, w.Rect)
 	}
+}
+
+// DrawUnsavedMark draws the small red square at the top right of a box that
+// says what it holds is not saved yet: a field's draft, or a choice that
+// waits for Save as typing does.
+func DrawUnsavedMark(screen *ebiten.Image, box image.Rectangle) {
+	mark := image.Rect(box.Max.X-unsavedMark-Gap, box.Min.Y+Gap, box.Max.X-Gap, box.Min.Y+Gap+unsavedMark)
+	FillRect(screen, mark, ColorWarn())
 }
 
 // drawText draws the text with the selection under it and the caret, or the

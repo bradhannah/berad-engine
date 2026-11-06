@@ -19,8 +19,9 @@ const freshBread = "Fresh bread, [i]still warm[/i]!"
 // window. World state's Constants window lists the greeting, opens it in
 // the sheet on the default and switches to the clerk's own, and refuses to
 // delete the serving time the clerk's day waits for. In a new workflow, a
-// Wait makes a constant from its typed-in minutes and uses it in the other
-// Wait typed the same. Previewed, the clerk says her own greeting.
+// Wait makes a constant from its typed-in minutes, saved with Save, and
+// uses it in the other Wait typed the same. Previewed, the clerk says her
+// own greeting.
 func TestConstants(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -59,7 +60,8 @@ func TestConstants(t *testing.T) {
 		click("ui:constant-duration"), wait(5), typed("tide_minutes"), must("declare:const.world.tide_minutes", 300),
 		click("declare:const.world.tide_minutes"), wait(5), click("ui:picker-declare"),
 		must("state:constant:duration=const.world.tide_minutes", 300), must("state:others=1", 600), wait(10),
-		shoot(othersShot), click("ui:other-1"), wait(5), click("ui:other-use"), wait(10),
+		shoot(othersShot), click("ui:other-1"), wait(5), click("ui:other-use"), wait(10), must("state:unsaved=1", 60),
+		click("ui:save"), must("state:unsaved=0", 300), wait(5),
 		click(waitNode+":1"), must("state:constant:duration=const.world.tide_minutes", 300), wait(10),
 		shoot(waitShot), quit(),
 	)

@@ -38,7 +38,8 @@ func (f *fixture) withConstants() {
 }
 
 // TestASayReadsAConstant puts the shop's greeting in a Say's line from the
-// picker, as const.npc.shop.greeting, which reads as Ada's own greeting.
+// picker, as const.npc.shop.greeting, which reads as Ada's own greeting
+// and waits for Save, as typing does.
 func TestASayReadsAConstant(t *testing.T) {
 	t.Parallel()
 	f := withNode(t, flow.KindSay)
@@ -47,8 +48,15 @@ func TestASayReadsAConstant(t *testing.T) {
 	f.click("ui:insert-value")
 	f.typeText("greeting")
 	f.click("valuerow:const.npc.shop.greeting")
-	if !f.has("message=Hello! {const.npc.shop.greeting}") || !f.has("reads=Hello! Fresh off the boat!") {
+	if !f.has("line=Hello! {const.npc.shop.greeting}") || !f.has("reads=Hello! Fresh off the boat!") {
 		t.Fatal("a constant stands in a line by its path, and reads as Ada's own, without its markup")
+	}
+	if !f.has("unsaved=1") || !f.has("message=Hello! ") {
+		t.Fatal("what Insert value… puts in the line waits for Save")
+	}
+	f.click("ui:save")
+	if !f.has("message=Hello! {const.npc.shop.greeting}") || !f.has("unsaved=0") {
+		t.Fatal("Save keeps it")
 	}
 	f.typeInto("param-message", "Back in {const.world.restock_minutes} minutes.")
 	if !f.has("reads=Back in 30 minutes.") || f.has("problem:"+flow.KindSay+":1") {
@@ -104,8 +112,8 @@ func TestSetValueFromALongConstant(t *testing.T) {
 }
 
 // TestAWaitForAConstant has a Wait's amount stand for the restock time from
-// the picker, which the node then names, goes back to the number typed, and
-// flags a constant outside a number's limits.
+// the picker, which waits for Save and the node then names, goes back to
+// the number typed, and flags a constant outside a number's limits.
 func TestAWaitForAConstant(t *testing.T) {
 	t.Parallel()
 	f := withNode(t, flow.KindWait)
@@ -113,17 +121,25 @@ func TestAWaitForAConstant(t *testing.T) {
 	f.click("ui:constant-duration")
 	f.typeText("restock")
 	f.click("valuerow:const.world.restock_minutes")
-	if !f.has("constant:duration=const.world.restock_minutes") ||
-		!f.has("title:"+flow.KindWait+":1=Wait · const.world.restock_minutes min") {
-		t.Fatalf("the Wait's amount stands for the restock time: %q", f.status())
+	if !f.has("constant:duration=const.world.restock_minutes") || !f.has("unsaved=1") ||
+		!f.has("title:"+flow.KindWait+":1=Wait · 30 min") {
+		t.Fatalf("the constant chosen stands for the amount and waits for Save: %q", f.status())
+	}
+	f.click("ui:save")
+	if !f.has("title:"+flow.KindWait+":1=Wait · const.world.restock_minutes min") || !f.has("unsaved=0") {
+		t.Fatal("once saved, the Wait names it")
 	}
 	wait, err := f.nth(flow.KindWait, 1).Duration("duration")
 	if err != nil || wait.Constant.Value != restockID || wait.Amount != 30 {
 		t.Fatalf("saved with the number typed kept: %+v %v", wait, err)
 	}
 	f.click("ui:typed-duration")
-	if !f.has("constant:duration=") || !f.has("title:"+flow.KindWait+":1=Wait · 30 min") {
-		t.Fatal("× goes back to the number typed")
+	if !f.has("constant:duration=") || !f.has("unsaved=1") {
+		t.Fatal("× goes back to the number typed, waiting for Save")
+	}
+	f.click("ui:save")
+	if !f.has("title:" + flow.KindWait + ":1=Wait · 30 min") {
+		t.Fatal("once saved, the Wait is typed again")
 	}
 	move := withNode(t, flow.KindMove)
 	move.withConstants()
@@ -135,6 +151,7 @@ func TestAWaitForAConstant(t *testing.T) {
 	move.click("ui:constant-tiles")
 	move.typeText("far")
 	move.click("valuerow:const.world.far_walk")
+	move.click("ui:save")
 	if !move.has("problem:" + flow.KindMove + ":1") {
 		t.Fatal("a constant outside a Move's 64 tiles is a problem")
 	}

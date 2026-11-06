@@ -82,29 +82,21 @@ func constantTargets(targets []declareTarget) []declareTarget {
 }
 
 // madeConstant is what happens once a constant is declared from a typed
-// value: it stands in for the number, or replaces the words, and the other
-// places typed the same are looked for.
+// value: it stands in for the number, or replaces the words, waiting for
+// Save as typing does, and the other places typed the same are looked for.
 func (s *State) madeConstant(ctx *frame.Context, node flow.Node, param string, made declaring, ref flow.ValueRef) {
-	if made.text == nil {
-		s.setNumberConstantIn(ctx, node, param, made.option, ref, made.gesture)
-		s.lookForOthers(node, param, made.option, ref, made.target.Path, made.gesture, "")
+	if made.text != nil {
+		s.replaceWords(ctx, node, *made.text, ref)
+		s.lookForOthers(node, param, made, ref, 0)
 
 		return
 	}
-	s.replaceWords(ctx, node, param, *made.text, ref, made.gesture)
-	s.lookForOthers(node, param, -1, ref, made.target.Path, made.gesture, made.text.words)
-}
-
-// setNumberConstantIn puts a constant in for a typed-in number as part of a
-// gesture.
-func (s *State) setNumberConstantIn(ctx *frame.Context, node flow.Node, param string, option int, ref flow.ValueRef,
-	gesture string,
-) {
-	changed, ok := withNumberConstant(node, param, option, ref)
-	if !ok {
-		return
+	number := typedNumber(node, param, made.option)
+	if slot, found := s.form.slots[slotKey(param, made.option)]; found && s.form.node == node.ID {
+		number = s.typedNow(node, slot)
 	}
-	s.command(ctx, workflowplugin.ReplaceEdit, gesture, workflowplugin.ReplaceArgs{Node: changed}, nil)
+	s.setSlotDraft(node, param, made.option, ref)
+	s.lookForOthers(node, param, made, ref, number)
 }
 
 // withNumberConstant returns a node with a constant standing in for one of
@@ -227,32 +219,18 @@ func (s *State) updateMakeText(input *ui.Input, ctx *frame.Context, node flow.No
 }
 
 // replaceWords puts a constant in place of the words it was made from, in
-// a message, as part of a gesture.
-func (s *State) replaceWords(ctx *frame.Context, node flow.Node, param string, words selectedWords, ref flow.ValueRef,
-	gesture string,
-) {
-	saved, err := node.Message()
-	if err != nil {
+// the message's field: a change that waits for Save, as typing does, with
+// the caret after the constant.
+func (s *State) replaceWords(ctx *frame.Context, node flow.Node, words selectedWords, ref flow.ValueRef) {
+	made, has := s.messageControl()
+	if !has || s.form.node != node.ID || words.end > len(words.field) {
 		return
 	}
-	before, problem := s.parseMessage(ctx.Docs, words.field[:words.start], saved)
-	after, laterProblem := s.parseMessage(ctx.Docs, words.field[words.end:], saved)
-	if problem != "" || laterProblem != "" {
-		ctx.Frame.Status(problem + laterProblem)
-
-		return
-	}
-	segments := append(append(before, flow.Segment{Text: "", Ref: &ref}), after...)
-	changed, err := node.WithParam(param, joinSegments(segments))
-	if err != nil {
-		ctx.Frame.Status(err.Error())
-
-		return
-	}
-	if made, has := s.messageControl(); has {
-		made.field.Field.Revert()
-	}
-	s.command(ctx, workflowplugin.ReplaceEdit, gesture, workflowplugin.ReplaceArgs{Node: changed}, nil)
+	token := s.tokenOf(ctx.Docs, ref)
+	field := made.field.Field
+	field.SetDraft(words.field[:words.start] + token + words.field[words.end:])
+	field.Buffer().SetCaret(words.start+len(token), false)
+	s.focus.Set(made.field)
 }
 
 // joinSegments joins text segments side by side into one.
@@ -336,14 +314,16 @@ type otherPlace struct {
 
 // lookForOthers starts looking for the other places typed the same as what
 // a constant was just made from: the same field of the same kind of node,
-// with the same number, or a message with the same words.
-func (s *State) lookForOthers(node flow.Node, param string, option int, ref flow.ValueRef, path, gesture,
-	words string,
-) {
+// with the number typed, or a message with the same words.
+func (s *State) lookForOthers(node flow.Node, param string, made declaring, ref flow.ValueRef, number int) {
 	wait, _ := node.Duration(param) //nolint:errcheck // Only a Wait has one.
+	words, option := "", made.option
+	if made.text != nil {
+		words, option = made.text.words, -1
+	}
 	s.others = &otherPlaces{
-		path: path, gesture: gesture, constant: ref, kind: node.Kind, param: param, option: option, from: node.ID,
-		words: words, number: typedNumber(node, param, option), wait: wait, scanned: false, rows: nil,
+		path: made.target.Path, gesture: made.gesture, constant: ref, kind: node.Kind, param: param, option: option,
+		from: node.ID, words: words, number: number, wait: wait, scanned: false, rows: nil,
 		use: ui.NewButton(otherUseID, "Use it"), skip: ui.NewButton(otherSkipID, "Skip"), rect: ui.Zero(),
 	}
 	s.others.use.Primary = true

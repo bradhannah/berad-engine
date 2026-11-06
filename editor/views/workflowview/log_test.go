@@ -33,8 +33,12 @@ func TestWritingALine(t *testing.T) {
 	f.typeInto("param-message", "Count is ")
 	f.click("ui:insert-value")
 	f.click("valuerow:local.count")
-	if !f.has("message=Count is {local.count}") || !f.has("reads=Count is 0") {
-		t.Fatal("a value inserted after the text reads as its text form")
+	if !f.has("line=Count is {local.count}") || !f.has("reads=Count is 0") || !f.has("unsaved=1") {
+		t.Fatal("a value inserted after the text reads as its text form, and waits for Save")
+	}
+	f.click("ui:save")
+	if !f.has("message=Count is {local.count}") {
+		t.Fatal("Save keeps it")
 	}
 	f.typeInto("param-message", "At {npc.zone} with {local.count}")
 	if !f.has("message=At {var.npc.zone} with {local.count}") || !f.has("reads=At Town with 0") {

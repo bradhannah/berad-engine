@@ -148,12 +148,12 @@ func (v *valueSource) Pick(ctx *frame.Context, option valuepicker.Option) {
 		return
 	}
 	if v.role == roleNumber {
-		v.state.setNumberConstant(ctx, node, v.param, v.option, ref)
+		v.state.setSlotDraft(node, v.param, v.option, ref)
 
 		return
 	}
 	if v.role == roleMakeText && v.words != nil {
-		v.state.replaceWords(ctx, node, v.param, *v.words, ref, v.state.newGesture())
+		v.state.replaceWords(ctx, node, *v.words, ref)
 
 		return
 	}

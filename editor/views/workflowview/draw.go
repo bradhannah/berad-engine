@@ -1173,7 +1173,7 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 // its places and its values as well as the rest.
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
-		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState,
+		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState, s.hasUnsavedState,
 		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {
@@ -1182,6 +1182,14 @@ func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	}
 
 	return s.hasState(state)
+}
+
+// hasUnsavedState answers "unsaved=N", when the inspector holds N changes
+// waiting for Save, typed or chosen.
+func (s *State) hasUnsavedState(state string, docs frame.Docs) (bool, bool) {
+	count, asked := strings.CutPrefix(state, "unsaved=")
+
+	return asked && strconv.Itoa(s.Unsaved(docs)) == count, asked
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
