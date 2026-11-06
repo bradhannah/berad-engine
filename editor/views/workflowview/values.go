@@ -238,8 +238,10 @@ const (
 	// rolePlace is a Go to's place value: a place local.
 	rolePlace
 	// roleNumber is the constant a typed-in number can be: a whole-number
-	// constant, never a value.
+	// constant, never a value; and roleMakeText the text constant words
+	// typed in a message become.
 	roleNumber
+	roleMakeText
 )
 
 func roleOf(kind, param string) valueRole {
@@ -292,7 +294,7 @@ func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef
 func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	found := &options{listed: nil, seen: map[string]bool{}}
 	locals := s.workflow.Locals().Values()
-	if role == roleNumber {
+	if makesConstant(role) {
 		s.constantOptions(found, docs, s.catalog(docs), role, nil)
 
 		return found.listed
@@ -351,7 +353,7 @@ func offersLocal(role valueRole, local worldstate.Declaration) bool {
 		return local.Type == worldstate.TypePlace
 	case roleGive, roleKept:
 		return true
-	case roleWhere, roleNumber:
+	case roleWhere, roleNumber, roleMakeText:
 		return false
 	case roleSet, roleCheck:
 	}
@@ -558,9 +560,7 @@ func declareScopes(role valueRole) []worldstate.Scope {
 		return []worldstate.Scope{worldstate.ScopeLocal}
 	case roleWhere:
 		return []worldstate.Scope{worldstate.ScopeNPC}
-	case roleNumber:
-		return nil
-	case roleSet, roleCheck, roleGive, roleKept:
+	case roleSet, roleCheck, roleGive, roleKept, roleNumber, roleMakeText:
 	}
 
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
@@ -583,7 +583,7 @@ func (s *State) openValueBox(node flow.Node, made *control) {
 		only = worldstate.TypeNPC
 	case rolePlace:
 		only = worldstate.TypePlace
-	case roleSet, roleCheck, roleWhere, roleGive, roleKept, roleNumber:
+	case roleSet, roleCheck, roleWhere, roleGive, roleKept, roleNumber, roleMakeText:
 	}
 	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
 }
@@ -642,12 +642,19 @@ func operandOfValue(kind, param string) string {
 
 // declaring is a value to declare from the picker: where, its type and what
 // it starts at, nil for its type's own; operand is set when it is then
-// chosen as an operand's reference rather than as a value parameter.
+// chosen as an operand's reference rather than as a value parameter. A
+// constant made from a typed-in value has constant set, the random
+// choice's option it stands in for or -1, the gesture its edits share, and
+// for words in a message, the words.
 type declaring struct {
-	target  declareTarget
-	kind    worldstate.Type
-	start   json.RawMessage
-	operand bool
+	target   declareTarget
+	kind     worldstate.Type
+	start    json.RawMessage
+	operand  bool
+	constant bool
+	option   int
+	gesture  string
+	text     *selectedWords
 }
 
 // declareValue declares a value where the picker says, with the groups its
@@ -661,7 +668,11 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 	if !listed {
 		return
 	}
-	change, err := valuetree.Declare(list.Values, target.Scope, target.Parent, target.Name, made.kind)
+	declare := valuetree.Declare
+	if made.constant {
+		declare = valuetree.DeclareConstant
+	}
+	change, err := declare(list.Values, target.Scope, target.Parent, target.Name, made.kind)
 	if err != nil {
 		ctx.Frame.Status(strings.TrimPrefix(err.Error(), valuetree.ErrName.Error()+": "))
 
@@ -676,7 +687,7 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 
 		return
 	}
-	command := protocol.Command{Document: list.Document, Edit: list.Edit, Gesture: "", Args: data}
+	command := protocol.Command{Document: list.Document, Edit: list.Edit, Gesture: made.gesture, Args: data}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)
@@ -689,7 +700,10 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 		current, found := s.currentNode(ctx.Docs, nodeID)
 		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
 		switch {
-		case !found, s.chooseForCall(ctx, current, param, ref), s.insertForLog(ctx, current, ref):
+		case !found:
+		case made.constant:
+			s.madeConstant(ctx, current, param, made, ref)
+		case s.chooseForCall(ctx, current, param, ref), s.insertForLog(ctx, current, ref):
 		case made.operand:
 			s.saveParam(ctx, current, param, flow.RefOperand(ref))
 		default:

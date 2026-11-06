@@ -125,6 +125,10 @@ type Config struct {
 	Empty       string
 	Only        worldstate.Type
 	Kinds       []worldstate.Type
+	// Start is what a declared integer or text starts at, such as the
+	// number typed in the field a constant is made from; "" for its type's
+	// own.
+	Start       string
 	Rail        []RailEntry
 	Selected    string
 	Query       string

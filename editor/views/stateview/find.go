@@ -89,7 +89,8 @@ func (s *State) openFind(ctx *frame.Context, query string) {
 	source := &findSource{state: s, places: nil, targets: nil}
 	config := valuepicker.Config{
 		Title: "Find a value", For: "in World state", Placeholder: "Find a value, or type a new name",
-		Empty: "No value matches. Type a name to declare one.", Only: "", Kinds: nil, Rail: findRail(), Selected: "",
+		Empty: "No value matches. Type a name to declare one.", Only: "", Kinds: nil, Start: "", Rail: findRail(),
+		Selected:  "",
 		Query:     query,
 		LastGroup: &s.lastGroup, PickLabel: "Show", PickHint: "shows it", DeclareAs: "Declare and show",
 		DeclareLead: "It is shown in the tree once declared.",

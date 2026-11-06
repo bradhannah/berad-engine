@@ -311,6 +311,11 @@ func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top i
 	made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	top += ui.ButtonH + rowSpace
 	made.pick.Rect = image.Rect(left, top, left+s.theme.TextWidth(made.pick.Label)+ui.Inset*ui.Half, top+ui.ButtonH)
+	if s.form != nil && s.form.makeText != nil {
+		from := made.pick.Rect.Max.X + ui.Gap
+		s.form.makeText.Rect = image.Rect(from, top, from+s.theme.TextWidth(s.form.makeText.Label)+ui.Inset*ui.Half,
+			top+ui.ButtonH)
+	}
 	top += ui.ButtonH + fieldSpace
 	if node, ok := s.selectedNode(); ok {
 		top += (1 + len(s.wrap(s.sampleLine(docs, node), width))) * ui.LineHeight
@@ -324,6 +329,9 @@ func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top i
 func (s *State) drawMessage(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
 	made.field.Draw(screen)
 	made.pick.Draw(screen, s.theme)
+	if s.form != nil && s.form.makeText != nil {
+		s.form.makeText.Draw(screen, s.theme)
+	}
 	width := made.field.Rect.Dx()
 	top := made.pick.Rect.Max.Y + fieldSpace
 	s.theme.DrawStrong(screen, s.sampleHeading(docs), left, top, ui.ColorInk())

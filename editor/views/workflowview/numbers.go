@@ -157,6 +157,7 @@ func (s *State) updateSlots(input *ui.Input, ctx *frame.Context, node flow.Node)
 func (s *State) openNumberPicker(node flow.Node, slot *numberSlot) {
 	source := &valueSource{
 		state: s, node: node.ID, param: slot.param, role: roleNumber, operand: false, targets: nil, option: slot.option,
+		words: nil,
 	}
 	selected := ""
 	if !slot.constant.IsZero() {
@@ -165,7 +166,8 @@ func (s *State) openNumberPicker(node flow.Node, slot *numberSlot) {
 	config := valuepicker.Config{
 		Title: "Choose a constant", For: "to stand for this number", Placeholder: "Find a whole-number constant",
 		Empty: "No whole-number constant matches. Make one in World state's Constants window.", Only: "",
-		Kinds: []worldstate.Type{worldstate.TypeInteger}, Rail: pickerRail(roleCheck), Selected: selected, Query: "",
+		Kinds: []worldstate.Type{worldstate.TypeInteger}, Start: strconv.Itoa(typedNumber(node, slot.param, slot.option)),
+		Rail: pickerRail(roleCheck), Selected: selected, Query: "",
 		LastGroup: &s.lastGroup, PickLabel: "Use", PickHint: "uses it", DeclareAs: "Declare and use",
 		DeclareLead: "It is used as soon as it is declared.",
 	}

@@ -40,15 +40,19 @@ type valueSource struct {
 	// targets are the declare targets last offered, by their IDs.
 	targets map[string]declareTarget
 	// option is which random choice's option a constant stands in for, or
-	// -1 for any other number, or for a value.
+	// -1 for any other number, or for a value; words are the words
+	// selected in a message a constant is made from.
 	option int
+	words  *selectedWords
 }
 
 // openValuePicker opens the picker for a parameter of a node, with the
 // current choice selected and the search focused.
 func (s *State) openValuePicker(node flow.Node, param, title string, only worldstate.Type, operand bool) {
 	role := roleOf(node.Kind, param)
-	source := &valueSource{state: s, node: node.ID, param: param, role: role, operand: operand, targets: nil, option: -1}
+	source := &valueSource{
+		state: s, node: node.ID, param: param, role: role, operand: operand, targets: nil, option: -1, words: nil,
+	}
 	placeholder, empty := "Find a value, or type a new name", "No value matches. Type a name to declare one."
 	switch {
 	case operand && only == "":
@@ -66,7 +70,7 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 		selected = encodeRef(ref)
 	}
 	config := valuepicker.Config{
-		Title: chooseValueLabel, For: title, Placeholder: placeholder, Empty: empty, Only: only, Kinds: nil,
+		Title: chooseValueLabel, For: title, Placeholder: placeholder, Empty: empty, Only: only, Kinds: nil, Start: "",
 		Rail: pickerRail(source.optionRole()), Selected: selected, Query: "", LastGroup: &s.lastGroup, PickLabel: "Choose",
 		PickHint: "picks", DeclareAs: "Declare and choose", DeclareLead: "It is chosen as soon as it is declared.",
 	}
@@ -116,6 +120,9 @@ func builtInDetail(option valueOption) string {
 func (v *valueSource) Targets(docs frame.Docs, query string) []valuepicker.Target {
 	v.targets = map[string]declareTarget{}
 	found := v.state.declareTargets(docs, v.optionRole(), query)
+	if makesConstant(v.role) {
+		found = constantTargets(v.state.declareTargets(docs, roleCheck, query))
+	}
 	targets := make([]valuepicker.Target, 0, len(found))
 	for _, target := range found {
 		heading := target.Path
@@ -145,6 +152,11 @@ func (v *valueSource) Pick(ctx *frame.Context, option valuepicker.Option) {
 
 		return
 	}
+	if v.role == roleMakeText && v.words != nil {
+		v.state.replaceWords(ctx, node, v.param, *v.words, ref, v.state.newGesture())
+
+		return
+	}
 	if v.state.chooseForCall(ctx, node, v.param, ref) || v.state.insertForLog(ctx, node, ref) {
 		return
 	}
@@ -164,7 +176,14 @@ func (v *valueSource) Declare(ctx *frame.Context, target valuepicker.Target, kin
 	if !found {
 		return
 	}
-	v.state.declareValue(ctx, v.node, v.param, declaring{target: declared, kind: kind, start: start, operand: v.operand})
+	made := declaring{
+		target: declared, kind: kind, start: start, operand: v.operand, constant: false, option: -1, gesture: "",
+		text: nil,
+	}
+	if makesConstant(v.role) {
+		made.constant, made.option, made.gesture, made.text = true, v.option, v.state.newGesture(), v.words
+	}
+	v.state.declareValue(ctx, v.node, v.param, made)
 }
 
 // whereLabel names where a value can be declared: its scope, one NPC's
@@ -192,7 +211,7 @@ func pickerRail(role valueRole) []valuepicker.RailEntry {
 		return []valuepicker.RailEntry{everywhere, local}
 	case roleWhere:
 		return []valuepicker.RailEntry{everywhere, {ID: string(worldstate.ScopeNPC), Label: "The NPC it finds"}}
-	case roleSet, roleCheck, roleGive, roleKept, roleNumber:
+	case roleSet, roleCheck, roleGive, roleKept, roleNumber, roleMakeText:
 	}
 	rail := []valuepicker.RailEntry{
 		everywhere, local, {ID: string(worldstate.ScopeNPC), Label: "This NPC"},

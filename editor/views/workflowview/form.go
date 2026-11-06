@@ -119,8 +119,13 @@ type form struct {
 	remove *ui.Button
 	// bottom is where the last control ends, where the colour rows go.
 	bottom int
-	// slots are where a constant can stand in for each typed-in number.
-	slots map[string]*numberSlot
+	// slots are where a constant can stand in for each typed-in number,
+	// and makeText makes a constant from words selected in a message.
+	slots    map[string]*numberSlot
+	makeText *ui.Button
+	// words are the words last selected in the message's field, kept as
+	// a click on Make a constant… takes the field's focus.
+	words *selectedWords
 }
 
 // syncForm keeps the inspector built for the selected node and showing its
@@ -330,17 +335,28 @@ func rowCount(node flow.Node) int {
 	}
 }
 
-// buildForm makes a control for each of a node's parameters.
-func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
-	kind, _ := flow.KindOf(node.Kind)
+// newForm returns a node's form before its controls: with Delete node but
+// for a Start, and Make a constant… for a message.
+func newForm(node flow.Node, kind flow.Kind) *form {
 	built := &form{
 		node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, call: nil, remove: nil, bottom: 0,
-		slots: map[string]*numberSlot{},
+		slots: map[string]*numberSlot{}, makeText: nil, words: nil,
 	}
-	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
 	}
+	if hasMessage(node.Kind) {
+		built.makeText = ui.NewButton(makeTextID, "Make a constant…")
+	}
+
+	return built
+}
+
+// buildForm makes a control for each of a node's parameters.
+func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
+	kind, _ := flow.KindOf(node.Kind)
+	built := newForm(node, kind)
+	s.focus = ui.Focus{}
 	text := func(id string, multiline bool) *ui.TextField {
 		field := ui.NewTextField(id, textedit.NewField("", multiline, maxTextField), multiline, s.theme)
 		s.focus.Register(field)
@@ -656,7 +672,7 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	node, ok := s.selectedNode()
-	if !ok || s.updateSlots(input, ctx, node) {
+	if !ok || s.updateSlots(input, ctx, node) || s.updateMakeText(input, ctx, node) {
 		return
 	}
 	for index := range s.form.controls {

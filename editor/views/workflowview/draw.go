@@ -100,6 +100,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	s.drawOthers(screen)
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -1131,6 +1132,9 @@ const locateState = "state"
 // input: the guard's dialog, the map picker's dialog or the value picker;
 // states are still the window's own. It reports whether one was open.
 func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Point, bool, bool) {
+	if point, found := s.locateOthers(value); found && kind == "ui" {
+		return point, true, true
+	}
 	switch {
 	case s.guard.Active():
 		point, found := s.guard.Locate(value, s.size)
@@ -1170,6 +1174,7 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
 		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState,
+		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {
 			return found
@@ -1215,6 +1220,9 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	}
 	if s.form.remove != nil && widget == s.form.remove.ID {
 		return ui.Center(s.form.remove.Rect), true
+	}
+	if s.form.makeText != nil && widget == s.form.makeText.ID && !s.form.makeText.Rect.Empty() {
+		return ui.Center(s.form.makeText.Rect), true
 	}
 	if point, found := s.save.Locate(widget); found {
 		return point, true

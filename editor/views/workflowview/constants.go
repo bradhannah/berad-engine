@@ -19,7 +19,7 @@ const problemSetConstant = "A constant never changes. Set value sets a value; ch
 // Check value checks or compares with, what a message or a Call's input
 // reads, and what Find NPC nearby looks for. Set value sets only values.
 func readsConstants(role valueRole) bool {
-	return role == roleCheck || role == roleGive || role == roleWhere || role == roleNumber
+	return role == roleCheck || role == roleGive || role == roleWhere || makesConstant(role)
 }
 
 // constantOptions adds the constants a role reads, listed where values
@@ -56,19 +56,24 @@ func (s *State) constantOptions(found *options, docs frame.Docs, catalog *worlds
 		found.add(scopePlace("WORLD", worldstate.ScopeWorld), refTo(held.Declaration, ids.ULID{}, ids.ULID{}),
 			held.Path, held.Declaration)
 	}
-	if role == roleNumber {
-		found.keepIntegers()
+	if makesConstant(role) {
+		kind := worldstate.TypeInteger
+		if role == roleMakeText {
+			kind = worldstate.TypeText
+		}
+		found.keepType(kind)
 
 		return
 	}
 	s.othersConstants(found, catalog, locals)
 }
 
-// keepIntegers keeps only whole numbers, for a typed-in number's constant.
-func (o *options) keepIntegers() {
+// keepType keeps only constants of one type: whole numbers for a typed-in
+// number's, text for words in a message.
+func (o *options) keepType(kind worldstate.Type) {
 	kept := o.listed[:0]
 	for _, option := range o.listed {
-		if option.declared.Type == worldstate.TypeInteger {
+		if option.declared.Type == kind {
 			kept = append(kept, option)
 		}
 	}
