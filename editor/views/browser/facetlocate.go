@@ -87,7 +87,8 @@ func facetValueKey(labels facetLabels, facet, label string) (string, bool) {
 // hasNarrowingState answers "narrowed", while a search or a tick narrows;
 // "showing=<n> of <m>"; "count:<Facet>/<value>=<n>", how many things a
 // value would list; "ticked:<Facet>/<value>"; "view=<name>", the saved view
-// now ticked; and "place=<name>", the place shown.
+// now ticked; "place=<name>", the place shown; and "pane=<view>", the view
+// the main pane is in.
 func (s *State) hasNarrowingState(state string, docs frame.Docs) (bool, bool) {
 	switch {
 	case state == "narrowed":
@@ -115,6 +116,8 @@ func (s *State) hasNarrowingState(state string, docs frame.Docs) (bool, bool) {
 		return saved && current.Name == strings.TrimPrefix(state, "view="), true
 	case strings.HasPrefix(state, "place="):
 		return s.placeLabel() == strings.TrimPrefix(state, "place="), true
+	case strings.HasPrefix(state, "pane="):
+		return s.viewShown() == strings.TrimPrefix(state, "pane="), true
 	}
 
 	return false, false

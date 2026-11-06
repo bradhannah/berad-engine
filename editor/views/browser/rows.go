@@ -268,7 +268,10 @@ func (s *State) choice() protocol.FolderChoice {
 func (s *State) arrangeRows(docs frame.Docs, index *project.Index, rows []ui.Row, things map[string]thing,
 	width int,
 ) []ui.Row {
-	s.columns = placeColumns(s.columnsOf(docs, index, s.place), width)
+	s.columns = nil
+	if !s.gridShown() {
+		s.columns = placeColumns(s.columnsOf(docs, index, s.place), width)
+	}
 	s.list.Columns = s.list.Columns[:0]
 	for _, each := range s.columns {
 		s.list.Columns = append(s.list.Columns, each.at)

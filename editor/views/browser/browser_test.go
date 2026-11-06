@@ -333,6 +333,7 @@ func TestPlacesAndWhatTheyHold(t *testing.T) {
 		t.Fatalf("Zones says how many and has a [+]: %+v", zones)
 	}
 	f.click("place:Zones", false)
+	f.click("ui:view-rows", false)
 	rows := map[string]ui.Row{}
 	for _, row := range f.state.Rows(f.ctx.Docs) {
 		rows[row.Label] = row

@@ -212,12 +212,16 @@ type HomeOpened struct {
 	Opened []HomeOpen `json:"opened"`
 }
 
-// FolderChoice is how a folder is shown: the view chosen for it and the
-// column its rows are sorted by; empty fields keep the defaults.
+// FolderChoice is how a folder is shown: the view chosen for it, the column
+// its rows are sorted by, and its pictures' size; empty fields keep the
+// defaults.
 type FolderChoice struct {
 	View       string `json:"view,omitempty"`
 	Sort       string `json:"sort,omitempty"`
 	Descending bool   `json:"descending,omitempty"`
+	// Size is Pictures' size: 1 small, 2 medium, 3 large; 0 keeps the
+	// default, medium.
+	Size int `json:"size,omitempty"`
 }
 
 // HomeKept is what the author keeps: the pinned documents, in order, and

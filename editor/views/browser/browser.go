@@ -30,6 +30,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
+	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
 	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
@@ -165,8 +166,14 @@ type State struct {
 	// places is the column of places, and place the one the main pane
 	// shows; placeBefore is the one picked before narrowing showed Matches,
 	// and wasNarrowed whether it did last frame.
-	places      *ui.List
-	columns     []placedColumn
+	places  *ui.List
+	columns []placedColumn
+	// viewBns and sizeBns switch the main pane's view and Pictures' size;
+	// grid lays out Pictures and Cards, and pictures are the sprites drawn.
+	viewBns     map[string]*ui.Button
+	sizeBns     []*ui.Button
+	grid        *tileGrid
+	pictures    map[ids.ULID]*tileart.Picture
 	home        homeState
 	barBottom   int
 	place       string
@@ -219,7 +226,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
-		places: ui.NewList("places", placeHome), columns: nil, home: newHomeState(), barBottom: 0, place: placeHome,
+		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
+		pictures: map[ids.ULID]*tileart.Picture{}, home: newHomeState(), barBottom: 0, place: placeHome,
 		placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
@@ -229,6 +237,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		clearBn:  button("clear", "Clear"), saveViewBn: button("save-view", "Save as a view…"),
 		keepViewBn: button("keep-view", "Save"), deleteViewBn: button("delete-view", "Delete view"),
 	}
+	view.viewBns, view.sizeBns = newViewButtons()
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
@@ -488,6 +497,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	frame.CommonKeys(input, ctx)
 	s.updateChecks(ctx)
+	s.syncPictures(ctx)
 	s.updatePanes(input, ctx)
 	s.followNarrowing()
 	s.buttons(input, ctx)
@@ -504,8 +514,29 @@ func (s *State) updatePanes(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateBar(input, ctx)
 	s.updatePlaces(input, ctx)
+	s.updateHead(input, ctx)
+	if s.gridShown() {
+		s.updateGrid(input, ctx)
+
+		return
+	}
 	s.updateHeader(input, ctx)
 	s.updateList(input, ctx)
+}
+
+// updateGrid handles the tiles of Pictures and Cards: a click selects, a
+// double-click opens, and a right-click opens a tile's menu.
+func (s *State) updateGrid(input *ui.Input, ctx *frame.Context) {
+	result := s.grid.update(input, &s.list.Selected)
+	if result.Changed {
+		s.focus.Set(nil)
+	}
+	if result.Context {
+		s.rightClicked(result.ContextRow, input.Cursor)
+	}
+	if result.Activated {
+		s.openRow(ctx)
+	}
 }
 
 // sync keeps the inspector showing what is selected.
@@ -1292,6 +1323,9 @@ func (s *State) locateRow(kind, label string, docs frame.Docs) (image.Point, boo
 			if row.Label != label || row.Heading {
 				continue
 			}
+			if s.gridShown() {
+				return s.grid.locate(row.ID)
+			}
 			s.list.Reveal(row.ID)
 			if kind == toggleKind {
 				return s.list.LocateToggle(row.ID)
@@ -1349,7 +1383,7 @@ func (s *State) allButtons() []*ui.Button {
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
 		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap, s.loop.choose, s.loop.open,
 		s.audio.open, s.clearBn, s.saveViewBn, s.keepViewBn, s.deleteViewBn,
-	}, append(s.tagBns, s.facetButtons()...)...)
+	}, append(append(s.tagBns, s.facetButtons()...), s.viewButtons()...)...)
 }
 
 // locateInDialog finds a dialog button, or a dialog list row by its name,
@@ -1388,8 +1422,13 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
 	s.newMenu.Draw(screen, s.theme)
 	s.drawBar(screen)
-	s.drawHeadings(screen)
-	s.list.Draw(screen, s.theme)
+	s.drawHead(screen)
+	if s.gridShown() {
+		s.drawPictures(screen, docs)
+	} else {
+		s.drawHeadings(screen)
+		s.list.Draw(screen, s.theme)
+	}
 	s.drawInspector(screen, docs)
 	s.drawDropdown(screen)
 	s.menu.Draw(screen, s.theme)

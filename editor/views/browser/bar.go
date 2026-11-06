@@ -84,7 +84,8 @@ func (s *State) layoutPanes(docs frame.Docs, content image.Rectangle) {
 	left := s.layoutPlaces(docs, index, counted, content)
 	bar := image.Rect(left, toolbarHeight, content.Max.X, toolbarHeight+barHeight)
 	s.barBottom = s.layoutBar(docs, bar, labels)
-	s.list.Rect = image.Rect(left, s.barBottom, content.Max.X, content.Max.Y)
+	headBottom := s.layoutHead(s.barBottom, content.Max.X)
+	s.list.Rect = image.Rect(left, headBottom, content.Max.X, content.Max.Y)
 	byID := make(map[string]thing, len(things))
 	for _, found := range things {
 		byID[found.row.ID] = found
@@ -92,6 +93,9 @@ func (s *State) layoutPanes(docs frame.Docs, content image.Rectangle) {
 	s.list.Rows = s.arrangeRows(docs, index, s.contentRows(docs, index, things, counted), byID, s.list.Rect.Dx())
 	if len(s.columns) > 0 {
 		s.list.Rect.Min.Y += headerHeight
+	}
+	if s.gridShown() {
+		s.grid.layout(s.list.Rows, s.list.Rect, s.pictureTile())
 	}
 	s.layoutDropdown(things, labels)
 }

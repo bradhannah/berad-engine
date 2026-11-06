@@ -159,7 +159,7 @@ func (s *State) looseFloors(docs frame.Docs) map[ids.ULID]bool {
 // saying how many of all it holds.
 func (s *State) placeRows(docs frame.Docs, index *project.Index, counted placeCounts) []ui.Row {
 	narrowed := s.narrowed()
-	rows := []ui.Row{placeRow(placeHome, "Home", ui.IconProject, "")}
+	rows := []ui.Row{placeRow(placeHome, "Home", ui.IconHome, "")}
 	if narrowed {
 		rows = append(rows, placeRow(placeMatches, "Matches", ui.IconFolder, strconv.Itoa(counted.kept[placeMatches])))
 	}
