@@ -1,5 +1,5 @@
-// Package valueform is the inspector for one declaration, shared by the
-// World state window and a workflow's local values: a value's name, type,
+// Package valueform is the inspector for one declaration, shared by
+// World state's Values window and a workflow's local values: a value's name, type,
 // choices, limits, default and description, or a group's or template's name
 // and description. The name can be dotted, as quests.dragon_slain, where the
 // window allows groups. Buttons apply at once; typed fields wait for Save or

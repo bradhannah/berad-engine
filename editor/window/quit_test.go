@@ -18,11 +18,11 @@ func TestQuitDialogNamesUnsavedChanges(t *testing.T) {
 	}
 	unsaved := quitDialog(protocol.QuitAsk{Windows: 1, Unsaved: []protocol.UnsavedWindow{
 		{Window: ids.ULID{}, View: "browser", Name: "NPC 1", Count: 2},
-		{Window: ids.ULID{}, View: "text", Name: "", Count: 1},
+		{Window: ids.ULID{}, View: "workflow", Name: "", Count: 1},
 	}})
 	text := strings.Join(unsaved.Lines, "\n")
 	if unsaved.Buttons[0].ID != quitSave || unsaved.Buttons[1].ID != quitDiscard || len(unsaved.Buttons) != 3 ||
-		!strings.Contains(text, "NPC 1 · 2 changes") || !strings.Contains(text, "a text tab · 1 change") ||
+		!strings.Contains(text, "NPC 1 · 2 changes") || !strings.Contains(text, "a workflow tab · 1 change") ||
 		unsaved.Lines[0] != "Every tab will close." {
 		t.Fatalf("unsaved %q", text)
 	}

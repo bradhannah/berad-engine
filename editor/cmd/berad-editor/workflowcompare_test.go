@@ -18,7 +18,7 @@ func TestWorkflowComparesWithAnotherValue(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "workflow-compare.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),

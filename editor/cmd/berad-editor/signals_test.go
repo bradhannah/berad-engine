@@ -10,15 +10,15 @@ import (
 // TestTheBellInterruptsTheClerk previews the sample and watches the clerk:
 // the customer rings the bell at the counter, the clerk handles shop.bell_rung
 // from the customer at once, saying Just a moment!, and Watch's log has
-// both. Deleting the clerk's receiver then flags the customer's Send as a
-// broken signal call.
+// both. The receiver's signal box opens the signal picker. Deleting the
+// clerk's receiver then flags the customer's Send as a broken signal call.
 func TestTheBellInterruptsTheClerk(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	watchShot, brokenShot := shotPath(t, "signal-watch.png"), shotPath(t, "signal-broken.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Clerk's day"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Customer shops"), must("state:tabs:3", 600), must("state:tab-tint:Clerk's day=green", 60),
 		must("state:tab-tint:Customer shops=amber", 60), doubleClick("row:Sample zone"),
 		must("state:tabs:4", 600), quitWhenAlone(),
@@ -26,7 +26,9 @@ func TestTheBellInterruptsTheClerk(t *testing.T) {
 	clerkScript := script(
 		must("state:loaded", 900), must("state:nodes:25", 60), wait(1500), click("ui:zoom-fit"), wait(10),
 		click("node:"+flow.KindOnSignal+":1"),
-		wait(5), shoot(shotPath(t, "signal-select.png")), click("ui:delete-node"), wait(10),
+		wait(5), shoot(shotPath(t, "signal-select.png")), click("ui:pick-signal"), must("state:signal-picker", 60),
+		must("signalrow:shop.out_of_stock", 60), wait(10), shoot(shotPath(t, "signal-picker.png")), wait(10), keys("Escape"),
+		wait(5), click("ui:delete-node"), wait(10),
 		shoot(shotPath(t, "signal-deleted.png")), must("state:nodes:24", 300), wait(600), quit(),
 	)
 	broken := "Broken signal call: Clerk's behaviour doesn't answer shop.bell_rung. Give it an On signal for it."

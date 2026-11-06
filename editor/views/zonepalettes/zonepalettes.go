@@ -345,7 +345,7 @@ func menuItem(id, label string, icon ui.Icon, disabled bool) ui.MenuItem {
 
 // openMenu opens the list's menu under a button.
 func (l *List) openMenu(items []ui.MenuItem, under image.Rectangle) {
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: l.window}
+	window := frame.AboveStatus(l.window)
 	l.menu.Items = items
 	l.menu.Width = min(ui.MenuWidth(items, l.theme), window.Dx()-ui.Half*ui.Inset)
 	l.menu.Open(under, window)

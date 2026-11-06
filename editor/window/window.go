@@ -30,7 +30,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/playview"
 	"github.com/bradhannah/berad-engine/editor/views/stateview"
 	"github.com/bradhannah/berad-engine/editor/views/templateview"
-	"github.com/bradhannah/berad-engine/editor/views/textview"
 	"github.com/bradhannah/berad-engine/editor/views/watchview"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -102,9 +101,9 @@ func Run(args Args, registry *plugin.Registry) error {
 // orchestrator asks to show the windows it opens.
 func connect(ctx context.Context, args Args, registry *plugin.Registry, hosts bool) (*client.Client, error) {
 	switch args.View {
-	case mapview.ViewName, browser.ViewName, textview.ViewName, workflowview.ViewName, watchview.ViewName,
+	case mapview.ViewName, browser.ViewName, workflowview.ViewName, watchview.ViewName,
 		clockview.ViewName, audioview.ViewName, pixelview.ViewName, paletteview.ViewName, stateview.ViewName,
-		playview.ViewName, templateview.ViewName:
+		stateview.SignalsViewName, playview.ViewName, templateview.ViewName:
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownView, args.View)
 	}
@@ -123,8 +122,8 @@ func connect(ctx context.Context, args Args, registry *plugin.Registry, hosts bo
 }
 
 // undoGroup is the undo list a window shares: views of one map, of one
-// workflow, or of one sprite share one (D3); the Audio window, of which there
-// is one, has its own.
+// workflow, or of one sprite share one (D3), as World state's Values and
+// Signals do; the Audio window, of which there is one, has its own.
 func undoGroup(args Args) string {
 	switch args.View {
 	case mapview.ViewName:
@@ -139,7 +138,7 @@ func undoGroup(args Args) string {
 		return paletteview.UndoGroup(args.Target)
 	case templateview.ViewName:
 		return templateview.UndoGroup(args.Target)
-	case stateview.ViewName:
+	case stateview.ViewName, stateview.SignalsViewName:
 		return stateview.ViewName
 	}
 
@@ -155,8 +154,6 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return audioview.New(window, theme)
 	case clockview.ViewName:
 		return clockview.New(theme)
-	case textview.ViewName:
-		return textview.New(window, args.Target, theme)
 	case workflowview.ViewName:
 		return workflowview.New(window, args.Target, theme)
 	case watchview.ViewName:
@@ -169,6 +166,8 @@ func newView(args Args, window ids.ULID, theme *ui.Theme) frame.View {
 		return templateview.New(window, args.Target, theme)
 	case stateview.ViewName:
 		return stateview.New(window, args.Target, theme)
+	case stateview.SignalsViewName:
+		return stateview.NewSignals(window, args.Target, theme)
 	case playview.ViewName:
 		return playview.New(window, theme)
 	default:

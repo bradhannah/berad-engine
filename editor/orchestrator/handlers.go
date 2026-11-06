@@ -209,6 +209,9 @@ func (o *Orchestrator) applyEdit(
 	}
 	entry.info.Revision = revision
 	entry.dirty = entry.info.Path != ""
+	if !isIndex(documentID) {
+		o.stamp(entry)
+	}
 	o.history.noteWrite(origin.group, documentID, applied.Touched, o.seq)
 	o.broadcast(documentID, protocol.Event{
 		Document: documentID, Revision: revision, Edit: editName, Args: args, Origin: origin.id, Request: request,

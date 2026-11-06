@@ -75,6 +75,13 @@ type host struct {
 	// the tab with a title, for input scripts.
 	tabs    func() int
 	tabTint func(title string) string
+	// visible is the host's part of the window. While the inspector is
+	// folded the view lays out and draws on wide, wider than visible by
+	// all but the folded strip, so its inspector falls past the edge;
+	// stripHover is set while the pointer is on the strip.
+	visible    image.Point
+	wide       *ebiten.Image
+	stripHover bool
 }
 
 func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Theme, shownIn *paneSurface) *host {
@@ -82,13 +89,13 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
 			Docs: nil, Requests: nil, Sounds: nil, Soundscape: nil, Files: nil, Clipboard: nil,
-			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil,
+			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil, InspectorFolded: false,
 		},
 		surface: shownIn, script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
-		shot:       "", frames: 0, title: "", started: false,
+		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
 		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil,
 	}
@@ -125,7 +132,9 @@ func (h *host) Update() error {
 	} else {
 		input = h.surface.Input(h.view.Focused())
 	}
-	h.frame.UpdateStatus(&input, h.ctx.Size)
+	h.frame.UpdateStatus(&input, h.visible)
+	h.updateFolded(&input)
+	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
 	h.windowKeys(&input)
 	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
@@ -530,9 +539,10 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 	}
 }
 
-// Draw renders the view, the status bar and, once, a screenshot if asked for.
+// Draw renders the view, its inspector or the folded strip, the status bar
+// and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
-	h.view.Draw(screen, h.conn)
+	h.drawView(screen)
 	h.frame.DrawStatus(screen, h.theme)
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
@@ -551,7 +561,57 @@ func (h *host) Draw(screen *ebiten.Image) {
 
 // Layout uses the window's real size, one screen pixel per pixel.
 func (h *host) Layout(outsideWidth, outsideHeight int) (int, int) {
-	h.ctx.Size = image.Pt(outsideWidth, outsideHeight)
+	h.visible = image.Pt(outsideWidth, outsideHeight)
+	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
 
 	return outsideWidth, outsideHeight
+}
+
+// folded reports whether the inspector is folded to its strip.
+func (h *host) folded() bool { return !h.frame.ShowInspector.On }
+
+// viewSize is the size the view lays out for: the host's part of the window,
+// widened while the inspector is folded so it falls past the edge.
+func (h *host) viewSize() image.Point {
+	if !h.folded() {
+		return h.visible
+	}
+
+	return h.visible.Add(image.Pt(frame.InspectorWidth-frame.FoldedWidth, 0))
+}
+
+// updateFolded keeps the pointer on the folded strip from the view, which
+// has its inspector under it, and opens the inspector on a click there.
+func (h *host) updateFolded(input *ui.Input) {
+	h.stripHover = false
+	if !h.folded() || !input.Cursor.In(frame.Folded(h.visible)) {
+		return
+	}
+	h.stripHover = true
+	if input.Pressed {
+		h.frame.ShowInspector.On = true
+	}
+	input.ClearPointer()
+	input.WheelX, input.WheelY = 0, 0
+}
+
+// drawView draws the view. While the inspector is folded the view draws on
+// a wider image, of which the window shows the part left of the strip.
+func (h *host) drawView(screen *ebiten.Image) {
+	if !h.folded() {
+		h.view.Draw(screen, h.conn)
+
+		return
+	}
+	size := h.viewSize()
+	if h.wide == nil || h.wide.Bounds().Size() != size {
+		if h.wide != nil {
+			h.wide.Deallocate()
+		}
+		h.wide = ebiten.NewImage(size.X, size.Y)
+	}
+	h.wide.Clear()
+	h.view.Draw(h.wide, h.conn)
+	screen.DrawImage(h.wide, nil)
+	frame.DrawFolded(screen, h.theme, h.stripHover)
 }

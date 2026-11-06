@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
@@ -63,6 +64,9 @@ type Entry struct {
 	// Kind is the document's kind within its format, such as a workflow's
 	// kind, as model.KindOf gives it; "" for a format with no kinds.
 	Kind string `json:"kind,omitempty"`
+	// Changed is when the document's content last changed, to the day at
+	// least; zero when not known.
+	Changed time.Time `json:"changed,omitzero"`
 }
 
 // Index lists a project's documents, ordered by ID, and the folders of each
@@ -214,6 +218,9 @@ type DocumentArgs struct {
 	Data json.RawMessage `json:"data,omitempty"`
 	// Layout is the document's layout, for documents that keep one (D17).
 	Layout json.RawMessage `json:"layout,omitempty"`
+	// Changed is when the document last changed, which the orchestrator
+	// adds: now for a new document, and as it was for a deleted one.
+	Changed time.Time `json:"changed,omitzero"`
 }
 
 // RenameArgs renames a document.
@@ -257,7 +264,7 @@ func (Create) Apply(document model.Document, args json.RawMessage) (model.Applie
 	}
 	entry := Entry{
 		ID: created.ID, Name: created.Name, Format: created.Format, Folder: created.Folder,
-		Tags: slices.Clone(created.Tags), Kind: created.Kind,
+		Tags: slices.Clone(created.Tags), Kind: created.Kind, Changed: created.Changed,
 	}
 	index.entries = slices.Insert(index.entries, position, entry)
 
@@ -347,7 +354,7 @@ func Plugin() plugin.Plugin {
 	return plugin.Plugin{
 		Name:      PluginName,
 		Documents: []model.DocumentType{{Format: Format(), Decode: Decode, Layout: nil, Prepare: nil}},
-		Edits:     []model.EditKind{Create{}, Delete{}, Rename{}, Move{}, FolderChange{}, Retag{}},
+		Edits:     []model.EditKind{Create{}, Delete{}, Rename{}, Move{}, FolderChange{}, Retag{}, Touch{}},
 		Required:  nil,
 	}
 }

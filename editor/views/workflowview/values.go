@@ -697,7 +697,7 @@ func declaredWhere(scope worldstate.Scope) string {
 		return "Local values, with no node selected"
 	}
 
-	return "the World state window"
+	return "World state's Values window"
 }
 
 // operandDeclaration returns the declaration an operand follows, if its
@@ -1025,9 +1025,9 @@ func kindProblem(node flow.Node, ref flow.ValueRef, declared worldstate.Declarat
 	case !flow.CanCompare(compare, declared.Type):
 		return "A " + declared.Type.Label() + " cannot be compared that way. Choose a comparison it takes."
 	case compare == flow.CompareMax && declared.Max == nil:
-		return "It has no maximum to be at. Give it one in the World state window."
+		return "It has no maximum to be at. Give it one in World state's Values window."
 	case compare == flow.CompareMin && declared.Min == nil:
-		return "It has no minimum to be at. Give it one in the World state window."
+		return "It has no minimum to be at. Give it one in World state's Values window."
 	}
 
 	return ""

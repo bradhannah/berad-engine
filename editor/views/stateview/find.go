@@ -383,7 +383,13 @@ func (s *State) nameToType() {
 	name.Field.SelectFrom(strings.LastIndex(name.Field.Value(), ".") + 1)
 }
 
-// layoutFind places Find a value at the right of the add buttons.
+// layoutFind places Find a value at the right of the add buttons, in the
+// Values window only.
 func (s *State) layoutFind(right int) {
+	if s.part != PartValues {
+		s.findButton.Rect = image.Rect(0, 0, 0, 0)
+
+		return
+	}
 	s.findButton.Rect = image.Rect(right-findWidth, headerTop, right, headerTop+ui.ButtonH)
 }

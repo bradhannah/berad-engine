@@ -398,3 +398,37 @@ func TestBackLineLegsMoveByHand(t *testing.T) {
 		t.Fatalf("the legs keep their offsets when a node moves: %v", moved)
 	}
 }
+
+// TestBackLinesClearOnlyWhatIsInTheirWay loops a Wait back to the first one,
+// then puts a third Wait under the loop: far below it, the line stays where
+// it was; where the line runs, the line goes under it.
+func TestBackLinesClearOnlyWhatIsInTheirWay(t *testing.T) {
+	t.Parallel()
+	workflow := graph(t, map[byte]string{2: flow.KindWait, 3: flow.KindWait, 4: flow.KindWait}, [][3]any{
+		{byte(1), flow.OutputNext, byte(2)}, {byte(2), flow.OutputNext, byte(3)}, {byte(3), flow.OutputNext, byte(2)},
+	})
+	laid, _ := arranged(t, workflow)
+	back := routeKey{from: testID(3), output: flow.OutputNext}
+	place := func(y int) []image.Point {
+		t.Helper()
+		x := (laid[testID(2)].rect.Min.X + laid[testID(3)].rect.Max.X) / 2
+		if _, err := workflow.Move(map[ids.ULID]flow.Box{testID(4): {X: x, Y: y, W: 0, H: 0}}); err != nil {
+			t.Fatal(err)
+		}
+
+		return routes(workflow, shapes(workflow, plainNotes))[back]
+	}
+	far := place(laid[testID(3)].rect.Max.Y + 600)
+	if _, err := workflow.Move(map[ids.ULID]flow.Box{testID(4): {X: -2000, Y: 0, W: 0, H: 0}}); err != nil {
+		t.Fatal(err)
+	}
+	alone := routes(workflow, shapes(workflow, plainNotes))[back]
+	if !slices.Equal(far, alone) {
+		t.Fatalf("a node far below leaves the line where it is: %v, not %v", far, alone)
+	}
+	run := alone[2].Y
+	crossed := place(run - nodeHeight/2)
+	if crossed[2].Y <= run+nodeHeight/2 {
+		t.Fatalf("a node where the line runs puts it under the node: %v from %v", crossed, alone)
+	}
+}

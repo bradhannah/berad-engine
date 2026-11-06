@@ -14,16 +14,25 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// TestWorldStateDeclaresValues opens the World state window from the
-// project browser, adds a world value, names it into a new group and makes
-// it a list of choices: the saved world state holds world.quests.mood. The
-// sample's NPCs and their shop template are in the tree.
+// TestWorldStateDeclaresValues opens World state's Values and Signals from
+// the project browser. Values adds a world value, names it into a new group
+// and makes it a list of choices: the saved world state holds
+// world.quests.mood. The sample's NPCs and their shop template are in its
+// tree, and its signals in Signals', which adds one more.
 func TestWorldStateDeclaresValues(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	shot := shotPath(t, "world-state.png")
-	browserScript := script(must("row:World state", 600), wait(5), doubleClick("row:World state"), quitWhenAlone())
+	shot, signalsShot, projectShot := shotPath(t, "world-state.png"), shotPath(t, "world-signals.png"),
+		shotPath(t, "world-state-section.png")
+	browserScript := script(
+		must("row:Values", 600), wait(5), click("row:Signals"), wait(10), shoot(projectShot), doubleClick("row:Values"), must("state:tabs:2", 600), wait(30),
+		doubleClick("row:Signals"), quitWhenAlone(),
+	)
+	signalsScript := script(
+		must("state:loaded", 600), must("row:shop.bell_rung", 600), must("state:adds=adds at the top of Signals", 60),
+		click("ui:add-signal"), must("state:selected=signal", 300), wait(30), shoot(signalsShot), wait(10), quit(),
+	)
 	stateScript := script(
 		must("state:loaded", 600), must("row:npc.shop.waiting", 600), wait(5), click("ui:add-value"),
 		must("state:selected=world.value", 300), wait(5), click("ui:value-name"), keys("Cmd+A", "Backspace"),
@@ -31,7 +40,9 @@ func TestWorldStateDeclaresValues(t *testing.T) {
 		click("ui:value-type-choice"), must("state:value=world.quests.mood:choice:first", 300), wait(30),
 		shoot(shot), wait(10), quit(),
 	)
-	runEditor(t, binary, project, scripts{"browser": {browserScript}, "world-state": {stateScript}})
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "world-state": {stateScript}, "world-signals": {signalsScript},
+	})
 	noCrashes(t, project)
 	saved := readEnvelope(t, project, "world-states/*.json")
 	decoded, err := stateplugin.Decode(saved.Data)
@@ -44,7 +55,10 @@ func TestWorldStateDeclaresValues(t *testing.T) {
 	if saved.ID != worldstate.ID() || !found || !held || mood.Type != worldstate.TypeChoice || len(mood.Choices) != 2 {
 		t.Fatalf("the world state was saved as %+v", values.Values())
 	}
-	t.Logf("screenshot: %s", shot)
+	if _, added := decoded.(*stateplugin.Document).State.SignalAt("signal"); !added {
+		t.Fatalf("Signals added a signal at the top: %+v", decoded.(*stateplugin.Document).State.Signals)
+	}
+	t.Logf("screenshots: %s %s %s", projectShot, shot, signalsShot)
 }
 
 // TestValueNodesInAWorkflow builds a Set value and a Check value in a real
@@ -59,7 +73,7 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 	setShot, checkShot, localShot := shotPath(t, "set-value.png"), shotPath(t, "check-value.png"),
 		shotPath(t, "locals.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5),
@@ -103,7 +117,7 @@ func TestValueNodesInAWorkflow(t *testing.T) {
 }
 
 // TestShopkeeperServesACustomer builds a shop in the editor's windows
-// alone. The World state window makes a stall template and applies it to
+// alone. World state's Values window makes a stall template and applies it to
 // two new NPCs. The customer's workflow looks for an NPC whose
 // npc.stall.busy is 1 within two tiles: found, it stops queueing; none, it
 // queues. The clerk's looks for a queueing customer within two tiles and is
@@ -136,7 +150,7 @@ func TestShopkeeperServesACustomer(t *testing.T) {
 		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 1"), wait(5),
 		click("ui:use"), wait(30),
 		click("ui:new-npc"), wait(30), click("ui:choose-behaviour"), wait(10), click("row:Workflow 2"), wait(5),
-		click("ui:use"), wait(30), doubleClick("row:World state"), quitWhenAlone(),
+		click("ui:use"), wait(30), doubleClick("row:Values"), quitWhenAlone(),
 	)
 	stateScript := script(
 		must("state:loaded", 600), must("row:npc.npc_1", 3600), must("row:npc.npc_2", 3600), wait(5),

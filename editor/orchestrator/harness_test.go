@@ -15,7 +15,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
@@ -33,7 +32,7 @@ func TestMain(m *testing.M) {
 func newRegistry(t testing.TB) *plugin.Registry {
 	t.Helper()
 	registry, err := plugin.NewRegistry(
-		project.Plugin(), tilefloor.Plugin(), zone.Plugin(), textdoc.Plugin(), workflow.Plugin(), npc.Plugin(),
+		project.Plugin(), tilefloor.Plugin(), zone.Plugin(), notePlugin(), workflow.Plugin(), npc.Plugin(),
 	)
 	if err != nil {
 		t.Fatal(err)

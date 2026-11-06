@@ -60,6 +60,21 @@ func in(declared worldstate.Declaration, parent ids.ULID) worldstate.Declaration
 // the guards template, and the market is a zone.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+
+	return fixtureOf(t, stateview.New)
+}
+
+// signalsFixture is newFixture's project in the Signals window.
+func signalsFixture(t *testing.T) *fixture {
+	t.Helper()
+
+	return fixtureOf(t, stateview.NewSignals)
+}
+
+// fixtureOf is newFixture's project in a World state window that opens with
+// one part.
+func fixtureOf(t *testing.T, open func(window, document ids.ULID, theme *ui.Theme) *stateview.State) *fixture {
+	t.Helper()
 	theme, err := ui.NewTheme()
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +111,7 @@ func newFixture(t *testing.T) *fixture {
 		{ID: marketID, Name: "Market", Format: zone.FormatName},
 	}))
 	ctx := frametest.Context(docs, requests, image.Pt(1400, 900))
-	f := &fixture{t: t, state: stateview.New(frametest.ID(99), worldstate.ID(), theme), docs: docs,
+	f := &fixture{t: t, state: open(frametest.ID(99), worldstate.ID(), theme), docs: docs,
 		requests: requests, ctx: ctx, registry: registry, applied: 0, nextID: 60}
 	f.state.Start(ctx)
 	f.frame(ui.NewInput(image.Pt(0, 0)))

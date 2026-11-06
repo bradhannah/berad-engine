@@ -6,6 +6,7 @@ package signals
 import (
 	"cmp"
 	"slices"
+	"strconv"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
@@ -106,6 +107,21 @@ func Uses(docs frame.Docs) map[ids.ULID][]Use {
 	}
 
 	return uses
+}
+
+// Counted says how often a signal is sent and answered, as "sent 1 ·
+// answered 2".
+func Counted(uses []Use) string {
+	sent, answered := 0, 0
+	for _, use := range uses {
+		if use.Kind == flow.KindSendSignal {
+			sent++
+		} else {
+			answered++
+		}
+	}
+
+	return "sent " + strconv.Itoa(sent) + " · answered " + strconv.Itoa(answered)
 }
 
 // Answered reports whether any use of a signal answers it, and Sent whether

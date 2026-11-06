@@ -19,7 +19,7 @@ func TestShowingThePlayer(t *testing.T) {
 	nodesShot, speechShot, shakeShot := shotPath(t, "show-nodes.png"), shotPath(t, "show-speech.png"),
 		shotPath(t, "show-shake.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	customerScript := script(
@@ -29,8 +29,9 @@ func TestShowingThePlayer(t *testing.T) {
 		addNode(flow.KindShowMessage), must("state:selected:"+flow.KindShowMessage, 300), click("ui:param-message"),
 		wait(5), typed("A customer arrives."), keys("Enter"), must("state:message=A customer arrives.", 300),
 		click("ui:"+flow.ParamAway+"-"+flow.AwayClosed), wait(5), click("ui:"+flow.ParamCarry+"-"+flow.CarryWhenDone),
-		wait(5), addNode(flow.KindShake), must("state:selected:"+flow.KindShake, 300), wait(10), shoot(nodesShot),
-		wait(30), quit(),
+		wait(5), addNode(flow.KindShake), must("state:selected:"+flow.KindShake, 300), wait(10),
+		drag("port:"+flow.KindShake+":last:"+flow.OutputNext, "node:"+flow.KindCheckValue+":1"), wait(10),
+		drag("port:start:1:next", "node:"+flow.KindSay+":last"), wait(10), shoot(nodesShot), wait(30), quit(),
 	)
 	mapScript := script(
 		must("state:loaded", 600), wait(900), keys("P"), click("cell:3,1"), must("state:previewing", 300),

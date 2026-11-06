@@ -50,7 +50,7 @@ empty folder: `make demo DEMO_PROJECT=.cache/demo-<name>`. `local.mk` is
 never committed; it holds what belongs to one computer, such as where its
 game's project is.
 
-- **Project browser:** create zones, floors and text documents; rename in the
+- **Project browser:** create zones, floors, workflows, NPCs and art; rename in the
   inspector (Enter or the Rename button saves); delete with a where-used check;
   reorder floors; double-click or Enter opens.
 - **Map:** tools on the left (`G` ground, `W` walls, `O` doors, stairs

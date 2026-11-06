@@ -93,6 +93,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.values != nil {
 		s.drawValuePicker(screen, docs)
 	}
+	if s.signalPick != nil {
+		s.signalPick.picker.Draw(screen, s.screen())
+	}
 	s.drawZones(screen, docs)
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
@@ -153,7 +156,9 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	for _, nodeID := range order {
 		s.drawPorts(area, s.shapes[nodeID])
 		s.drawEntries(area, s.shapes[nodeID])
+		s.drawLooseTag(area, s.shapes[nodeID])
 	}
+	s.drawCrossings(area)
 	if selected, ok := s.shapes[s.selected]; ok {
 		ui.StrokeRound(area, s.screenRect(selected.rect).Inset(-selectGap), ui.Radius+selectGap, selectWidth,
 			ui.ColorSelect())
@@ -171,8 +176,8 @@ func (s *State) screenRect(rect image.Rectangle) image.Rectangle {
 }
 
 // drawEntries draws a node's entry dots: filled for each link coming in, and
-// the hollow spare for the next one, washed blue while a link being drawn is
-// over a node that can take it.
+// the hollow spare for the next one, ringed red on a node nothing links to,
+// washed blue while a link being drawn is over a node that can take it.
 func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 	if !takesEntries(drawn.node.Kind) {
 		return
@@ -187,6 +192,9 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 	}
 	centre := s.toScreen(drawn.spare)
 	fill, ring := ui.ColorBackground(), ui.ColorInk()
+	if s.loose(drawn) {
+		ring = ui.ColorWarn()
+	}
 	if s.link != nil && s.linkTarget() == drawn.node.ID {
 		fill, ring = ui.ColorSelectWash(), ui.ColorSelect()
 	}
@@ -195,13 +203,13 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 }
 
 // drawPorts draws each output's port: filled when connected, hollow with
-// where the flow goes instead when not.
+// where the flow goes instead when not, red on a node nothing links to.
 func (s *State) drawPorts(area *ebiten.Image, from shape) {
 	for _, out := range from.ports {
 		centre := s.toScreen(out.at)
 		key := routeKey{from: from.node.ID, output: out.output.Name}
 		_, linked := from.node.Next[out.output.Name]
-		fill, ring := ui.ColorBackground(), ui.ColorInk()
+		fill, ring, label := ui.ColorBackground(), ui.ColorInk(), ui.ColorMuted()
 		if coloured, ok := s.outcomeTint(key); ok {
 			ring = coloured.ink
 		}
@@ -210,6 +218,8 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 			fill, ring = ui.ColorSelect(), ui.ColorSelect()
 		case linked:
 			fill = ring
+		case s.loose(from):
+			ring, label = ui.ColorWarn(), ui.ColorWarn()
 		}
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
@@ -217,7 +227,7 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 			continue
 		}
 		labelY := centre.Y - ui.LabelSize/ui.Half - ui.Half
-		s.theme.DrawSmall(area, s.endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, ui.ColorMuted())
+		s.theme.DrawSmall(area, s.endsAt(from.node, out.output.Name), centre.X+freeLabelGap, labelY, label)
 	}
 }
 
@@ -615,6 +625,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasWarningState(state); handled {
 		return found, true
 	}
+	if found, handled := s.hasCrossingState(state); handled {
+		return found, true
+	}
 	if state == "legend" {
 		return s.legend.On, true
 	}
@@ -734,7 +747,7 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		if unit := unitOf(made.param.Type); unit != "" {
 			s.drawUnit(screen, made.field, unit)
 		}
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeSignal, flow.TypeNPC:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeNPC:
 		s.drawChoices(screen, made, node)
 	case flow.TypeLanes:
 		s.drawLanes(screen, made)
@@ -750,8 +763,8 @@ func (s *State) drawControl(screen *ebiten.Image, docs frame.Docs, made *control
 		s.drawAnchor(screen, docs, made, node, left)
 	case flow.TypeCue:
 		s.drawCue(screen, made, node)
-	case flow.TypeValue:
-		s.drawValue(screen, docs, made, node)
+	case flow.TypeValue, flow.TypeSignal:
+		s.drawBoxed(screen, docs, made, node)
 	case flow.TypeOperand:
 		s.drawOperand(screen, docs, made, node, left)
 	case flow.TypeMessage:
@@ -1063,9 +1076,20 @@ func (s *State) locatePort(value string) (image.Point, bool) {
 	return out.at, found
 }
 
-// nthNode finds "<kind>:<n>", the nth node of a kind in creation order.
+// nthNode finds "<kind>:<n>", the nth node of a kind in creation order, or
+// "<kind>:last", the newest.
 func (s *State) nthNode(value string) (shape, bool) {
 	kind, number, _ := strings.Cut(value, ":")
+	if number == lastNode && s.workflow != nil {
+		last, found := noShape(), false
+		for _, node := range s.workflow.Nodes() {
+			if node.Kind == kind {
+				last, found = s.shapes[node.ID], true
+			}
+		}
+
+		return last, found
+	}
 	wanted, err := strconv.Atoi(number)
 	if err != nil || s.workflow == nil {
 		return noShape(), false
@@ -1081,6 +1105,9 @@ func (s *State) nthNode(value string) (shape, bool) {
 
 	return noShape(), false
 }
+
+// lastNode names the newest node of a kind in "<kind>:last".
+const lastNode = "last"
 
 // locateState is the locate kind that asks after a state, not a part.
 const locateState = "state"
@@ -1100,6 +1127,10 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 		return point, found, true
 	case s.values != nil && kind != locateState:
 		point, found := s.locateInPicker(docs, kind, value)
+
+		return point, found, true
+	case s.signalPick != nil && kind != locateState:
+		point, found := s.locateInSignalPicker(kind, value)
 
 		return point, found, true
 	case s.places != nil && kind != locateState:
@@ -1255,6 +1286,8 @@ func (s *State) hasState(state string) bool {
 		return ok && node.Kind == strings.TrimPrefix(state, "selected:")
 	case state == "picking":
 		return s.picker.Picking()
+	case state == "signal-picker":
+		return s.signalPick != nil
 	case state == "destination":
 		node, ok := s.selectedNode()
 		destination, err := node.Anchor("destination")

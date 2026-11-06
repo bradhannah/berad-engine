@@ -96,7 +96,7 @@ func TestAudioWindowAddsAndEditsSounds(t *testing.T) {
 	browserShot, dialogShot := shotPath(t, "audio-browser.png"), shotPath(t, "audio-dialog.png")
 	cueShot, recordingsShot := shotPath(t, "audio-cue.png"), shotPath(t, "audio-recordings.png")
 	browserScript := script(
-		must("row:Notes", 600), must("section:audio", 600), wait(5), click("ui:new-sound"),
+		must("row:Sample zone", 600), must("section:audio", 600), wait(5), click("ui:new-sound"),
 		must("row:Door knock", 1800), wait(5), click("row:Door knock"), wait(10),
 		shoot(browserShot), quitWhenAlone(),
 	)

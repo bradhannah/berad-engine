@@ -198,14 +198,14 @@ func savedOperand(node flow.Node, name string) json.RawMessage {
 // or an operand's "pick-<param>", or a cue's "cue".
 func (made control) isBox(widget string) bool {
 	switch made.param.Type {
-	case flow.TypeValue, flow.TypeOperand:
+	case flow.TypeValue, flow.TypeOperand, flow.TypeSignal:
 		return widget == valueBoxPrefix+made.param.Name
 	case flow.TypeCue:
 		return widget == "cue"
 	case flow.TypeAnchor, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText, flow.TypeTiles,
 		flow.TypeSeconds,
 		flow.TypeTimeRange, flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays,
-		flow.TypePort, flow.TypeMessage, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
+		flow.TypePort, flow.TypeMessage, flow.TypeLanes, flow.TypeNPC:
 	}
 
 	return false

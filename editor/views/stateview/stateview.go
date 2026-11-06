@@ -1,11 +1,16 @@
-// Package stateview is the World state window: a project's values as a
-// tree. The world's values come first, in their groups; then for zones and
+// Package stateview is the World state windows, Values and Signals, each
+// opened from the World state section of the Project window.
+//
+// Values shows a project's values as a tree. The world's values come first, in their groups; then for zones and
 // for NPCs their templates, and each zone and NPC with its own values, an
 // NPC's name, and the templates applied to it with what they give it. The
 // inspector edits the selected value, group or template, applies templates
 // to the selected NPC or zone, and says where a value is used. Every change
 // is saved as it is made and undone with Cmd+Z; typed text waits for Enter
 // or Save. Nothing a workflow uses can be deleted.
+//
+// Signals shows the signals workflows send and answer, in their groups,
+// each with how many send and answer it.
 //
 // A workflow's local values are declared on the workflow itself, in its
 // Workflow window.
@@ -33,12 +38,31 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// ViewName is the World state window's view name; its target is the
-// project's world-state document.
-const ViewName = "world-state"
-
-// Layout, in screen pixels.
+// The World state windows' view names; their target is the project's
+// world-state document. Values shows the world's, zones' and NPCs' values,
+// and Signals the signals workflows send and answer. Both are filed under
+// World state on the window bar.
 const (
+	ViewName        = "world-state"
+	SignalsViewName = "world-signals"
+)
+
+// Part is which part of the world state a window shows.
+type Part int
+
+const (
+	// PartValues is the world's values, and each zone's and NPC's.
+	PartValues Part = iota
+	// PartSignals is the signals workflows send and answer.
+	PartSignals
+)
+
+// Layout, in screen pixels. The list keeps a readable width, listWidth, with
+// its details in a column detailAt from its left, and the inspector stands
+// beside it.
+const (
+	listWidth = 720
+	detailAt  = 320
 	addWidth  = 120
 	headerTop = ui.Inset + ui.LineHeight + ui.LineHeight
 	listTop   = headerTop + ui.ButtonH + ui.Gap
@@ -65,8 +89,11 @@ const (
 	stateAdds     = "adds="
 )
 
-// State is the World state window.
+// State is a World state window: its Values or its Signals.
 type State struct {
+	part Part
+	// folded is set while the inspector is folded to its strip.
+	folded   bool
 	window   ids.ULID
 	document ids.ULID
 	theme    *ui.Theme
@@ -121,16 +148,29 @@ type State struct {
 	signal signalFields
 }
 
-// New returns the World state window for the project's world state.
+// New returns the Values window for the project's world state.
 func New(window, document ids.ULID, theme *ui.Theme) *State {
+	return newState(PartValues, window, document, theme)
+}
+
+// NewSignals returns the Signals window for the project's world state.
+func NewSignals(window, document ids.ULID, theme *ui.Theme) *State {
+	return newState(PartSignals, window, document, theme)
+}
+
+// newState returns a World state window showing one part.
+func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 	adds := []*ui.Button{
 		ui.NewButton(addValueID, "Add value"), ui.NewButton(addGroupID, "Add group"),
-		ui.NewButton(addTemplateID, "Add template"), ui.NewButton(addSignalID, "Add signal"),
+		ui.NewButton(addTemplateID, "Add template"),
+	}
+	if part == PartSignals {
+		adds = []*ui.Button{ui.NewButton(addSignalID, "Add signal"), ui.NewButton(addGroupID, "Add group")}
 	}
 	adds[0].Primary = true
 	view := &State{
-		window: window, document: document, theme: theme, size: image.Pt(0, 0),
-		list:  ui.NewList("values", ""),
+		part: part, folded: false, window: window, document: document, theme: theme, size: image.Pt(0, 0),
+		list:  listWithDetails(),
 		shown: tree{rows: nil, items: nil, catalog: nil, signals: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
@@ -153,8 +193,34 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 	return view
 }
 
-// Title is the window title.
-func (s *State) Title(frame.Docs) string { return "World state" }
+// listWithDetails is the tree's list, its details close to the names.
+func listWithDetails() *ui.List {
+	list := ui.NewList("values", "")
+	list.DetailAt = detailAt
+
+	return list
+}
+
+// Title is the window title: World state, then the part it shows.
+func (s *State) Title(frame.Docs) string { return "World state: " + s.heading() }
+
+// heading names the part the window shows.
+func (s *State) heading() string {
+	if s.part == PartSignals {
+		return signalsTopLabel
+	}
+
+	return "Values"
+}
+
+// about says what the window holds, under its heading.
+func (s *State) about() string {
+	if s.part == PartSignals {
+		return "Signals workflows send and answer. Only the zone running hears one; tell another with a value."
+	}
+
+	return "The world's values, and each zone's and NPC's. Templates give many the same values."
+}
 
 // Focused returns the focused text field.
 // While Find is open, it is Find's.
@@ -211,10 +277,27 @@ func (s *State) selected() (item, bool) {
 	return meaning, found && s.list.Selected != ""
 }
 
+// panel is the inspector's area: beside the list when the window has room
+// for both, at the window's right edge when it has not or while the
+// inspector is folded.
+func (s *State) panel() image.Rectangle {
+	edge := frame.Inspector(s.size)
+	if s.folded || edge.Min.X <= listWidth {
+		return edge
+	}
+
+	return image.Rect(listWidth, edge.Min.Y, listWidth+frame.InspectorWidth, edge.Max.Y)
+}
+
+// listRight is where the list and the toolbar above it end.
+func (s *State) listRight() int {
+	return min(frame.Inspector(s.size).Min.X, listWidth) - ui.Inset
+}
+
 func (s *State) layout() {
 	content := frame.Content(s.size)
-	panel := frame.Inspector(s.size)
-	right := panel.Min.X - ui.Inset
+	panel := s.panel()
+	right := s.listRight()
 	for index, button := range s.adds {
 		left := ui.Inset + index*(addWidth+ui.Gap)
 		button.Rect = image.Rect(left, headerTop, left+addWidth, headerTop+ui.ButtonH)
@@ -226,7 +309,7 @@ func (s *State) layout() {
 
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
-	s.size = ctx.Size
+	s.size, s.folded = ctx.Size, ctx.InspectorFolded
 	for _, document := range slices.Concat(valuetree.Documents(ctx.Docs), signals.Documents(ctx.Docs)) {
 		s.subscribe(ctx, document)
 	}
@@ -268,7 +351,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	} else {
 		s.signal.of = ids.ULID{}
 	}
-	if s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd()) {
+	if s.part == PartValues && (s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd())) {
 		s.openFind(ctx, "")
 
 		return
@@ -555,15 +638,19 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	loaded := s.refresh(docs)
 	s.layout()
 	screen.Fill(ui.ColorBackground())
-	s.theme.DrawTitle(screen, "World state", ui.Inset, ui.Inset, ui.ColorInk())
-	s.theme.DrawText(screen, "The world's values, and each zone's and NPC's. Templates give many the same values.",
-		ui.Inset, ui.Inset+ui.LineHeight, ui.ColorMuted())
-	for _, button := range append([]*ui.Button{s.findButton}, s.adds...) {
+	s.theme.DrawTitle(screen, "World state › "+s.heading(), ui.Inset, ui.Inset, ui.ColorInk())
+	s.theme.DrawText(screen, s.about(), ui.Inset, ui.Inset+ui.LineHeight, ui.ColorMuted())
+	for _, button := range s.adds {
 		button.Draw(screen, s.theme)
+	}
+	right := s.listRight()
+	if s.part == PartValues {
+		s.findButton.Draw(screen, s.theme)
+		right = s.findButton.Rect.Min.X
 	}
 	if where := s.addsNote(docs); loaded && where != "" {
 		last := s.adds[len(s.adds)-1].Rect
-		room := s.findButton.Rect.Min.X - last.Max.X - ui.Half*ui.Gap*ui.Half
+		room := right - last.Max.X - ui.Half*ui.Gap*ui.Half
 		s.theme.DrawText(screen, s.theme.FitText(where, room), last.Max.X+ui.Half*ui.Gap,
 			last.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
 	}

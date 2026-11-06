@@ -123,8 +123,9 @@ func lines(workflow *flow.Workflow, shapes map[ids.ULID]shape) []line {
 
 // routes works out every line's corners. A line that goes forward turns in
 // its own lane in the gap after the node it leaves, so no two lines run on
-// top of each other; a line that goes back drops under the nodes between its
-// ends, each at its own depth, and rises into its entry dot in its own lane.
+// top of each other; a line that goes back drops under its own two nodes and
+// any node in its way, each at its own depth, and rises into its entry dot in
+// its own lane.
 // A line moved by hand turns, or runs, where its bend puts it instead. Notes
 // play no part.
 func routes(workflow *flow.Workflow, shapes map[ids.ULID]shape) map[routeKey][]image.Point {
@@ -223,9 +224,9 @@ func routeGap(gap []line, back map[routeKey]backRoute, result map[routeKey][]ima
 	}
 }
 
-// backRoutes works out where each line that goes back runs: below every node
-// between its ends, and below any shorter line that goes back over the same
-// stretch, so shorter lines sit inside longer ones. Lines rising into one
+// backRoutes works out where each line that goes back runs: below its own
+// two nodes and any node in its way, and below any shorter line that goes
+// back over the same stretch, so shorter lines sit inside longer ones. Lines rising into one
 // column's entry dots each get their own lane, the deepest furthest out. A
 // leg moved by hand runs where its bend puts it instead: the drop leg Lane
 // right of the output, the run Depth below it, the end leg End left of the
@@ -256,23 +257,46 @@ func backRoutes(back []line, shapes map[ids.ULID]shape, workflow *flow.Workflow)
 	return result
 }
 
-// clearDepth is how far down a line that goes back runs to clear every node
-// between its ends and every back line already placed over the same stretch.
+// clearDepth is how far down a line that goes back runs: just under its own
+// two nodes and below every back line already placed over the same stretch,
+// so shorter lines sit inside longer ones, then below any node it would
+// otherwise run through. Only nodes in the line's own container count, and
+// only those at the depth it runs at, so a node far below it, or outside its
+// container, leaves it where it is.
 func clearDepth(link line, shapes map[ids.ULID]shape, placed []line, result map[routeKey]backRoute) int {
 	low, high := link.end.X-stub, link.from.X+stub
 	depth := max(link.source.Max.Y, link.target.Max.Y) + stub
-	for _, drawn := range shapes {
-		if drawn.rect.Max.X >= low && drawn.rect.Min.X <= high && runsBehindLines(drawn.node.Kind) {
-			depth = max(depth, drawn.rect.Max.Y+stub)
-		}
-	}
 	for _, other := range placed {
 		if other.end.X-stub <= high && other.from.X+stub >= low {
 			depth = max(depth, result[other.key].depth+laneGap)
 		}
 	}
+	container := shapes[link.key.from].node.Parent
+	for moved := true; moved; {
+		moved = false
+		for nodeID, drawn := range shapes {
+			across := drawn.rect.Max.X >= low && drawn.rect.Min.X <= high
+			through := drawn.rect.Min.Y-stub < depth && depth < drawn.rect.Max.Y+stub
+			if across && through && runsBehindLines(drawn.node.Kind) && within(shapes, nodeID, container) {
+				depth = drawn.rect.Max.Y + stub
+				moved = true
+			}
+		}
+	}
 
 	return depth
+}
+
+// within reports whether a node sits inside a container, however deep;
+// every node sits within the top level.
+func within(shapes map[ids.ULID]shape, nodeID, container ids.ULID) bool {
+	for at := nodeID; !at.IsZero(); at = shapes[at].node.Parent {
+		if shapes[at].node.Parent == container {
+			return true
+		}
+	}
+
+	return container.IsZero()
 }
 
 // riseLanes gives the lines rising into one column's entry dots their own

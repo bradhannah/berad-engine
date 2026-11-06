@@ -22,6 +22,8 @@ type runners struct {
 	key    string
 	asking bool
 	wait   int
+	// known is true once the orchestrator has answered.
+	known bool
 }
 
 // runner is an NPC or a zone that runs the workflow, and the zone it lives
@@ -51,7 +53,7 @@ func (s *State) askRunners(ctx *frame.Context) {
 	ctx.Requests.Runners(s.document, func(uses []protocol.Use, err error) {
 		s.runs.asking = false
 		if err == nil {
-			s.runs.uses = uses
+			s.runs.uses, s.runs.known = uses, true
 		}
 	})
 	for _, use := range s.runs.uses {

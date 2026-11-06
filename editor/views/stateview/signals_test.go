@@ -1,6 +1,7 @@
 package stateview_test
 
 import (
+	"image"
 	"strings"
 	"testing"
 
@@ -8,6 +9,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
+	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -55,7 +58,7 @@ func (f *fixture) withSender(signal worldstate.Signal) {
 // it, and deletes it: once it is used, only after asking, listing where.
 func TestSignalsAreAddedRenamedAndDeleted(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t)
+	f := signalsFixture(t)
 	f.click("ui:add-signal")
 	if !f.has("signals=1") || !f.has("selected=signal") {
 		t.Fatal("Add signal declares one and selects it")
@@ -89,7 +92,7 @@ func TestSignalsAreAddedRenamedAndDeleted(t *testing.T) {
 // the group with what it holds.
 func TestSignalGroups(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t)
+	f := signalsFixture(t)
 	f.rightClick("section:signals")
 	if _, template := f.state.Locate("menu:add-template", f.ctx.Docs); template {
 		t.Fatal("the SIGNALS heading's menu adds signals, not templates")
@@ -129,4 +132,46 @@ func (f *fixture) located(name string) bool {
 	_, found := f.state.Locate(name, f.ctx.Docs)
 
 	return found
+}
+
+// TestValuesAndSignalsAreApart shows the values in the Values window and
+// the signals in the Signals window, each with its own adds, and only
+// Values has Find a value.
+func TestValuesAndSignalsAreApart(t *testing.T) {
+	t.Parallel()
+	values, signals := newFixture(t), signalsFixture(t)
+	for _, found := range []struct {
+		f     *fixture
+		name  string
+		shown bool
+	}{
+		{values, "section:world", true}, {values, "section:signals", false}, {values, "ui:add-value", true},
+		{values, "ui:add-signal", false}, {values, "ui:find-value", true},
+		{signals, "section:signals", true}, {signals, "section:world", false}, {signals, "ui:add-signal", true},
+		{signals, "ui:add-value", false}, {signals, "ui:find-value", false},
+	} {
+		if _, ok := found.f.state.Locate(found.name, found.f.ctx.Docs); ok != found.shown {
+			t.Errorf("%s in %s: located %v", found.name, found.f.state.Title(found.f.ctx.Docs), ok)
+		}
+	}
+	if values.state.Title(values.ctx.Docs) != "World state: Values" ||
+		signals.state.Title(signals.ctx.Docs) != "World state: Signals" {
+		t.Fatal("each window's title names its part")
+	}
+}
+
+// TestTheInspectorStandsBesideTheList shows a selected signal's inspector
+// right after the list on a wide window, and at the right edge, past the
+// window, while the inspector is folded.
+func TestTheInspectorStandsBesideTheList(t *testing.T) {
+	t.Parallel()
+	f := signalsFixture(t)
+	f.click("ui:add-signal")
+	beside := f.at("ui:signal-name")
+	f.ctx.InspectorFolded = true
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	folded := f.at("ui:signal-name")
+	if beside.X > f.ctx.Size.X/2+frame.InspectorWidth || folded.X < f.ctx.Size.X-frame.InspectorWidth {
+		t.Fatalf("the name field is beside the list at %v, and at the edge when folded at %v", beside, folded)
+	}
 }

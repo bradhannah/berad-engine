@@ -7,6 +7,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -23,9 +25,22 @@ func (f *fixture) rightClick(name string) {
 // rightClickBelow presses the right button below the list's last row.
 func (f *fixture) rightClickBelow() {
 	f.t.Helper()
-	input := ui.NewInput(image.Pt(40, 600))
+	input := ui.NewInput(image.Pt(300, 600))
 	input.Secondary = true
 	f.frame(input)
+}
+
+// whereUsed returns the where-used questions the window asked, leaving out
+// those its workflows' problem checks ask, of who calls each workflow.
+func (f *fixture) whereUsed() []func([]protocol.Use, error) {
+	var asked []func([]protocol.Use, error)
+	for index, question := range f.requests.UsesOf {
+		if question.Item != workflowplugin.CallItem {
+			asked = append(asked, f.requests.Uses[index])
+		}
+	}
+
+	return asked
 }
 
 // created decodes the one document a test made.
@@ -142,7 +157,7 @@ func TestRightClickOnAZoneAddsAFloor(t *testing.T) {
 func TestRightClickBelowTheRows(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.rightClickBelow()
 	if _, ok := f.state.SelectedRow(); ok {
 		t.Fatal("a right-click below the rows selects nothing")
@@ -150,9 +165,9 @@ func TestRightClickBelowTheRows(t *testing.T) {
 	if _, ok := f.state.Locate("menu:new-floor", f.ctx.Docs); ok {
 		t.Fatal("no floor without a zone")
 	}
-	f.click("menu:new-text", false)
+	f.click("menu:new-npc", false)
 	if args := f.created(); args.Folder != "" {
-		t.Fatalf("new text at the top: %+v", args)
+		t.Fatalf("a new NPC at the top: %+v", args)
 	}
 }
 
@@ -161,14 +176,14 @@ func TestRightClickBelowTheRows(t *testing.T) {
 func TestRightClickWaitsForUnsavedChanges(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.click("row:Notes", false)
+	f.click("row:Ada Clerk", false)
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
 	f.typeInto("name", " draft")
 	f.rightClick("row:Clerk day")
 	if _, ok := f.state.Locate("menu:context-open", f.ctx.Docs); ok {
 		t.Fatal("the menu waits until the unsaved name is dealt with")
 	}
-	if row, ok := f.state.SelectedRow(); !ok || row.Label != "Notes" {
-		t.Fatalf("Notes stays selected while the guard asks: %+v", row)
+	if row, ok := f.state.SelectedRow(); !ok || row.Label != "Ada Clerk" {
+		t.Fatalf("Ada Clerk stays selected while the guard asks: %+v", row)
 	}
 }

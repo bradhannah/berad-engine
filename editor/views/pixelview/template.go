@@ -229,7 +229,7 @@ func (s *State) openTemplates(docs frame.Docs) {
 	_, drawn := s.templateID(docs)
 	items = append(items, ui.MenuItem{ID: editTemplateItem, Label: "Edit template…", Icon: ui.IconNone,
 		Disabled: !drawn, Danger: false, Rule: true})
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	window := frame.AboveStatus(s.size)
 	s.templateMenu.Items = items
 	s.templateMenu.Width = min(ui.MenuWidth(items, s.theme), window.Dx()-ui.Half*ui.Inset)
 	s.templateMenu.OpenAt(image.Pt(s.templateChoice.Rect.Min.X, s.templateChoice.Rect.Max.Y+ui.Gap), window)

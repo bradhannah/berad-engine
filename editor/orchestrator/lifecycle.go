@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	projectindex "github.com/bradhannah/berad-engine/editor/plugins/project"
@@ -28,7 +29,7 @@ func (o *Orchestrator) buildIndex() {
 	o.docs[projectindex.IndexID()] = &documentEntry{
 		info: DocumentInfo{
 			ID: projectindex.IndexID(), Name: "Project", Format: projectindex.FormatName, Revision: 0, Path: "",
-			Folder: "", Tags: nil,
+			Folder: "", Tags: nil, Changed: time.Time{},
 		},
 		version:  1,
 		document: index,
@@ -107,7 +108,7 @@ func (o *Orchestrator) prepareCreate(args json.RawMessage) (json.RawMessage, ids
 	if create.Folder != "" && !create.Scope.IsZero() {
 		return nil, ids.ULID{}, fmt.Errorf("%w: it stays with the document it is part of", projectindex.ErrFolder)
 	}
-	create.Version = documentType.Format.Current
+	create.Version, create.Changed = documentType.Format.Current, o.cfg.Clock()
 	prepared, err := json.Marshal(create)
 	if err != nil {
 		return nil, ids.ULID{}, fmt.Errorf("encode create: %w", err)
@@ -143,6 +144,7 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 		ID: deletion.ID, Format: entry.info.Format, Name: entry.info.Name, Version: entry.version,
 		Revision: entry.info.Revision, Scope: o.containerOf(deletion.ID), Folder: entry.info.Folder,
 		Tags: entry.info.Tags, Kind: model.KindOf(entry.document), Data: data, Layout: layout,
+		Changed: entry.info.Changed,
 	}
 	prepared, err := json.Marshal(deletion)
 	if err != nil {
@@ -232,7 +234,7 @@ func (o *Orchestrator) createDocument(create projectindex.DocumentArgs) error {
 	o.docs[create.ID] = &documentEntry{
 		info: DocumentInfo{
 			ID: create.ID, Name: create.Name, Format: create.Format, Revision: create.Revision, Path: path,
-			Folder: create.Folder, Tags: create.Tags,
+			Folder: create.Folder, Tags: create.Tags, Changed: create.Changed,
 		},
 		version:  documentType.Format.Current,
 		document: document,

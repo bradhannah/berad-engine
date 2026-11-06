@@ -144,7 +144,7 @@ func TestUsedPaletteDeletesInItsEditor(t *testing.T) {
 	withPalettes(f)
 	f.click("row:gloomy", false)
 	f.click("ui:delete", false)
-	for _, answer := range f.requests.Uses {
+	for _, answer := range f.whereUsed() {
 		answer([]protocol.Use{{Document: lanternTileID, Name: "Tile 1", Format: art.TileFormatName, Label: "painted with it"}},
 			nil)
 	}

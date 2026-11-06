@@ -79,7 +79,6 @@ const (
 	hexZone     = 0x3d7a4b
 	hexWorkflow = 0x6a4f9e
 	hexNPC      = 0x4c6377
-	hexText     = 0x7a6248
 	hexSound    = 0x8a4b72
 	hexArt      = 0x267378
 )
@@ -163,9 +162,6 @@ func ColorWorkflow() color.RGBA { return Hex(hexWorkflow) }
 
 // ColorNPC tints NPC icons.
 func ColorNPC() color.RGBA { return Hex(hexNPC) }
-
-// ColorText tints text document icons.
-func ColorText() color.RGBA { return Hex(hexText) }
 
 // ColorSound tints the icons of cues and recordings.
 func ColorSound() color.RGBA { return Hex(hexSound) }

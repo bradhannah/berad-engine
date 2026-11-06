@@ -32,9 +32,9 @@ func SaveBarHeight(width int) int {
 	return LineHeight + ButtonH + third*barPad
 }
 
-// SaveBar sits at the foot of an inspector, or of the Text window, and saves
-// or reverts its typed changes. It names how many are unsaved, and its
-// buttons are greyed out when there is nothing to save.
+// SaveBar sits at the foot of an inspector and saves or reverts its typed
+// changes. It names how many are unsaved, and its buttons are greyed out
+// when there is nothing to save.
 type SaveBar struct {
 	Rect    image.Rectangle
 	Unsaved int

@@ -22,7 +22,6 @@ const (
 	IconFloor
 	IconWorkflow
 	IconNPC
-	IconText
 	IconFolder
 	IconSound
 	IconProject
@@ -40,6 +39,9 @@ const (
 	// IconZoneLoop is a zone loop, the kind of workflow a zone runs: an
 	// arrow going round.
 	IconZoneLoop
+	// IconSignal is the signals workflows send and answer: a dot with
+	// waves going out from it.
+	IconSignal
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -83,12 +85,10 @@ func IconColor(icon Icon) color.RGBA {
 	switch icon {
 	case IconZone, IconFloor:
 		return ColorZone()
-	case IconWorkflow, IconZoneLoop:
+	case IconWorkflow, IconZoneLoop, IconSignal:
 		return ColorWorkflow()
 	case IconNPC:
 		return ColorNPC()
-	case IconText:
-		return ColorText()
 	case IconSound:
 		return ColorSound()
 	case IconFolder:
@@ -145,8 +145,6 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 		vector.FillCircle(screen, left+IconSize/Half, top+iconHead+1, iconHead, ink, true)
 		shoulders := image.Rect(corner.X+1, corner.Y+IconSize/Half+1, corner.X+IconSize-1, corner.Y+IconSize)
 		FillRound(screen, shoulders, IconSize/Half, ink)
-	case IconText:
-		drawPage(screen, corner, ink)
 	case IconFolder:
 		drawFolder(screen, corner, ink)
 	case IconSound:
@@ -155,14 +153,20 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 		drawWindowIcon(screen, icon, left, top, ink)
 	case IconSprite, IconPalette, IconSettings, IconTemplate:
 		drawArtIcon(screen, icon, left, top, ink)
-	case IconPlay, IconPlace, IconZoneLoop:
+	case IconPlay, IconPlace, IconZoneLoop, IconSignal:
 		drawMark(screen, icon, corner, ink)
 	case IconNone:
 	}
 }
 
-// drawMark draws Play's triangle, a place's ring or a zone loop's arrow.
+// drawMark draws Play's triangle, a place's ring, a zone loop's arrow or
+// a signal's waves.
 func drawMark(screen *ebiten.Image, icon Icon, corner image.Point, ink color.RGBA) {
+	if icon == IconSignal {
+		drawWaves(screen, float32(corner.X), float32(corner.Y), ink)
+
+		return
+	}
 	if icon == IconPlace {
 		DrawRing(screen, image.Pt(corner.X+IconSize/Half, corner.Y+IconSize/Half), ink, false)
 
@@ -192,6 +196,18 @@ func drawLoop(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	strokePath(screen, &head, ink)
 }
 
+// drawWaves draws a signal: a dot at the left with two waves going out
+// from it to the right.
+func drawWaves(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	centreX, centreY := left+iconDot, top+IconSize/Half
+	vector.FillCircle(screen, centreX, centreY, iconDot, ink, true)
+	for _, radius := range []float32{IconSize/Half - 1, IconSize/Half + iconDot} {
+		var wave vector.Path
+		wave.Arc(centreX, centreY, radius, -quarterTurn, quarterTurn, vector.Clockwise)
+		strokePath(screen, &wave, ink)
+	}
+}
+
 // drawPlay draws Play: a triangle pointing right.
 func drawPlay(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	var triangle vector.Path
@@ -200,18 +216,6 @@ func drawPlay(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	triangle.LineTo(left+iconPageGap, top+IconSize-1)
 	triangle.Close()
 	fillPath(screen, &triangle, ink)
-}
-
-// drawPage draws a text document: a page with lines of writing.
-func drawPage(screen *ebiten.Image, corner image.Point, ink color.RGBA) {
-	left, top := float32(corner.X), float32(corner.Y)
-	page := image.Rect(corner.X+iconPageGap, corner.Y, corner.X+IconSize-iconPageGap, corner.Y+IconSize)
-	StrokeRound(screen, page, iconPageGap, iconStroke, ink)
-	for line := range 3 {
-		lineY := top + float32(iconLineGap*(line+1)+1)
-		start, end := left+iconPageGap*Half, left+IconSize-iconPageGap*Half
-		vector.StrokeLine(screen, start, lineY, end, lineY, Hairline, ink, true)
-	}
 }
 
 // drawWindowIcon draws the icon of a window that shows no one document.
@@ -223,8 +227,8 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 		drawClock(screen, left, top, ink)
 	case IconWatch:
 		drawEye(screen, left, top, ink)
-	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop:
+	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconSprite,
+		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal:
 	}
 }
 
@@ -240,8 +244,8 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 		drawSliders(screen, left, top, ink)
 	case IconTemplate:
 		drawFrame(screen, left, top, ink)
-	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconText, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop:
+	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconProject,
+		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal:
 	}
 }
 

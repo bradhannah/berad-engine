@@ -21,6 +21,44 @@ func (f *fixture) withSignals() {
 	f.docs.Touch(worldstate.ID())
 }
 
+// chooseSignal chooses the selected node's signal in the signal picker.
+func (f *fixture) chooseSignal(path string) {
+	f.t.Helper()
+	f.click("ui:pick-signal")
+	f.click("signalrow:" + path)
+}
+
+// TestTheSignalPicker opens the picker from a Send signal's box, finds a
+// signal by part of its name, and chooses it with Enter; opened again, the
+// signal this workflow sends now comes first.
+func TestTheSignalPicker(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withSignals()
+	f.click("node:start:1")
+	f.add(flow.KindSendSignal)
+	f.click("ui:pick-signal")
+	if !f.has("signal-picker") {
+		t.Fatal("the box opens the picker")
+	}
+	f.typeText("flour")
+	if _, found := f.state.Locate("signalrow:bread_called", f.ctx.Docs); found {
+		t.Fatal("typing flour leaves bread_called out")
+	}
+	f.keys("Enter")
+	if chosen, ok := f.nth(flow.KindSendSignal, 1).Signal(); f.has("signal-picker") || !ok || chosen != frametest.ID(51) {
+		t.Fatalf("Enter chooses flour_low and closes the picker: %v", f.nth(flow.KindSendSignal, 1).Params)
+	}
+	f.click("ui:pick-signal")
+	if _, found := f.state.Locate("signalrow:flour_low", f.ctx.Docs); !found || !f.has("signal-picker") {
+		t.Fatal("the picker opens again, listing every signal")
+	}
+	f.keys("Escape")
+	if f.has("signal-picker") {
+		t.Fatal("Escape closes it")
+	}
+}
+
 // TestSignalProblems sends bread_called to Ada, whose behaviour is this
 // workflow: a broken signal call until it has an On signal for it, which a
 // Resume ends; a Resume off any receiver's path is a problem, and a
@@ -34,7 +72,7 @@ func TestSignalProblems(t *testing.T) {
 	if !f.has("problem:" + flow.KindSendSignal + ":1=Choose the signal.") {
 		t.Fatal("a new Send signal has no signal")
 	}
-	f.click("ui:signal-bread_called")
+	f.chooseSignal("bread_called")
 	f.click("ui:npc-Ada Clerk")
 	broken := "Broken signal call: Ada Clerk's behaviour doesn't answer bread_called. Give it an On signal for it."
 	if !f.has("problem:" + flow.KindSendSignal + ":1=" + broken) {
@@ -44,7 +82,7 @@ func TestSignalProblems(t *testing.T) {
 		t.Fatal("the node names its signal and NPC")
 	}
 	f.add(flow.KindOnSignal)
-	f.click("ui:signal-bread_called")
+	f.chooseSignal("bread_called")
 	f.add(flow.KindResume)
 	if f.has("problem:"+flow.KindSendSignal+":1") || f.has("problem:"+flow.KindOnSignal+":1") ||
 		f.has("problem:"+flow.KindResume+":1") || f.has("warning:"+flow.KindOnSignal+":1") {
@@ -55,7 +93,7 @@ func TestSignalProblems(t *testing.T) {
 		t.Fatalf("Add after puts the Resume on the receiver's path: %v", receiver.Next)
 	}
 	f.add(flow.KindOnSignal)
-	f.click("ui:signal-flour_low")
+	f.chooseSignal("flour_low")
 	if !f.has("warning:" + flow.KindOnSignal + ":2=Nothing sends flour_low yet, so this receiver never runs.") {
 		t.Fatal("a receiver nothing sends to is warned of")
 	}

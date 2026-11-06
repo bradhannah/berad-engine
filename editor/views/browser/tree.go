@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -26,7 +26,6 @@ const (
 	sectionZones     = sectionPrefix + "zones"
 	sectionWorkflows = sectionPrefix + "workflows"
 	sectionNPCs      = sectionPrefix + "npcs"
-	sectionText      = sectionPrefix + "text"
 	sectionLoose     = sectionPrefix + "loose"
 )
 
@@ -34,7 +33,7 @@ const (
 // without one.
 func sectionNew(section string) string {
 	return map[string]string{
-		sectionZones: newZone, sectionWorkflows: newWorkflow, sectionNPCs: newNPC, sectionText: newText,
+		sectionZones: newZone, sectionWorkflows: newWorkflow, sectionNPCs: newNPC,
 		sectionAudio: newSound, sectionSprites: newSprite, sectionPalettes: newPalette,
 		sectionTemplates: newTemplate,
 	}[section]
@@ -43,7 +42,7 @@ func sectionNew(section string) string {
 // newSection returns the section whose [+] creates an item, or "".
 func newSection(item string) string {
 	for _, section := range []string{
-		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionAudio, sectionSprites, sectionPalettes,
+		sectionZones, sectionWorkflows, sectionNPCs, sectionAudio, sectionSprites, sectionPalettes,
 		sectionTemplates,
 	} {
 		if sectionNew(section) == item {
@@ -59,7 +58,7 @@ func newSection(item string) string {
 func sectionFormat(section string) string {
 	return map[string]string{
 		sectionZones: zone.FormatName, sectionWorkflows: flow.FormatName, sectionNPCs: npc.FormatName,
-		sectionText: textdoc.FormatName, sectionSprites: art.SpriteFormatName, sectionPalettes: art.PaletteFormatName,
+		sectionSprites: art.SpriteFormatName, sectionPalettes: art.PaletteFormatName,
 		sectionTemplates: artplugin.TemplateFormatName,
 	}[section]
 }
@@ -67,7 +66,7 @@ func sectionFormat(section string) string {
 // formatSection returns the section listing a document type, or "".
 func formatSection(format string) string {
 	for _, section := range []string{
-		sectionZones, sectionWorkflows, sectionNPCs, sectionText, sectionSprites, sectionPalettes, sectionTemplates,
+		sectionZones, sectionWorkflows, sectionNPCs, sectionSprites, sectionPalettes, sectionTemplates,
 	} {
 		if sectionFormat(section) == format {
 			return section
@@ -117,9 +116,6 @@ func (s *State) rows(docs frame.Docs) []ui.Row {
 		})...)
 	rows = append(rows, s.typeRows(sectionNPCs, "NPCs", index, match.entry, func(entry project.Entry, depth int) []ui.Row {
 		return []ui.Row{item(entry, ui.IconNPC, s.follows(docs, index, entry.ID), depth)}
-	})...)
-	rows = append(rows, s.typeRows(sectionText, "Text", index, match.entry, func(entry project.Entry, depth int) []ui.Row {
-		return []ui.Row{item(entry, ui.IconText, "", depth)}
 	})...)
 	rows = append(rows, s.audioRows(match)...)
 	for _, artSection := range []struct {
@@ -296,7 +292,7 @@ func (s *State) zoneRows(
 		if !found {
 			floorEntry = project.Entry{
 				ID: floors[position], Name: "missing floor", Format: floor.FormatName, Folder: "", Tags: nil,
-				Kind: "",
+				Kind: "", Changed: time.Time{},
 			}
 		}
 		detail := ""

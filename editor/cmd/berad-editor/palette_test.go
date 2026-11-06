@@ -10,8 +10,7 @@ import (
 // TestFindingAndPlacingNodes searches a new workflow's palette for
 // "value", reads Check value's help and adds it after the start with Add
 // after; rests on Wait for its tooltip; then clears the search and drags a
-// Wait onto the line from the start, which puts it between the start and
-// Check value.
+// Wait onto the line from the start, where it lands connected to nothing.
 func TestFindingAndPlacingNodes(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -19,7 +18,7 @@ func TestFindingAndPlacingNodes(t *testing.T) {
 	searchShot, helpShot, tooltipShot, dropShot := shotPath(t, "palette-search.png"), shotPath(t, "palette-help.png"),
 		shotPath(t, "palette-tooltip.png"), shotPath(t, "palette-drop.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"), quitWhenAlone(),
 	)
 	workflowScript := script(
 		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), click("ui:palette-search"), wait(5),
@@ -29,7 +28,7 @@ func TestFindingAndPlacingNodes(t *testing.T) {
 		click("ui:palette-search"), keys("Escape"), wait(5),
 		step{Repeat: 45, At: "palette:" + flow.KindWait}, must("state:tooltip="+flow.KindWait, 30), shoot(tooltipShot),
 		drag("palette:"+flow.KindWait, "line:start:1:next"), must("state:nodes:3", 300),
-		must("line:"+flow.KindWait+":1:next", 120), wait(10), shoot(dropShot), wait(30), quit(),
+		must("state:selected:"+flow.KindWait, 120), wait(10), shoot(dropShot), wait(30), quit(),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
 	noCrashes(t, project)
@@ -38,10 +37,14 @@ func TestFindingAndPlacingNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	start, _ := saved.Node(saved.Start())
-	wait, waited := saved.Node(start.Next[flow.OutputNext])
-	check, checked := saved.Node(wait.Next[flow.OutputNext])
-	if !waited || wait.Kind != flow.KindWait || !checked || check.Kind != flow.KindCheckValue {
-		t.Fatalf("the start leads to the Wait, and the Wait to Check value: %+v", saved.Nodes())
+	check, checked := saved.Node(start.Next[flow.OutputNext])
+	if !checked || check.Kind != flow.KindCheckValue {
+		t.Fatalf("the start still leads to Check value: %+v", saved.Nodes())
+	}
+	for _, node := range saved.Nodes() {
+		if node.Kind == flow.KindWait && len(node.Next) != 0 {
+			t.Fatalf("the dropped Wait is connected to nothing: %+v", node)
+		}
 	}
 	t.Logf("screenshots: %s %s %s %s", searchShot, helpShot, tooltipShot, dropShot)
 }

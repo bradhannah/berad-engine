@@ -1,7 +1,7 @@
 // Package browser is the project browser window: the project's zones with
-// their floors, its workflows, NPCs and text documents, in folders, the
-// audio library's cues, which open in the Audio window, its sprites and
-// palettes, and its settings. Authors create, rename, delete and open
+// their floors, its workflows and NPCs, in folders, the audio library's
+// cues, which open in the Audio window, its sprites and palettes, and its
+// settings. Authors create, rename, delete and open
 // documents here, from the toolbar, the inspector or a right-click menu,
 // keep them in folders and tag them, search them, reorder a zone's floors,
 // choose each NPC's behaviour and write its notes, and set the tile size.
@@ -14,14 +14,15 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	viewsplugin "github.com/bradhannah/berad-engine/editor/plugins/views"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -29,6 +30,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
+	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
 	"github.com/bradhannah/berad-engine/editor/views/zonepicker"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -48,7 +50,6 @@ const ViewName = "browser"
 // Views the browser opens.
 const (
 	mapView      = "map"
-	textView     = "text"
 	workflowView = "workflow"
 	spriteView   = "sprite"
 )
@@ -75,7 +76,6 @@ const (
 	newWorkflow = "new-workflow"
 	newZoneLoop = "new-zone-loop"
 	newNPC      = "new-npc"
-	newText     = "new-text"
 )
 
 type dialogKind int
@@ -101,9 +101,11 @@ type State struct {
 	subs   map[ids.ULID]bool
 	list   *ui.List
 	// closed holds the sections and zones whose rows are hidden; it is this
-	// window's session state, never saved.
-	closed map[string]bool
-	focus  ui.Focus
+	// window's session state, never saved. revealed is the row last
+	// scrolled into view on being selected.
+	closed   map[string]bool
+	revealed string
+	focus    ui.Focus
 	// search filters the list; name and tags edit what is selected, and
 	// named is the row whose name and tags the fields hold. tileSize edits
 	// the settings' tile size, and columns and rows the screen's size.
@@ -160,6 +162,24 @@ type State struct {
 	loop      *loopPanel
 	loopFor   ids.ULID
 	zoneNoted ids.ULID
+	// facets is the facets column, shown when withFacets; ticks are the
+	// values ticked in each facet, and more the facets listing all their
+	// values. checks find each workflow's problems, checkAt being the one
+	// last looked at again.
+	facets     *ui.List
+	withFacets bool
+	ticks      map[string]map[string]bool
+	more       map[string]bool
+	checks     map[ids.ULID]*workflowview.Check
+	checkAt    int
+	// The table's bar: its chips, how many it shows of all there are, its
+	// columns, and a view being named, saved or deleted.
+	chips                                []chip
+	shown, total                         int
+	columns                              []column
+	naming                               bool
+	viewName                             *ui.TextField
+	saveViewBn, keepViewBn, deleteViewBn *ui.Button
 }
 
 // New returns the project browser.
@@ -167,8 +187,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
-		list:       ui.NewList("documents", ""),
-		closed:     map[string]bool{},
+		list:   ui.NewList("documents", ""),
+		closed: map[string]bool{}, revealed: "",
 		focus:      ui.Focus{},
 		search:     ui.NewTextField("search", textedit.NewField("", false, searchBytes), false, theme),
 		name:       ui.NewTextField("name", textedit.NewField("", false, project.MaxNameLength), false, theme),
@@ -190,13 +210,20 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
+		facets: ui.NewList("facets", ""), withFacets: false, ticks: map[string]map[string]bool{}, more: map[string]bool{},
+		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, chips: nil, shown: 0, total: 0, columns: nil,
+		naming:     false,
+		viewName:   ui.NewTextField("view-name", textedit.NewField("", false, viewsplugin.MaxNameLength), false, theme),
+		saveViewBn: button("save-view", "Save as a view…"), keepViewBn: button("keep-view", "Save"),
+		deleteViewBn: button("delete-view", "Delete view"),
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)
+	view.viewName.Placeholder = "Name the view"
 	view.focus.Register(view.search, view.name, view.tags, view.npc.path, view.npc.notes, view.zoneNotes, view.tileSize,
-		view.screenCols, view.screenRows)
+		view.screenCols, view.screenRows, view.viewName)
 
 	return view
 }
@@ -204,14 +231,13 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 // menuItems lists what New ▾ creates.
 func menuItems() []ui.MenuItem {
 	return []ui.MenuItem{
-		{ID: newZone, Label: "Zone", Icon: ui.IconZone, Disabled: false, Danger: false, Rule: false},
+		{ID: newZone, Label: zoneWord, Icon: ui.IconZone, Disabled: false, Danger: false, Rule: false},
 		{ID: newFloor, Label: "Floor in the selected zone", Icon: ui.IconFloor, Disabled: false, Danger: false, Rule: false},
 		{ID: newWorkflow, Label: flow.PurposeBehaviour.Label(), Icon: ui.IconWorkflow, Disabled: false, Danger: false,
 			Rule: false},
 		{ID: newZoneLoop, Label: flow.PurposeZoneLoop.Label(), Icon: ui.IconZoneLoop, Disabled: false, Danger: false,
 			Rule: false},
 		{ID: newNPC, Label: npcLabel, Icon: ui.IconNPC, Disabled: false, Danger: false, Rule: false},
-		{ID: newText, Label: "Text document", Icon: ui.IconText, Disabled: false, Danger: false, Rule: false},
 		{ID: newSound, Label: "Sound…", Icon: ui.IconSound, Disabled: false, Danger: false, Rule: false},
 		{ID: newSprite, Label: "Sprite", Icon: ui.IconSprite, Disabled: false, Danger: false, Rule: false},
 		{ID: newPalette, Label: "Palette", Icon: ui.IconPalette, Disabled: false, Danger: false, Rule: false},
@@ -221,8 +247,6 @@ func menuItems() []ui.MenuItem {
 		{ID: newFolderPrefix + flow.FormatName, Label: "Workflow folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
 		{ID: newFolderPrefix + npc.FormatName, Label: npcLabel + " folder", Icon: ui.IconFolder, Disabled: false,
-			Danger: false, Rule: false},
-		{ID: newFolderPrefix + textdoc.FormatName, Label: "Text folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
 		{ID: newFolderPrefix + art.SpriteFormatName, Label: "Sprite folder", Icon: ui.IconFolder, Disabled: false,
 			Danger: false, Rule: false},
@@ -252,6 +276,7 @@ func (s *State) Start(ctx *frame.Context) {
 	s.subscribe(art.SettingsID(), ctx)
 	s.subscribe(game.SettingsID(), ctx)
 	s.subscribe(worldstate.ID(), ctx)
+	s.subscribe(viewsplugin.ID(), ctx)
 	s.askAudio(ctx)
 }
 
@@ -324,13 +349,25 @@ func (s *State) layout(docs frame.Docs) {
 	content := frame.Content(s.size)
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	s.newMenu.Rect = image.Rect(content.Max.X-ui.Inset-newWidth, top, content.Max.X-ui.Inset, top+ui.ButtonH)
-	searchTop := toolbarHeight + ui.Inset/ui.Half
-	s.search.Rect = image.Rect(ui.Inset, searchTop, content.Max.X-ui.Inset, searchTop+ui.ButtonH)
-	s.list.Rect = image.Rect(0, toolbarHeight+searchHeight, content.Max.X, content.Max.Y)
-	s.list.Rows = s.rows(docs)
+	s.layoutLists(docs, content)
+	s.revealSelected()
 	index := s.index(docs)
 	s.list.CanDrop = func(dragged, target string) bool { return s.canDrop(index, dragged, target) }
 	s.layoutInspector(docs)
+}
+
+// revealSelected scrolls a newly selected row into view once it is listed,
+// as a document just made, which can land below the rows shown.
+func (s *State) revealSelected() {
+	if s.list.Selected == s.revealed {
+		return
+	}
+	for _, row := range s.list.Rows {
+		if row.ID == s.list.Selected {
+			s.list.Reveal(row.ID)
+			s.revealed = row.ID
+		}
+	}
 }
 
 // selected returns the selected document's entry.
@@ -403,6 +440,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.keys(input, ctx)
 	}
 	frame.CommonKeys(input, ctx)
+	s.updateChecks(ctx)
+	s.updateFacets(input, ctx)
+	s.updateBar(input, ctx)
 	s.updateList(input, ctx)
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
@@ -429,13 +469,23 @@ func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
 		s.search.Field.SetSaved(value)
 	case field == s.search && outcome == textedit.OutcomeBlur:
 		s.search.Field.SetSaved("")
-	case field == s.name && outcome == textedit.OutcomeCommit:
+	case outcome == textedit.OutcomeCommit:
+		s.commitField(field, ctx)
+	}
+}
+
+// commitField saves what Enter commits in a field other than the search.
+func (s *State) commitField(field *ui.TextField, ctx *frame.Context) {
+	switch field {
+	case s.name:
 		s.commitName(ctx)
-	case field == s.tags && outcome == textedit.OutcomeCommit:
+	case s.tags:
 		s.commitTags(ctx)
-	case field == s.tileSize && outcome == textedit.OutcomeCommit:
+	case s.viewName:
+		s.saveView(ctx)
+	case s.tileSize:
 		s.commitTileSize(ctx)
-	case (field == s.screenCols || field == s.screenRows) && outcome == textedit.OutcomeCommit:
+	case s.screenCols, s.screenRows:
 		s.commitScreen(ctx)
 	}
 }
@@ -612,7 +662,7 @@ func (s *State) openMenu(docs frame.Docs) {
 			s.menu.Items[index].Disabled = !hasZone
 		}
 	}
-	s.menu.Open(s.newMenu.Rect, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	s.menu.Open(s.newMenu.Rect, frame.AboveStatus(s.size))
 }
 
 // create makes what a New ▾ item or a section's [+] names.
@@ -638,8 +688,6 @@ func (s *State) create(ctx *frame.Context, item string) {
 		s.createWorkflow(ctx, flow.PurposeZoneLoop)
 	case newNPC:
 		s.createNPC(ctx)
-	case newText:
-		s.createText(ctx)
 	case newSound:
 		s.addSound(ctx)
 	case newSprite:
@@ -711,7 +759,7 @@ func names(entries []project.Entry) []string {
 func newDocument(format, name string, scope ids.ULID, data json.RawMessage) documentArgs {
 	return documentArgs{project.DocumentArgs{
 		ID: ids.ULID{}, Format: format, Name: name, Version: 0, Revision: 0, Scope: scope, Folder: "", Tags: nil,
-		Kind: "", Data: data, Layout: nil,
+		Kind: "", Data: data, Layout: nil, Changed: time.Time{},
 	}}
 }
 
@@ -828,21 +876,6 @@ func (s *State) addFloor(
 	}, nil)
 }
 
-func (s *State) createText(ctx *frame.Context) {
-	name := uniqueName("Text", names(s.entries(ctx.Docs, textdoc.FormatName)))
-	data, err := textdoc.NewDocument().Encode()
-	if err != nil {
-		ctx.Frame.Status(err.Error())
-
-		return
-	}
-	args := newDocument(textdoc.FormatName, name, ids.ULID{}, data)
-	args.Folder = s.targetFolder(ctx.Docs, textdoc.FormatName)
-	s.command(ctx, project.IndexID(), project.CreateEdit, s.gesture(), args, func(result protocol.Result, _ error) {
-		s.list.Selected = result.Created.String()
-	}, nil)
-}
-
 // createWorkflow creates a workflow of a kind, holding only its start node.
 func (s *State) createWorkflow(ctx *frame.Context, purpose flow.Purpose) {
 	base := "Workflow"
@@ -861,18 +894,23 @@ func (s *State) createWorkflow(ctx *frame.Context, purpose flow.Purpose) {
 // formats that open in a view of their own.
 func documentView(format string) (string, bool) {
 	view, ok := map[string]string{
-		textdoc.FormatName: textView, flow.FormatName: workflowView, art.SpriteFormatName: spriteView,
+		flow.FormatName: workflowView, art.SpriteFormatName: spriteView,
 		art.PaletteFormatName: paletteView, artplugin.TemplateFormatName: templateView,
 	}[format]
 
 	return view, ok
 }
 
-// openRow opens what the selected row shows: the World state window for
-// the World state row, or what openSelected opens.
+// openRow opens what the selected row shows: World state's Values or
+// Signals window for its rows, or what openSelected opens.
 func (s *State) openRow(ctx *frame.Context) {
-	if s.list.Selected == worldStateRow {
+	switch s.list.Selected {
+	case worldStateRow:
 		ctx.Requests.Open(worldStateView, worldstate.ID(), false)
+
+		return
+	case worldSignalsRow:
+		ctx.Requests.Open(worldSignalsView, worldstate.ID(), false)
 
 		return
 	}
@@ -1117,7 +1155,8 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 // "ui:notes", "ui:tile-size", an item of New ▾ or the right-click menu while
 // it is open, or a dialog button or list row. "ui:new-zone",
 // "ui:new-workflow", "ui:new-npc", "ui:new-text", "ui:new-sound" and
-// "ui:new-sprite" are their section's [+].
+// "ui:new-sprite" are their section's [+]. A row or section located is
+// scrolled into view first, as an author scrolls to it.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
 	kind, value, _ := strings.Cut(name, ":")
@@ -1137,14 +1176,19 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case s.zonePalettes.Active():
 		return s.zonePalettes.Locate(name)
 	}
+	if point, found, handled := s.locateFacets(kind, value, docs); handled {
+		return point, found
+	}
 	switch kind {
 	case "row", "toggle":
 		return s.locateRow(kind, value)
 	case "section":
+		s.list.Reveal(sectionPrefix + value)
+
 		return s.list.Locate(sectionPrefix + value)
 	case "ui":
 		return s.locateWidget(value)
-	case "state":
+	case stateKind:
 		found, answered := s.hasZoneState(docs, value)
 		if !answered {
 			found = s.hasRowState(value)
@@ -1184,6 +1228,7 @@ func (s *State) locateRow(kind, label string) (image.Point, bool) {
 		if row.Label != label || row.Heading {
 			continue
 		}
+		s.list.Reveal(row.ID)
 		if kind == "toggle" {
 			return s.list.LocateToggle(row.ID)
 		}
@@ -1198,6 +1243,8 @@ func (s *State) locateRow(kind, label string) (image.Point, bool) {
 // buttons.
 func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if section := newSection(widget); section != "" {
+		s.list.Reveal(section)
+
 		return s.list.LocateAdd(section)
 	}
 	if point, found := s.save.Locate(widget); found {
@@ -1208,6 +1255,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	}
 	fields := []*ui.TextField{
 		s.search, s.name, s.tags, s.npc.path, s.npc.notes, s.zoneNotes, s.tileSize, s.screenCols, s.screenRows,
+		s.viewName,
 	}
 	for _, field := range fields {
 		if widget == field.ID && !field.Rect.Empty() {
@@ -1228,7 +1276,7 @@ func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
 		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap, s.loop.choose, s.loop.open,
-		s.audio.open,
+		s.audio.open, s.saveViewBn, s.keepViewBn, s.deleteViewBn,
 	}, s.tagBns...)
 }
 
@@ -1236,7 +1284,7 @@ func (s *State) allButtons() []*ui.Button {
 // or answers "state:dialog-line=<text>", a line of the dialog holding the
 // text, and "state:dialog-row=<name>", a row of its list.
 func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
-	if kind == "state" {
+	if kind == stateKind {
 		line, isLine := strings.CutPrefix(value, "dialog-line=")
 		row, isRow := strings.CutPrefix(value, "dialog-row=")
 		found := isLine && strings.Contains(strings.Join(s.dialog.Lines, " "), line)
@@ -1268,6 +1316,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
 	s.newMenu.Draw(screen, s.theme)
 	s.search.Draw(screen)
+	s.drawTable(screen)
 	s.list.Draw(screen, s.theme)
 	s.drawInspector(screen, docs)
 	s.menu.Draw(screen, s.theme)

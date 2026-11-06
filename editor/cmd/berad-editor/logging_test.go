@@ -21,12 +21,13 @@ func TestLoggingInWatch(t *testing.T) {
 	logShot, spriteShot, watchShot := shotPath(t, "log-node.png"), shotPath(t, "log-sprite.png"),
 		shotPath(t, "log-watch.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Clerk"), must("state:tabs:3", 600), wait(60), doubleClick("row:Sample zone"),
 		must("state:tabs:4", 600), quitWhenAlone(),
 	)
 	customerScript := script(
-		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5), addNode(""+flow.KindLog),
+		must("state:loaded", 600), wait(5), click("node:start:1"), wait(5),
+		insertAfter(flow.KindLog, flow.OutputNext, "start:1:next", flow.KindCheckValue+":1"),
 		must("state:selected:log", 300), wait(10), click("ui:param-message"), wait(5), typed("Shopping as "), wait(5),
 		click("ui:insert-value"), must("valuerow:npc.name", 300), click("valuerow:npc.name"),
 		must("state:message=Shopping as {npc.name}", 300), must("state:reads=Shopping as Customer", 300), wait(10),
@@ -34,7 +35,8 @@ func TestLoggingInWatch(t *testing.T) {
 		wait(30), quit(),
 	)
 	clerkScript := script(
-		must("state:loaded", 900), wait(5), click("node:start:1"), wait(5), addNode("set-value"),
+		must("state:loaded", 900), wait(5), click("node:start:1"), wait(5),
+		insertAfter(flow.KindSetValue, flow.OutputNext, "start:1:next", flow.KindTimeSwitch+":1"),
 		must("state:selected:set-value", 300), wait(10), click("ui:pick-value"), must("valuerow:npc.sprite", 300),
 		click("valuerow:npc.sprite"), must("state:value:value=npc.sprite", 300), click("ui:pick-to"),
 		must("state:dialog-row=Lantern", 300), click("row:Lantern"), wait(5), click("ui:use"),
@@ -49,7 +51,7 @@ func TestLoggingInWatch(t *testing.T) {
 	)
 	watchScript := script(
 		must("state:previewing", 3600), must("state:watching:Customer", 1200),
-		must("state:log-line=Shopping as Customer", 1800), wait(10), shoot(watchShot), click("log-line:1"),
+		must("state:log-line=Shopping as Customer", 1800), wait(10), shoot(watchShot), click("log-line:Shopping as Customer"),
 		wait(30), click("ui:log-every"), must("state:log-line=Shopping as Customer", 60), wait(10), quit(),
 	)
 	runEditor(t, binary, project, scripts{

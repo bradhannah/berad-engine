@@ -179,6 +179,11 @@ type Row struct {
 	// Muted rows are drawn grey: still listed, but not the ones to choose,
 	// such as a place an NPC cannot go to.
 	Muted bool
+	// Ticked rows are chosen among several at once, such as a facet's
+	// values: washed blue, with a tick where a triangle would be.
+	Ticked bool
+	// Cells are a table row's other columns, drawn at the list's Columns.
+	Cells []string
 }
 
 // ink is the colour a row's label is drawn in: muted for a muted row.
@@ -195,7 +200,7 @@ func NewRow(id, label string) Row {
 	return Row{
 		ID: id, Label: label, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false, Icon: IconNone,
 		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false, Aside: "", Tree: false,
-		Muted: false,
+		Muted: false, Ticked: false, Cells: nil,
 	}
 }
 
@@ -242,10 +247,18 @@ const (
 // dragged, rows Faded names are drawn faded, and DragLabel, when set, says
 // what is carried beside the pointer, over a row or none.
 type List struct {
-	ID        string
-	Rect      image.Rectangle
-	Rows      []Row
-	Selected  string
+	ID       string
+	Rect     image.Rectangle
+	Rows     []Row
+	Selected string
+	// DetailAt, when above zero, puts tree rows' details in a column that
+	// far from the list's left, close to the names, rather than at the
+	// right edge; a name too long for it pushes its detail along.
+	DetailAt int
+	// Columns, when set, are where each of a row's Cells starts, that far
+	// from the list's left; a tree row's label is cut short before the
+	// first.
+	Columns   []int
 	CanDrop   func(dragged, target string) bool
 	Faded     func(dragged, row string) bool
 	DragLabel func(dragged, over string) string
@@ -258,8 +271,10 @@ type List struct {
 // NewList returns an empty list with a row selected, or none for "".
 func NewList(id, selected string) *List {
 	return &List{
-		ID: id, Rect: Zero(), Rows: nil, Selected: selected, CanDrop: nil, Faded: nil, DragLabel: nil, scroll: 0,
-		hover: "", hoverAdd: false, drag: noDrag(),
+		ID: id, Rect: Zero(), Rows: nil, Selected: selected, DetailAt: 0, Columns: nil, CanDrop: nil, Faded: nil,
+		DragLabel: nil,
+		scroll:    0,
+		hover:     "", hoverAdd: false, drag: noDrag(),
 	}
 }
 
@@ -556,6 +571,8 @@ func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
 		case row.ID == l.Selected:
 			FillRound(area, highlight(rect), rowRadius, ColorSelectWash())
 			StrokeRound(area, highlight(rect), rowRadius, Outline, ColorSelect())
+		case row.Ticked:
+			FillRound(area, highlight(rect), rowRadius, ColorSelectWash())
 		case row.ID == l.hover:
 			FillRound(area, highlight(rect), rowRadius, ColorHover())
 		}
@@ -641,6 +658,9 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 	if row.Toggle != DisclosureNone {
 		DrawTriangle(area, toggleRect(rect, row), row.Toggle == DisclosureOpen, ColorMuted())
 	}
+	if row.Ticked {
+		drawTick(area, toggleRect(rect, row))
+	}
 	if row.Toggle == DisclosureOpen && childGuided {
 		// A short stub joins the icon to its first child's guide.
 		stub := left + treeToggle + IconSize/Half
@@ -649,10 +669,15 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 	DrawIcon(area, row.Icon, image.Pt(left+treeToggle, iconTop))
 	labelLeft := left + treeToggle + IconSize + treeLabelGap
 	labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
+	label := row.Label
+	if len(l.Columns) > 0 {
+		label = theme.FitText(label, rect.Min.X+l.Columns[0]-labelGap-labelLeft)
+		l.drawCells(area, theme, row, rect, labelTop)
+	}
 	if row.Strong {
-		theme.DrawStrong(area, row.Label, labelLeft, labelTop, row.ink())
+		theme.DrawStrong(area, label, labelLeft, labelTop, row.ink())
 	} else {
-		theme.DrawText(area, row.Label, labelLeft, labelTop, row.ink())
+		theme.DrawText(area, label, labelLeft, labelTop, row.ink())
 	}
 	if row.Aside != "" {
 		asideLeft := labelLeft + theme.StrongWidth(row.Label) + labelGap
@@ -665,10 +690,37 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 	if row.Marked {
 		theme.DrawText(area, "●", labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSelect())
 	}
-	if row.Detail != "" {
+	if row.Detail != "" && l.DetailAt > 0 {
+		at := max(rect.Min.X+l.DetailAt, labelLeft+theme.StrongWidth(row.Label)+labelGap)
+		theme.DrawText(area, theme.FitText(row.Detail, rect.Max.X-Inset/Half-at), at, labelTop, ColorSubdued())
+	} else if row.Detail != "" {
 		right := rect.Max.X - Inset/Half - Gap*Half
 		theme.DrawText(area, row.Detail, right-theme.TextWidth(row.Detail), labelTop, ColorSubdued())
 	}
+}
+
+// drawCells draws a table row's cells, each at its column and cut short
+// before the next.
+func (l *List) drawCells(area *ebiten.Image, theme *Theme, row Row, rect image.Rectangle, top int) {
+	for index, cell := range row.Cells {
+		if index >= len(l.Columns) {
+			return
+		}
+		left, right := rect.Min.X+l.Columns[index], rect.Max.X-Inset/Half
+		if index+1 < len(l.Columns) {
+			right = rect.Min.X + l.Columns[index+1] - labelGap
+		}
+		theme.DrawText(area, theme.FitText(cell, right-left), left, top, ColorSubdued())
+	}
+}
+
+// drawTick draws a tick in the middle of a box, in the selection's colour.
+func drawTick(area *ebiten.Image, box image.Rectangle) {
+	centre := Center(box)
+	const short, long = 3, 5
+	foot := image.Pt(centre.X-1, centre.Y+short)
+	Line(area, image.Pt(centre.X-long+1, centre.Y), foot, Outline, ColorSelect())
+	Line(area, foot, image.Pt(centre.X+long, centre.Y-long+1), Outline, ColorSelect())
 }
 
 // drawSection draws a section heading: a divider above (but not above the

@@ -361,7 +361,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 			newOptionRows(&made, built.rows, text)
 		case flow.TypeLanes:
 			newLaneRows(&made, built.rows, text)
-		case flow.TypeSignal, flow.TypeNPC:
+		case flow.TypeNPC:
 			newIdentityControl(docs, &made)
 		case flow.TypeText, flow.TypeMessage:
 			made.field, made.pick = text("param-"+param.Name, node.Kind == flow.KindNote), insertButton(param.Type)
@@ -376,7 +376,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 				})
 			}
 			made.addRange = ui.NewButton("add-time", "Add time")
-		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand:
+		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand, flow.TypeSignal:
 			s.newReferenceControl(docs, node, &made)
 		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 			// A call's and a Return's own parameters have no row: the
@@ -540,7 +540,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 		made.label = top
 		top += ui.LineHeight
 		switch made.param.Type {
-		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
+		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeNPC:
 			top = s.layoutChoices(made, left, width, top)
 		case flow.TypeTiles, flow.TypeSeconds, flow.TypeText:
 			height := ui.ButtonH
@@ -560,7 +560,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 			}
 			made.addRange.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 			top += ui.ButtonH + fieldSpace
-		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand, flow.TypeMessage:
+		case flow.TypeAnchor, flow.TypeCue, flow.TypeValue, flow.TypeOperand, flow.TypeMessage, flow.TypeSignal:
 			top = s.layoutReference(docs, made, image.Rect(left, top, left+width, footer))
 		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 		}
@@ -589,7 +589,7 @@ func (s *State) layoutReference(docs frame.Docs, made *control, room image.Recta
 		return top + ui.ButtonH + fieldSpace
 	case flow.TypeCue:
 		return s.layoutCue(made, left, width, top, room.Max.Y)
-	case flow.TypeValue:
+	case flow.TypeValue, flow.TypeSignal:
 		return layoutValue(made, left, width, top)
 	case flow.TypeOperand:
 		return s.layoutOperand(made, left, width, top)
@@ -598,7 +598,7 @@ func (s *State) layoutReference(docs frame.Docs, made *control, room image.Recta
 	case flow.TypeTiles, flow.TypeSeconds, flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeText,
 		flow.TypeTimeRange,
 		flow.TypeTimeRanges, flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort,
-		flow.TypeLanes, flow.TypeSignal, flow.TypeNPC:
+		flow.TypeLanes, flow.TypeNPC:
 	}
 
 	return top
@@ -663,8 +663,10 @@ func (s *State) updateControl(input *ui.Input, ctx *frame.Context, made *control
 		s.updateRanges(input, ctx, made, node)
 	case flow.TypeAnchor:
 		s.updateAnchor(input, ctx, made, node)
-	case flow.TypeChoice, flow.TypeDuration, flow.TypeSignal, flow.TypeNPC:
+	case flow.TypeChoice, flow.TypeDuration, flow.TypeNPC:
 		s.updateChoices(input, ctx, made, node)
+	case flow.TypeSignal:
+		s.updateSignalBox(input, ctx, made, node)
 	case flow.TypeShares:
 		s.updateOptions(input, ctx, made, node)
 	case flow.TypeLanes:

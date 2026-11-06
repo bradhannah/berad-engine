@@ -64,9 +64,13 @@ func (m *Menu) ClearSubs() { m.subs, m.child, m.parent = nil, nil, "" }
 
 // Open shows the menu below an anchor, kept inside the window.
 func (m *Menu) Open(anchor, window image.Rectangle) {
-	width := m.width()
+	width, height := m.width(), m.height()
 	left := min(anchor.Min.X, window.Max.X-width-Gap)
-	m.rect = image.Rect(left, anchor.Max.Y+Gap, left+width, anchor.Max.Y+Gap+m.height())
+	top := anchor.Max.Y + Gap
+	if top+height > window.Max.Y && anchor.Min.Y-Gap-height >= window.Min.Y {
+		top = anchor.Min.Y - Gap - height
+	}
+	m.rect = image.Rect(left, top, left+width, top+height)
 	m.open, m.hover, m.window, m.child, m.parent = true, -1, window, nil, ""
 }
 

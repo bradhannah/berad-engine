@@ -9,7 +9,6 @@ import (
 
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -59,15 +58,13 @@ func kindOfEntry(entry project.Entry) kind {
 func kindOf(format string) kind {
 	switch format {
 	case zone.FormatName:
-		return kind{label: "Zone", noun: "zone", icon: ui.IconZone, open: "Open map"}
+		return kind{label: zoneWord, noun: "zone", icon: ui.IconZone, open: "Open map"}
 	case floor.FormatName:
 		return kind{label: "Floor", noun: "floor", icon: ui.IconFloor, open: "Open map"}
 	case flow.FormatName:
 		return kind{label: "Workflow", noun: "workflow", icon: ui.IconWorkflow, open: "Open workflow"}
 	case npc.FormatName:
 		return kind{label: npcLabel, noun: npcLabel, icon: ui.IconNPC, open: ""}
-	case textdoc.FormatName:
-		return kind{label: "Text document", noun: "text document", icon: ui.IconText, open: "Open text"}
 	case art.SpriteFormatName:
 		return kind{label: "Sprite", noun: "sprite", icon: ui.IconSprite, open: "Open sprite"}
 	case art.PaletteFormatName:
@@ -130,12 +127,12 @@ func (s *State) layoutInspector(docs frame.Docs) {
 }
 
 // layoutRow places the inspector for a row that is not a document or a
-// folder: Settings, World state or a cue. It reports whether one was.
+// folder: Settings, Values, Signals or a cue. It reports whether one was.
 func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.layoutSettings(docs, left, width)
-	case worldStateRow:
+	case worldStateRow, worldSignalsRow:
 		s.layoutWorldState(left, width)
 	default:
 		if _, isCue := s.selectedCue(); !isCue {
@@ -198,7 +195,7 @@ func (s *State) layoutActions(docs frame.Docs, entry project.Entry, left, width,
 		s.down.Rect = image.Rect(left+half+buttonGap, top, left+width, top+ui.ButtonH)
 		_, inZone := s.zoneOf(docs, entry.ID)
 		s.open.Disabled, s.up.Disabled, s.down.Disabled = !inZone, !inZone, !inZone
-	case flow.FormatName, textdoc.FormatName, art.SpriteFormatName, art.PaletteFormatName,
+	case flow.FormatName, art.SpriteFormatName, art.PaletteFormatName,
 		artplugin.TemplateFormatName:
 		s.open.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	}
@@ -365,13 +362,13 @@ func (s *State) commitName(ctx *frame.Context) {
 		func() { s.name.Field.Failed() })
 }
 
-// drawRow draws the Settings or World state row's inspector, and reports
-// whether one was selected.
+// drawRow draws the Settings, Values or Signals row's inspector, and
+// reports whether one was selected.
 func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.drawSettings(screen, docs, left)
-	case worldStateRow:
+	case worldStateRow, worldSignalsRow:
 		s.drawWorldState(screen, left)
 	default:
 		return false

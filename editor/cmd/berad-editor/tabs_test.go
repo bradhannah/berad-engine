@@ -14,7 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/art"
 )
 
-// TestViewsOpenAsTabs opens a Map, a text document and Audio from the
+// TestViewsOpenAsTabs opens a Map, a workflow and Audio from the
 // project browser, each as a tab of the editor window (increments 10 and 13).
 // The Map paints while another tab is in front, so hidden tabs keep working,
 // and closing the project browser's tab quits the editor after asking.
@@ -24,8 +24,8 @@ func TestViewsOpenAsTabs(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "tabs.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(60),
-		doubleClick("row:Notes"), wait(60), must("section:audio", 600), doubleClick("row:Hum"), wait(240),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), wait(60),
+		doubleClick("row:Fetch stock"), wait(60), must("section:audio", 600), doubleClick("row:Hum"), wait(240),
 		step{Repeat: 2, Screenshot: shot}, keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	mapScript := script(must("state:loaded", 600), wait(240), keys("3"), drag("cell:4,8", "cell:5,8"), wait(30))
@@ -45,7 +45,7 @@ func TestViewsOpenAsTabs(t *testing.T) {
 }
 
 // TestClockIsPinned previews the sample zone in a Map tab, then brings a
-// text document's tab to the front (increment 10). The pinned clock reads
+// workflow's tab to the front (increment 10). The pinned clock reads
 // the preview out on the bar, its panel opens by itself, and its +1h moves
 // the hidden Map's preview on an hour.
 func TestClockIsPinned(t *testing.T) {
@@ -54,7 +54,7 @@ func TestClockIsPinned(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "tabs-clock.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(90), doubleClick("row:Notes"),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), wait(90), doubleClick("row:Fetch stock"),
 		wait(300), step{Repeat: 2, Screenshot: shot}, keys("Cmd+W"), must("ui:quit", 300), wait(5),
 		click("ui:quit"), wait(60),
 	)
@@ -80,7 +80,7 @@ func TestWatchOpensBesideItsMap(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "tabs-split.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(600),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), wait(600),
 		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	mapScript := script(
@@ -105,7 +105,7 @@ func frameScenario() scripts {
 		strokes = append(strokes, drag(at(-14), at(-13), at(-12)), wait(10))
 	}
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Sample zone"), wait(1100),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), wait(1100),
 		keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	return scripts{
@@ -158,7 +158,7 @@ func TestTabsGroupByKind(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "tabs-kinds.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5),
+		must("row:Sample zone", 600), wait(5),
 		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
 		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
 		doubleClick("row:Sample zone"), wait(240), step{Repeat: 2, Screenshot: shot},
@@ -180,7 +180,7 @@ func TestSpriteOpensAsATab(t *testing.T) {
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "tabs-sprite.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5),
+		must("row:Sample zone", 600), wait(5),
 		rightClick("section:sprites"), must("menu:new-sprite", 60), click("menu:new-sprite"),
 		must("row:Sprite 1", 300), wait(30), click("ui:open"), wait(360), step{Repeat: 2, Screenshot: shot},
 		keys("Cmd+W"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),

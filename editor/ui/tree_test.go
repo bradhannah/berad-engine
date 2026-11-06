@@ -43,7 +43,7 @@ func TestTreeRowsToggleAddAndSelect(t *testing.T) {
 		t.Fatalf("floor: %+v", result)
 	}
 	list.Draw(ebiten.NewImage(400, 200), theme(t))
-	for _, icon := range []ui.Icon{ui.IconZone, ui.IconFloor, ui.IconWorkflow, ui.IconNPC, ui.IconText} {
+	for _, icon := range []ui.Icon{ui.IconZone, ui.IconFloor, ui.IconWorkflow, ui.IconNPC, ui.IconFolder} {
 		if ui.IconColor(icon) == ui.ColorSelect() || ui.IconColor(icon) == ui.ColorLive() {
 			t.Fatalf("icon %d uses selection blue or live orange", icon)
 		}

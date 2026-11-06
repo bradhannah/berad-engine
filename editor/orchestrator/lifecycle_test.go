@@ -14,7 +14,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/textdoc"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -396,8 +395,8 @@ func TestWhereUsed(t *testing.T) {
 	if anchors[0].ID != added.Created {
 		t.Fatal("the event and the result name different anchors")
 	}
-	note := createDocument(t, browser, textdoc.FormatName, "Note", ids.ULID{}, encodeDocument(t, textdoc.NewDocument()), "")
-	mustCommand(t, browser, note, textdoc.SetLocationEdit, "", textdoc.SetLocationArgs{
+	note := createDocument(t, browser, noteFormat, "Note", ids.ULID{}, encodeDocument(t, newNote()), "")
+	mustCommand(t, browser, note, noteLocationEdit, "", noteLocationArgs{
 		Location: floor.AnchorRef{Floor: floorID, Anchor: added.Created},
 	})
 

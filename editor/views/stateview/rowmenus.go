@@ -136,7 +136,7 @@ func (s *State) openRowMenu(input *ui.Input, row string, meaning item, found boo
 	for id, sub := range subs {
 		s.menu.SetSub(id, sub, ui.MenuWidth(sub, s.theme))
 	}
-	s.menu.OpenAt(input.Cursor, s.screen())
+	s.menu.OpenAt(input.Cursor, frame.AboveStatus(s.size))
 }
 
 // menuTarget is where the menu's row adds: inside its group or template,
@@ -216,7 +216,7 @@ func (s *State) addsWhere(into target) string {
 // addsNote says where Add value and Add group add, beside them, or "" when
 // they cannot.
 func (s *State) addsNote(docs frame.Docs) string {
-	if selected, found := s.selected(); found && isSignal(selected.kind) {
+	if s.part == PartSignals {
 		return "adds " + signalWhere(s.shown.signals, s.signalParent(docs))
 	}
 	into, ok := s.addTarget(docs)

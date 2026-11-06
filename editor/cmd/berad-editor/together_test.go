@@ -21,12 +21,13 @@ func TestLanesRunTogether(t *testing.T) {
 	canvasShot, watchShot := shotPath(t, "together-canvas.png"), shotPath(t, "together-watch.png")
 	together := "node:" + flow.KindTogether + ":1"
 	browserScript := script(
-		must("row:Notes", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Customer"), must("state:tabs:2", 600), wait(60),
 		doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	customerScript := script(
 		must("state:loaded", 600), wait(60), click("ui:zoom-fit"), wait(10), click("node:"+flow.KindOnSignal+":1"),
-		wait(5), click("ui:delete-node"), wait(10), click("node:start:1"), wait(5), addNode(flow.KindTogether),
+		wait(5), click("ui:delete-node"), wait(10), click("node:start:1"), wait(5),
+		insertAfter(flow.KindTogether, flow.OutputDone, "start:1:next", flow.KindCheckValue+":1"),
 		must("state:selected:"+flow.KindTogether, 300), must("state:lanes:"+flow.KindTogether+":1=2", 60),
 		click("ui:add-lane"), must("state:lanes:"+flow.KindTogether+":1=3", 300),
 		addNode(flow.KindPlaySound), must("state:selected:"+flow.KindPlaySound, 300), click("ui:cue"),

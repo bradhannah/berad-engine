@@ -26,8 +26,8 @@ under consideration), **open** (undecided).
   dark outlines and rounded boxes, small uppercase labels, blue for selection
   and orange for anything live.
 - **Agreed:** typed changes wait for an explicit save: every inspector with
-  fields to type into, and Text, has a save bar with Revert and
-  Save, and Cmd+S saves in any pane. Enter saves a one-line field and
+  fields to type into has a save bar with Revert and Save, and Cmd+S saves
+  in any pane. Enter saves a one-line field and
   starts a new line in a field of several lines. Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
   closing a tab with unsaved changes asks: Save, Don't save or Cancel.
@@ -38,6 +38,30 @@ under consideration), **open** (undecided).
   there are several; the pinned clock sits at its right end; and Watch opens
   beside a Map of its zone, in that Map's tab. Each view runs in a pane of a
   tab. There are no separate windows, and nothing pops out into one.
+- **Agreed (2026-11-04):** **the inspector folds.** An Inspector toggle in
+  the status bar folds every tab's inspector to a strip at the right edge,
+  and clicking the strip opens it again. (Rejected: an inspector floating
+  beside the selection, quick settings on the node, one docked along the
+  bottom, auto-hide, and a layout fitted to the window's width; each meant
+  another layout to keep in step.)
+- **Agreed (2026-11-04):** on a wide window **a list keeps a readable
+  width,** each row's detail in a column close to its name, and the
+  inspector stands beside the list instead of at the far edge. World
+  state's Values and Signals do so first. [Increment
+  29](increments/0029-lines-state-and-picking.md) builds the readable lists
+  and the fold.
+- **Agreed (2026-11-05):** the Project window is sliced by **facets**:
+  Kind, Zone, Runs as, Folder, Tags, Changed and Problems, each value with
+  how many things ticking it would list, so no tick leads to nothing. The
+  list stays the tree until something is typed or ticked, then shows a
+  table of what is left. A set of ticks is saved with the project as a
+  view. Every document records when it last changed, and every workflow's
+  problems are known without opening it. (Set aside, from the [research
+  notes](RESEARCH_NOTES.md#the-project-window-at-scale-researched-2026-11-04):
+  a working set, stepping along relations, an overview, columns and quick
+  open; the atlas is kept as an idea, with a graph of how things relate,
+  for when the strong associations between them are settled.) [Increment
+  30](increments/0030-project-facets.md) builds it.
   (Rejected: a window process for each view, as the editor ran until
   increment 12.)
 - **Agreed:** Cmd+W closes the focused pane, and a tab's close box closes its
@@ -47,8 +71,7 @@ under consideration), **open** (undecided).
   Cancel.
 - **Agreed:** document types are told apart by an icon, always with a muted
   colour beside it, never by colour alone: zones and floors green, workflows
-  purple, NPCs slate, text brown. Blue and orange stay for selection and
-  live.
+  purple, NPCs slate. Blue and orange stay for selection and live.
 - **Agreed:** the editor window can be kept above every other application's
   windows with the On top toggle at the right of any pane's status bar.
 - **Agreed:** a view's keys are listed on a sheet opened with its Keys
@@ -366,6 +389,13 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   scopes, every type and how many places use each value; a pick shows the
   value in the tree, and a name that matches nothing is declared from it in
   the world, a zone, an NPC or a template, then shown.
+- **Agreed (2026-11-04):** **World state is a section** of the Project
+  window holding **Values** and **Signals**, each opening its own window,
+  so later kinds of world state join the section rather than crowding one
+  window. Both windows are filed under World state on the window bar.
+  (Rejected: one World state window whose top level is VALUES and
+  SIGNALS.) [Increment 29](increments/0029-lines-state-and-picking.md)
+  builds it.
 
 ## Workflows
 
@@ -455,17 +485,32 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   its arrowhead, small and muted; a short line does not, since the outcome's
   own row is in view.
 - **Agreed (2026-11-01):** several nodes and containers can be selected,
-  with Shift-click or a box dragged from empty canvas, and moved, coloured,
+  with Cmd+click or a box dragged from empty canvas, and moved, coloured,
   duplicated (Cmd+D, or copied and pasted into another workflow) or deleted
   together, each one undo step. Lines are never part of a group. A
   container brings its contents, and a dragged group stops at a container's
   wall, as one node does. Arrow keys nudge the selection, and Arrange can
-  lay out the selection alone.
-- **Agreed (2026-11-01):** dropping a node onto a line, from the palette or
-  from the canvas, puts it in the flow: the line ends at the new node, and
-  the node's first output continues to the old target; its other outputs
-  stay free, labelled as free outputs are. A target with several entries
-  takes the line on its next free dot.
+  lay out the selection alone. (Changed on 2026-11-06 from Shift-click:
+  Shift suggests a range, a path from one node to another, which a graph
+  does not have; and Ctrl+click is a Mac's right-click.)
+- **Replaced (2026-11-04):** dropping a node onto a line, from the palette
+  or from the canvas, put it in the flow: the line ended at the new node,
+  and the node's first output continued to the old target. In use it kept
+  catching lines whose ends were far away.
+- **Agreed (2026-11-04):** the author draws the lines. A node dropped from
+  the palette lands where it falls, connected to nothing, even on a line;
+  Add after connects the new node to a free output of the selected one, or,
+  with none free, places it beside, connected to nothing. A back line runs
+  just under its own two nodes and dips below a node only where it would
+  run through it, and only for nodes in its own container. [Increment
+  29](increments/0029-lines-state-and-picking.md) builds it.
+- **Agreed (2026-11-05):** a node over a line shows it is not joined to it.
+  A line that crosses a node is drawn over it at 40% strength, through its
+  dots, and a node nothing links to rings its loose dots red and says "Not
+  linked: never runs" under itself. (Rejected: solid lines over nodes,
+  which strike through them; the line showing through as dashes, which
+  mean a loop; a gap in the line; a shadow under the node.) [Increment
+  30](increments/0030-project-facets.md) builds it.
 - **Agreed (2026-11-03):** the palette says what a node does before it is
   placed: a search matches what each node does as well as its name,
   hovering an entry gives its one line, and clicking it shows its help page
@@ -502,9 +547,28 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   Find NPC nearby's Only one whose and Keep it in, and an integer's Another
   value. (Rejected: a popover anchored to the box; shorter for a short
   list, cramped again for a long one.)
-- **Candidate:** reusable blocks of text, paragraphs long, kept in the
-  project view rather than in one workflow (its author's "static strings").
-  *Open:* what they are for, given that the Texts view holds a game's texts.
+- **Agreed (2026-11-04):** a signal is chosen in a **signal picker**, a
+  dialog over the window like the value picker, as a project soon has too
+  many signals for a button each. Its search matches any part of a path.
+  With nothing typed, the signals this workflow sends or answers come
+  first, then every signal under folding groups, each saying how often it
+  is sent and answered. Send signal's and On signal's inspectors keep only
+  the box. (Rejected: columns of groups and signals, and type-ahead in the
+  box.) [Increment 29](increments/0029-lines-state-and-picking.md) builds
+  it.
+- **Agreed (2026-11-06):** reusable text, its author's "static strings",
+  becomes **constants**: a list of its own beside values, of strings, from a
+  sign to long dialogue, and whole numbers, which the designer sets and a
+  game never changes. Constants are scoped as values are, to the world, a
+  zone or an NPC. Messages, Check value and Set value can use them, and they
+  are deleted under the same rules as values. Their text takes markup for
+  colour, bold and italic, and nothing that changes the flow, such as a
+  pause. Long text is not paged for now. They are built once the Project
+  window's new design is settled. *Open:* whether a path says which it is,
+  as `const.` and `var.`.
+- **Removed (2026-11-06):** Text documents, a placeholder kept to prove the
+  text field and picking a place, are gone, as constants will hold a game's
+  text ([increment 31](increments/0031-no-text-documents.md)).
 - **Candidate:** cut scenes as workflows that block player input.
 
 ## NPCs

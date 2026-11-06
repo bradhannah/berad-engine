@@ -33,6 +33,10 @@ const (
 	// statusGap the space kept between the status bar's parts.
 	onTopWidth = 76
 	statusGap  = 24
+	// inspectorToggleWidth is the width of the Inspector toggle beside On
+	// top, and FoldedWidth the strip a folded inspector leaves at the right.
+	inspectorToggleWidth = 88
+	FoldedWidth          = 24
 )
 
 // Docs gives read access to the window's subscribed documents. fn runs while
@@ -179,6 +183,11 @@ type Context struct {
 	Size   image.Point
 	// Frame is the shared status bar and window state.
 	Frame *Frame
+	// InspectorFolded is set while the inspector is folded to its strip.
+	// Size is then wider than the window by all but the strip, so an
+	// inspector at the right edge falls past it; a view that places its
+	// inspector anywhere else puts it at the right edge while this is set.
+	InspectorFolded bool
 }
 
 // View is one kind of editor window: Map, Project browser, Text.
@@ -219,6 +228,10 @@ type Frame struct {
 	// OnTop is the status bar's toggle that keeps the window above every
 	// other window, session state for each window.
 	OnTop *ui.Toggle
+	// ShowInspector is the status bar's toggle that shows the inspector or
+	// folds it to a strip at the right edge, session state the editor
+	// window shares.
+	ShowInspector *ui.Toggle
 }
 
 // NewFrame returns an empty frame.
@@ -226,6 +239,7 @@ func NewFrame(now func() time.Time) *Frame {
 	return &Frame{
 		status: "", statusUntil: time.Time{}, notice: "", latencies: nil, now: now, Quit: false, Closing: false,
 		Crash: false, OnTop: &ui.Toggle{ID: "on-top", Label: "On top", Rect: ui.Zero(), On: false},
+		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
 	}
 }
 
@@ -282,39 +296,79 @@ func Content(size image.Point) image.Rectangle {
 	return image.Rect(0, 0, size.X-InspectorWidth, size.Y-StatusHeight)
 }
 
+// AboveStatus is a window's area above its status bar, which a menu opened
+// over the window stays inside.
+func AboveStatus(size image.Point) image.Rectangle {
+	return image.Rect(0, 0, size.X, size.Y-StatusHeight)
+}
+
 // Inspector returns the inspector panel's area (D13: embedded on the right of
 // every window).
 func Inspector(size image.Point) image.Rectangle {
 	return image.Rect(size.X-InspectorWidth, 0, size.X, size.Y-StatusHeight)
 }
 
-// layoutStatus places the On top toggle at the right end of the status bar.
+// layoutStatus places the On top toggle at the right end of the status bar,
+// and the Inspector toggle before it.
 func (f *Frame) layoutStatus(size image.Point) {
 	top := size.Y - StatusHeight
 	f.OnTop.Rect = image.Rect(size.X-ui.Inset-onTopWidth, top, size.X-ui.Inset, size.Y)
+	right := f.OnTop.Rect.Min.X - statusGap/ui.Half
+	f.ShowInspector.Rect = image.Rect(right-inspectorToggleWidth, top, right, size.Y)
 }
 
-// UpdateStatus handles a click on the status bar's On top toggle.
+// UpdateStatus handles a click on the status bar's toggles.
 func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 	f.layoutStatus(size)
 	f.OnTop.Update(input)
+	f.ShowInspector.Update(input)
 }
 
-// LocateStatus finds the On top toggle, "ui:on-top", and reports
-// "state:on-top" while the window is kept on top, for input scripts.
+// LocateStatus finds the status bar's toggles, "ui:on-top" and
+// "ui:inspector", and reports "state:on-top" while the window is kept on
+// top and "state:inspector" while the inspector shows, for input scripts.
 func (f *Frame) LocateStatus(name string) (image.Point, bool) {
-	switch name {
-	case "ui:" + f.OnTop.ID:
-		return ui.Center(f.OnTop.Rect), !f.OnTop.Rect.Empty()
-	case "state:" + f.OnTop.ID:
-		return image.Pt(0, 0), f.OnTop.On
+	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector} {
+		switch name {
+		case "ui:" + toggle.ID:
+			return ui.Center(toggle.Rect), !toggle.Rect.Empty()
+		case "state:" + toggle.ID:
+			return image.Pt(0, 0), toggle.On
+		}
 	}
 
 	return image.Pt(0, 0), false
 }
 
+// Folded is the strip a folded inspector leaves at the right edge of a
+// window of a size, above the status bar.
+func Folded(size image.Point) image.Rectangle {
+	return image.Rect(size.X-FoldedWidth, 0, size.X, size.Y-StatusHeight)
+}
+
+// DrawFolded draws a folded inspector's strip: an arrow to open it, and its
+// name down the strip.
+func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
+	strip := Folded(screen.Bounds().Size())
+	fill := ui.ColorPanel()
+	if hover {
+		fill = ui.ColorSelectWash()
+	}
+	ui.FillRect(screen, strip, fill)
+	ui.Divider(screen, strip.Min, image.Pt(strip.Min.X, strip.Max.Y))
+	middle := strip.Min.X + FoldedWidth/ui.Half
+	theme.DrawText(screen, "‹", middle-theme.TextWidth("‹")/ui.Half, strip.Min.Y+ui.Inset, ui.ColorInk())
+	top := strip.Min.Y + ui.Inset + ui.LineHeight + ui.Gap
+	for _, letter := range "INSPECTOR" {
+		shown := string(letter)
+		theme.DrawLabel(screen, shown, middle-theme.TextWidth(shown)/ui.Half, top, ui.ColorMuted())
+		top += ui.LineHeight - ui.Gap/ui.Half
+	}
+}
+
 // DrawStatus draws the status bar: the wireframes' monospaced strip along
-// the bottom of the window, with the On top toggle at its right end. The
+// the bottom of the window, with the Inspector and On top toggles at its
+// right end. The
 // speed readout is left out when the window is too narrow for it.
 func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	bounds := screen.Bounds()
@@ -328,11 +382,12 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 		ink = ui.ColorSelect()
 	}
 	textY := bar.Min.Y + (StatusHeight-ui.MonoSize)/ui.Half - 1
-	message = theme.FitText(message, f.OnTop.Rect.Min.X-statusGap-ui.Inset)
+	message = theme.FitText(message, f.ShowInspector.Rect.Min.X-statusGap-ui.Inset)
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
+	f.ShowInspector.Draw(screen, theme)
 	f.OnTop.Draw(screen, theme)
 	speed := "command to event: last " + formatLatency(f.last()) + ", median " + formatLatency(f.median())
-	speedLeft := f.OnTop.Rect.Min.X - statusGap - theme.MonoWidth(speed)
+	speedLeft := f.ShowInspector.Rect.Min.X - statusGap - theme.MonoWidth(speed)
 	if speedLeft >= ui.Inset+theme.TextWidth(message)+statusGap {
 		theme.DrawMono(screen, speed, speedLeft, textY, ui.ColorMuted())
 	}

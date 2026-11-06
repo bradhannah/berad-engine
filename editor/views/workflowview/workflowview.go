@@ -172,6 +172,8 @@ type State struct {
 	// opened in one, opened again in the next.
 	values    *valuePicker
 	lastGroup string
+	// signalPick is the signal picker while it is open.
+	signalPick *signalPick
 	// places is the list of places while it is open; lit is the place
 	// control whose box glows, its place just set, for litLeft frames more.
 	places  *placeList
@@ -243,13 +245,13 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		recentre:   ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
-		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "",
+		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "", signalPick: nil,
 		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		places: nil, lit: "", litLeft: 0, shown: true,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
-		runs:        runners{uses: nil, key: "", asking: false, wait: 0},
+		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false,
@@ -294,6 +296,8 @@ func (s *State) Focused() *ui.TextField {
 	switch {
 	case s.values != nil:
 		return s.values.picker.Focused()
+	case s.signalPick != nil:
+		return s.signalPick.picker.Focused()
 	case s.places != nil:
 		return s.places.list.Focused()
 	case s.pal.focus.Current() != nil:
@@ -917,9 +921,9 @@ func linkProblem(workflow *flow.Workflow, from flow.Node, output string, target 
 }
 
 // addAfterSelected adds a node after the selected one, connected from its
-// first free output, or put into the line of its first output when it has
-// none free; or inside a selected container; with nothing selected it goes
-// in the middle of the view.
+// first free output, or beside it, connected to nothing, when it has none
+// free; or inside a selected container; with nothing selected it goes in the
+// middle of the view.
 func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 	selected, ok := s.shapes[s.selected]
 	if !ok {
@@ -953,11 +957,6 @@ func (s *State) addAfterSelected(ctx *frame.Context, kind string) {
 		place.Y = candidate.at.Y - nodeHeight/ui.Half
 
 		break
-	}
-	if link == nil && len(selected.ports) > 0 && splices(kind) {
-		s.splice(ctx, kind, routeKey{from: selected.node.ID, output: selected.ports[0].output.Name}, place)
-
-		return
 	}
 	s.add(ctx, kind, s.clearOf(place, selected.node.Parent), selected.node.Parent, link)
 }

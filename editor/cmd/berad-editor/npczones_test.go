@@ -18,7 +18,7 @@ func TestMovingTheCustomer(t *testing.T) {
 	pickerShot, dialogShot, flagShot := shotPath(t, "zone-picker.png"), shotPath(t, "zone-move.png"),
 		shotPath(t, "zone-flag.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("ui:new-zone"), wait(30), click("row:Customer"), wait(60),
+		must("row:Sample zone", 600), wait(5), click("ui:new-zone"), wait(30), click("row:Customer"), wait(60),
 		must("state:npc-zone=Sample zone", 600), wait(10),
 		click("ui:npc-zone"), must("state:zone-picker", 120), wait(10), click("zone:Zone 1"), wait(10),
 		shoot(pickerShot), keys("Enter"), must("state:dialog", 900),
@@ -50,7 +50,7 @@ func TestTheCustomerTakesTheStairs(t *testing.T) {
 	walkShot, mapShot, watchShot := shotPath(t, "stairs-walk.png"), shotPath(t, "stairs-map.png"),
 		shotPath(t, "stairs-watch.png")
 	browserScript := script(
-		must("row:Notes", 600), wait(5), click("row:Customer"), wait(60), doubleClick("row:Customer"),
+		must("row:Sample zone", 600), wait(5), click("row:Customer"), wait(60), doubleClick("row:Customer"),
 		must("state:tabs:2", 600), wait(30), doubleClick("row:Sample zone"), must("state:tabs:3", 600), quitWhenAlone(),
 	)
 	mapScript := script(

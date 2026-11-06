@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -731,7 +732,7 @@ func (s *State) otherPalettes(ctx *frame.Context) []project.Entry {
 
 // openMenu opens the window's menu below a button, for a purpose.
 func (s *State) openMenu(purpose string, items []ui.MenuItem, anchor image.Rectangle) {
-	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	window := frame.AboveStatus(s.size)
 	s.menu.Items = items
 	s.menu.Width = min(ui.MenuWidth(items, s.theme), window.Dx()-ui.Half*ui.Inset)
 	s.menu.Open(anchor, window)
@@ -872,7 +873,7 @@ func (s *State) newPalette(ctx *frame.Context, palette *art.Palette) {
 	name := uniqueDocumentName(ctx.Docs, newPaletteAs)
 	args := project.DocumentArgs{
 		ID: ids.ULID{}, Format: art.PaletteFormatName, Name: name, Version: 0, Revision: 0, Scope: ids.ULID{},
-		Folder: "", Tags: nil, Kind: "", Data: data, Layout: nil,
+		Folder: "", Tags: nil, Kind: "", Data: data, Layout: nil, Changed: time.Time{},
 	}
 	count := len(s.picked)
 	s.command(ctx, project.IndexID(), project.CreateEdit, "", args, func(result protocol.Result) {

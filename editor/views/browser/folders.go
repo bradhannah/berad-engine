@@ -1,7 +1,6 @@
 package browser
 
 import (
-	"image"
 	"slices"
 	"strings"
 
@@ -170,7 +169,7 @@ func (s *State) deleteFolder(ctx *frame.Context, folder project.Folder) {
 // openMoveMenu opens Move to… below its button.
 func (s *State) openMoveMenu(docs frame.Docs) {
 	if s.moveItems(docs) {
-		s.moveMenu.Open(s.moveBn.Rect, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+		s.moveMenu.Open(s.moveBn.Rect, frame.AboveStatus(s.size))
 	}
 }
 

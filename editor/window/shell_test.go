@@ -31,7 +31,7 @@ func TestSafelyTurnsAPanicIntoAnError(t *testing.T) {
 // forward when it was the one that went.
 func TestRemovingATabKeepsTheTabInFront(t *testing.T) {
 	t.Parallel()
-	first, second, third := &pane{view: "browser"}, &pane{view: "map"}, &pane{view: "text"}
+	first, second, third := &pane{view: "browser"}, &pane{view: "map"}, &pane{view: "workflow"}
 	shown := &shell{tabs: []*tab{{panes: []*pane{first}}, {panes: []*pane{second}}, {panes: []*pane{third}}}, active: 2}
 	shown.remove(second)
 	if len(shown.tabs) != 2 || shown.focused() != third {
@@ -116,7 +116,7 @@ func TestTabsGroupByKind(t *testing.T) {
 	t.Parallel()
 	project := titled("browser", "Project")
 	town := titled("map", "Map: Town — Ground  (view aaaaaa)")
-	notes := titled("text", "Text: Notes  (window bbbbbb)")
+	notes := titled("workflow", "Workflow: Notes  (window bbbbbb)")
 	harbour := titled("map", "Map: Harbour  (view cccccc)")
 	townAgain := titled("map", "Map: Town — Ground  (view dddddd)")
 	shown := &shell{size: image.Pt(1200, 832), tabs: []*tab{
@@ -125,11 +125,11 @@ func TestTabsGroupByKind(t *testing.T) {
 	}, active: 2}
 	kinds := shown.kinds()
 	if len(kinds) != 3 || kinds[0].view != "browser" || kinds[1].view != "map" || len(kinds[1].tabs) != 3 ||
-		kinds[2].view != "text" {
+		kinds[2].view != "workflow" {
 		t.Fatalf("kinds %+v", kinds)
 	}
 	if shown.documentRow() || shown.barHeight() != rowHeight {
-		t.Fatal("one text document in front needs no second row")
+		t.Fatal("one workflow in front needs no second row")
 	}
 	tabs := shown.barTabs()
 	if len(tabs) != 3 || tabs[1].label != "Maps" || tabs[1].count != 3 || tabs[2].label != "Notes" || !tabs[2].front {
@@ -148,5 +148,25 @@ func TestTabsGroupByKind(t *testing.T) {
 	labels := shown.documentLabels(kinds[1])
 	if labels[0] != "Town — Ground  (view aaaaaa)" || labels[1] != "Harbour" || labels[2] != "Town — Ground  (view dddddd)" {
 		t.Fatalf("document labels %q", labels)
+	}
+}
+
+// TestWorldStatePartsAreOneKind files World state's Values and Signals
+// under World state, with a second row that names each part.
+func TestWorldStatePartsAreOneKind(t *testing.T) {
+	t.Parallel()
+	values := titled("world-state", "World state: Values")
+	signals := titled("world-signals", "World state: Signals")
+	shown := &shell{size: image.Pt(1200, 832), tabs: []*tab{{panes: []*pane{values}}, {panes: []*pane{signals}}},
+		active: 1}
+	kinds := shown.kinds()
+	if len(kinds) != 1 || kinds[0].view != "world-state" || len(kinds[0].tabs) != 2 {
+		t.Fatalf("kinds %+v", kinds)
+	}
+	tabs := shown.barTabs()
+	labels := shown.documentLabels(kinds[0])
+	if len(tabs) != 3 || tabs[0].label != "World state" || tabs[0].count != 2 || !shown.documentRow() ||
+		labels[0] != "Values" || labels[1] != "Signals" {
+		t.Fatalf("top row %+v, second row %q", tabs, labels)
 	}
 }
