@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
+	"github.com/bradhannah/berad-engine/engine/show"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -279,17 +280,19 @@ func (s *State) sampleLine(docs frame.Docs, node flow.Node) string {
 			owner, startsKnown = ids.ULID{}, true
 		}
 		if !startsKnown {
-			line.WriteString("‹" + path + "›")
+			line.WriteString(show.Escape("‹" + path + "›"))
 
 			continue
 		}
-		if own, ok := catalog.Lookup(ref.Scope, owner, ref.Value); ok {
-			declared = own
+		declared, value := constantValue(catalog, ref.Scope, owner, declared)
+		said := worldstate.Text(declared, value, namer)
+		if !declared.IsConstant() {
+			said = show.Escape(said)
 		}
-		line.WriteString(worldstate.Text(declared, declared.Zero(), namer))
+		line.WriteString(said)
 	}
 
-	return line.String()
+	return show.Plain(line.String())
 }
 
 // sampleHeading heads the line as it would read, naming whose values it

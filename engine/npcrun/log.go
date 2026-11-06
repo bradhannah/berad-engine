@@ -57,7 +57,11 @@ func (n *NPC) messageText(world World, node flow.Node) (string, bool) {
 
 			continue
 		}
-		text.WriteString(show.Escape(worldstate.Text(declared, value, names)))
+		said := worldstate.Text(declared, value, names)
+		if !declared.IsConstant() {
+			said = show.Escape(said)
+		}
+		text.WriteString(said)
 	}
 
 	return text.String(), true

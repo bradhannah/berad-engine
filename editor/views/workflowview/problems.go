@@ -63,7 +63,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		if problem := s.problemOf(node, docs); problem != "" {
 			s.problems[node.ID] = problem
 		}
-		if warning := s.signalWarning(node, docs); warning != "" {
+		if warning := s.warningOf(node, docs); warning != "" {
 			s.warnings[node.ID] = warning
 		}
 	}

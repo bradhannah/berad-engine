@@ -95,13 +95,29 @@ func (n *NPC) local(declared worldstate.Declaration) worldstate.Value {
 func (n *NPC) read(world World, ref flow.ValueRef) (worldstate.Declaration, worldstate.Value, bool) {
 	declared, owner, ok := n.lookup(world, ref)
 	if !ok {
-		return declared, worldstate.NoValue(), false
+		return n.readConstant(world, ref)
 	}
 	if declared.Scope == worldstate.ScopeLocal {
 		return declared, n.local(declared), true
 	}
 
 	return declared, world.State.Get(declared, owner), true
+}
+
+// readConstant reads a constant: the world's, or an NPC's or zone's own
+// value of one of its templates' constants, or else the default, for this
+// NPC, its zone, the one named or the NPC a local holds.
+func (n *NPC) readConstant(world World, ref flow.ValueRef) (worldstate.Declaration, worldstate.Value, bool) {
+	none := worldstate.New(ids.ULID{}, "", "", "")
+	if ref.IsZero() || ref.Scope == worldstate.ScopeLocal || world.State == nil {
+		return none, worldstate.NoValue(), false
+	}
+	owner, known := n.ownerOf(world, ref)
+	if !known {
+		return none, worldstate.NoValue(), false
+	}
+
+	return world.State.Catalog().Constant(ref.Scope, owner, ref.Value)
 }
 
 // write sets one of the workflow's own values: a local one, its NPC's, its
@@ -154,6 +170,12 @@ func (n *NPC) setTo(world World, node flow.Node, declared worldstate.Declaration
 	switch {
 	case !readable:
 		return worldstate.NoValue(), false
+	case other.Type == declared.Type && declared.Type == worldstate.TypeText:
+		if runes := []rune(value.Text); len(runes) > declared.TextLimit() {
+			value.Text = string(runes[:declared.TextLimit()])
+		}
+
+		return value, true
 	case other.Type == declared.Type:
 		return value, true
 	case declared.Type == worldstate.TypeText:
@@ -389,12 +411,12 @@ func (n *NPC) matcher(world World, node flow.Node) func(npc ids.ULID) bool {
 	}
 	catalog := world.State.Catalog()
 	declared, _, known := catalog.Declared(where.Value)
-	if !known || declared.Scope != worldstate.ScopeNPC || !declared.IsValue() {
+	if !known || declared.Scope != worldstate.ScopeNPC || !declared.Type.IsValue() {
 		n.work.skipped = StatusNoValue
 
 		return nobody
 	}
-	wanted, fits := operand(node, "is", declared)
+	wanted, fits := n.operandOf(world, node, "is", declared)
 	if !fits {
 		n.work.skipped = StatusNoOperand
 
@@ -402,6 +424,11 @@ func (n *NPC) matcher(world World, node flow.Node) func(npc ids.ULID) bool {
 	}
 
 	return func(npc ids.ULID) bool {
+		if declared.IsConstant() {
+			_, value, has := catalog.Constant(worldstate.ScopeNPC, npc, where.Value)
+
+			return has && value.Equal(wanted)
+		}
 		held, has := catalog.Lookup(worldstate.ScopeNPC, npc, where.Value)
 
 		return has && world.State.Get(held, npc).Equal(wanted)

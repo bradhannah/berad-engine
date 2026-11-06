@@ -509,28 +509,34 @@ func change(
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: items, Covers: nil}, nil
 }
 
-// valueReferences lists the values a value node uses, by ID under the world
-// state, wherever they are declared, and any NPC or zone it names. Local
-// values are the workflow's own.
+// valueReferences lists the values and constants a value node uses, by ID
+// under the world state, wherever they are declared, and any NPC or zone it
+// names: the value it sets, checks or looks for, and any its operands refer
+// to. Local values are the workflow's own.
 func valueReferences(node flow.Node) []model.Reference {
 	kind, _ := flow.KindOf(node.Kind)
-	label := "a " + kind.Label + " node"
-	var references []model.Reference
+	var refs []flow.ValueRef
 	for _, param := range kind.Params {
-		if param.Type != flow.TypeValue {
+		if param.Type == flow.TypeValue {
+			if ref, err := node.Ref(param.Name); err == nil {
+				refs = append(refs, ref)
+			}
+		}
+		if param.Type != flow.TypeOperand {
 			continue
 		}
-		ref, err := node.Ref(param.Name)
-		if err != nil || ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
+		raw, err := node.Operand(param.Name)
+		if err != nil {
 			continue
 		}
-		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})
-		if !ref.Owner.IsZero() {
-			references = append(references, model.Reference{Document: ref.Owner, Item: "", Label: label})
+		for _, item := range flow.Operands(raw) {
+			if ref, refers := flow.OperandRef(item); refers {
+				refs = append(refs, ref)
+			}
 		}
 	}
 
-	return references
+	return refReferences(refs, "a "+kind.Label+" node")
 }
 
 // CallItem is the item a Call's reference to the workflow it calls names,

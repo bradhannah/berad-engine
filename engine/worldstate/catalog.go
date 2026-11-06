@@ -248,6 +248,19 @@ func (c *Catalog) Templates(scope Scope) []Held {
 	return values
 }
 
+// TemplateConstants lists every constant in a scope's templates, template
+// by template in name order: what an NPC or zone with a template has.
+func (c *Catalog) TemplateConstants(scope Scope) []Held {
+	var constants []Held
+	for _, declared := range c.world.Children(scope, ids.ULID{}) {
+		if declared.Type == TypeTemplate {
+			constants = walk(c.world, scope, declared.ID, constants, Declaration.IsConstant)
+		}
+	}
+
+	return constants
+}
+
 // walk adds the values or constants under a parent that keep says to,
 // depth first in name order.
 func walk(list *Declarations, scope Scope, parent ids.ULID, values []Held, keep func(Declaration) bool) []Held {

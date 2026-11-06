@@ -3,6 +3,7 @@ package workflow_test
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/model"
@@ -315,6 +316,42 @@ func TestReferencesListValuesAndNPCs(t *testing.T) {
 	if len(references) != 2 || references[0].Document != worldstate.ID() || references[0].Item != id(20).String() ||
 		references[1].Document != id(21) {
 		t.Fatalf("a value node refers to its world-state value and the NPC it names, not its locals: %+v", references)
+	}
+}
+
+// TestReferencesListOperands lists what a Set value's and a Check value's
+// operands refer to, so a value or constant used only in an operand counts
+// as used.
+func TestReferencesListOperands(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	world := func(n byte) flow.ValueRef {
+		return flow.ValueRef{Scope: worldstate.ScopeWorld, Value: id(n), Owner: ids.ULID{}, Found: ids.ULID{}}
+	}
+	set := newNode(t, flow.KindSetValue, 3, ids.ULID{})
+	set, err := set.WithParam(flow.ParamValue, world(30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set, err = set.WithParam("to", flow.RefOperand(world(31))); err != nil {
+		t.Fatal(err)
+	}
+	check := newNode(t, flow.KindCheckValue, 4, ids.ULID{})
+	if check, err = check.WithParam(flow.ParamValue, world(32)); err != nil {
+		t.Fatal(err)
+	}
+	if check, err = check.WithParam(flow.ParamAgainst, flow.RefOperand(world(33))); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{set, check}, Boxes: nil, Links: nil}))
+	var items []string
+	for _, reference := range document.References() {
+		items = append(items, reference.Item)
+	}
+	for _, want := range []byte{30, 31, 32, 33} {
+		if !slices.Contains(items, id(want).String()) {
+			t.Fatalf("an operand's value counts as used: %v", items)
+		}
 	}
 }
 

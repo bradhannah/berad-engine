@@ -194,7 +194,7 @@ func (s *State) resolve(docs frame.Docs, ref flow.ValueRef) (worldstate.Declarat
 			return declared, "", problemOwnerGone
 		}
 		named := worldstate.Prefixed(worldstate.NamedPath(path, ownerPath(owner, ref.Owner)), declared)
-		if _, has := catalog.Lookup(ref.Scope, ref.Owner, ref.Value); !has {
+		if !holds(catalog, ref.Scope, ref.Owner, ref.Value) {
 			return declared, named, owner.Name + " has no " + worldstate.Prefixed(path, declared) + "."
 		}
 
@@ -212,7 +212,7 @@ func (s *State) missing(docs frame.Docs, ref flow.ValueRef, path string) string 
 	}
 	catalog := s.catalog(docs)
 	for _, follower := range s.followers(docs, catalog) {
-		if _, has := catalog.Lookup(worldstate.ScopeNPC, follower, ref.Value); !has {
+		if !holds(catalog, worldstate.ScopeNPC, follower, ref.Value) {
 			owner, _ := catalog.Owner(follower)
 
 			return owner.Name + " follows this workflow but has no " + path + "."
@@ -308,6 +308,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 			held.Path, held.Declaration)
 	}
 	if role == roleWhere {
+		s.constantOptions(found, docs, catalog, role, locals)
+
 		return found.listed
 	}
 	zoneValues := catalog.Templates(worldstate.ScopeZone)
@@ -325,6 +327,7 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	if role == roleCheck || role == roleGive {
 		s.othersOptions(found, catalog, locals)
 	}
+	s.constantOptions(found, docs, catalog, role, locals)
 
 	return found.listed
 }
@@ -1020,11 +1023,10 @@ func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
 // anything but an integer, or ask about a limit it lacks.
 func kindProblem(node flow.Node, ref flow.ValueRef, declared worldstate.Declaration) string {
 	compare := choiceOf(node, "compare")
+	if problem := setProblem(node, ref, declared); problem != "" {
+		return problem
+	}
 	switch {
-	case node.Kind == flow.KindSetValue && !ref.Writable():
-		return problemReadOnly
-	case node.Kind == flow.KindSetValue && worldstate.ReadOnly(ref.Value):
-		return problemBuiltInFixed
 	case declared.Type == worldstate.TypeNPC:
 		return problemNPCValue
 	case node.Kind == flow.KindSetValue && choiceOf(node, "how") == flow.HowAdd && declared.Type != worldstate.TypeInteger:
