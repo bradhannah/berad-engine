@@ -132,7 +132,8 @@ func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel.spriteTop = rowY
 	rowY = layoutChoice(rowY, left, width, &panel.sprite, panel.chooseSprite, panel.openSprite) + ui.LineHeight
 	panel.path.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
-	rowY += ui.ButtonH + ui.Gap*ui.Half + ui.LineHeight + panelGap + ui.LineHeight
+	rowY += ui.ButtonH + ui.Gap*ui.Half + ui.LineHeight + panelGap
+	rowY = s.layoutConstants(left, width, rowY) + ui.LineHeight
 	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
 }
 
@@ -362,6 +363,7 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 		s.theme.DrawText(screen, s.theme.FitText(note, panel.path.Rect.Dx()), left,
 			panel.path.Rect.Max.Y+ui.Gap*ui.Half, noteInk)
 	}
+	s.drawConstants(screen, left)
 	s.theme.Heading(screen, "NOTES", left, panel.notes.Rect.Min.Y-ui.LineHeight)
 	panel.notes.Draw(screen)
 	if panel.notes.Field.Conflict() {

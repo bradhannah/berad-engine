@@ -158,6 +158,9 @@ type State struct {
 	movingTo  ids.ULID
 	// zoneNotes are a selected zone's private notes, for zoneNoted.
 	zoneNotes *ui.TextField
+	// constants is the Constants section of a selected NPC's or zone's
+	// inspector, with its writing sheet.
+	constants *constantsPanel
 	// loop is a selected zone's Zone loop box, and loopFor the zone its
 	// dialog chooses a loop for.
 	loop      *loopPanel
@@ -227,7 +230,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
-		loop: newLoopPanel(), loopFor: ids.ULID{},
+		constants: newConstantsPanel(theme),
+		loop:      newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
 		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{}, sounds: newSoundState(),
@@ -289,6 +293,12 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 func (s *State) Focused() *ui.TextField {
 	if s.zones != nil {
 		return s.zones.Focused()
+	}
+	if s.constants.sheet != nil {
+		return s.constants.sheet.Focused()
+	}
+	if field := s.constants.focus.Current(); field != nil {
+		return field
 	}
 
 	return s.focus.Current()
@@ -462,41 +472,13 @@ func (s *State) zoneOf(docs frame.Docs, floorID ids.ULID) (ids.ULID, bool) {
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout(ctx.Docs)
-	switch {
-	case s.guard.Active():
-		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
-
-		return
-	case s.dialog != nil:
-		s.updateDialog(input, ctx)
-
-		return
-	case s.zones != nil:
-		s.updateZonePicker(input, ctx)
-
-		return
-	case s.menu.IsOpen():
-		s.create(ctx, s.menu.Update(input))
-
-		return
-	case s.contextMenu.IsOpen():
-		s.chooseFromContext(ctx, s.contextMenu.Update(input))
-
-		return
-	case s.moveMenu.IsOpen():
-		if chosen, ok := strings.CutPrefix(s.moveMenu.Update(input), movePrefix); ok {
-			s.moveSelected(ctx, chosen)
-		}
-
-		return
-	case s.zonePalettes.Active():
-		s.zonePalettes.Update(input, ctx)
-
+	if s.updateOverlay(input, ctx) {
 		return
 	}
 	s.guardSelection(ctx)
 	s.sync(ctx)
 	s.updateFields(input, ctx)
+	s.updateConstants(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)
 	}
@@ -510,6 +492,36 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu(ctx.Docs)
+}
+
+// updateOverlay gives a frame to the guard, the writing sheet, a dialog, the
+// zone picker, a menu or the zone's palettes, whichever is showing, and
+// reports whether one was.
+func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
+	switch {
+	case s.guard.Active():
+		s.guard.Update(input, s.size, func() bool { return s.Save(ctx) }, s.discard)
+	case s.constants.sheet != nil:
+		s.updateConstantSheet(input, ctx)
+	case s.dialog != nil:
+		s.updateDialog(input, ctx)
+	case s.zones != nil:
+		s.updateZonePicker(input, ctx)
+	case s.menu.IsOpen():
+		s.create(ctx, s.menu.Update(input))
+	case s.contextMenu.IsOpen():
+		s.chooseFromContext(ctx, s.contextMenu.Update(input))
+	case s.moveMenu.IsOpen():
+		if chosen, ok := strings.CutPrefix(s.moveMenu.Update(input), movePrefix); ok {
+			s.moveSelected(ctx, chosen)
+		}
+	case s.zonePalettes.Active():
+		s.zonePalettes.Update(input, ctx)
+	default:
+		return false
+	}
+
+	return true
 }
 
 // updatePanes handles an open facet's dropdown, which takes the input while
@@ -559,6 +571,7 @@ func (s *State) sync(ctx *frame.Context) {
 	s.syncSettings(ctx.Docs)
 	s.syncNPC(ctx)
 	s.syncZoneNotes(ctx)
+	s.syncConstants(ctx)
 	s.syncCueUses(ctx)
 }
 
@@ -1274,6 +1287,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	switch {
 	case s.guard.Active():
 		return s.guard.Locate(value, s.size)
+	case s.constants.sheet != nil && kind != stateKind:
+		return s.constants.sheet.Locate(name)
 	case s.dialog != nil:
 		return s.locateInDialog(kind, value)
 	case s.zones != nil:
@@ -1290,6 +1305,13 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if point, found, handled := s.locateFacets(kind, value, docs); handled {
 		return point, found
 	}
+
+	return s.locateKind(kind, value, docs)
+}
+
+// locateKind finds a row, a place's section or a widget, or answers a
+// state, once nothing showing over the window takes the name.
+func (s *State) locateKind(kind, value string, docs frame.Docs) (image.Point, bool) {
 	switch kind {
 	case "row", toggleKind:
 		return s.locateRow(kind, value, docs)
@@ -1298,8 +1320,15 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return s.places.Locate(sectionPrefix + value)
 	case "ui":
+		if point, found := s.locateConstant(kind + ":" + value); found {
+			return point, true
+		}
+
 		return s.locateWidget(value)
 	case stateKind:
+		if found, answered := s.constantState(value); answered {
+			return image.Pt(0, 0), found
+		}
 		found, answered := s.hasZoneState(docs, value)
 		if !answered {
 			found = s.hasRowState(value)
@@ -1462,5 +1491,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.dialog.Draw(screen, s.theme)
 	}
 	s.drawZonePicker(screen, docs)
+	if s.constants.sheet != nil {
+		s.constants.sheet.Draw(screen, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	}
 	s.guard.Draw(screen, s.theme)
 }

@@ -57,7 +57,7 @@ func (s *State) layoutZoneNotes(docs frame.Docs, left, width, top, limit int) {
 	if _, ok := s.notedZone(docs); !ok {
 		return
 	}
-	rowY := top + panelGap + ui.LineHeight
+	rowY := s.layoutConstants(left, width, top+panelGap) + ui.LineHeight
 	s.zoneNotes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
 }
 
@@ -72,6 +72,7 @@ func (s *State) drawZoneNotes(screen *ebiten.Image, left int) {
 	if s.zoneNotes.Rect.Empty() {
 		return
 	}
+	s.drawConstants(screen, left)
 	s.theme.Heading(screen, "NOTES", left, s.zoneNotes.Rect.Min.Y-ui.LineHeight)
 	s.zoneNotes.Draw(screen)
 	if s.zoneNotes.Field.Conflict() {
