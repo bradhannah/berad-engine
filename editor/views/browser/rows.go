@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -33,6 +34,8 @@ const (
 	sortName = "Name"
 	// countWidth pads a count, so counts sort as numbers.
 	countWidth = 6
+	// sortMark is the half-width of a sorted heading's triangle.
+	sortMark = 3
 )
 
 // Widths of the columns, in pixels.
@@ -269,7 +272,11 @@ func (s *State) arrangeRows(docs frame.Docs, index *project.Index, rows []ui.Row
 	width int,
 ) []ui.Row {
 	s.columns = nil
-	if !s.gridShown() {
+	switch {
+	case s.gridShown():
+	case kindOfPlace(s.place) == sectionAudio:
+		s.columns = placeColumns(soundColumns(), width)
+	default:
 		s.columns = placeColumns(s.columnsOf(docs, index, s.place), width)
 	}
 	s.list.Columns = s.list.Columns[:0]
@@ -278,6 +285,11 @@ func (s *State) arrangeRows(docs frame.Docs, index *project.Index, rows []ui.Row
 	}
 	if len(s.columns) == 0 {
 		s.list.Columns = nil
+
+		return rows
+	}
+	if kindOfPlace(s.place) == sectionAudio {
+		s.fillSoundCells(rows)
 
 		return rows
 	}
@@ -378,22 +390,38 @@ func (s *State) drawHeadings(screen *ebiten.Image) {
 	ui.Divider(screen, image.Pt(header.Min.X, header.Max.Y-ui.Outline), image.Pt(header.Max.X, header.Max.Y-ui.Outline))
 	choice := s.choice()
 	titleTop := header.Min.Y + (headerHeight-ui.LabelSize)/ui.Half
-	mark := func(title string) string {
+	heading := func(title string, left int) {
 		label := strings.ToUpper(title)
-		sorted := choice.Sort == title || title == sortName && choice.Sort == ""
-		switch {
-		case sorted && choice.Descending:
-			return label + " ▼"
-		case sorted:
-			return label + " ▲"
+		s.theme.DrawLabel(screen, label, left, titleTop, ui.ColorMuted())
+		if choice.Sort == title || title == sortName && choice.Sort == "" {
+			drawSortMark(screen, image.Pt(left+s.theme.LabelWidth(label)+ui.Gap, header.Min.Y+headerHeight/ui.Half),
+				choice.Descending)
 		}
-
-		return label
 	}
-	s.theme.DrawLabel(screen, mark(sortName), header.Min.X+ui.Inset, titleTop, ui.ColorMuted())
+	heading(sortName, header.Min.X+ui.Inset)
 	for _, each := range s.columns {
-		s.theme.DrawLabel(screen, mark(each.title), header.Min.X+each.at, titleTop, ui.ColorMuted())
+		heading(each.title, header.Min.X+each.at)
 	}
+}
+
+// drawSortMark draws a small triangle beside a heading sorted by, pointing
+// up for A to Z and down for Z to A.
+func drawSortMark(screen *ebiten.Image, centre image.Point, descending bool) {
+	midX, midY, size := float32(centre.X+sortMark), float32(centre.Y), float32(sortMark)
+	var path vector.Path
+	if descending {
+		path.MoveTo(midX-size, midY-size/ui.Half)
+		path.LineTo(midX+size, midY-size/ui.Half)
+		path.LineTo(midX, midY+size)
+	} else {
+		path.MoveTo(midX-size, midY+size/ui.Half)
+		path.LineTo(midX+size, midY+size/ui.Half)
+		path.LineTo(midX, midY-size)
+	}
+	path.Close()
+	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
+	options.ColorScale.ScaleWithColor(ui.ColorMuted())
+	vector.FillPath(screen, &path, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
 }
 
 // folderOpen reports whether a folder in the main pane is open in place.

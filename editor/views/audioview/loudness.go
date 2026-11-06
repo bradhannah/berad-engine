@@ -70,16 +70,24 @@ func (s *State) adjustment(category string) float64 {
 
 // facts works out how loud a recording is from its last measurement.
 func (s *State) facts(recording protocol.AudioRecording) soundFacts {
+	measured, ok := s.measured[recording.ID]
+
+	return factsOf(recording, measured, ok, s.reference())
+}
+
+// factsOf is what a measure says of how loud a recording is, against a
+// reference loudness.
+func factsOf(recording protocol.AudioRecording, measured protocol.RecordingLoudness, heard bool, reference float64,
+) soundFacts {
 	found := soundFacts{
 		known: false, level: false, manual: recording.CalibrationMode == protocol.CalibrationManual, problem: "",
 		recordedDB: 0, evenedDB: 0, headroomDB: 0, ownTargetDB: recording.TargetDB,
 	}
 	found.level = recording.CalibrationMode == protocol.CalibrationAuto || found.manual
-	measured, ok := s.measured[recording.ID]
 	switch {
 	case recording.Status == protocol.RecordingNoFile:
 		found.problem = stateNoSound
-	case !ok:
+	case !heard:
 		found.problem = "Measuring…"
 	case measured.Problem != "":
 		found.problem = measured.Problem
@@ -89,12 +97,27 @@ func (s *State) facts(recording protocol.AudioRecording) soundFacts {
 			level = recording.CalibrationDB
 		}
 		found.known = true
-		found.recordedDB = measured.MeasuredDB - s.reference()
+		found.recordedDB = measured.MeasuredDB - reference
 		found.evenedDB = found.recordedDB + level
 		found.headroomDB = peakCeilingDB - (measured.PeakDB + level)
 	}
 
 	return found
+}
+
+// Stands says how a recording stands against the reference loudness, as
+// the Audio window says it, whether that is a problem, and how far from the
+// reference it plays once evened out, when known. A measure not yet back is
+// known false.
+func Stands(recording protocol.AudioRecording, measured protocol.RecordingLoudness, known bool, reference float64,
+) (string, bool, float64, bool) {
+	if reference == 0 {
+		reference = referenceDB
+	}
+	found := factsOf(recording, measured, known, reference)
+	said, problem := evenStatus(found)
+
+	return said, problem, found.evenedDB, found.known
 }
 
 // evenStatus says how a recording stands against the reference, and whether

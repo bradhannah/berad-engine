@@ -175,6 +175,7 @@ type State struct {
 	grid        *tileGrid
 	pictures    map[ids.ULID]*tileart.Picture
 	maps        map[ids.ULID]*minimap
+	sounds      *soundState
 	home        homeState
 	barBottom   int
 	place       string
@@ -228,7 +229,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
-		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{},
+		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{}, sounds: newSoundState(),
 		home: newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
@@ -321,6 +322,7 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	if update.AudioChanged != nil {
 		s.askAudio(ctx)
+		s.soundsHeard()
 	}
 	if update.Session != nil {
 		s.heardHome(update.Session)
@@ -500,6 +502,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateChecks(ctx)
 	s.syncPictures(ctx)
 	s.syncCards(ctx)
+	s.syncSounds(ctx)
 	s.updatePanes(input, ctx)
 	s.followNarrowing()
 	s.buttons(input, ctx)
@@ -523,6 +526,7 @@ func (s *State) updatePanes(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.updateHeader(input, ctx)
+	s.updateSounds(input, ctx)
 	s.updateList(input, ctx)
 }
 
@@ -1274,8 +1278,6 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	switch kind {
 	case "row", toggleKind:
 		return s.locateRow(kind, value, docs)
-	case "sort":
-		return s.locateHeading(value)
 	case "section":
 		s.places.Reveal(sectionPrefix + value)
 
@@ -1433,6 +1435,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	default:
 		s.drawHeadings(screen)
 		s.list.Draw(screen, s.theme)
+		s.drawSounds(screen)
 	}
 	s.drawInspector(screen, docs)
 	s.drawDropdown(screen)
