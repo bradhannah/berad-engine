@@ -31,6 +31,9 @@ const (
 	ChangeValuesEdit    = "npc.values.change"
 	ApplyTemplateEdit   = "npc.template.apply"
 	UnapplyTemplateEdit = "npc.template.unapply"
+	// SetConstantEdit sets or clears its own value of a constant of one of
+	// its templates.
+	SetConstantEdit = "npc.constant.set"
 )
 
 // Undo-clash items.

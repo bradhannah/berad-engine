@@ -41,6 +41,9 @@ const (
 	ChangeValuesEdit    = "zone.values.change"
 	ApplyTemplateEdit   = "zone.template.apply"
 	UnapplyTemplateEdit = "zone.template.unapply"
+	// SetConstantEdit sets or clears its own value of a constant of one of
+	// its templates.
+	SetConstantEdit = "zone.constant.set"
 )
 
 // floorsItem is the undo-clash item for the order of a zone's floors,
