@@ -122,7 +122,7 @@ func (b *routineBuilder) goTo(parent ids.ULID, at sampleAnchors, anchor ids.ULID
 // wait is a Wait on the game clock.
 func (b *routineBuilder) wait(parent ids.ULID, amount int, unit string) ids.ULID {
 	return b.node(flow.KindWait, parent, map[string]any{
-		"duration": flow.Duration{Amount: amount, Unit: unit, Clock: flow.ClockGame},
+		"duration": flow.Duration{Amount: amount, Unit: unit, Clock: flow.ClockGame, Constant: flow.NoConstant()},
 	})
 }
 
@@ -165,7 +165,7 @@ func fetchStock(
 		flow.ParamGoes: flow.GoesToValue, flow.ParamPlace: localValue(place),
 	})
 	stock := made.node(flow.KindRandom, none, map[string]any{"options": []flow.Share{
-		{Port: "o1", Label: "in stock", Share: stockShare}, {Port: "o2", Label: "out of stock", Share: noneShare},
+		share("o1", "in stock", stockShare), share("o2", "out of stock", noneShare),
 	}})
 	fetched := made.wayOut("Fetched", portFetched)
 	out := made.wayOut("Out of stock", portNone)
@@ -244,7 +244,7 @@ func clerksDay(
 	serving, open := made.logServing(shop, customer), made.serving(shop, values, shopYes)
 	serve, done := made.wait(shop, serveMinutes, flow.UnitMinutes), made.serving(shop, values, shopNo)
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
-		{Port: "o1", Label: "tidy the shelf", Share: tidyShare}, {Port: "o2", Label: "stretch", Share: stretchShare},
+		share("o1", "tidy the shelf", tidyShare), share("o2", "stretch", stretchShare),
 	}})
 	toShelf, tidy := made.fetchCall(shop, fetch, place, anchors), made.wait(shop, tidyMinutes, flow.UnitMinutes)
 	down := made.node(flow.KindMove, shop, map[string]any{"direction": flow.DirectionDown, "tiles": stretchCells})
@@ -353,4 +353,9 @@ func sampleRoutine(orch *orchestrator.Orchestrator, clerk ids.ULID, anchors samp
 	}
 
 	return nil
+}
+
+// share is a random choice's option, its share typed.
+func share(port, label string, share int) flow.Share {
+	return flow.Share{Port: port, Label: label, Share: share, Constant: flow.NoConstant()}
 }

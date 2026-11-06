@@ -39,13 +39,16 @@ type valueSource struct {
 	operand bool
 	// targets are the declare targets last offered, by their IDs.
 	targets map[string]declareTarget
+	// option is which random choice's option a constant stands in for, or
+	// -1 for any other number, or for a value.
+	option int
 }
 
 // openValuePicker opens the picker for a parameter of a node, with the
 // current choice selected and the search focused.
 func (s *State) openValuePicker(node flow.Node, param, title string, only worldstate.Type, operand bool) {
 	role := roleOf(node.Kind, param)
-	source := &valueSource{state: s, node: node.ID, param: param, role: role, operand: operand, targets: nil}
+	source := &valueSource{state: s, node: node.ID, param: param, role: role, operand: operand, targets: nil, option: -1}
 	placeholder, empty := "Find a value, or type a new name", "No value matches. Type a name to declare one."
 	switch {
 	case operand && only == "":
@@ -137,6 +140,11 @@ func (v *valueSource) Pick(ctx *frame.Context, option valuepicker.Option) {
 	if !found || !refers {
 		return
 	}
+	if v.role == roleNumber {
+		v.state.setNumberConstant(ctx, node, v.param, v.option, ref)
+
+		return
+	}
 	if v.state.chooseForCall(ctx, node, v.param, ref) || v.state.insertForLog(ctx, node, ref) {
 		return
 	}
@@ -184,7 +192,7 @@ func pickerRail(role valueRole) []valuepicker.RailEntry {
 		return []valuepicker.RailEntry{everywhere, local}
 	case roleWhere:
 		return []valuepicker.RailEntry{everywhere, {ID: string(worldstate.ScopeNPC), Label: "The NPC it finds"}}
-	case roleSet, roleCheck, roleGive, roleKept:
+	case roleSet, roleCheck, roleGive, roleKept, roleNumber:
 	}
 	rail := []valuepicker.RailEntry{
 		everywhere, local, {ID: string(worldstate.ScopeNPC), Label: "This NPC"},
@@ -222,6 +230,9 @@ func (s *State) locateInPicker(docs frame.Docs, kind, value string) (image.Point
 // hasPickerState answers "picker", whether the picker is open, and the
 // picker's own states.
 func (s *State) hasPickerState(state string, docs frame.Docs) (bool, bool) {
+	if found, handled := s.hasSlotState(docs, state); handled {
+		return found, true
+	}
 	if state == valuepicker.LocatePart {
 		return s.values != nil, true
 	}

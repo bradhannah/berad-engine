@@ -428,21 +428,8 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		}
 
 		return name
-	case flow.KindWait:
-		wait, err := node.Duration("duration")
-		if err != nil {
-			return "?"
-		}
-
-		return formatDuration(wait)
-	case flow.KindMove:
-		direction, directionErr := node.Choice("direction")
-		tiles, tilesErr := node.Number("tiles")
-		if directionErr != nil || tilesErr != nil {
-			return "?"
-		}
-
-		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
+	case flow.KindWait, flow.KindMove:
+		return s.motionSummary(node, docs)
 	case flow.KindPlaySound:
 		return s.playSummary(node)
 	case flow.KindReturn:
@@ -455,6 +442,33 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 	default:
 		return ""
 	}
+}
+
+// motionSummary describes a Wait, how long, or a Move, which way and how
+// far, naming a constant standing in for its number.
+func (s *State) motionSummary(node flow.Node, docs frame.Docs) string {
+	if node.Kind == flow.KindWait {
+		wait, err := node.Duration("duration")
+		if err != nil {
+			return "?"
+		}
+		if !wait.Constant.IsZero() {
+			return strings.Replace(formatDuration(wait), strconv.Itoa(wait.Amount),
+				s.numberLabel(docs, wait.Amount, wait.Constant), 1)
+		}
+
+		return formatDuration(wait)
+	}
+	direction, directionErr := node.Choice("direction")
+	tiles, tilesErr := node.Amount("tiles")
+	if directionErr != nil || tilesErr != nil {
+		return "?"
+	}
+	if !tiles.Constant.IsZero() {
+		return direction + " " + s.numberLabel(docs, tiles.Number, tiles.Constant) + " tiles"
+	}
+
+	return direction + " " + strconv.Itoa(tiles.Number) + " " + plural(tiles.Number, "tile", "tiles")
 }
 
 // playSummary describes a Play sound: its cue, and how loud this time.
@@ -778,6 +792,7 @@ func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.No
 	for index := range s.form.controls {
 		s.drawControl(screen, docs, &s.form.controls[index], node, left)
 	}
+	s.drawSlots(screen, docs)
 	if s.form.call != nil {
 		s.drawCall(screen, docs, node, left)
 	}
@@ -1202,6 +1217,9 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 		return ui.Center(s.form.remove.Rect), true
 	}
 	if point, found := s.save.Locate(widget); found {
+		return point, true
+	}
+	if point, found := s.locateSlot(widget); found {
 		return point, true
 	}
 	for _, made := range s.form.controls {

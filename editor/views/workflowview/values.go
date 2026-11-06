@@ -237,6 +237,9 @@ const (
 	roleKept
 	// rolePlace is a Go to's place value: a place local.
 	rolePlace
+	// roleNumber is the constant a typed-in number can be: a whole-number
+	// constant, never a value.
+	roleNumber
 )
 
 func roleOf(kind, param string) valueRole {
@@ -289,6 +292,11 @@ func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef
 func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	found := &options{listed: nil, seen: map[string]bool{}}
 	locals := s.workflow.Locals().Values()
+	if role == roleNumber {
+		s.constantOptions(found, docs, s.catalog(docs), role, nil)
+
+		return found.listed
+	}
 	for _, local := range locals {
 		if offersLocal(role, local) {
 			found.add(scopePlace("LOCAL", worldstate.ScopeLocal), refTo(local, ids.ULID{}, ids.ULID{}), localPath(local),
@@ -343,7 +351,7 @@ func offersLocal(role valueRole, local worldstate.Declaration) bool {
 		return local.Type == worldstate.TypePlace
 	case roleGive, roleKept:
 		return true
-	case roleWhere:
+	case roleWhere, roleNumber:
 		return false
 	case roleSet, roleCheck:
 	}
@@ -550,6 +558,8 @@ func declareScopes(role valueRole) []worldstate.Scope {
 		return []worldstate.Scope{worldstate.ScopeLocal}
 	case roleWhere:
 		return []worldstate.Scope{worldstate.ScopeNPC}
+	case roleNumber:
+		return nil
 	case roleSet, roleCheck, roleGive, roleKept:
 	}
 
@@ -573,7 +583,7 @@ func (s *State) openValueBox(node flow.Node, made *control) {
 		only = worldstate.TypeNPC
 	case rolePlace:
 		only = worldstate.TypePlace
-	case roleSet, roleCheck, roleWhere, roleGive, roleKept:
+	case roleSet, roleCheck, roleWhere, roleGive, roleKept, roleNumber:
 	}
 	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
 }

@@ -129,6 +129,7 @@ func (d *Document) References() []model.Reference {
 		references = append(references, model.Reference{Document: zone, Item: "", Label: RunsHere})
 	}
 	for _, node := range d.Workflow.Nodes() {
+		references = append(references, numberReferences(node)...)
 		switch node.Kind {
 		case flow.KindGoTo:
 			destination, err := node.Anchor("destination")
@@ -542,6 +543,22 @@ func valueReferences(node flow.Node) []model.Reference {
 // CallItem is the item a Call's reference to the workflow it calls names,
 // so asking where a workflow is used for it finds only its callers.
 const CallItem = "call"
+
+// numberReferences lists the constants standing in for a node's typed-in
+// numbers.
+func numberReferences(node flow.Node) []model.Reference {
+	standing := node.NumberConstants()
+	if len(standing) == 0 {
+		return nil
+	}
+	kind, _ := flow.KindOf(node.Kind)
+	refs := make([]flow.ValueRef, 0, len(standing))
+	for _, each := range standing {
+		refs = append(refs, each.Constant)
+	}
+
+	return refReferences(refs, "a "+kind.Label+" node")
+}
 
 // callReferences lists the workflow a Call calls and the values outside the
 // workflow it gives its inputs or keeps its outputs in.

@@ -366,5 +366,5 @@ func setTo(ref flow.ValueRef, operand string) map[string]any {
 }
 
 func realSeconds(amount int) flow.Duration {
-	return flow.Duration{Amount: amount, Unit: flow.UnitSeconds, Clock: flow.ClockReal}
+	return flow.Duration{Amount: amount, Unit: flow.UnitSeconds, Clock: flow.ClockReal, Constant: flow.NoConstant()}
 }

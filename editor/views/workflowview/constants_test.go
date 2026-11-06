@@ -102,3 +102,40 @@ func TestSetValueFromALongConstant(t *testing.T) {
 		t.Fatal("a constant longer than a value holds is warned of")
 	}
 }
+
+// TestAWaitForAConstant has a Wait's amount stand for the restock time from
+// the picker, which the node then names, goes back to the number typed, and
+// flags a constant outside a number's limits.
+func TestAWaitForAConstant(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindWait)
+	f.withConstants()
+	f.click("ui:constant-duration")
+	f.typeText("restock")
+	f.click("valuerow:const.world.restock_minutes")
+	if !f.has("constant:duration=const.world.restock_minutes") ||
+		!f.has("title:"+flow.KindWait+":1=Wait · const.world.restock_minutes min") {
+		t.Fatalf("the Wait's amount stands for the restock time: %q", f.status())
+	}
+	wait, err := f.nth(flow.KindWait, 1).Duration("duration")
+	if err != nil || wait.Constant.Value != restockID || wait.Amount != 30 {
+		t.Fatalf("saved with the number typed kept: %+v %v", wait, err)
+	}
+	f.click("ui:typed-duration")
+	if !f.has("constant:duration=") || !f.has("title:"+flow.KindWait+":1=Wait · 30 min") {
+		t.Fatal("× goes back to the number typed")
+	}
+	move := withNode(t, flow.KindMove)
+	move.withConstants()
+	far := worldstate.NewConstant(frametest.ID(64), "far_walk", worldstate.ScopeWorld, worldstate.TypeInteger)
+	far.Default = json.RawMessage(`80`)
+	move.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{far}, Set: nil, Remove: nil,
+	})
+	move.click("ui:constant-tiles")
+	move.typeText("far")
+	move.click("valuerow:const.world.far_walk")
+	if !move.has("problem:" + flow.KindMove + ":1") {
+		t.Fatal("a constant outside a Move's 64 tiles is a problem")
+	}
+}

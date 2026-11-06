@@ -134,6 +134,9 @@ type Duration struct {
 	Amount int    `json:"amount"`
 	Unit   string `json:"unit"`
 	Clock  string `json:"clock"`
+	// Constant, when set, stands in for the amount, which keeps the number
+	// last typed.
+	Constant ValueRef `json:"constant,omitzero"`
 }
 
 // Seconds returns the duration in seconds.
@@ -155,6 +158,9 @@ type Share struct {
 	Port  string `json:"port"`
 	Label string `json:"label"`
 	Share int    `json:"share"`
+	// Constant, when set, stands in for the share, which keeps the number
+	// last typed.
+	Constant ValueRef `json:"constant,omitzero"`
 }
 
 // Output declares one way out of a node.
@@ -229,7 +235,7 @@ func Kinds() []Kind {
 			Name: KindWait, Label: "Wait", Group: GroupAction,
 			Params: []Param{{
 				Name: "duration", Label: "How long", Type: TypeDuration, Choices: nil,
-				Default: mustJSON(Duration{Amount: defaultWait, Unit: UnitMinutes, Clock: ClockGame}),
+				Default: mustJSON(Duration{Amount: defaultWait, Unit: UnitMinutes, Clock: ClockGame, Constant: noRef()}),
 			}},
 			Outputs: next,
 		},
@@ -254,7 +260,8 @@ func randomKind() Kind {
 		Params: []Param{{
 			Name: "options", Label: "Options", Type: TypeShares, Choices: nil,
 			Default: mustJSON([]Share{
-				{Port: "o1", Label: "option 1", Share: defaultShare}, {Port: "o2", Label: "option 2", Share: defaultShare},
+				{Port: "o1", Label: "option 1", Share: defaultShare, Constant: noRef()},
+				{Port: "o2", Label: "option 2", Share: defaultShare, Constant: noRef()},
 			}),
 		}},
 		Outputs: nil,
@@ -455,7 +462,7 @@ func checkValue(param Param, value json.RawMessage) error {
 
 		return nil
 	case TypeTiles, TypeSeconds:
-		return checkNumber(value, 1, numberLimit(param.Type))
+		return checkAmount(value, 1, numberLimit(param.Type))
 	case TypeDuration:
 		return checkDuration(value)
 	case TypeShares, TypeLanes:
@@ -526,7 +533,7 @@ func checkDuration(value json.RawMessage) error {
 		return fmt.Errorf("%w: a wait lasts from nothing to a week", ErrNode)
 	}
 
-	return nil
+	return checkNumberConstant(wait.Constant)
 }
 
 func checkShares(value json.RawMessage) error {
@@ -539,6 +546,12 @@ func checkShares(value json.RawMessage) error {
 	}
 	ports, total := map[string]bool{}, 0
 	for _, option := range options {
+		if err := checkNumberConstant(option.Constant); err != nil {
+			return err
+		}
+		if !option.Constant.IsZero() {
+			total++
+		}
 		if option.Port == "" || ports[option.Port] {
 			return fmt.Errorf("%w: each option needs its own output name", ErrNode)
 		}
@@ -574,18 +587,6 @@ func Percentages(options []Share) []int {
 	}
 
 	return result
-}
-
-func checkNumber(value json.RawMessage, low, high int) error {
-	var number int
-	if err := json.Unmarshal(value, &number); err != nil {
-		return err //nolint:wrapcheck // Wrapped by the caller.
-	}
-	if number < low || number > high {
-		return fmt.Errorf("%w: %d is outside %d to %d", ErrNode, number, low, high)
-	}
-
-	return nil
 }
 
 func checkRange(span TimeRange) error {

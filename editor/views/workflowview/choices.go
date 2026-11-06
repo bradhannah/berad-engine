@@ -241,7 +241,9 @@ func (s *State) addOption(ctx *frame.Context, node flow.Node) {
 	if len(options) > 0 {
 		share = max(options[len(options)-1].Share, 1)
 	}
-	options = append(options, flow.Share{Port: newOptionPort(options), Label: newOptionLabel(options), Share: share})
+	options = append(options, flow.Share{
+		Port: newOptionPort(options), Label: newOptionLabel(options), Share: share, Constant: flow.NoConstant(),
+	})
 	s.saveParam(ctx, node, "options", options)
 }
 
@@ -289,7 +291,7 @@ func parseAmount(made *control, field *ui.TextField, value string, node flow.Nod
 	}
 	changed := wait
 	changed.Amount = 0
-	limit := flow.MaxWait / max(flow.Duration{Amount: 1, Unit: wait.Unit, Clock: wait.Clock}.Seconds(), 1)
+	_, limit := flow.WaitLimits(wait)
 	amount, ok, problem := parseWhole(value, 0, limit)
 	if problem != "" {
 		return amount, ok, problem

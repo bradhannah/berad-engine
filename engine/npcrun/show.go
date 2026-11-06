@@ -17,11 +17,13 @@ func waitsToFinish(node flow.Node) bool {
 }
 
 // showTicks is how long a line or a box shows: as long as it takes to read,
-// or the seconds set by hand.
-func showTicks(node flow.Node, text string) int {
+// or the seconds set by hand, or by a constant standing in for them.
+func (n *NPC) showTicks(world World, node flow.Node, text string) int {
 	if node.UsesSeconds() {
-		if seconds, err := node.Seconds(); err == nil {
-			return show.SecondsTicks(seconds)
+		if seconds, err := node.Amount(flow.ParamSeconds); err == nil {
+			low, high := flow.Limits(flow.TypeSeconds)
+
+			return show.SecondsTicks(n.numberOf(world, seconds, low, high))
 		}
 	}
 
@@ -50,7 +52,7 @@ func (n *NPC) actSay(world World, node flow.Node) (string, bool) {
 	if !ok {
 		return flow.OutputNext, true
 	}
-	said := n.speech.Say(text, showTicks(node, text))
+	said := n.speech.Say(text, n.showTicks(world, node, text))
 	n.writeLine(world, node, n.names(world).NPC(n.NPC)+" says: "+show.Plain(text))
 	if !waitsToFinish(node) {
 		return flow.OutputNext, true
@@ -77,7 +79,7 @@ func (n *NPC) actShowMessage(world World, node flow.Node) (string, bool) {
 		name = n.names(world).NPC(n.NPC)
 	}
 	away, _ := node.Choice(flow.ParamAway) //nolint:errcheck // A box with no way set goes when read.
-	box := world.Stage.Ask(text, name, showTicks(node, text), away == flow.AwayClosed)
+	box := world.Stage.Ask(text, name, n.showTicks(world, node, text), away == flow.AwayClosed)
 	n.writeLine(world, node, "Box: "+show.Plain(text))
 	if !waitsToFinish(node) {
 		return flow.OutputNext, true
@@ -104,10 +106,12 @@ func shakePixels(strength string) float64 {
 // when it stops.
 func (n *NPC) actShake(world World, node flow.Node) (string, bool) {
 	if !n.work.started {
-		seconds, err := node.Seconds()
+		amount, err := node.Amount(flow.ParamSeconds)
 		if err != nil {
 			return flow.OutputNext, true
 		}
+		low, high := flow.Limits(flow.TypeSeconds)
+		seconds := n.numberOf(world, amount, low, high)
 		strength, _ := node.Choice(flow.ParamStrength) //nolint:errcheck // No strength shakes moderately.
 		if world.Stage != nil {
 			world.Stage.Shake(shakePixels(strength), show.SecondsTicks(seconds))

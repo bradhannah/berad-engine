@@ -119,6 +119,8 @@ type form struct {
 	remove *ui.Button
 	// bottom is where the last control ends, where the colour rows go.
 	bottom int
+	// slots are where a constant can stand in for each typed-in number.
+	slots map[string]*numberSlot
 }
 
 // syncForm keeps the inspector built for the selected node and showing its
@@ -333,6 +335,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
 	built := &form{
 		node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, call: nil, remove: nil, bottom: 0,
+		slots: map[string]*numberSlot{},
 	}
 	s.focus = ui.Focus{}
 	if node.Kind != flow.KindStart {
@@ -543,12 +546,7 @@ func (s *State) layoutForm(docs frame.Docs) {
 		case flow.TypeChoice, flow.TypeDuration, flow.TypeShares, flow.TypeLanes, flow.TypeNPC:
 			top = s.layoutChoices(made, left, width, top)
 		case flow.TypeTiles, flow.TypeSeconds, flow.TypeText:
-			height := ui.ButtonH
-			if made.field.Multiline {
-				height = noteField
-			}
-			made.field.Rect = image.Rect(left, top, left+width, top+height)
-			top += height + fieldSpace
+			top = layoutField(made, left, width, top)
 		case flow.TypeTimeRange:
 			placeTimes(made.from, made.to, left, top)
 			top += ui.ButtonH + fieldSpace
@@ -565,12 +563,25 @@ func (s *State) layoutForm(docs frame.Docs) {
 		case flow.TypeWorkflow, flow.TypeInputs, flow.TypeKeeps, flow.TypeWays, flow.TypePort:
 		}
 	}
+	s.layoutSlots()
 	if node, ok := s.selectedNode(); ok && s.form.call != nil {
 		top = s.layoutCall(s.form.call, left, width, top)
 		s.form.call.hideRefControls(node)
 	}
 	s.form.bottom = top
 	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
+}
+
+// layoutField places a number's or a text's field, and returns where the
+// next control goes.
+func layoutField(made *control, left, width, top int) int {
+	height := ui.ButtonH
+	if made.field.Multiline {
+		height = noteField
+	}
+	made.field.Rect = image.Rect(left, top, left+width, top+height)
+
+	return top + height + fieldSpace
 }
 
 // layoutReference places a parameter that refers to something, from the
@@ -645,7 +656,7 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	node, ok := s.selectedNode()
-	if !ok {
+	if !ok || s.updateSlots(input, ctx, node) {
 		return
 	}
 	for index := range s.form.controls {

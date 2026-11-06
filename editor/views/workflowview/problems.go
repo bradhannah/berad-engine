@@ -88,6 +88,9 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 // kindProblem says what is wrong with a node's own settings: a Go to with
 // no destination or a broken one, a container with no first step, and so on.
 func (s *State) kindProblem(node flow.Node, docs frame.Docs) string {
+	if problem := s.numberProblem(node, docs); problem != "" {
+		return problem
+	}
 	switch node.Kind {
 	case flow.KindGoTo:
 		if problem := s.goToProblem(node, docs); problem != "" {

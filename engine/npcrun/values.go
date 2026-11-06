@@ -104,6 +104,16 @@ func (n *NPC) read(world World, ref flow.ValueRef) (worldstate.Declaration, worl
 	return declared, world.State.Get(declared, owner), true
 }
 
+// numberOf reads a typed-in number as it stands now: the number typed, or
+// the integer constant standing in for it, held between low and high.
+func (n *NPC) numberOf(world World, amount flow.Amount, low, high int) int {
+	return amount.Resolve(func(ref flow.ValueRef) (int, bool) {
+		declared, value, ok := n.readConstant(world, ref)
+
+		return value.Integer, ok && declared.Type == worldstate.TypeInteger
+	}, low, high)
+}
+
 // readConstant reads a constant: the world's, or an NPC's or zone's own
 // value of one of its templates' constants, or else the default, for this
 // NPC, its zone, the one named or the NPC a local holds.
@@ -372,7 +382,9 @@ func (n *NPC) actFind(world World, node flow.Node) string {
 
 		return flow.OutputNone
 	}
-	within, err := node.Number("within")
+	amount, err := node.Amount("within")
+	low, high := flow.Limits(flow.TypeTiles)
+	within := n.numberOf(world, amount, low, high)
 	if err != nil {
 		within = 0
 	}
