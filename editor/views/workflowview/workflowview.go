@@ -231,8 +231,9 @@ type State struct {
 	joining    string
 	tied       bool
 	// lineSheet is the writing sheet while it writes the selected node's
-	// line.
+	// line; scrolled is how far the node inspector is scrolled.
 	lineSheet *lineSheet
+	scrolled  inspectorScroll
 }
 
 // New returns the Workflow window for a workflow.
@@ -261,7 +262,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
-		tied: false, lineSheet: nil,
+		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}
 	view.palette = paletteFor(flow.PurposeBehaviour)
 
@@ -448,14 +449,14 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.colours = s.layoutColours(s.colourRows(), left, width, top)
 	} else if s.form != nil {
 		s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
-		if limit := s.notesTop(panel, width); len(s.colours) > 0 && coloursBottom(s.colours) > limit {
-			s.colours = nil
+		if s.fitScroll(max(s.form.bottom, coloursBottom(s.colours))) {
+			s.layoutForm(docs)
+			s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
 		}
 	}
 }
 
-// coloursBottom is where the last colour row ends; a form too tall for its
-// rows to sit above the inspector's notes shows none.
+// coloursBottom is where the last colour row ends, or nothing with none.
 func coloursBottom(rows []colourRow) int {
 	bottom := 0
 	for _, row := range rows {
@@ -503,6 +504,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.updateOverlay(input, ctx) {
 		return
 	}
+	s.scrollForm(input, ctx)
 	s.updateTyping(input, ctx)
 	frame.CommonKeys(input, ctx)
 	if s.workflow == nil {

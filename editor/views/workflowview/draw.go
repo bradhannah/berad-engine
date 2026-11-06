@@ -595,8 +595,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, s.form.kind.Label, left, top+ui.LineHeight, ui.ColorInk())
 	s.theme.DrawText(screen, "("+group+")", left+s.titleWidth(s.form.kind.Label)+ui.Gap*ui.Half,
 		top+ui.LineHeight+ui.Half, ui.ColorMuted())
-	s.drawControls(screen, docs, node, left)
-	s.drawColours(screen)
+	s.drawFormBody(screen, docs, node, left)
 	if s.form.remove != nil {
 		s.form.remove.Draw(screen, s.theme)
 	}
@@ -1013,7 +1012,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "palette", resultPart:
 		return s.locatePalette(value)
 	case "ui":
-		return s.locateWidget(value)
+		return s.locateScrolled(value, docs)
 	case locateMenu:
 		return s.locateMenuItem(value)
 	case localPrefix:
@@ -1191,7 +1190,7 @@ func (s *State) locateOnTop(kind, value string) (image.Point, bool, bool) {
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
 		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState, s.hasUnsavedState,
-		s.hasSheetState,
+		s.hasSheetState, s.hasScrollState,
 		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {

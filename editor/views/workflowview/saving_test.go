@@ -208,3 +208,32 @@ func TestWriteOpensTheLineInTheSheet(t *testing.T) {
 		t.Fatal("Save keeps it")
 	}
 }
+
+// TestTheInspectorScrolls fills a Say's inspector past its notes with a long
+// line in a short window: the wheel scrolls it, a script finds the colours
+// below by scrolling to them, and another node starts at the top.
+func TestTheInspectorScrolls(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.ctx.Size = image.Pt(1200, 600)
+	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 40))
+	if !f.has("inspector-scrolls") {
+		t.Fatal("a long line in a short window fills the inspector past its notes, so it scrolls")
+	}
+	top := f.at("ui:insert-value")
+	wheel := ui.NewInput(top)
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if scrolled := f.at("ui:insert-value"); scrolled.Y != top.Y-ui.RowHeight {
+		t.Fatalf("a notch of the wheel scrolls a row: Insert value… from %d to %d", top.Y, scrolled.Y)
+	}
+	f.click("ui:swatch:node:green")
+	if !f.has("tint:" + flow.KindSay + ":1=green") {
+		t.Fatal("a script finds the colours under the notes by scrolling to them")
+	}
+	f.click("ui:save")
+	f.click("node:start:1")
+	if f.has("inspector-scrolls") {
+		t.Fatal("the start's inspector starts at the top, and has no need to scroll")
+	}
+}

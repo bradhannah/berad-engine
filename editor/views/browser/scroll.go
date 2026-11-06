@@ -9,14 +9,6 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
-// The inspector's thumb, in screen pixels: how wide it is, how far it sits
-// from the panel's right edge, and how short it can get.
-const (
-	thumbWidth = 4
-	thumbInset = 3
-	thumbLeast = 24
-)
-
 // inspectorScroll is how far a document's inspector is scrolled: what is
 // below its header moves up under it, and what went past the save bar
 // comes into view. most is the furthest it scrolls, as last laid out; of
@@ -100,13 +92,5 @@ func (s *State) bodyImage(screen *ebiten.Image) *ebiten.Image {
 // drawThumb draws, while the inspector scrolls, a thumb at its right edge:
 // how much of it shows, and where.
 func (s *State) drawThumb(screen *ebiten.Image) {
-	if s.scroll.most == 0 {
-		return
-	}
-	body := s.inspectorBody()
-	shown := body.Dy()
-	length := max(shown*shown/(shown+s.scroll.most), thumbLeast)
-	top := body.Min.Y + (shown-length)*s.scroll.offset/s.scroll.most
-	right := body.Max.X - thumbInset
-	ui.FillRound(screen, image.Rect(right-thumbWidth, top, right, top+length), thumbWidth/ui.Half, ui.ColorRule())
+	ui.DrawScrollThumb(screen, s.inspectorBody(), s.scroll.offset, s.scroll.most)
 }

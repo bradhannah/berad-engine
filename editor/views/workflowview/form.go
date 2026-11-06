@@ -585,7 +585,11 @@ func (s *State) layoutForm(docs frame.Docs) {
 	}
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
-	top := panel.Min.Y + formTop
+	if s.scrolled.of != s.form.node {
+		s.scrolled = inspectorScroll{offset: 0, most: 0, of: s.form.node}
+	}
+	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
+	top := panel.Min.Y + formTop - s.scrolled.offset
 	footer := s.notesTop(panel, width)
 	for index := range s.form.controls {
 		made := &s.form.controls[index]
@@ -623,7 +627,6 @@ func (s *State) layoutForm(docs frame.Docs) {
 		s.form.call.hideRefControls(node)
 	}
 	s.form.bottom = top
-	s.layoutFooter(panel.Max.Y-ui.Inset, left, width)
 }
 
 // layoutField places a number's or a text's field, and returns where the
@@ -690,23 +693,7 @@ func placeTimes(from, to *ui.TextField, left, top int) {
 
 // updateForm handles the inspector's buttons.
 func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
-	if s.form == nil {
-		return
-	}
-	s.save.Unsaved = s.Unsaved(ctx.Docs)
-	switch s.save.Update(input) {
-	case ui.SaveID:
-		s.Save(ctx)
-
-		return
-	case ui.RevertID:
-		s.discardForm()
-
-		return
-	}
-	if s.form.remove != nil && s.form.remove.Update(input) {
-		s.removeSelected(ctx)
-
+	if s.form == nil || s.updateFooter(input, ctx) {
 		return
 	}
 	node, ok := s.selectedNode()
@@ -720,6 +707,29 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 	if s.form.call != nil {
 		s.updateCall(input, ctx, node)
 	}
+}
+
+// updateFooter handles the save bar and Delete node, reporting whether one
+// was clicked.
+func (s *State) updateFooter(input *ui.Input, ctx *frame.Context) bool {
+	s.save.Unsaved = s.Unsaved(ctx.Docs)
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+
+		return true
+	case ui.RevertID:
+		s.discardForm()
+
+		return true
+	}
+	if s.form.remove != nil && s.form.remove.Update(input) {
+		s.removeSelected(ctx)
+
+		return true
+	}
+
+	return false
 }
 
 // updateControl handles one parameter's buttons and chooser.
