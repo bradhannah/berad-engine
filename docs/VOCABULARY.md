@@ -83,8 +83,9 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Output** | One way out of a node, connected to the node it leads to; an output with nothing connected ends the branch |
 | **Entry** | One link coming into a node, shown as its own dot on the node's left edge; any number of links can come in. ("Input" is kept for the values passed into a reusable workflow.) |
 | **Time-bound container** | A group of nodes that repeats while its time lasts, then leaves by its exit |
-| **Constant** | Words or a whole number its designer sets and the game never changes, declared in the world, a template, or an NPC's or zone's own; each NPC or zone a template is on can hold a value of its own. Where constants and values mix, paths read `const.` and `var.` |
+| **Constant** | Words or a whole number its designer sets and the game never changes, declared in the world, a template, or an NPC's or zone's own; each NPC or zone a template is on can hold a value of its own. Where constants and values mix, paths read `const.` and `var.`, a constant's drawn amber and a value's slate |
 | **Markup** | Tags in a message's text that the game draws: `[b]` bold, `[i]` italic and `[color=gold]` a colour, each closed by its end tag, as `[/b]`; `[[` writes a `[` |
+| **Writing sheet** | The large sheet over a window that long text is written in: a constant's text, or a message's line from Write…, with bold, italic and colour buttons and a preview as the game shows it |
 
 ## Sound terms
 

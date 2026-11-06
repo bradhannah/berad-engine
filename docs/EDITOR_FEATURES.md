@@ -28,7 +28,11 @@ under consideration), **open** (undecided).
 - **Agreed:** typed changes wait for an explicit save: every inspector with
   fields to type into has a save bar with Revert and Save, and Cmd+S saves
   in any pane. Enter saves a one-line field and
-  starts a new line in a field of several lines. Buttons, choices and pick
+  starts a new line in a field of several lines. What is put in a field
+  another way waits for Save as typing does: a colour picked, a value or
+  constant inserted, a constant chosen for a number, a line written in the
+  writing sheet (2026-11-06, [increment 33](increments/0033-constants.md)).
+  Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
   closing a tab with unsaved changes asks: Save, Don't save or Cancel.
 - **Agreed (2026-10-30):** the editor is **one window**, the editor window,

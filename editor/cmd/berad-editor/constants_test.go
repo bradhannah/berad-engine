@@ -20,8 +20,9 @@ const freshBread = "Fresh bread, [i]still warm[/i]!"
 // the sheet on the default and switches to the clerk's own, and refuses to
 // delete the serving time the clerk's day waits for. In a new workflow, a
 // Wait makes a constant from its typed-in minutes, saved with Save, and
-// uses it in the other Wait typed the same. Previewed, the clerk says her
-// own greeting.
+// uses it in the other Wait typed the same; a Say writes a long line with
+// a value and a constant, which wraps, opens it in the sheet and saves it.
+// Previewed, the clerk says her own greeting.
 func TestConstants(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -30,6 +31,7 @@ func TestConstants(t *testing.T) {
 	windowShot, holderShot := shotPath(t, "constants-window.png"), shotPath(t, "constants-holder.png")
 	refusedShot, othersShot := shotPath(t, "constants-refused.png"), shotPath(t, "constants-others.png")
 	waitShot, speechShot := shotPath(t, "constants-wait.png"), shotPath(t, "constants-speech.png")
+	lineShot, lineSheetShot := shotPath(t, "constants-line.png"), shotPath(t, "constants-line-sheet.png")
 	greeting := "state:constant:npc.shop.greeting="
 	// Each tab works while it is the only one besides the Project window,
 	// which opens the next once the last has closed.
@@ -63,7 +65,14 @@ func TestConstants(t *testing.T) {
 		shoot(othersShot), click("ui:other-1"), wait(5), click("ui:other-use"), wait(10), must("state:unsaved=1", 60),
 		click("ui:save"), must("state:unsaved=0", 300), wait(5),
 		click(waitNode+":1"), must("state:constant:duration=const.world.tide_minutes", 300), wait(10),
-		shoot(waitShot), quit(),
+		shoot(waitShot), addNode(flow.KindSay), must("state:selected:"+flow.KindSay, 300), wait(5),
+		click("ui:param-message"), wait(5), typed("[b]Good morning[/b], "), click("ui:insert-value"),
+		must("valuerow:var.npc.name", 300), click("valuerow:var.npc.name"), wait(5),
+		typed("! The tide turns soon, so we close early today. "), click("ui:insert-value"), wait(5),
+		typed("greeting"), must("valuerow:const.npc.shop.greeting", 300), click("valuerow:const.npc.shop.greeting"),
+		wait(10), must("state:unsaved=1", 60), shoot(lineShot), click("ui:write-line"), must("state:sheet", 300),
+		wait(10), shoot(lineSheetShot), click("ui:sheet-done"), wait(5), click("ui:save"),
+		must("state:unsaved=0", 300), wait(10), quit(),
 	)
 	mapScript := script(
 		must("state:loaded", 600), wait(120), keys("P"), click("cell:3,1"), must("state:previewing", 300),
@@ -75,8 +84,8 @@ func TestConstants(t *testing.T) {
 	})
 	noCrashes(t, project)
 	checkConstantsSaved(t, project)
-	t.Logf("screenshots: %s %s %s %s %s %s %s %s", sheetShot, inspectorShot, windowShot, holderShot, refusedShot,
-		othersShot, waitShot, speechShot)
+	t.Logf("screenshots: %s %s %s %s %s %s %s %s %s %s", sheetShot, inspectorShot, windowShot, holderShot,
+		refusedShot, othersShot, waitShot, speechShot, lineShot, lineSheetShot)
 }
 
 // checkConstantsSaved finds the new constant in the world state, starting at
@@ -111,14 +120,19 @@ func checkConstantsSaved(t *testing.T, project string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	using := 0
+	using, says := 0, 0
 	for _, node := range routine.Nodes() {
 		if duration, err := node.Duration("duration"); err == nil && node.Kind == flow.KindWait &&
 			duration.Constant.Value == tide.ID && duration.Amount == 30 {
 			using++
 		}
+		if segments, err := node.Message(); err == nil && node.Kind == flow.KindSay && len(segments) == 4 &&
+			segments[1].Ref != nil && segments[3].Ref != nil && segments[3].Ref.Value == greeting.ID {
+			says++
+		}
 	}
-	if logic.Version != flow.FormatVersion || using != 2 {
-		t.Fatalf("both Waits of the workflow, version %d, use world.tide_minutes: %d", logic.Version, using)
+	if logic.Version != flow.FormatVersion || using != 2 || says != 1 {
+		t.Fatalf("both Waits of the workflow, version %d, use world.tide_minutes, %d of 2, and the Say its line "+
+			"with a value and the greeting, %d of 1", logic.Version, using, says)
 	}
 }

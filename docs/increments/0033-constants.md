@@ -372,6 +372,89 @@ Chosen while building, for its author to check:
     recording test timed out under the load. Alone it passed 3 times in 3,
     and the rerun of `make check` passed.
 
+## Changed after its author's manual test
+
+Picking a constant into a Say's line was hard to follow. The line changed,
+but the save bar still said all was saved: Insert value… saved the line at
+once, while typing waited for Save. Its author chose, on 2026-11-06:
+
+- **What goes in a field waits for Save, typed or chosen.**
+  - Insert value…, Make a constant… on words, ◆ and × on a number, and the
+    writing sheet's Done put what they choose into the field, or the
+    number's place. The save bar counts it, Save or Cmd+S keeps it, Revert
+    drops it, and leaving the node asks.
+  - A constant made is still declared at once, and the other places typed
+    the same still change when Use is clicked. This place's change, once
+    saved, is its own Undo.
+  - The status bar says: "What goes in a field, typed or chosen, waits for
+    Save; everything else saves as you go."
+  - This changes increment 24, where Insert value… saved the message at
+    once.
+- **Fixed with it:**
+  - Insert value… put the value at the end of a line with no typed
+    changes, not where the caret was.
+  - ◆ started a constant from the number saved, not the one typed. The
+    number typed then hid behind the constant, counted as a change no one
+    could see.
+  - The line as it would read showed the line saved, not what was typed.
+    It now follows the field, or says what keeps it from being read.
+  - A message's field held 200 bytes, paths and all, so a long path could
+    keep Insert value… from inserting. It now holds 4096; Save holds the
+    message to its 200 characters as before.
+- **Constants are amber and values slate** in a message's field and the
+  writing sheet, as the wireframes drew their paths, and markup's tags are
+  grey. A message's chips on a node and a number's constant chip take the
+  same colours.
+- **The line wraps,** growing a row for each line it wraps to, up to six,
+  then scrolling. It stays one line, so Enter saves.
+- **Write… opens the line in the writing sheet.**
+  - Its preview is as the node shows it: a Say's in a bubble, a Show
+    message's in a box, a Log's as the log writes it, each value read as
+    it starts.
+  - Its notes count the characters besides values, of the 200 a line
+    keeps, and say what keeps the line from being read.
+  - Enter, Done or Escape puts the line back in its field, waiting for
+    Save.
+
+Chosen while building these, for its author to check:
+
+- **Write… sits under Insert value… and Make a constant…** when the
+  inspector is too narrow for all three in a row, as it is at the
+  editor's own size.
+- **The field keeps focus** after Insert value… or Make a constant…, so
+  typing goes on after the value.
+- **A number's place waiting for Save** shows the field's red mark, on the
+  constant's chip or on the field.
+- **The writing sheet's tags are grey** for a constant's text too.
+- **A constant chosen for a share outlasts Add option,** as typed fields
+  do.
+- **The node inspector now scrolls,** as the Project window's does. At the
+  editor's own size, a Say with a long line, or with a problem noted, ran
+  its Carry on buttons into its notes. What is below the node's name
+  scrolls with the wheel, under its notes, the save bar and Delete node,
+  which stay put. A node's colours, hidden before when they did not fit,
+  are now scrolled to.
+
+Tests and checks:
+
+- Unit tests put a constant in a line where the caret was and type on
+  after it; read a line typed and not saved, and one naming no value; ask
+  before leaving a Wait with a constant chosen; keep a share's constant
+  through Add option; make a constant from minutes typed and not saved,
+  then revert it; grow a line's field to six rows; and write a Say's line
+  in the sheet and save it. The tests of Insert value…, ◆, × and Make a
+  constant now save, and find the change waiting until they do. Another
+  scrolls a Say's inspector filled by a long line, and finds its colours
+  by scrolling to them.
+- Unit tests find markup's tags, colour a line's constant, value and tags,
+  draw a field's stretches in their paints, and fit a field's height to
+  its rows.
+- The real-window tests save after Insert value… and after making the
+  tide constant. The constants test also writes a long line with a value
+  and a constant, opens it in the sheet, and saves it. Its screenshots
+  showed the node inspector running into its notes, which led to the
+  scrolling.
+
 ## Not in this increment
 
 - **Paging long text,** and pauses or anything else that changes the flow.
