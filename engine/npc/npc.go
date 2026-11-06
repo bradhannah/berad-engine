@@ -22,9 +22,10 @@ const FormatName = "npc"
 
 // FormatVersion is the NPC format version this package writes. Version 2
 // added the sprite an NPC shows, version 3 a path name, version 4 the NPC's
-// own values and templates, and version 5 the zone it lives in; each reads
-// the version before it unchanged.
-const FormatVersion = 5
+// own values and templates, version 5 the zone it lives in, and version 6
+// its own values of its templates' constants; each reads the version
+// before it unchanged.
+const FormatVersion = 6
 
 // MaxNotes bounds an NPC's notes, in characters.
 const MaxNotes = 20000
@@ -162,12 +163,13 @@ func Decode(data json.RawMessage) (NPC, error) {
 // Format returns the NPC format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: unchanged, 2: unchanged, 3: unchanged, 4: unchanged,
+		1: unchanged, 2: unchanged, 3: unchanged, 4: unchanged, 5: unchanged,
 	}}
 }
 
 // unchanged reads an older NPC as it is: one from version 1 shows its token,
 // one from version 2 has no path name until its author gives it one, one
-// from version 3 owns no values yet, and one from version 4 lives in no
-// zone until its author or the editor gives it one.
+// from version 3 owns no values yet, one from version 4 lives in no zone
+// until its author or the editor gives it one, and one from version 5 has
+// the default of every constant.
 func unchanged(data json.RawMessage) (json.RawMessage, error) { return data, nil }

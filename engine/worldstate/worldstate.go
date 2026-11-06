@@ -35,10 +35,11 @@ import (
 
 // FormatName and FormatVersion identify the world-state document inside
 // saved envelopes. Version 2 added groups, templates and the integer, bool
-// and text types; version 1 is upgraded to it.
+// and text types; version 1 is upgraded to it. Version 3 added signals and
+// version 4 constants; each reads the version before it unchanged.
 const (
 	FormatName    = "world-state"
-	FormatVersion = 3
+	FormatVersion = 4
 )
 
 // Name is the world-state document's name in every project.
@@ -70,6 +71,8 @@ const (
 	MaxInteger = 1_000_000_000_000_000
 	// MaxText bounds a text value, in characters.
 	MaxText = 200
+	// MaxConstantText bounds a text constant, in characters: about a page.
+	MaxConstantText = 4000
 )
 
 // Scope says whose a value is.
@@ -146,8 +149,13 @@ func Types(scope Scope) []Type {
 }
 
 // IsValue reports whether a declaration of the type holds a value, rather
-// than other declarations.
+// than other declarations. A constant's type holds one too; Declaration's
+// IsValue tells a value from a constant.
 func (t Type) IsValue() bool { return t != TypeGroup && t != TypeTemplate }
+
+// ConstantTypes returns the types a constant can have, in the order windows
+// offer them: text, from a sign to long dialogue, and whole numbers.
+func ConstantTypes() []Type { return []Type{TypeText, TypeInteger} }
 
 // Role is what a workflow's local value is to whatever calls the workflow:
 // a local of its own, an input the caller fills or an output handed back.
@@ -310,6 +318,26 @@ type Declaration struct {
 	Description string          `json:"description,omitempty"`
 	// Role is a local value's role to a caller of its workflow.
 	Role Role `json:"role,omitempty"`
+	// Constant marks a constant: text or an integer the designer sets and
+	// the game never changes, declared where values are, in the same lists.
+	Constant bool `json:"constant,omitempty"`
+}
+
+// IsValue reports whether it declares a value the game can change: not a
+// group, a template or a constant.
+func (d Declaration) IsValue() bool { return d.Type.IsValue() && !d.Constant }
+
+// IsConstant reports whether it declares a constant.
+func (d Declaration) IsConstant() bool { return d.Constant && d.Type.IsValue() }
+
+// TextLimit returns how long its text can be: a constant's page, or a
+// value's line.
+func (d Declaration) TextLimit() int {
+	if d.Constant {
+		return MaxConstantText
+	}
+
+	return MaxText
 }
 
 // Clone returns an independent copy.
@@ -339,7 +367,7 @@ func (d Declaration) Equal(other Declaration) bool {
 		d.Parent == other.Parent && slices.Equal(d.Choices, other.Choices) &&
 		limitsEqual(d.Min, other.Min) && limitsEqual(d.Max, other.Max) &&
 		bytes.Equal(compact(d.Default), compact(other.Default)) && d.Description == other.Description &&
-		d.Role == other.Role
+		d.Role == other.Role && d.Constant == other.Constant
 }
 
 func limitsEqual(a, b *int) bool {
@@ -422,7 +450,7 @@ func (d Declaration) Empty() Value {
 func New(id ids.ULID, name string, scope Scope, kind Type) Declaration {
 	declared := Declaration{
 		ID: id, Name: name, Scope: scope, Type: kind, Parent: ids.ULID{}, Choices: nil, Min: nil, Max: nil,
-		Default: nil, Description: "", Role: RoleLocal,
+		Default: nil, Description: "", Role: RoleLocal, Constant: false,
 	}
 	if kind == TypeChoice {
 		declared.Choices = []Choice{{ID: "c1", Name: "first"}, {ID: "c2", Name: "second"}}
@@ -430,6 +458,15 @@ func New(id ids.ULID, name string, scope Scope, kind Type) Declaration {
 	if kind.IsValue() {
 		declared.Default = declared.Empty().Encode()
 	}
+
+	return declared
+}
+
+// NewConstant returns a constant of a type in a scope, at the top, with the
+// type's own default: no text, or nought.
+func NewConstant(id ids.ULID, name string, scope Scope, kind Type) Declaration {
+	declared := New(id, name, scope, kind)
+	declared.Constant = true
 
 	return declared
 }
@@ -452,7 +489,11 @@ func (d Declaration) Check() error {
 	if !d.Type.IsValue() {
 		return d.checkContainer()
 	}
-	if !slices.Contains(Types(d.Scope), d.Type) {
+	if d.Constant {
+		if err := d.checkConstant(); err != nil {
+			return err
+		}
+	} else if !slices.Contains(Types(d.Scope), d.Type) {
 		return fmt.Errorf("%w: a %s value cannot be a %s", ErrValue, d.Scope.Label(), d.Type.Label())
 	}
 	if err := d.checkChoices(); err != nil {
@@ -475,7 +516,7 @@ func (d Declaration) Check() error {
 // checkContainer checks a group or template: it holds nothing of its own,
 // and a template belongs to the NPC or zone scope.
 func (d Declaration) checkContainer() error {
-	if len(d.Choices) > 0 || d.Min != nil || d.Max != nil || len(d.Default) > 0 {
+	if len(d.Choices) > 0 || d.Min != nil || d.Max != nil || len(d.Default) > 0 || d.Constant {
 		return fmt.Errorf("%w: a %s holds values, not a value of its own", ErrValue, d.Type.Label())
 	}
 	switch {
@@ -483,6 +524,22 @@ func (d Declaration) checkContainer() error {
 		return fmt.Errorf("%w: templates are for NPCs and zones", ErrValue)
 	case d.Type == TypeGroup && d.Scope == ScopeLocal:
 		return fmt.Errorf("%w: local values have no groups", ErrValue)
+	}
+
+	return nil
+}
+
+// checkConstant checks what only a constant must keep to: text or an
+// integer, with no limits, the world's, an NPC's or a zone's, never a
+// workflow's own.
+func (d Declaration) checkConstant() error {
+	switch {
+	case !slices.Contains(ConstantTypes(), d.Type):
+		return fmt.Errorf("%w: a constant is text or an integer, not a %s", ErrValue, d.Type.Label())
+	case d.Scope == ScopeLocal || !slices.Contains(Scopes(), d.Scope):
+		return fmt.Errorf("%w: a constant belongs to the world, a zone or an NPC", ErrValue)
+	case d.Min != nil || d.Max != nil:
+		return fmt.Errorf("%w: a constant has no limits", ErrValue)
 	}
 
 	return nil
@@ -674,7 +731,7 @@ func (d Declaration) parseInto(raw json.RawMessage, value *Value) error {
 			return fmt.Errorf("%w: %q is not one of its choices", ErrValue, value.Choice)
 		}
 	case TypeText:
-		return parseText(raw, &value.Text)
+		return parseText(raw, &value.Text, d.TextLimit())
 	case TypeNPC:
 		return parseNPC(raw, &value.NPC)
 	case TypeZone, TypeWorkflow, TypeSprite:
@@ -703,12 +760,12 @@ func parseInteger(raw json.RawMessage, integer *int) error {
 }
 
 //nolint:wrapcheck // Parse wraps what this returns.
-func parseText(raw json.RawMessage, text *string) error {
+func parseText(raw json.RawMessage, text *string, limit int) error {
 	if err := json.Unmarshal(raw, text); err != nil {
 		return err
 	}
-	if utf8.RuneCountInString(*text) > MaxText {
-		return fmt.Errorf("%w: text is at most %d characters", ErrValue, MaxText)
+	if utf8.RuneCountInString(*text) > limit {
+		return fmt.Errorf("%w: text is at most %d characters", ErrValue, limit)
 	}
 
 	return nil
@@ -860,6 +917,6 @@ func Decode(data json.RawMessage) (*Document, error) {
 // Format returns the world-state format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: upgradeFrom1, 2: upgradeFrom2,
+		1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3,
 	}}
 }

@@ -389,7 +389,7 @@ func (n *NPC) matcher(world World, node flow.Node) func(npc ids.ULID) bool {
 	}
 	catalog := world.State.Catalog()
 	declared, _, known := catalog.Declared(where.Value)
-	if !known || declared.Scope != worldstate.ScopeNPC || !declared.Type.IsValue() {
+	if !known || declared.Scope != worldstate.ScopeNPC || !declared.IsValue() {
 		n.work.skipped = StatusNoValue
 
 		return nobody

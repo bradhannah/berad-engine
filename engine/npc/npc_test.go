@@ -98,11 +98,12 @@ func TestPathNames(t *testing.T) {
 }
 
 // TestOlderVersionsReadUnchanged upgrades an NPC saved before NPCs had
-// sprites, path names, values of their own or a zone.
+// sprites, path names, values of their own, a zone or values of their
+// templates' constants.
 func TestOlderVersionsReadUnchanged(t *testing.T) {
 	t.Parallel()
 	format := npc.Format()
-	if format.Current != npc.FormatVersion || npc.FormatVersion != 5 {
+	if format.Current != npc.FormatVersion || npc.FormatVersion != 6 {
 		t.Fatalf("version %d", format.Current)
 	}
 	upgraded := json.RawMessage(`{"notes":"Saved before sprites."}`)

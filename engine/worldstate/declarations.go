@@ -1,9 +1,11 @@
 package worldstate
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -39,7 +41,7 @@ func (h Holds) allows(declared Declaration) error {
 	case HoldsZone:
 		allowed = declared.Scope == ScopeZone && declared.Type != TypeTemplate
 	case HoldsLocals:
-		allowed = declared.Scope == ScopeLocal && declared.Type.IsValue()
+		allowed = declared.Scope == ScopeLocal && declared.IsValue()
 	}
 	if !allowed {
 		return fmt.Errorf("%w: a %s %s cannot be declared here", ErrValue, declared.Scope.Label(), declared.Type.Label())
@@ -382,11 +384,15 @@ func (l *Declarations) index(id ids.ULID) int {
 }
 
 // Owned is what one NPC or zone keeps of its values, in its own document:
-// the values and groups declared for it alone, and the templates applied to
-// it.
+// the values, constants and groups declared for it alone, the templates
+// applied to it, and its own value of any of their constants, as saved. A
+// value is kept while its template is off, and counts again when it goes
+// back on; one for a constant no longer declared is ignored, so Undo brings
+// both back.
 type Owned struct {
 	Values    *Declarations
 	Templates []ids.ULID
+	Constants map[ids.ULID]json.RawMessage
 }
 
 // NewOwned returns nothing owned yet, for an NPC or a zone.
@@ -396,12 +402,15 @@ func NewOwned(scope Scope) Owned {
 		holds = HoldsZone
 	}
 
-	return Owned{Values: NewDeclarations(holds), Templates: nil}
+	return Owned{Values: NewDeclarations(holds), Templates: nil, Constants: nil}
 }
 
 // Clone returns an independent copy.
 func (o Owned) Clone() Owned {
-	copied := Owned{Values: nil, Templates: slices.Clone(o.Templates)}
+	copied := Owned{Values: nil, Templates: slices.Clone(o.Templates), Constants: nil}
+	for id, raw := range o.Constants {
+		copied.SetConstant(id, raw)
+	}
 	if o.Values != nil {
 		copied.Values = o.Values.Clone()
 	}
@@ -409,9 +418,9 @@ func (o Owned) Clone() Owned {
 	return copied
 }
 
-// Len counts what is declared and applied.
+// Len counts what is declared, applied and set.
 func (o Owned) Len() int {
-	count := len(o.Templates)
+	count := len(o.Templates) + len(o.Constants)
 	if o.Values != nil {
 		count += o.Values.Len()
 	}
@@ -426,7 +435,45 @@ func (o Owned) Equal(other Owned) bool {
 		return o.Len() == 0 && other.Len() == 0
 	}
 
-	return o.Values.Equal(other.Values) && slices.Equal(o.Templates, other.Templates)
+	return o.Values.Equal(other.Values) && slices.Equal(o.Templates, other.Templates) &&
+		maps.EqualFunc(o.Constants, other.Constants, func(a, b json.RawMessage) bool {
+			return bytes.Equal(compact(a), compact(b))
+		})
+}
+
+// SetConstant keeps the owner's own value of a constant, as saved.
+func (o *Owned) SetConstant(constant ids.ULID, raw json.RawMessage) {
+	if o.Constants == nil {
+		o.Constants = map[ids.ULID]json.RawMessage{}
+	}
+	o.Constants[constant] = slices.Clone(raw)
+}
+
+// ClearConstant forgets the owner's own value of a constant, so it has the
+// default again, and returns what it was.
+func (o *Owned) ClearConstant(constant ids.ULID) (json.RawMessage, bool) {
+	raw, had := o.Constants[constant]
+	delete(o.Constants, constant)
+	if len(o.Constants) == 0 {
+		o.Constants = nil
+	}
+
+	return raw, had
+}
+
+// ConstantValue returns the owner's own value of a constant, when it has
+// one that fits.
+func (o Owned) ConstantValue(declared Declaration) (Value, bool) {
+	raw, had := o.Constants[declared.ID]
+	if !had {
+		return NoValue(), false
+	}
+	value, err := declared.Parse(raw)
+	if err != nil || !declared.Fits(value) {
+		return NoValue(), false
+	}
+
+	return value, true
 }
 
 // Apply applies a template, at the end of the list.
@@ -465,13 +512,14 @@ func (o *Owned) Unapply(template ids.ULID) (int, error) {
 // WireOwned is how an NPC or zone document saves what it owns, both left
 // out while empty.
 type WireOwned struct {
-	Values    json.RawMessage `json:"values,omitempty"`
-	Templates []ids.ULID      `json:"templates,omitempty"`
+	Values    json.RawMessage              `json:"values,omitempty"`
+	Templates []ids.ULID                   `json:"templates,omitempty"`
+	Constants map[ids.ULID]json.RawMessage `json:"constants,omitempty"`
 }
 
 // Wire returns what an NPC or zone document saves of what it owns.
 func (o Owned) Wire() (WireOwned, error) {
-	wire := WireOwned{Values: nil, Templates: o.Templates}
+	wire := WireOwned{Values: nil, Templates: o.Templates, Constants: o.Constants}
 	if o.Values != nil && o.Values.Len() > 0 {
 		values, err := o.Values.MarshalJSON()
 		if err != nil {
@@ -495,6 +543,15 @@ func ReadOwned(scope Scope, wire WireOwned) (Owned, error) {
 		if err := owned.Apply(template); err != nil {
 			return owned, fmt.Errorf("%w: %w", ErrData, err)
 		}
+	}
+	if len(wire.Constants) > MaxValues {
+		return owned, fmt.Errorf("%w: at most %d constants of its own", ErrData, MaxValues)
+	}
+	for constant, raw := range wire.Constants {
+		if constant.IsZero() || !json.Valid(raw) {
+			return owned, fmt.Errorf("%w: a constant of its own needs an ID and a value", ErrData)
+		}
+		owned.SetConstant(constant, raw)
 	}
 
 	return owned, nil

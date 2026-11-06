@@ -98,8 +98,8 @@ func TestEncodeDecode(t *testing.T) {
 	if err := content.NewRegistry().Register(zone.Format()); err != nil {
 		t.Fatal(err)
 	}
-	if format := zone.Format(); format.Current != 6 || format.Migrations[5] == nil {
-		t.Fatalf("version 6 reads version 5 unchanged, with no zone loop: %+v", format)
+	if format := zone.Format(); format.Current != 7 || format.Migrations[5] == nil || format.Migrations[6] == nil {
+		t.Fatalf("version 7 reads version 6 unchanged, with no constants of its own: %+v", format)
 	}
 	looped := z.Clone()
 	looped.Loop = floorID(13)
