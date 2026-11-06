@@ -50,15 +50,17 @@ func (s *State) syncZoneNotes(ctx *frame.Context) {
 	})
 }
 
-// layoutZoneNotes places a selected zone's notes below its palettes, down
-// to limit.
-func (s *State) layoutZoneNotes(docs frame.Docs, left, width, top, limit int) {
+// layoutZoneNotes places a selected zone's constants and notes below its
+// palettes, and returns where they end, or top for no zone.
+func (s *State) layoutZoneNotes(docs frame.Docs, left, width, top int) int {
 	s.zoneNotes.Rect = ui.Zero()
 	if _, ok := s.notedZone(docs); !ok {
-		return
+		return top
 	}
 	rowY := s.layoutConstants(left, width, top+panelGap) + ui.LineHeight
-	s.zoneNotes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
+	s.zoneNotes.Rect = image.Rect(left, rowY, left+width, rowY+notesHeight)
+
+	return s.zoneNotes.Rect.Max.Y + ui.LineHeight
 }
 
 // drawZoneDetails draws a selected zone's loop and notes.

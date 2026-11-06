@@ -19,11 +19,10 @@ import (
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
-// NPC inspector layout, in screen pixels: the notes are at most notesHeight
-// tall, and never run into the save bar.
+// NPC inspector layout, in screen pixels: the notes are notesHeight tall,
+// and the inspector scrolls when they would run into the save bar.
 const (
 	notesHeight = 160
-	notesLeast  = 60
 	panelGap    = 18
 	noBehaviour = "none"
 	noSprite    = "none"
@@ -114,15 +113,16 @@ func (s *State) syncNPC(ctx *frame.Context) {
 	}
 }
 
-// layoutNPC places the NPC panel from top down to limit, below the name.
-func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
+// layoutNPC places the NPC panel from top, below the name, and returns
+// where it ends, or top for no NPC.
+func (s *State) layoutNPC(docs frame.Docs, left, width, top int) int {
 	panel := s.npc
 	panel.behaviour, panel.notes.Rect, panel.choose.Rect, panel.open.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	panel.sprite, panel.chooseSprite.Rect, panel.openSprite.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	panel.path.Rect, panel.zone, panel.showOnMap.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	npcID, ok := s.selectedNPC(docs)
 	if !ok {
-		return
+		return top
 	}
 	panel.top = top
 	panel.behaviourTop = s.layoutZone(docs, npcID, left, width, top)
@@ -134,7 +134,9 @@ func (s *State) layoutNPC(docs frame.Docs, left, width, top, limit int) {
 	panel.path.Rect = image.Rect(left, rowY, left+width, rowY+ui.ButtonH)
 	rowY += ui.ButtonH + ui.Gap*ui.Half + ui.LineHeight + panelGap
 	rowY = s.layoutConstants(left, width, rowY) + ui.LineHeight
-	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+max(min(notesHeight, limit-rowY), notesLeast))
+	panel.notes.Rect = image.Rect(left, rowY, left+width, rowY+notesHeight)
+
+	return panel.notes.Rect.Max.Y + ui.LineHeight
 }
 
 // layoutChoice places a heading at top, the box naming what is chosen, and

@@ -161,6 +161,8 @@ type State struct {
 	// constants is the Constants section of a selected NPC's or zone's
 	// inspector, with its writing sheet.
 	constants *constantsPanel
+	// scroll is how far a document's inspector is scrolled.
+	scroll inspectorScroll
 	// loop is a selected zone's Zone loop box, and loopFor the zone its
 	// dialog chooses a loop for.
 	loop      *loopPanel
@@ -230,8 +232,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		dialog: nil, dialogKind: dialogNone, deleting: ids.ULID{}, gestures: 0,
 		zonePalettes: zonepalettes.New(theme), spritePalettes: nil,
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
-		constants: newConstantsPanel(theme),
-		loop:      newLoopPanel(), loopFor: ids.ULID{},
+		constants: newConstantsPanel(theme), scroll: inspectorScroll{offset: 0, most: 0, of: ""},
+		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
 		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{}, sounds: newSoundState(),
@@ -477,6 +479,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.guardSelection(ctx)
 	s.sync(ctx)
+	s.scrollInspector(input, ctx)
 	s.updateFields(input, ctx)
 	s.updateConstants(input, ctx)
 	if s.focus.Current() == nil {
@@ -1320,11 +1323,16 @@ func (s *State) locateKind(kind, value string, docs frame.Docs) (image.Point, bo
 
 		return s.places.Locate(sectionPrefix + value)
 	case "ui":
-		if point, found := s.locateConstant(kind + ":" + value); found {
-			return point, true
-		}
+		widget := func() (image.Point, bool) {
+			if point, found := s.locateConstant(kind + ":" + value); found {
+				return point, true
+			}
 
-		return s.locateWidget(value)
+			return s.locateWidget(value)
+		}
+		point, found := widget()
+
+		return s.scrolledTo(value, point, found, docs, widget)
 	case stateKind:
 		if found, answered := s.constantState(value); answered {
 			return image.Pt(0, 0), found
