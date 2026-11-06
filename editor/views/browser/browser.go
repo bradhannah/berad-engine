@@ -1021,6 +1021,10 @@ func (s *State) openRow(ctx *frame.Context) {
 		ctx.Requests.Open(worldSignalsView, worldstate.ID(), false)
 
 		return
+	case worldConstantsRow:
+		ctx.Requests.Open(worldConstantsView, worldstate.ID(), false)
+
+		return
 	}
 	s.openSelected(ctx)
 }

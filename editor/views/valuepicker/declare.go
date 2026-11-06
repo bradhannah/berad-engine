@@ -57,6 +57,9 @@ type declarePanel struct {
 // have, or only the picker's one, locked.
 func newDeclarePanel(config Config, theme *ui.Theme) *declarePanel {
 	kinds := worldstate.Types(worldstate.ScopeWorld)
+	if len(config.Kinds) > 0 {
+		kinds = config.Kinds
+	}
 	if config.Only != "" {
 		kinds = []worldstate.Type{config.Only}
 	}

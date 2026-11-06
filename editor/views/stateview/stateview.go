@@ -40,11 +40,13 @@ import (
 
 // The World state windows' view names; their target is the project's
 // world-state document. Values shows the world's, zones' and NPCs' values,
-// and Signals the signals workflows send and answer. Both are filed under
-// World state on the window bar.
+// Signals the signals workflows send and answer, and Constants the words
+// and numbers the designer sets and the game never changes. All are filed
+// under World state on the window bar.
 const (
-	ViewName        = "world-state"
-	SignalsViewName = "world-signals"
+	ViewName          = "world-state"
+	SignalsViewName   = "world-signals"
+	ConstantsViewName = "world-constants"
 )
 
 // Part is which part of the world state a window shows.
@@ -55,6 +57,8 @@ const (
 	PartValues Part = iota
 	// PartSignals is the signals workflows send and answer.
 	PartSignals
+	// PartConstants is the world's constants, and each zone's and NPC's.
+	PartConstants
 )
 
 // Layout, in screen pixels. The list keeps a readable width, listWidth, with
@@ -73,6 +77,7 @@ const (
 // Locate names for input scripts.
 const (
 	addValueID    = "add-value"
+	addConstantID = "add-constant"
 	addGroupID    = "add-group"
 	addTemplateID = "add-template"
 	pathID        = "owner-path"
@@ -146,6 +151,11 @@ type State struct {
 	lastGroup  string
 	// signal is the selected signal's name, line and Delete.
 	signal signalFields
+	// held is an NPC's or zone's own value of a template's constant, as the
+	// Constants window edits it, and holders the rows listing who holds a
+	// template's constant, by where each is drawn.
+	held    heldConstant
+	holders map[string]image.Rectangle
 }
 
 // New returns the Values window for the project's world state.
@@ -158,14 +168,23 @@ func NewSignals(window, document ids.ULID, theme *ui.Theme) *State {
 	return newState(PartSignals, window, document, theme)
 }
 
+// NewConstants returns the Constants window for the project's world state.
+func NewConstants(window, document ids.ULID, theme *ui.Theme) *State {
+	return newState(PartConstants, window, document, theme)
+}
+
 // newState returns a World state window showing one part.
 func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 	adds := []*ui.Button{
 		ui.NewButton(addValueID, "Add value"), ui.NewButton(addGroupID, "Add group"),
 		ui.NewButton(addTemplateID, "Add template"),
 	}
-	if part == PartSignals {
+	switch part {
+	case PartSignals:
 		adds = []*ui.Button{ui.NewButton(addSignalID, "Add signal"), ui.NewButton(addGroupID, "Add group")}
+	case PartConstants:
+		adds[0] = ui.NewButton(addConstantID, "Add constant")
+	case PartValues:
 	}
 	adds[0].Primary = true
 	view := &State{
@@ -178,11 +197,14 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 		menu:   ui.Menu{Items: nil, Width: 0},
 		menuOf: "", revealPath: "", revealRename: false, nameAdded: false, find: nil,
 		findButton: ui.NewButton(findID, "Find a value"),
-		findUses:   nil, lastGroup: "", signal: newSignalFields(theme),
+		findUses:   nil, lastGroup: "", signal: newSignalFields(theme), held: newHeldConstant(theme), holders: nil,
 		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
 	view.form.Dotted = true
+	if part == PartConstants {
+		view.findButton.Label = "Find a constant"
+	}
 	view.list.CanDrop = func(dragged, target string) bool {
 		_, ok := view.dropInto(dragged, target)
 
@@ -206,8 +228,12 @@ func (s *State) Title(frame.Docs) string { return "World state: " + s.heading() 
 
 // heading names the part the window shows.
 func (s *State) heading() string {
-	if s.part == PartSignals {
+	switch s.part {
+	case PartSignals:
 		return signalsTopLabel
+	case PartConstants:
+		return "Constants"
+	case PartValues:
 	}
 
 	return "Values"
@@ -215,8 +241,13 @@ func (s *State) heading() string {
 
 // about says what the window holds, under its heading.
 func (s *State) about() string {
-	if s.part == PartSignals {
+	switch s.part {
+	case PartSignals:
 		return "Signals workflows send and answer. Only the zone running hears one; tell another with a value."
+	case PartConstants:
+		return "Words and numbers the game never changes: the world's, and each zone's and NPC's. " +
+			"Templates give many the same constants, each with a value of its own."
+	case PartValues:
 	}
 
 	return "The world's values, and each zone's and NPC's. Templates give many the same values."
@@ -338,6 +369,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.focus.Set(nil)
 		s.form.Revert()
 		s.path.Field.Revert()
+		s.held.revert()
 
 		return
 	}
@@ -351,7 +383,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	} else {
 		s.signal.of = ids.ULID{}
 	}
-	if s.part == PartValues && (s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd())) {
+	if s.part != PartSignals && (s.findButton.Update(input) || input.Consume(ui.KeyF, ui.Cmd())) {
 		s.openFind(ctx, "")
 
 		return
@@ -409,6 +441,8 @@ func (s *State) Unsaved(frame.Docs) int {
 	switch {
 	case s.named != "":
 		return s.form.Unsaved()
+	case s.held.of != "":
+		return frame.UnsavedFields(s.held.field())
 	case s.pathOf != "":
 		return frame.UnsavedFields(s.path)
 	case !s.signal.of.IsZero():
@@ -422,6 +456,9 @@ func (s *State) Unsaved(frame.Docs) int {
 func (s *State) UnsavedName(frame.Docs) string {
 	if meaning, found := s.shown.items[s.named]; found {
 		return meaning.path
+	}
+	if meaning, found := s.shown.items[s.held.of]; found {
+		return meaning.owner.Name + "'s " + meaning.declared.Name
 	}
 	if meaning, found := s.shown.items[s.pathOf]; found {
 		return meaning.owner.Name + "'s path name"
@@ -445,6 +482,9 @@ func (s *State) Save(ctx *frame.Context) bool {
 	}
 	if !s.signal.of.IsZero() {
 		return s.saveSignal(ctx)
+	}
+	if s.held.of != "" {
+		return s.saveHeld(ctx)
 	}
 	if s.named == "" {
 		return s.savePath(ctx)
@@ -549,7 +589,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if widget == pathID && !s.path.Rect.Empty() {
 		return s.path.Center(), true
 	}
-	for _, field := range []*ui.TextField{s.signal.name, s.signal.description} {
+	for _, field := range []*ui.TextField{s.signal.name, s.signal.description, s.held.text, s.held.number} {
 		if widget == field.ID && !field.Rect.Empty() {
 			return field.Center(), true
 		}
@@ -557,7 +597,8 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if widget == deleteSignalID && !s.signal.remove.Rect.Empty() {
 		return ui.Center(s.signal.remove.Rect), true
 	}
-	for _, button := range append(append(append([]*ui.Button{s.findButton}, s.adds...), s.templates...), s.takeOff) {
+	buttons := append(append([]*ui.Button{s.findButton, s.held.useDefault}, s.adds...), s.templates...)
+	for _, button := range append(buttons, s.takeOff) {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
 		}
@@ -600,12 +641,17 @@ func (s *State) hasState(docs frame.Docs, state string) bool {
 }
 
 // hasValue answers "<path>:<type>:<default>": whether a value shown in the
-// tree is one.
+// tree is one, or for an NPC's or zone's constant its own value or the
+// default.
 func (s *State) hasValue(asked string) bool {
 	for _, meaning := range s.shown.items {
 		declared := meaning.declared
+		value := declared.Zero()
+		if meaning.kind == itemHeld && declared.IsConstant() {
+			value, _ = ownValue(declared, meaning.owner)
+		}
 		if declared.Type.IsValue() && !declared.ID.IsZero() &&
-			meaning.path+":"+string(declared.Type)+":"+declared.Label(declared.Zero()) == asked {
+			meaning.path+":"+string(declared.Type)+":"+declared.Label(value) == asked {
 			return true
 		}
 	}
@@ -644,7 +690,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		button.Draw(screen, s.theme)
 	}
 	right := s.listRight()
-	if s.part == PartValues {
+	if s.part != PartSignals {
 		s.findButton.Draw(screen, s.theme)
 		right = s.findButton.Rect.Min.X
 	}

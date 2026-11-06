@@ -44,7 +44,8 @@ func (p *Picker) rows(docs frame.Docs) []ui.Row {
 	taken := map[string]bool{}
 	for _, option := range p.source.Options(docs) {
 		taken[option.Path] = true
-		if query != "" && !strings.Contains(option.Path, query) {
+		if query != "" && !strings.Contains(option.Path, query) &&
+			!strings.Contains(strings.ToLower(option.Words), strings.ToLower(query)) {
 			continue
 		}
 		inScope := p.scope == Everywhere || option.Rail == p.scope

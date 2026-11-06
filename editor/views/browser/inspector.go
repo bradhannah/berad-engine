@@ -132,7 +132,7 @@ func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.layoutSettings(docs, left, width)
-	case worldStateRow, worldSignalsRow:
+	case worldStateRow, worldSignalsRow, worldConstantsRow:
 		s.layoutWorldState(left, width)
 	default:
 		if _, isCue := s.selectedCue(); !isCue {
@@ -368,7 +368,7 @@ func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.drawSettings(screen, docs, left)
-	case worldStateRow, worldSignalsRow:
+	case worldStateRow, worldSignalsRow, worldConstantsRow:
 		s.drawWorldState(screen, left)
 	default:
 		return false

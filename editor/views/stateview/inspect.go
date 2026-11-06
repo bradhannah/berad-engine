@@ -31,6 +31,7 @@ func (s *State) inspect(selected item) {
 	}
 	s.named = ""
 	s.inspectPath(selected)
+	s.inspectHeld(selected)
 	if selected.kind == itemDeclared {
 		if s.form.Show(selected.declared, valuetree.Dotted(selected.list.Values, selected.declared.ID)) {
 			s.focus = ui.Focus{}
@@ -103,12 +104,15 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	s.form.Hide()
 	s.save.Rect, s.takeOff.Rect, s.path.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	s.signal.name.Rect, s.signal.description.Rect, s.signal.remove.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+	s.held.text.Rect, s.held.number.Rect, s.held.useDefault.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	for _, button := range s.templates {
 		button.Rect = ui.Zero()
 	}
 	selected, found := s.selected()
 	switch {
 	case !found:
+	case s.isHeldConstant(selected):
+		s.layoutHeld(panel)
 	case selected.kind == itemDeclared:
 		s.form.Delete.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 		saveTop := s.form.Delete.Rect.Min.Y - footerGap - ui.SaveBarHeight(width)
@@ -143,6 +147,7 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 	}
 	switch selected.kind {
 	case itemDeclared:
+		s.updateHolders(input)
 		s.updateDeclared(input, ctx, selected)
 	case itemOwner:
 		for index, template := range s.templatesOf(selected.scope) {
@@ -158,7 +163,11 @@ func (s *State) updateInspector(input *ui.Input, ctx *frame.Context) {
 		if s.signal.remove.Update(input) {
 			s.startSignalDelete(ctx, selected)
 		}
-	case itemTemplates, itemHeld, itemName:
+	case itemHeld:
+		if s.isHeldConstant(selected) {
+			s.updateHeld(input, ctx, selected)
+		}
+	case itemTemplates, itemName:
 	}
 }
 
@@ -202,9 +211,10 @@ func (s *State) lockReason() string {
 	case s.usesFor != s.list.Selected:
 		return "Its type waits while its uses are checked."
 	case len(s.uses) == 1:
-		return "Fixed while a node uses it. For another type, declare a new value."
+		return "Fixed while a node uses it. For another type, declare a new " + s.valueWord() + "."
 	case len(s.uses) > 1:
-		return "Fixed while " + strconv.Itoa(len(s.uses)) + " nodes use it. For another type, declare a new value."
+		return "Fixed while " + strconv.Itoa(len(s.uses)) + " nodes use it. For another type, declare a new " +
+			s.valueWord() + "."
 	}
 
 	return ""
@@ -220,7 +230,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	selected, found := s.selected()
 	if !found {
-		hint := "Select a value, a group, a template, an NPC or a zone."
+		hint := "Select a " + s.valueWord() + ", a group, a template, an NPC or a zone."
 		if s.part == PartSignals {
 			hint = "Select a signal or a group."
 		}
@@ -237,12 +247,20 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	switch selected.kind {
 	case itemDeclared:
 		s.form.Draw(screen)
-		s.drawUses(screen, left, s.form.Layout(left, top, width), width)
+		under := s.drawUses(screen, left, s.form.Layout(left, top, width), width)
+		s.drawHolders(screen, selected, left, under+ui.Gap, width)
 		s.save.Draw(screen, s.theme)
 		s.form.Delete.Draw(screen, s.theme)
 	case itemOwner:
 		s.drawOwner(screen, selected, left, top, width)
-	case itemApplied, itemTemplates, itemHeld, itemName:
+	case itemHeld:
+		if s.isHeldConstant(selected) {
+			s.drawHeld(screen, selected, left, top, width)
+
+			break
+		}
+		s.drawNote(screen, note(selected), left, top, width)
+	case itemApplied, itemTemplates, itemName:
 		s.drawNote(screen, note(selected), left, top, width)
 		s.takeOff.Draw(screen, s.theme)
 	case itemSignal, itemSignalGroup:
@@ -264,6 +282,10 @@ func heading(selected item) string {
 	case itemTemplates:
 		return "TEMPLATES"
 	case itemHeld:
+		if selected.declared.IsConstant() {
+			return strings.ToUpper(selected.owner.Name) + "'S OWN"
+		}
+
 		return "FROM A TEMPLATE"
 	case itemName:
 		return "NAME"
@@ -272,6 +294,9 @@ func heading(selected item) string {
 	case itemSignalGroup:
 		return "SIGNAL GROUP"
 	case itemDeclared:
+	}
+	if selected.declared.IsConstant() {
+		return "SELECTED CONSTANT"
 	}
 	if selected.declared.Type.IsValue() {
 		return "SELECTED VALUE"
@@ -337,7 +362,7 @@ func (s *State) drawNote(screen *ebiten.Image, text string, left, top, width int
 }
 
 // drawUses lists where the selected declaration is used.
-func (s *State) drawUses(screen *ebiten.Image, left, top, width int) {
+func (s *State) drawUses(screen *ebiten.Image, left, top, width int) int {
 	s.theme.Heading(screen, "USED IN", left, top)
 	top += ui.LineHeight
 	switch {
@@ -356,6 +381,8 @@ func (s *State) drawUses(screen *ebiten.Image, left, top, width int) {
 			top += ui.LineHeight
 		}
 	}
+
+	return top + ui.LineHeight
 }
 
 // pathNote says what is worth knowing about an NPC's or zone's path name:

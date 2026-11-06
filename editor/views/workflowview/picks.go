@@ -63,7 +63,7 @@ func (s *State) openValuePicker(node flow.Node, param, title string, only worlds
 		selected = encodeRef(ref)
 	}
 	config := valuepicker.Config{
-		Title: chooseValueLabel, For: title, Placeholder: placeholder, Empty: empty, Only: only,
+		Title: chooseValueLabel, For: title, Placeholder: placeholder, Empty: empty, Only: only, Kinds: nil,
 		Rail: pickerRail(source.optionRole()), Selected: selected, Query: "", LastGroup: &s.lastGroup, PickLabel: "Choose",
 		PickHint: "picks", DeclareAs: "Declare and choose", DeclareLead: "It is chosen as soon as it is declared.",
 	}
@@ -89,7 +89,7 @@ func (v *valueSource) Options(docs frame.Docs) []valuepicker.Option {
 	for _, option := range found {
 		listed = append(listed, valuepicker.Option{
 			ID: encodeRef(option.ref), Path: option.path, Declared: option.declared, Heading: option.heading,
-			Rail: option.rail, Root: option.root, Detail: builtInDetail(option),
+			Rail: option.rail, Root: option.root, Detail: builtInDetail(option), Words: "",
 		})
 	}
 

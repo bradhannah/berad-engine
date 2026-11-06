@@ -152,6 +152,21 @@ func Declare(
 	return change, nil
 }
 
+// DeclareConstant returns the change that declares a constant, as Declare
+// does a value, with any groups its dotted name needs.
+func DeclareConstant(
+	list *worldstate.Declarations, scope worldstate.Scope, parent ids.ULID, dotted string, kind worldstate.Type,
+) (stateplugin.ChangeArgs, error) {
+	change, err := Declare(list, scope, parent, dotted, kind)
+	if err != nil {
+		return change, err
+	}
+	last := len(change.Add) - 1
+	change.Add[last].Constant = true
+
+	return change, nil
+}
+
 // Move returns the change that renames a declaration, and moves it into
 // the groups a dotted name gives, under root: zero for the top of its
 // scope, or its template. Groups the name needs that the list lacks are

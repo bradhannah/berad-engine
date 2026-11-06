@@ -42,14 +42,14 @@ func choice(id, label string, rule bool) ui.MenuItem {
 func (s *State) rowMenu(row string, meaning item, found bool) ([]ui.MenuItem, map[string][]ui.MenuItem) {
 	subs := map[string][]ui.MenuItem{}
 	adds := func(where string, scope worldstate.Scope) []ui.MenuItem {
-		types := make([]ui.MenuItem, 0, len(worldstate.Types(scope)))
-		for _, kind := range worldstate.Types(scope) {
+		types := make([]ui.MenuItem, 0, len(s.valueTypes(scope)))
+		for _, kind := range s.valueTypes(scope) {
 			types = append(types, choice(menuAdd+string(kind), kind.Label(), false))
 		}
 		subs[menuAddValue] = types
 
 		return []ui.MenuItem{
-			menuHeading(where), choice(menuAddValue, "Add value", false), choice(menuAddGroup, "Add group", false),
+			menuHeading(where), choice(menuAddValue, "Add "+s.valueWord(), false), choice(menuAddGroup, "Add group", false),
 		}
 	}
 	if items := signalMenu(row, meaning, found); items != nil {
@@ -109,7 +109,7 @@ func (s *State) declaredMenu(meaning item, adds func(string, worldstate.Scope) [
 		items = append(items, choice(menuMoveInto, "Move into", len(items) > 0))
 	}
 	items = append(items, choice(menuRename, "Rename", kind == worldstate.TypeTemplate))
-	remove := choice(menuDelete, "Delete "+kindName(kind), true)
+	remove := choice(menuDelete, "Delete "+s.declaredName(meaning.declared), true)
 	remove.Danger = true
 
 	return append(items, remove)
@@ -173,7 +173,7 @@ func (s *State) chooseAdd(ctx *frame.Context, chosen string) bool {
 	case !ok:
 		return strings.HasPrefix(chosen, menuAdd) || chosen == menuAddGroup || chosen == menuAddTemplate
 	case strings.HasPrefix(chosen, menuAdd):
-		s.declare(ctx, into, "value", worldstate.Type(strings.TrimPrefix(chosen, menuAdd)))
+		s.declare(ctx, into, s.valueWord(), worldstate.Type(strings.TrimPrefix(chosen, menuAdd)))
 	case chosen == menuAddGroup:
 		s.declare(ctx, into, "group", worldstate.TypeGroup)
 	case chosen == menuAddTemplate:
@@ -225,6 +225,15 @@ func (s *State) addsNote(docs frame.Docs) string {
 	}
 
 	return "adds " + s.addsWhere(into)
+}
+
+// kindPhrase says what was added, as a bool, a text constant or a group.
+func (s *State) kindPhrase(kind worldstate.Type) string {
+	if s.part == PartConstants && kind.IsValue() {
+		return "a " + kind.Label() + " constant"
+	}
+
+	return kindPhrase(kind)
 }
 
 // kindPhrase says what was added, as a bool or a group.
