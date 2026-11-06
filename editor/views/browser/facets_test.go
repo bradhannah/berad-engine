@@ -10,52 +10,71 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 )
 
-// TestFacetsNarrowTheListToATable ticks a kind, then a folder: the list
-// becomes a table of what has them, a value not ticked still counts what
-// ticking it would add, and taking the ticks away brings the tree back.
-func TestFacetsNarrowTheListToATable(t *testing.T) {
+// TestFacetsNarrowThePlaces ticks a kind from the bar: Matches lists the two
+// workflows, the places column keeps only the places holding them, each
+// saying how many of all it holds, and a value not ticked still counts
+// what ticking it would add. A folder shows only what is kept in it, and
+// Clear puts everything back.
+func TestFacetsNarrowThePlaces(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withFolders(f)
-	if !f.has("facets") || f.has("table") {
-		t.Fatal("the facets stand beside the tree")
+	if f.has("narrowed") || !f.has("count:Kind/Workflows=2") || !f.has("count:Kind/NPCs=1") {
+		t.Fatal("nothing narrows yet, and each value says how many things have it")
 	}
-	if !f.has("count:Kind/Workflows=2") || !f.has("count:Kind/NPCs=1") || !f.has("count:Folder/Market=2") {
-		t.Fatal("each value says how many things have it")
+	f.click("ui:facet-kind", false)
+	if _, listed := f.state.Locate("facet:Kind/Workflows", f.ctx.Docs); !listed {
+		t.Fatal("the Kind button opens its values")
 	}
 	f.click("facet:Kind/Workflows", false)
-	if !f.has("table") || !f.has("showing=2 of 5") || !f.has("ticked:Kind/Workflows") {
-		t.Fatal("ticking Workflows shows the two workflows of five things")
+	if !f.has("narrowed") || !f.has("showing=2 of 5") || !f.has("ticked:Kind/Workflows") || !f.has("place=Matches") {
+		t.Fatal("ticking Workflows shows Matches, two workflows of five things")
 	}
-	if !f.has("count:Kind/NPCs=1") || !f.has("cell:Night watch/Kind=NPC behaviour") {
-		t.Fatal("NPCs still counts the NPC ticking it would add, and a workflow says its kind")
+	if got := f.matchLabels(); !slices.Equal(got, []string{"Clerk day", "Night watch"}) {
+		t.Fatalf("Matches lists the workflows: %v", got)
 	}
-	f.click("facet:Folder/Market / Guards", false)
-	if !f.has("showing=1 of 5") || !f.has("cell:Night watch/Folder=Market / Guards") {
-		t.Fatal("ticking Market / Guards leaves Night watch")
+	if !f.has("count:Kind/NPCs=1") {
+		t.Fatal("NPCs still counts the NPC ticking it would add")
 	}
-	if _, listed := f.state.Locate("facet:Tags/#market", f.ctx.Docs); listed {
-		t.Fatal("no tag that would leave nothing is offered")
+	places := map[string]string{}
+	for _, row := range f.state.Places(f.ctx.Docs) {
+		places[row.Label] = row.Detail
 	}
-	f.click("chip:Kind: Workflows", false)
-	f.click("chip:Folder: Market / Guards", false)
-	if f.has("table") {
-		t.Fatal("with nothing ticked, the tree is back")
+	if places["Workflows"] != "2 of 2" || places["Market"] != "2 of 2" || places["Guards"] != "1 of 1" {
+		t.Fatalf("the places holding them say how many: %v", places)
+	}
+	if _, shown := places["Wilds"]; shown {
+		t.Fatal("a folder holding nothing kept is not listed")
+	}
+	if _, shown := places["NPCs"]; shown {
+		t.Fatal("a kind holding nothing kept is not listed")
+	}
+	f.press("Escape")
+	f.click("place:Market", false)
+	if got := f.labels(); !slices.Equal(got, []string{"Guards", "Clerk day"}) {
+		t.Fatalf("Market shows what is kept in it: %v", got)
+	}
+	f.click("ui:clear", false)
+	if f.has("narrowed") || !slices.Contains(f.placeLabels(), "Wilds") {
+		t.Fatal("Clear puts every place back")
 	}
 }
 
-// TestSearchingShowsATable types a search: the list becomes a table of
-// what matches, Settings among them when its words match.
-func TestSearchingShowsATable(t *testing.T) {
+// TestSearchingShowsMatches types a search: Matches lists what it finds,
+// Settings among them when its words match.
+func TestSearchingShowsMatches(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withFolders(f)
 	f.typeInto("search", "night")
-	if !f.has("table") || !f.has("showing=1 of 5") {
-		t.Fatal("night finds Night watch")
+	if !f.has("place=Matches") || !f.has("showing=1 of 5") || !slices.Equal(f.matchLabels(), []string{"Night watch"}) {
+		t.Fatalf("night finds Night watch: %v", f.matchLabels())
 	}
 	f.press("Escape")
 	f.press("Escape")
+	if f.has("narrowed") || !f.has("place=Home") {
+		t.Fatal("clearing the search shows the place shown before")
+	}
 	f.typeInto("search", "tile")
 	if _, found := f.state.Locate("row:Settings", f.ctx.Docs); !found {
 		t.Fatal("tile finds the Settings")
@@ -63,14 +82,16 @@ func TestSearchingShowsATable(t *testing.T) {
 }
 
 // TestSavingAView saves the ticks under a name, finds them a saved view,
-// applies it again from the facets column, and deletes it.
+// applies it again from the places column, and deletes it.
 func TestSavingAView(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	withFolders(f)
 	docs := f.ctx.Docs.(*frametest.Docs)
 	docs.Put(viewsplugin.ID(), viewsplugin.Name, &viewsplugin.Document{Views: nil})
+	f.click("ui:facet-kind", false)
 	f.click("facet:Kind/Workflows", false)
+	f.press("Escape")
 	f.click("ui:save-view", false)
 	f.press("Cmd+A")
 	f.typeText("All workflows")
@@ -86,7 +107,7 @@ func TestSavingAView(t *testing.T) {
 	if !f.has("view=All workflows") {
 		t.Fatal("the ticks are the saved view's")
 	}
-	f.click("chip:Kind: Workflows", false)
+	f.click("ui:clear", false)
 	f.click("view:All workflows", false)
 	if !f.has("showing=2 of 5") {
 		t.Fatal("the view ticks Workflows again")
@@ -97,4 +118,14 @@ func TestSavingAView(t *testing.T) {
 		len(deleted.Views) != 0 {
 		t.Fatalf("deleted: %+v", deleted)
 	}
+}
+
+// placeLabels lists the places column by name.
+func (f *fixture) placeLabels() []string {
+	var labels []string
+	for _, row := range f.state.Places(f.ctx.Docs) {
+		labels = append(labels, row.Label)
+	}
+
+	return labels
 }

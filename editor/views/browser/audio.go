@@ -97,63 +97,6 @@ func (m matcher) cue(cue protocol.AudioCue) bool {
 	return false
 }
 
-// audioRows lists the Audio section: its categories, each with its cues, a
-// cue showing its ID beside its name. The section's [+] adds a sound.
-func (s *State) audioRows(match matcher) []ui.Row {
-	library := s.audio.library
-	if library == nil {
-		return nil
-	}
-	var shown []protocol.AudioCue
-	for _, cue := range library.Cues {
-		if match.cue(cue) {
-			shown = append(shown, cue)
-		}
-	}
-	rows := []ui.Row{s.section(sectionAudio, "Audio", len(shown), true, match.active())}
-	if s.closed[sectionAudio] && !match.active() {
-		return rows
-	}
-	for _, category := range audioCategories() {
-		var held []protocol.AudioCue
-		for _, cue := range shown {
-			if cue.Category == category[0] {
-				held = append(held, cue)
-			}
-		}
-		if len(held) > 0 || !match.active() {
-			rows = append(rows, s.categoryRows(category, held, match.active())...)
-		}
-	}
-
-	return rows
-}
-
-// categoryRows lists a category, like a folder with its count, and, when it
-// is open, its cues, each with its ID beside its name.
-func (s *State) categoryRows(category [2]string, held []protocol.AudioCue, searching bool) []ui.Row {
-	rowID := audioCategoryPrefix + category[0]
-	row := ui.NewRow(rowID, category[1])
-	row.Icon, row.Detail = ui.IconFolder, strconv.Itoa(len(held))
-	if len(held) > 0 {
-		row.Toggle = ui.DisclosureOpen
-		if s.closed[rowID] && !searching {
-			row.Toggle = ui.DisclosureClosed
-		}
-	}
-	rows := []ui.Row{row}
-	if row.Toggle != ui.DisclosureOpen {
-		return rows
-	}
-	for _, cue := range held {
-		cueRow := ui.NewRow(audioCuePrefix+cue.ID, cue.Name)
-		cueRow.Icon, cueRow.Indent, cueRow.Aside, cueRow.Detail = ui.IconSound, 1, cue.ID, audioDetail(cue)
-		rows = append(rows, cueRow)
-	}
-
-	return rows
-}
-
 // audioDetail says, for a cue's row, that it has no sound yet, that it is
 // not cleared for a commercial game, or how many recordings it plays in turn.
 func audioDetail(cue protocol.AudioCue) string {

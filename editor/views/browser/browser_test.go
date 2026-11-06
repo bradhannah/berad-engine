@@ -2,6 +2,7 @@ package browser_test
 
 import (
 	"image"
+	"slices"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -66,6 +67,27 @@ func newFixture(t *testing.T) *fixture {
 	first := ui.NewInput(image.Pt(0, 0))
 	state.Update(&first, ctx)
 	return &fixture{t: t, state: state, requests: requests, ctx: ctx}
+}
+
+// labels lists the main pane's rows by name.
+func (f *fixture) labels() []string {
+	var labels []string
+	for _, row := range f.state.Rows(f.ctx.Docs) {
+		labels = append(labels, row.Label)
+	}
+
+	return labels
+}
+
+// rowNamed returns the main pane's row of a name.
+func (f *fixture) rowNamed(label string) ui.Row {
+	for _, row := range f.state.Rows(f.ctx.Docs) {
+		if row.Label == label {
+			return row
+		}
+	}
+
+	return ui.Row{}
 }
 
 func (f *fixture) click(name string, double bool) {
@@ -160,12 +182,15 @@ func TestOpening(t *testing.T) {
 	}
 }
 
-// TestWorldStateSection opens Values and Signals from the World state
-// section, each in its own window on the world-state document, and folds
-// the section away.
-func TestWorldStateSection(t *testing.T) {
+// TestWorldStatePlace shows World state's Values and Signals, and opens each
+// in its own window on the world-state document.
+func TestWorldStatePlace(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	f.click("place:World state", false)
+	if labels := f.labels(); !slices.Equal(labels, []string{"Values", "Signals"}) {
+		t.Fatalf("World state holds Values and Signals: %v", labels)
+	}
 	f.click("row:Values", true)
 	f.click("row:Signals", true)
 	want := []string{"world-state", "world-signals"}
@@ -176,10 +201,6 @@ func TestWorldStateSection(t *testing.T) {
 		if opened.View != want[index] || opened.Target != worldstate.ID() {
 			t.Fatalf("open %d: %+v", index, opened)
 		}
-	}
-	f.click("section:world-state", false)
-	if _, shown := f.state.Locate("row:Signals", f.ctx.Docs); shown {
-		t.Fatal("folding World state hides Values and Signals")
 	}
 }
 
@@ -289,17 +310,32 @@ func TestNPCInspector(t *testing.T) {
 	}
 }
 
-// TestTreeShowsTypesAndHidesRows lists sections with counts, icons and
-// details, and hides a zone's floors or a whole section when toggled.
-func TestTreeShowsTypesAndHidesRows(t *testing.T) {
+// TestPlacesAndWhatTheyHold opens on Home and lists the places: Home, World
+// state, Settings, then each kind with how many it holds and a [+]. A kind
+// shows its things: a zone with its floors, which close and open, and an
+// NPC with what it follows.
+func TestPlacesAndWhatTheyHold(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	if !f.has("place=Home") || len(f.labels()) != 0 {
+		t.Fatalf("the window opens on Home: %v", f.labels())
+	}
+	places := map[string]ui.Row{}
+	order := []string{}
+	for _, row := range f.state.Places(f.ctx.Docs) {
+		places[row.Label] = row
+		order = append(order, row.Label)
+	}
+	if len(order) < 4 || !slices.Equal(order[:3], []string{"Home", "World state", "Settings"}) {
+		t.Fatalf("Home, World state and Settings come first: %v", order)
+	}
+	if zones := places["Zones"]; zones.Detail != "1" || !zones.Add || !zones.Strong {
+		t.Fatalf("Zones says how many and has a [+]: %+v", zones)
+	}
+	f.click("place:Zones", false)
 	rows := map[string]ui.Row{}
 	for _, row := range f.state.Rows(f.ctx.Docs) {
 		rows[row.Label] = row
-	}
-	if zones := rows["Zones"]; !zones.Section || zones.Detail != "1" || !zones.Add {
-		t.Fatalf("zones section %+v", zones)
 	}
 	if town := rows["Town"]; town.Icon != ui.IconZone || !town.Strong || town.Toggle != ui.DisclosureOpen ||
 		town.Detail != "1 floor" {
@@ -308,27 +344,23 @@ func TestTreeShowsTypesAndHidesRows(t *testing.T) {
 	if ground := rows["Ground"]; ground.Icon != ui.IconFloor || ground.Guide != ui.GuideLast || ground.Indent != 1 {
 		t.Fatalf("floor row %+v", ground)
 	}
-	if clerk := rows["Ada Clerk"]; clerk.Icon != ui.IconNPC || clerk.Detail != "no behaviour" {
-		t.Fatalf("NPC row %+v", clerk)
-	}
 	f.click("toggle:Town", false)
-	if _, shown := f.state.Locate("row:Ground", f.ctx.Docs); shown {
+	if _, shown := f.state.Locate("row:Ground", f.ctx.Docs); shown && !f.has("place=Zones") {
 		t.Fatal("a closed zone hides its floors")
 	}
-	f.keys("Right")
 	f.click("row:Town", false)
 	f.keys("Right")
-	if _, shown := f.state.Locate("row:Ground", f.ctx.Docs); !shown {
+	if !slices.Contains(f.labels(), "Ground") {
 		t.Fatal("Right opens the selected zone")
-	}
-	f.click("section:npcs", false)
-	if _, shown := f.state.Locate("row:Ada Clerk", f.ctx.Docs); shown {
-		t.Fatal("a closed section hides its rows")
 	}
 	f.click("row:Ground", false)
 	f.keys("Left")
-	if row, _ := f.state.SelectedRow(); row.Label != "Town" {
+	if row, _ := f.state.SelectedRow(f.ctx.Docs); row.Label != "Town" {
 		t.Fatalf("Left on a floor selects its zone, not %q", row.Label)
+	}
+	f.click("place:NPCs", false)
+	if clerk := f.rowNamed("Ada Clerk"); clerk.Icon != ui.IconNPC || clerk.Detail != "no behaviour" {
+		t.Fatalf("NPC row %+v", clerk)
 	}
 }
 
@@ -375,20 +407,20 @@ func TestSelectingAwayAsksAboutUnsavedChanges(t *testing.T) {
 	f.typeText(" two")
 	f.click("row:Town", false)
 	f.click("ui:cancel", false)
-	if row, _ := f.state.SelectedRow(); row.Label != "Ada Clerk" || f.state.Unsaved(f.ctx.Docs) != 1 {
+	if row, _ := f.state.SelectedRow(f.ctx.Docs); row.Label != "Ada Clerk" || f.state.Unsaved(f.ctx.Docs) != 1 {
 		t.Fatalf("Cancel stays on Ada Clerk with the change: %q", row.Label)
 	}
 	f.click("row:Town", false)
 	f.click("ui:save-changes", false)
 	renames := f.requests.Of(project.RenameEdit)
-	if row, _ := f.state.SelectedRow(); row.Label != "Town" || len(renames) != 1 {
+	if row, _ := f.state.SelectedRow(f.ctx.Docs); row.Label != "Town" || len(renames) != 1 {
 		t.Fatalf("Save saves, then selects Town: %q, %d renames", row.Label, len(renames))
 	}
 	f.click("ui:name", false)
 	f.typeText(" centre")
 	f.click("row:Ada Clerk", false)
 	f.click("ui:discard-changes", false)
-	if row, _ := f.state.SelectedRow(); row.Label != "Ada Clerk" || len(f.requests.Of(project.RenameEdit)) != 1 {
+	if row, _ := f.state.SelectedRow(f.ctx.Docs); row.Label != "Ada Clerk" || len(f.requests.Of(project.RenameEdit)) != 1 {
 		t.Fatalf("Don't save selects Ada Clerk and saves nothing: %q", row.Label)
 	}
 	f.click("ui:name", false)

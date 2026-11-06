@@ -162,24 +162,31 @@ type State struct {
 	loop      *loopPanel
 	loopFor   ids.ULID
 	zoneNoted ids.ULID
-	// facets is the facets column, shown when withFacets; ticks are the
-	// values ticked in each facet, and more the facets listing all their
-	// values. checks find each workflow's problems, checkAt being the one
-	// last looked at again.
-	facets     *ui.List
-	withFacets bool
-	ticks      map[string]map[string]bool
-	more       map[string]bool
-	checks     map[ids.ULID]*workflowview.Check
-	checkAt    int
-	// The table's bar: its chips, how many it shows of all there are, its
-	// columns, and a view being named, saved or deleted.
-	chips                                []chip
-	shown, total                         int
-	columns                              []column
-	naming                               bool
-	viewName                             *ui.TextField
-	saveViewBn, keepViewBn, deleteViewBn *ui.Button
+	// places is the column of places, and place the one the main pane
+	// shows; placeBefore is the one picked before narrowing showed Matches,
+	// and wasNarrowed whether it did last frame.
+	places      *ui.List
+	barBottom   int
+	place       string
+	placeBefore string
+	wasNarrowed bool
+	// facets is an open facet's dropdown, facetOpen that facet, and
+	// facetBns the bar's button for each; ticks are the values ticked in
+	// each facet, and more the facets listing all their values. checks find
+	// each workflow's problems, checkAt being the one last looked at again.
+	facets    *ui.List
+	facetOpen string
+	facetBns  map[string]*ui.Button
+	ticks     map[string]map[string]bool
+	more      map[string]bool
+	checks    map[ids.ULID]*workflowview.Check
+	checkAt   int
+	// How many things are kept of all there are, and the bar's Clear and a
+	// view being named, saved or deleted.
+	shown, total                                  int
+	naming                                        bool
+	viewName                                      *ui.TextField
+	clearBn, saveViewBn, keepViewBn, deleteViewBn *ui.Button
 }
 
 // New returns the project browser.
@@ -210,12 +217,14 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
-		facets: ui.NewList("facets", ""), withFacets: false, ticks: map[string]map[string]bool{}, more: map[string]bool{},
-		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, chips: nil, shown: 0, total: 0, columns: nil,
-		naming:     false,
-		viewName:   ui.NewTextField("view-name", textedit.NewField("", false, viewsplugin.MaxNameLength), false, theme),
-		saveViewBn: button("save-view", "Save as a view…"), keepViewBn: button("keep-view", "Save"),
-		deleteViewBn: button("delete-view", "Delete view"),
+		places: ui.NewList("places", placeHome), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
+		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
+		ticks: map[string]map[string]bool{}, more: map[string]bool{},
+		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0,
+		naming:   false,
+		viewName: ui.NewTextField("view-name", textedit.NewField("", false, viewsplugin.MaxNameLength), false, theme),
+		clearBn:  button("clear", "Clear"), saveViewBn: button("save-view", "Save as a view…"),
+		keepViewBn: button("keep-view", "Save"), deleteViewBn: button("delete-view", "Delete view"),
 	}
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
@@ -344,16 +353,48 @@ func plural(count int, one, many string) string {
 	return many
 }
 
-// layout places the toolbar, the search box, the list and the inspector.
+// layout places the toolbar, the places column, the bar, the main pane and
+// the inspector.
 func (s *State) layout(docs frame.Docs) {
 	content := frame.Content(s.size)
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	s.newMenu.Rect = image.Rect(content.Max.X-ui.Inset-newWidth, top, content.Max.X-ui.Inset, top+ui.ButtonH)
-	s.layoutLists(docs, content)
+	s.layoutPanes(docs, content)
+	if s.showSelected(docs) {
+		s.layoutPanes(docs, content)
+	}
 	s.revealSelected()
 	index := s.index(docs)
 	s.list.CanDrop = func(dragged, target string) bool { return s.canDrop(index, dragged, target) }
+	s.list.DropElsewhere = func(dragged string, at image.Point) string { return s.dropOnPlace(index, dragged, at) }
 	s.layoutInspector(docs)
+}
+
+// showSelected shows the place holding a document newly selected that the
+// main pane does not list, as one just made elsewhere. It reports whether
+// it showed another place.
+func (s *State) showSelected(docs frame.Docs) bool {
+	if s.list.Selected == s.revealed || slices.ContainsFunc(s.list.Rows, func(row ui.Row) bool {
+		return row.ID == s.list.Selected
+	}) {
+		return false
+	}
+	documentID, err := ids.Parse(s.list.Selected)
+	if err != nil {
+		return false
+	}
+	index := s.index(docs)
+	entry, found := index.Entry(documentID)
+	if !found {
+		return false
+	}
+	place, known := s.placeFor(docs, index, entry)
+	if !known || place == s.place || s.narrowed() {
+		return false
+	}
+	s.show(place)
+
+	return true
 }
 
 // revealSelected scrolls a newly selected row into view once it is listed,
@@ -441,9 +482,12 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	frame.CommonKeys(input, ctx)
 	s.updateChecks(ctx)
-	s.updateFacets(input, ctx)
-	s.updateBar(input, ctx)
-	s.updateList(input, ctx)
+	if !s.updateDropdown(input) {
+		s.updateBar(input, ctx)
+		s.updatePlaces(input, ctx)
+		s.updateList(input, ctx)
+	}
+	s.followNarrowing()
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu(ctx.Docs)
@@ -559,34 +603,27 @@ func (s *State) step(delta int) {
 	}
 }
 
-// fold hides or shows what a selected zone or folder holds, as Left and
-// Right do in an outline; Left on a closed folder, a floor, or a document in
-// a folder selects what holds it.
+// fold works as Left and Right do in an outline. Right shows a selected
+// folder, or opens a zone to its floors; Left closes a zone, selects a
+// floor's zone, or shows the place holding the one shown.
 func (s *State) fold(docs frame.Docs, hide bool) {
-	if folder, ok := s.selectedFolder(); ok {
-		rowID := folderRowID(folder.Format, folder.Path)
-		if hide && s.closed[rowID] && project.FolderParent(folder.Path) != "" {
-			s.list.Selected = folderRowID(folder.Format, project.FolderParent(folder.Path))
+	if !hide && s.list.Selected != s.place {
+		if _, isFolder := s.selectedFolder(); isFolder || strings.HasPrefix(s.list.Selected, audioCategoryPrefix) {
+			s.pick(s.list.Selected)
 
 			return
 		}
-		s.closed[rowID] = hide
-
-		return
 	}
 	entry, ok := s.selected(docs)
-	if !ok {
-		return
-	}
 	switch {
-	case entry.Format == zone.FormatName && (!hide || !s.closed[entry.ID.String()]):
+	case ok && entry.Format == zone.FormatName && (!hide || !s.closed[entry.ID.String()]):
 		s.closed[entry.ID.String()] = hide
-	case entry.Format == floor.FormatName:
-		if zoneID, inZone := s.zoneOf(docs, entry.ID); inZone && hide {
+	case ok && entry.Format == floor.FormatName && hide:
+		if zoneID, inZone := s.zoneOf(docs, entry.ID); inZone {
 			s.list.Selected = zoneID.String()
 		}
-	case hide && entry.Folder != "":
-		s.list.Selected = folderRowID(entry.Format, entry.Folder)
+	case hide && placeParent(s.place) != "":
+		s.pick(placeParent(s.place))
 	}
 }
 
@@ -920,19 +957,18 @@ func (s *State) openRow(ctx *frame.Context) {
 // openSelected opens a zone, or the zone of a floor, in a Map window, a text
 // document in a Text window, a workflow, or an NPC's behaviour workflow, in a
 // Workflow window, a sprite in a Pixel editor, a palette in the Palette
-// Editor and a template in the Template editor. A folder opens or closes.
+// Editor and a template in the Template editor. A folder is shown.
 func (s *State) openSelected(ctx *frame.Context) {
 	if s.openCue(ctx) {
 		return
 	}
 	if strings.HasPrefix(s.list.Selected, audioCategoryPrefix) {
-		s.closed[s.list.Selected] = !s.closed[s.list.Selected]
+		s.pick(s.list.Selected)
 
 		return
 	}
 	if folder, isFolder := s.selectedFolder(); isFolder {
-		id := folderRowID(folder.Format, folder.Path)
-		s.closed[id] = !s.closed[id]
+		s.pick(folderRowID(folder.Format, folder.Path))
 
 		return
 	}
@@ -1180,12 +1216,12 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return point, found
 	}
 	switch kind {
-	case "row", "toggle":
-		return s.locateRow(kind, value)
+	case "row", toggleKind:
+		return s.locateRow(kind, value, docs)
 	case "section":
-		s.list.Reveal(sectionPrefix + value)
+		s.places.Reveal(sectionPrefix + value)
 
-		return s.list.Locate(sectionPrefix + value)
+		return s.places.Locate(sectionPrefix + value)
 	case "ui":
 		return s.locateWidget(value)
 	case stateKind:
@@ -1222,18 +1258,29 @@ func (s *State) hasRowState(state string) bool {
 	return false
 }
 
-// locateRow finds a document row by its name, or its disclosure triangle.
-func (s *State) locateRow(kind, label string) (image.Point, bool) {
-	for _, row := range s.list.Rows {
-		if row.Label != label || row.Heading {
-			continue
-		}
-		s.list.Reveal(row.ID)
-		if kind == "toggle" {
-			return s.list.LocateToggle(row.ID)
-		}
+// locateRow finds a row of the main pane by its name, or its disclosure
+// triangle, or else a place by its name. A thing elsewhere is shown first,
+// as Home's rows show it, so a script can name anything in the project.
+func (s *State) locateRow(kind, label string, docs frame.Docs) (image.Point, bool) {
+	for range 2 {
+		for _, row := range s.list.Rows {
+			if row.Label != label || row.Heading {
+				continue
+			}
+			s.list.Reveal(row.ID)
+			if kind == toggleKind {
+				return s.list.LocateToggle(row.ID)
+			}
 
-		return s.list.Locate(row.ID)
+			return s.list.Locate(row.ID)
+		}
+		if point, found := s.locatePlace(kind, label); found {
+			return point, true
+		}
+		if !s.revealNamed(docs, label) {
+			break
+		}
+		s.layout(docs)
 	}
 
 	return image.Pt(0, 0), false
@@ -1243,9 +1290,9 @@ func (s *State) locateRow(kind, label string) (image.Point, bool) {
 // buttons.
 func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if section := newSection(widget); section != "" {
-		s.list.Reveal(section)
+		s.places.Reveal(section)
 
-		return s.list.LocateAdd(section)
+		return s.places.LocateAdd(section)
 	}
 	if point, found := s.save.Locate(widget); found {
 		return point, true
@@ -1276,8 +1323,8 @@ func (s *State) allButtons() []*ui.Button {
 	return append([]*ui.Button{
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
 		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap, s.loop.choose, s.loop.open,
-		s.audio.open, s.saveViewBn, s.keepViewBn, s.deleteViewBn,
-	}, s.tagBns...)
+		s.audio.open, s.clearBn, s.saveViewBn, s.keepViewBn, s.deleteViewBn,
+	}, append(s.tagBns, s.facetButtons()...)...)
 }
 
 // locateInDialog finds a dialog button, or a dialog list row by its name,
@@ -1315,10 +1362,10 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, "Project", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
 	s.newMenu.Draw(screen, s.theme)
-	s.search.Draw(screen)
-	s.drawTable(screen)
+	s.drawBar(screen)
 	s.list.Draw(screen, s.theme)
 	s.drawInspector(screen, docs)
+	s.drawDropdown(screen)
 	s.menu.Draw(screen, s.theme)
 	s.contextMenu.Draw(screen, s.theme)
 	if s.dialog != nil {

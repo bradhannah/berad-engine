@@ -262,19 +262,22 @@ type List struct {
 	CanDrop   func(dragged, target string) bool
 	Faded     func(dragged, row string) bool
 	DragLabel func(dragged, over string) string
-	scroll    int
-	hover     string
-	hoverAdd  bool
-	drag      listDrag
+	// DropElsewhere, when set, finds where a row dragged out of the list
+	// would drop, such as a row of another list beside it, or "".
+	DropElsewhere func(dragged string, at image.Point) string
+	scroll        int
+	hover         string
+	hoverAdd      bool
+	drag          listDrag
 }
 
 // NewList returns an empty list with a row selected, or none for "".
 func NewList(id, selected string) *List {
 	return &List{
 		ID: id, Rect: Zero(), Rows: nil, Selected: selected, DetailAt: 0, Columns: nil, CanDrop: nil, Faded: nil,
-		DragLabel: nil,
-		scroll:    0,
-		hover:     "", hoverAdd: false, drag: noDrag(),
+		DragLabel: nil, DropElsewhere: nil,
+		scroll: 0,
+		hover:  "", hoverAdd: false, drag: noDrag(),
 	}
 }
 
@@ -454,14 +457,7 @@ func (l *List) updateDrag(input *Input, result *ListResult) bool {
 
 		return false
 	}
-	over := ""
-	for index, row := range l.Rows {
-		if input.Cursor.In(l.Rect) && input.Cursor.In(l.RowRect(index)) && row.ID != l.drag.row &&
-			l.CanDrop(l.drag.row, row.ID) {
-			over = row.ID
-		}
-	}
-	l.rest(over, result)
+	l.rest(l.dropTarget(input.Cursor), result)
 	if !input.Down {
 		if l.drag.over != "" {
 			result.Dragged, result.Dropped = l.drag.row, l.drag.over
@@ -471,6 +467,22 @@ func (l *List) updateDrag(input *Input, result *ListResult) bool {
 	input.ClearPointer()
 
 	return true
+}
+
+// dropTarget returns the row a drag at a point would drop on: a row of the
+// list that takes it, or what DropElsewhere finds outside the list.
+func (l *List) dropTarget(point image.Point) string {
+	over := ""
+	for index, row := range l.Rows {
+		if point.In(l.Rect) && point.In(l.RowRect(index)) && row.ID != l.drag.row && l.CanDrop(l.drag.row, row.ID) {
+			over = row.ID
+		}
+	}
+	if over == "" && l.DropElsewhere != nil && !point.In(l.Rect) {
+		over = l.DropElsewhere(l.drag.row, point)
+	}
+
+	return over
 }
 
 // rest follows the row a drag is over, reporting it once the drag has
@@ -503,6 +515,10 @@ func (l *List) Reveal(id string) {
 		}
 	}
 }
+
+// ScrollToTop scrolls the list back to its first row, as when it lists
+// something else.
+func (l *List) ScrollToTop() { l.scroll = 0 }
 
 // Dragging reports whether a row is being dragged.
 func (l *List) Dragging() bool { return l.drag.dragging }
