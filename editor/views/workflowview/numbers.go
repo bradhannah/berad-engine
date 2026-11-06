@@ -299,11 +299,11 @@ func (s *State) drawSlots(screen *ebiten.Image, docs frame.Docs) {
 
 			continue
 		}
-		ui.FillRound(screen, slot.chip, ui.Radius, ui.ColorSelectWash())
+		ui.FillRound(screen, slot.chip, ui.Radius, ui.ColorConstantWash())
 		ui.StrokeRound(screen, slot.chip, ui.Radius, ui.Border, ui.ColorRule())
 		inner := slot.chip.Inset(slotChipPad)
 		s.theme.DrawTextIn(screen, s.theme.FitText(s.numberConstantLabel(docs, slot.constant), inner.Dx()),
-			image.Rect(inner.Min.X, slot.chip.Min.Y, inner.Max.X, slot.chip.Max.Y), ui.ColorInk())
+			image.Rect(inner.Min.X, slot.chip.Min.Y, inner.Max.X, slot.chip.Max.Y), ui.ColorConstant())
 		if slot.unsaved() {
 			ui.DrawUnsavedMark(screen, slot.chip)
 		}

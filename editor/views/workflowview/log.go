@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
+	"github.com/bradhannah/berad-engine/editor/views/writesheet"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/show"
@@ -448,9 +449,10 @@ func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		path := strings.Trim(s.tokenOf(docs, *segment.Ref), tokenOpen+tokenClose)
 		chipW := min(s.theme.SmallWidth(path)+ui.Half*chipPad, room)
 		chip := image.Rect(along+1, baseline-chipPad/ui.Half, along+1+chipW, baseline+ui.TextSize+chipPad/ui.Half)
-		ui.FillRound(area, chip, chipPad, ui.ColorHover())
+		wash, ink := refColours(path)
+		ui.FillRound(area, chip, chipPad, wash)
 		ui.StrokeRound(area, chip, chipPad, 1, ui.ColorRule())
-		s.theme.DrawSmall(area, s.clip(path, chipW-chipPad), chip.Min.X+chipPad, baseline+1, ui.ColorInk())
+		s.theme.DrawSmall(area, s.clip(path, chipW-chipPad), chip.Min.X+chipPad, baseline+1, ink)
 		along = chip.Max.X + chipGap
 	}
 }
@@ -469,9 +471,23 @@ func hasMessage(kind string) bool {
 // holds the paths of the values in it as well as its text.
 func (s *State) messageField(id string) *ui.TextField {
 	field := ui.NewTextField(id, textedit.NewField("", false, messageBytes), false, s.theme)
+	field.Paints = writesheet.Paints
 	s.focus.Register(field)
 
 	return field
+}
+
+// refColours are a value's chip's wash and ink, by its path: a constant's
+// amber, a value's slate, and one deleted plain.
+func refColours(path string) (color.RGBA, color.RGBA) {
+	switch {
+	case strings.HasPrefix(path, worldstate.ConstantPrefix):
+		return ui.ColorConstantWash(), ui.ColorConstant()
+	case strings.HasPrefix(path, "#"):
+		return ui.ColorHover(), ui.ColorInk()
+	default:
+		return ui.ColorValueWash(), ui.ColorValue()
+	}
 }
 
 // insertButton is Insert value… for a message, and none for plain text.

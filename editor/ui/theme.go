@@ -83,6 +83,15 @@ const (
 	hexArt      = 0x267378
 )
 
+// Where constants and values meet, a constant's path is amber and a value's
+// slate, each with a wash to sit on.
+const (
+	hexConstant     = 0x8a5a1c
+	hexConstantWash = 0xf7efe2
+	hexValue        = 0x3d5f8a
+	hexValueWash    = 0xe8eef6
+)
+
 // Embedded IBM Plex fonts (SIL Open Font License; see fonts/OFL.txt).
 var (
 	//go:embed fonts/IBMPlexSans-Regular.ttf
@@ -172,6 +181,18 @@ func ColorSound() color.RGBA { return Hex(hexSound) }
 
 // ColorArt tints the icons of sprites and palettes.
 func ColorArt() color.RGBA { return Hex(hexArt) }
+
+// ColorConstant is the colour of a constant's path among values'.
+func ColorConstant() color.RGBA { return Hex(hexConstant) }
+
+// ColorConstantWash is the background of a constant's chip.
+func ColorConstantWash() color.RGBA { return Hex(hexConstantWash) }
+
+// ColorValue is the colour of a value's path among constants'.
+func ColorValue() color.RGBA { return Hex(hexValue) }
+
+// ColorValueWash is the background of a value's chip.
+func ColorValueWash() color.RGBA { return Hex(hexValueWash) }
 
 // ColorLive is the colour of anything happening now in a preview.
 func ColorLive() color.RGBA { return Hex(hexLive) }

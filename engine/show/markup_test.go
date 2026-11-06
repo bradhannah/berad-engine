@@ -64,3 +64,17 @@ func TestEscapedTextReadsAsWritten(t *testing.T) {
 		t.Fatal("reading time counts only the text shown")
 	}
 }
+
+// TestTagsAreFound finds bold, italic and colour tags, opening and closing,
+// but not [[, which is a [, nor a tag not known.
+func TestTagsAreFound(t *testing.T) {
+	t.Parallel()
+	text := "[b]Fresh[/b] [[b] [bb] [color=gold]gold[/color] [i]"
+	var found []string
+	for _, tag := range show.Tags(text) {
+		found = append(found, text[tag[0]:tag[1]])
+	}
+	if want := []string{"[b]", "[/b]", "[color=gold]", "[/color]", "[i]"}; !slices.Equal(found, want) {
+		t.Fatalf("tags %q, want %q", found, want)
+	}
+}

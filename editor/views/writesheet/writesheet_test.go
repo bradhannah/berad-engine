@@ -138,3 +138,22 @@ func TestNotesWarn(t *testing.T) {
 		t.Fatalf("a long text is too long to read and for one box: %v", warnings)
 	}
 }
+
+// TestPaints colours a line's constant amber and its value slate, by their
+// paths, and its markup's tags grey; [[ is a [, and a brace never closed is
+// words.
+func TestPaints(t *testing.T) {
+	t.Parallel()
+	text := "Hi {const.npc.shop.greeting}, [b]{var.npc.name}[/b] [[x] {open"
+	var got []string
+	for _, paint := range writesheet.Paints(text) {
+		got = append(got, paint.Paint+" "+text[paint.Start:paint.End])
+	}
+	want := []string{
+		ui.PaintConstant + " {const.npc.shop.greeting}", ui.PaintTag + " [b]", ui.PaintValue + " {var.npc.name}",
+		ui.PaintTag + " [/b]",
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("paints %q, want %q", got, want)
+	}
+}

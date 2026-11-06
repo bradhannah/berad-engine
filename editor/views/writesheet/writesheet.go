@@ -8,6 +8,7 @@ package writesheet
 
 import (
 	"image"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -99,6 +100,7 @@ func New(theme *ui.Theme, path string, holders []Holder, chosen int, said string
 		preview: ui.Zero(), notesAt: image.Pt(0, 0),
 	}
 	sheet.done.Primary, sheet.colour.Caret, sheet.holder.Caret = true, true, true
+	sheet.field.Paints = Paints
 	sheet.focus.Register(sheet.field)
 	sheet.show()
 	sheet.focus.Set(sheet.field)
@@ -274,6 +276,50 @@ func (s *Sheet) saving() *Saving {
 
 	return &Saving{Key: s.holders[s.chosen].Key, Text: text}
 }
+
+// Paints colours a text being written: markup's tags grey, so the words stand
+// out, and each value or constant in it, as its path in braces, by which it
+// is: a constant amber, a value slate.
+func Paints(text string) []ui.TextPaint {
+	var tints []ui.TextPaint
+	for offset := 0; offset < len(text); {
+		opened := strings.Index(text[offset:], tokenOpen)
+		if opened < 0 {
+			break
+		}
+		start := offset + opened
+		closed := strings.IndexAny(text[start+len(tokenOpen):], tokenOpen+tokenClose)
+		if closed < 0 {
+			break
+		}
+		end := start + len(tokenOpen) + closed
+		if text[end:end+1] != tokenClose {
+			offset = end
+
+			continue
+		}
+		paint := ui.PaintValue
+		if strings.HasPrefix(text[start+len(tokenOpen):], worldstate.ConstantPrefix) {
+			paint = ui.PaintConstant
+		}
+		tints = append(tints, ui.TextPaint{Start: start, End: end + len(tokenClose), Paint: paint})
+		offset = end + len(tokenClose)
+	}
+	for _, tag := range show.Tags(text) {
+		if !slices.ContainsFunc(tints, func(tint ui.TextPaint) bool { return tag[0] < tint.End && tint.Start < tag[1] }) {
+			tints = append(tints, ui.TextPaint{Start: tag[0], End: tag[1], Paint: ui.PaintTag})
+		}
+	}
+	slices.SortFunc(tints, func(a, b ui.TextPaint) int { return a.Start - b.Start })
+
+	return tints
+}
+
+// How a value or constant stands in a line's text: its path in braces.
+const (
+	tokenOpen  = "{"
+	tokenClose = "}"
+)
 
 // Text returns what the field holds now, typed or saved.
 func (s *Sheet) Text() string { return s.field.Field.Value() }

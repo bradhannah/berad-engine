@@ -108,6 +108,34 @@ func Plain(text string) string {
 // markup.
 func Escape(text string) string { return strings.ReplaceAll(text, tagOpen, tagOpen+tagOpen) }
 
+// Tags returns where each tag in a text sits, from its [ to its ], in
+// bytes, so an editor can draw them apart from the words. A [[ is a [ and
+// not a tag; one not known is words.
+func Tags(text string) [][2]int {
+	var tags [][2]int
+	for offset := 0; offset < len(text); {
+		rest := text[offset:]
+		if strings.HasPrefix(rest, tagOpen+tagOpen) {
+			offset += len(tagOpen + tagOpen)
+
+			continue
+		}
+		inside, after, isTag := cutTag(rest)
+		if !isTag {
+			offset++
+
+			continue
+		}
+		end := len(text) - len(after)
+		if _, problem := readTag(inside); problem == "" {
+			tags = append(tags, [2]int{offset, end})
+		}
+		offset = end
+	}
+
+	return tags
+}
+
 // Problems says what is wrong with a text's markup, or nothing.
 func Problems(text string) []string {
 	_, problems := Parse(text)

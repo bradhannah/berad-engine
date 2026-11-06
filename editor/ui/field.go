@@ -19,6 +19,22 @@ const (
 	unsavedMark = 6
 )
 
+// TextPaint is a stretch of a field's text drawn apart from the rest: from
+// Start to End, in bytes, in one of the paints PaintConstant, PaintValue and
+// PaintTag.
+type TextPaint struct {
+	Start, End int
+	Paint      string
+}
+
+// The paints a field's stretches are drawn in: a constant's path, a value's,
+// and markup's tags, quieter than the words.
+const (
+	PaintConstant = "constant"
+	PaintValue    = "value"
+	PaintTag      = "tag"
+)
+
 // TextField draws a textedit.Field and turns input into edits. Text is laid
 // out with berad-text, which supplies wrapping, caret positions and selection
 // rectangles.
@@ -31,6 +47,9 @@ type TextField struct {
 	// Unmarked fields, such as a search box, never show the unsaved mark:
 	// what is typed in them is never saved.
 	Unmarked bool
+	// Paints, when set, says which stretches of the text to draw apart, in
+	// order; the rest is drawn in ink.
+	Paints func(text string) []TextPaint
 
 	theme       *Theme
 	focused     bool
@@ -50,7 +69,7 @@ type layoutCache struct {
 func NewTextField(id string, field *textedit.Field, multiline bool, theme *Theme) *TextField {
 	return &TextField{
 		ID: id, Rect: image.Rect(0, 0, 0, 0), Field: field, Placeholder: "", Multiline: multiline, Unmarked: false,
-		theme: theme, focused: false, dragging: false, composition: "", scroll: image.Pt(0, 0),
+		Paints: nil, theme: theme, focused: false, dragging: false, composition: "", scroll: image.Pt(0, 0),
 		cache: layoutCache{text: "", width: -1, layout: nil},
 	}
 }
@@ -191,7 +210,7 @@ func (w *TextField) layoutOf(value string) *berad.Layout {
 	if w.cache.layout != nil && w.cache.text == value && w.cache.width == width {
 		return w.cache.layout
 	}
-	content, err := berad.NewContent([]berad.Span{{Text: value, Font: w.theme.Font, Paint: paintInk}})
+	content, err := berad.NewContent(w.spans(value))
 	if err != nil {
 		return nil
 	}
@@ -205,6 +224,33 @@ func (w *TextField) layoutOf(value string) *berad.Layout {
 	w.cache = layoutCache{text: value, width: width, layout: layout}
 
 	return layout
+}
+
+// spans splits a text into what is drawn: its stretches in their paints,
+// in order, and the rest in ink. A stretch out of order or out of the text
+// is left out.
+func (w *TextField) spans(value string) []berad.Span {
+	ink := func(text string) berad.Span { return berad.Span{Text: text, Font: w.theme.Font, Paint: paintInk} }
+	if w.Paints == nil {
+		return []berad.Span{ink(value)}
+	}
+	var spans []berad.Span
+	offset := 0
+	for _, tint := range w.Paints(value) {
+		if tint.Start < offset || tint.End > len(value) || tint.Start >= tint.End {
+			continue
+		}
+		if tint.Start > offset {
+			spans = append(spans, ink(value[offset:tint.Start]))
+		}
+		spans = append(spans, berad.Span{Text: value[tint.Start:tint.End], Font: w.theme.Font, Paint: tint.Paint})
+		offset = tint.End
+	}
+	if offset < len(value) || len(spans) == 0 {
+		spans = append(spans, ink(value[offset:]))
+	}
+
+	return spans
 }
 
 // origin is where the text's top-left corner sits on screen. A single-line
@@ -433,7 +479,10 @@ func (w *TextField) drawText(area *ebiten.Image, value string) {
 	var options berad.DrawOptions
 	options.GeoM.Translate(float64(origin.X), float64(origin.Y))
 	options.Filter = ebiten.FilterNearest
-	palette := berad.Palette{paintInk: ColorInk(), paintMuted: ColorMuted()}
+	palette := berad.Palette{
+		paintInk: ColorInk(), paintMuted: ColorMuted(), PaintConstant: ColorConstant(), PaintValue: ColorValue(),
+		PaintTag: ColorSubdued(),
+	}
 	if err := w.theme.Text.Draw(area, layout, palette, options); err != nil {
 		return
 	}
