@@ -394,10 +394,11 @@ func (s *State) drawHolders(screen *ebiten.Image, selected item, left, top, widt
 func (s *State) holdersRoom(top, holders int) int {
 	room := holdersShown + 1
 	if !s.save.Rect.Empty() {
-		room = (s.save.Rect.Min.Y-ui.Gap-top)/ui.LineHeight - 1
-	}
-	if room < 1 && holders > 0 {
-		return -1
+		lines := (s.save.Rect.Min.Y - ui.Gap - top) / ui.LineHeight
+		if lines < 1 || (lines < 2 && holders > 0) {
+			return -1
+		}
+		room = lines - 1
 	}
 	if holders <= min(room, holdersShown) {
 		return holders
