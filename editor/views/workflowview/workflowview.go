@@ -230,6 +230,9 @@ type State struct {
 	dialogThen func(*frame.Context, string)
 	joining    string
 	tied       bool
+	// lineSheet is the writing sheet while it writes the selected node's
+	// line.
+	lineSheet *lineSheet
 }
 
 // New returns the Workflow window for a workflow.
@@ -258,7 +261,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
-		tied: false,
+		tied: false, lineSheet: nil,
 	}
 	view.palette = paletteFor(flow.PurposeBehaviour)
 

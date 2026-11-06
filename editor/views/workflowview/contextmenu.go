@@ -78,6 +78,8 @@ func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
 	switch {
 	case s.picker.Dialog() != nil:
 		s.picker.UpdateDialog(input, ctx, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+	case s.lineSheet != nil:
+		s.updateLineSheet(input, ctx)
 	case s.values != nil:
 		s.updateValuePicker(input, ctx)
 	case s.signalPick != nil:

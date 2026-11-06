@@ -126,6 +126,8 @@ type form struct {
 	slots     map[string]*numberSlot
 	keptSlots map[string]flow.ValueRef
 	makeText  *ui.Button
+	// writeLine opens a message's line in the writing sheet.
+	writeLine *ui.Button
 	// words are the words last selected in the message's field, and caret
 	// where its caret last was, kept as a click on Make a constant… or
 	// Insert value… takes the field's focus.
@@ -373,7 +375,8 @@ func rowCount(node flow.Node) int {
 func newForm(node flow.Node, kind flow.Kind) *form {
 	built := &form{
 		node: node.ID, kind: kind, rows: rowCount(node), shape: "", controls: nil, call: nil, remove: nil, bottom: 0,
-		slots: map[string]*numberSlot{}, keptSlots: nil, makeText: nil, words: nil, caret: nil,
+		slots: map[string]*numberSlot{}, keptSlots: nil, makeText: nil, writeLine: writeLineButton(node.Kind),
+		words: nil, caret: nil,
 	}
 	if node.Kind != flow.KindStart {
 		built.remove = deleteNodeButton()
@@ -708,7 +711,7 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 	}
 	node, ok := s.selectedNode()
 	s.trackCaret()
-	if !ok || s.updateSlots(input, node) || s.updateMakeText(input, ctx, node) {
+	if !ok || s.updateSlots(input, node) || s.updateMakeText(input, ctx, node) || s.updateWriteLine(input, ctx, node) {
 		return
 	}
 	for index := range s.form.controls {

@@ -101,6 +101,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.dialog.Draw(screen, s.theme)
 	}
 	s.drawOthers(screen)
+	s.drawLineSheet(screen)
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -1132,8 +1133,8 @@ const locateState = "state"
 // input: the guard's dialog, the map picker's dialog or the value picker;
 // states are still the window's own. It reports whether one was open.
 func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Point, bool, bool) {
-	if point, found := s.locateOthers(value); found && kind == "ui" {
-		return point, true, true
+	if point, found, over := s.locateOnTop(kind, value); over {
+		return point, found, true
 	}
 	switch {
 	case s.guard.Active():
@@ -1169,11 +1170,28 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 	}
 }
 
+// locateOnTop finds a part of what sits over everything else: the list of
+// other places typed the same, or the writing sheet. It reports whether
+// one was there to look in.
+func (s *State) locateOnTop(kind, value string) (image.Point, bool, bool) {
+	if point, found := s.locateOthers(value); found && kind == "ui" {
+		return point, true, true
+	}
+	if s.lineSheet != nil && kind != locateState {
+		point, found := s.lineSheet.sheet.Locate(kind + ":" + value)
+
+		return point, found, true
+	}
+
+	return image.Pt(0, 0), false, false
+}
+
 // hasAnyState answers every state the window has, those of where it runs,
 // its places and its values as well as the rest.
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
 		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState, s.hasUnsavedState,
+		s.hasSheetState,
 		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {
@@ -1229,8 +1247,10 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	if s.form.remove != nil && widget == s.form.remove.ID {
 		return ui.Center(s.form.remove.Rect), true
 	}
-	if s.form.makeText != nil && widget == s.form.makeText.ID && !s.form.makeText.Rect.Empty() {
-		return ui.Center(s.form.makeText.Rect), true
+	for _, button := range []*ui.Button{s.form.makeText, s.form.writeLine} {
+		if button != nil && widget == button.ID && !button.Rect.Empty() {
+			return ui.Center(button.Rect), true
+		}
 	}
 	if point, found := s.save.Locate(widget); found {
 		return point, true

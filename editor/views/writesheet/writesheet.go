@@ -3,7 +3,9 @@
 // which put markup's tags around what is selected; and beside it a preview
 // drawn as the game draws a message box. A constant in a template has a
 // list switching between its default and each NPC's or zone's own value,
-// to write them in turn. Done, Escape or switching saves what was typed.
+// to write them in turn. A node's line is written in it too, as one line
+// whose preview reads the values in it. Done, Escape or switching saves
+// what was typed.
 package writesheet
 
 import (
@@ -60,6 +62,28 @@ type Holder struct {
 	Text  string
 }
 
+// Look is how a line shows, for the sheet's preview: in a message box, in a
+// bubble over an NPC's head, or written plain in the log.
+type Look int
+
+// The ways a line shows.
+const (
+	LookBox Look = iota
+	LookBubble
+	LookLog
+)
+
+// Line is what the sheet needs to write a node's line rather than a
+// constant: how many bytes its field holds; how many characters its text
+// may have besides the values in it; how it shows; and how it reads, each
+// value as it starts, or what keeps it from being read.
+type Line struct {
+	Bytes int
+	Limit int
+	Look  Look
+	Reads func(text string) (string, string)
+}
+
 // Saving is what the window saves: whose value, and its text.
 type Saving struct {
 	Key  string
@@ -85,19 +109,38 @@ type Sheet struct {
 	rect    image.Rectangle
 	preview image.Rectangle
 	notesAt image.Point
+	// line is set while the sheet writes a node's line.
+	line *Line
 }
 
 // New opens a sheet for a constant by its path: who holds a value of it, the
 // one written first, and where it is said, such as "Said in Serve a
 // customer".
 func New(theme *ui.Theme, path string, holders []Holder, chosen int, said string) *Sheet {
+	field := ui.NewTextField(textID, textedit.NewField("", true, worldstate.MaxConstantText), true, theme)
+
+	return open(theme, path, holders, chosen, said, field, nil)
+}
+
+// NewLine opens a sheet on a node's line, as its field holds it now, named
+// by where it is, such as "Say · Line". It is one line, so Enter is Done.
+func NewLine(theme *ui.Theme, path, text string, line Line) *Sheet {
+	field := ui.NewTextField(textID, textedit.NewField("", false, line.Bytes), true, theme)
+
+	return open(theme, path, []Holder{{Key: "", Label: "Line", Text: text}}, 0, "", field, &line)
+}
+
+// open opens a sheet writing in a field: a constant's, or with line set, a
+// node's line.
+func open(theme *ui.Theme, path string, holders []Holder, chosen int, said string, field *ui.TextField,
+	line *Line,
+) *Sheet {
 	sheet := &Sheet{
 		theme: theme, path: path, holders: holders, chosen: min(max(chosen, 0), max(len(holders)-1, 0)), said: said,
-		field: ui.NewTextField(textID, textedit.NewField("", true, worldstate.MaxConstantText), true, theme),
-		focus: ui.Focus{}, bold: ui.NewButton(boldID, "B"), italic: ui.NewButton(italicID, "I"),
+		field: field, focus: ui.Focus{}, bold: ui.NewButton(boldID, "B"), italic: ui.NewButton(italicID, "I"),
 		colour: ui.NewButton(colourID, "Colour"), holder: ui.NewButton(holderID, ""),
 		done: ui.NewButton(doneID, "Done"), menu: ui.Menu{Items: nil, Width: 0}, menuOf: "", rect: ui.Zero(),
-		preview: ui.Zero(), notesAt: image.Pt(0, 0),
+		preview: ui.Zero(), notesAt: image.Pt(0, 0), line: line,
 	}
 	sheet.done.Primary, sheet.colour.Caret, sheet.holder.Caret = true, true, true
 	sheet.field.Paints = Paints
@@ -189,7 +232,10 @@ func (s *Sheet) Update(input *ui.Input, window image.Rectangle, clipboard texted
 	case s.holder.Update(input):
 		s.openMenu(holderID, s.holderItems(), s.holder.Rect, window)
 	}
-	s.focus.Update(input, clipboard)
+	_, outcome := s.focus.Update(input, clipboard)
+	if s.line != nil && outcome == textedit.OutcomeCommit {
+		return s.saving(), false
+	}
 	if s.focus.Current() == nil {
 		s.focus.Set(s.field)
 	}
@@ -363,12 +409,7 @@ func (s *Sheet) Draw(screen *ebiten.Image, window image.Rectangle) {
 		button.Draw(screen, s.theme)
 	}
 	s.field.Draw(screen)
-	s.theme.Heading(screen, "IN THE GAME", s.preview.Min.X, s.preview.Min.Y-previewHead)
-	ui.FillRect(screen, s.preview, ui.ColorCanvas())
-	box := &protocol.PreviewBox{Text: s.Text(), Name: "", Left: 1, Queued: 0, Closing: true}
-	showdraw.DrawBox(screen, s.theme, s.preview, box)
-	_, lines := showdraw.BoxRect(s.theme, s.preview, box)
-	about, warnings := Notes(s.Text(), s.said, len(lines))
+	about, warnings := s.drawPreview(screen)
 	top := s.notesAt.Y
 	for _, line := range about {
 		s.theme.DrawText(screen, s.theme.FitText(line, s.rect.Dx()-ui.Half*ui.Inset), s.notesAt.X, top, ui.ColorMuted())
@@ -380,6 +421,73 @@ func (s *Sheet) Draw(screen *ebiten.Image, window image.Rectangle) {
 		top += ui.LineHeight
 	}
 	s.menu.Draw(screen, s.theme)
+}
+
+// drawPreview draws the text as the game shows it: a constant's in a box, a
+// node's line as its node shows it, its values read; and returns the notes
+// under the text.
+func (s *Sheet) drawPreview(screen *ebiten.Image) ([]string, []string) {
+	heading := "IN THE GAME"
+	if s.line != nil && s.line.Look == LookLog {
+		heading = "IN THE LOG"
+	}
+	s.theme.Heading(screen, heading, s.preview.Min.X, s.preview.Min.Y-previewHead)
+	ui.FillRect(screen, s.preview, ui.ColorCanvas())
+	if s.line == nil {
+		box := &protocol.PreviewBox{Text: s.Text(), Name: "", Left: 1, Queued: 0, Closing: true}
+		showdraw.DrawBox(screen, s.theme, s.preview, box)
+		_, lines := showdraw.BoxRect(s.theme, s.preview, box)
+
+		return Notes(s.Text(), s.said, len(lines))
+	}
+	reads, problem := s.line.Reads(s.Text())
+	switch s.line.Look {
+	case LookBubble:
+		head := image.Pt((s.preview.Min.X+s.preview.Max.X)/ui.Half, s.preview.Max.Y-ui.Inset)
+		showdraw.DrawBubble(screen, s.theme, head, reads, 1)
+	case LookLog:
+		top := s.preview.Min.Y + ui.Inset
+		for _, line := range s.theme.Wrap(show.Plain(reads), s.preview.Dx()-ui.Half*ui.Inset) {
+			s.theme.DrawText(screen, line, s.preview.Min.X+ui.Inset, top, ui.ColorInk())
+			top += ui.LineHeight
+		}
+	case LookBox:
+		showdraw.DrawBox(screen, s.theme, s.preview,
+			&protocol.PreviewBox{Text: reads, Name: "", Left: 1, Queued: 0, Closing: true})
+	}
+
+	return LineNotes(s.Text(), reads, problem, s.line.Limit)
+}
+
+// LineNotes says what is worth knowing about a node's line: how many
+// characters its text has besides the values in it, of how many, and how
+// long it takes to read; then what keeps it from being read, anything
+// wrong with its markup, and when it is too long to keep or to read in the
+// time a line shows for.
+func LineNotes(text, reads, problem string, limit int) ([]string, []string) {
+	count := utf8.RuneCountInString(text)
+	for _, paint := range Paints(text) {
+		if paint.Paint != ui.PaintTag {
+			count -= utf8.RuneCountInString(text[paint.Start:paint.End])
+		}
+	}
+	seconds := show.ReadingTicks(reads) / clock.TicksPerSecond
+	about := thousands(count) + " of " + thousands(limit) + " characters besides values · one line · reads in about " +
+		strconv.Itoa(seconds) + " seconds"
+	var warnings []string
+	if problem != "" {
+		warnings = append(warnings, problem)
+	}
+	warnings = append(warnings, show.Problems(text)...)
+	if count > limit {
+		warnings = append(warnings, "Longer than a line keeps. Save will say so.")
+	}
+	if show.TooLongToRead(reads) {
+		warnings = append(warnings, "Longer than a line shows for, ten seconds: one that goes when read would go "+
+			"before it was read.")
+	}
+
+	return []string{about}, warnings
 }
 
 // Locate finds a widget for input scripts, "ui:<id>", or an item of an

@@ -380,14 +380,7 @@ func (s *State) previewText(docs frame.Docs, node flow.Node) (string, color.RGBA
 func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top int) int {
 	made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	made.field.Rect.Max.Y = top + made.field.FitHeight(lineRows)
-	top = made.field.Rect.Max.Y + rowSpace
-	made.pick.Rect = image.Rect(left, top, left+s.theme.TextWidth(made.pick.Label)+ui.Inset*ui.Half, top+ui.ButtonH)
-	if s.form != nil && s.form.makeText != nil {
-		from := made.pick.Rect.Max.X + ui.Gap
-		s.form.makeText.Rect = image.Rect(from, top, from+s.theme.TextWidth(s.form.makeText.Label)+ui.Inset*ui.Half,
-			top+ui.ButtonH)
-	}
-	top += ui.ButtonH + fieldSpace
+	top = s.layoutMessageButtons(made, left, width, made.field.Rect.Max.Y+rowSpace) + fieldSpace
 	if node, ok := s.selectedNode(); ok {
 		shown, _ := s.previewText(docs, node)
 		top += (1 + len(s.wrap(shown, width))) * ui.LineHeight
@@ -401,11 +394,14 @@ func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top i
 func (s *State) drawMessage(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
 	made.field.Draw(screen)
 	made.pick.Draw(screen, s.theme)
-	if s.form != nil && s.form.makeText != nil {
-		s.form.makeText.Draw(screen, s.theme)
+	top := made.pick.Rect.Max.Y + fieldSpace
+	for _, button := range []*ui.Button{s.form.makeText, s.form.writeLine} {
+		if button != nil {
+			button.Draw(screen, s.theme)
+			top = max(top, button.Rect.Max.Y+fieldSpace)
+		}
 	}
 	width := made.field.Rect.Dx()
-	top := made.pick.Rect.Max.Y + fieldSpace
 	s.theme.DrawStrong(screen, s.sampleHeading(docs), left, top, ui.ColorInk())
 	shown, ink := s.previewText(docs, node)
 	for _, line := range s.wrap(shown, width) {

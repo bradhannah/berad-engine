@@ -185,3 +185,26 @@ func TestALongLineGrowsItsField(t *testing.T) {
 		t.Fatalf("it grows to six rows at most: Insert value… from %d to %d", short, tallest)
 	}
 }
+
+// TestWriteOpensTheLineInTheSheet writes a Say's line in the writing
+// sheet, from what its field holds; Done puts what was written back in the
+// field, waiting for Save as typing does.
+func TestWriteOpensTheLineInTheSheet(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "Hello! {const.npc.shop.greeting}")
+	f.click("ui:write-line")
+	if !f.has("sheet") || !f.has("sheet-text=Hello! {const.npc.shop.greeting}") {
+		t.Fatal("Write… opens the line in the sheet")
+	}
+	f.typeText(" Come again.")
+	f.click("ui:sheet-done")
+	if f.has("sheet") || !f.has("line=Hello! {const.npc.shop.greeting} Come again.") || !f.has("unsaved=1") {
+		t.Fatal("Done puts the line back in its field, waiting for Save")
+	}
+	f.click("ui:save")
+	if !f.has("message=Hello! {const.npc.shop.greeting} Come again.") {
+		t.Fatal("Save keeps it")
+	}
+}

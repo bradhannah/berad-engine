@@ -157,3 +157,40 @@ func TestPaints(t *testing.T) {
 		t.Fatalf("paints %q, want %q", got, want)
 	}
 }
+
+// TestWritingALine writes a node's line: one line, as a line break typed
+// is a space, and Enter is Done, handing it back; its notes count the
+// characters besides its values, and say what keeps it from being read.
+func TestWritingALine(t *testing.T) {
+	t.Parallel()
+	theme, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(theme.Close)
+	reads := func(text string) (string, string) {
+		return strings.ReplaceAll(text, "{const.npc.shop.greeting}", "Shop's open!"), ""
+	}
+	f := &fixture{t: t, window: image.Rect(0, 0, 1200, 800), clip: &clipboard{text: ""}, saved: nil, open: true,
+		sheet: writesheet.NewLine(theme, "Say · Line", "Hi! {const.npc.shop.greeting}", writesheet.Line{
+			Bytes: 4096, Limit: 200, Look: writesheet.LookBubble, Reads: reads,
+		})}
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.typed("\nCome in.")
+	if found, _ := f.sheet.HasState("sheet-text=Hi! {const.npc.shop.greeting} Come in."); !found {
+		t.Fatalf("a line break typed in a line is a space: %q", f.sheet.Text())
+	}
+	f.keys("Enter")
+	if f.open || len(f.saved) != 1 || f.saved[0].Text != "Hi! {const.npc.shop.greeting} Come in." {
+		t.Fatalf("Enter hands the line back and closes: %+v", f.saved)
+	}
+	about, warnings := writesheet.LineNotes("Hi! {const.npc.shop.greeting} [b]Come in.", "Hi! Shop's open! Come in.",
+		"", 200)
+	if !strings.Contains(about[0], "16 of 200 characters besides values") || len(warnings) != 1 {
+		t.Fatalf("a line's notes count its own characters and flag its open tag: %v %v", about, warnings)
+	}
+	_, warnings = writesheet.LineNotes("{const.npc.nope}", "{const.npc.nope}", "No value is called const.npc.nope.", 200)
+	if len(warnings) != 1 || warnings[0] != "No value is called const.npc.nope." {
+		t.Fatalf("what keeps a line from being read is a note: %v", warnings)
+	}
+}
