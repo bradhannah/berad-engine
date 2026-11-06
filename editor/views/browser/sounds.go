@@ -151,7 +151,7 @@ func lengthText(millis int64) string {
 // measures, once, and for the waveforms of those shown, a few at a time;
 // and notes which are playing.
 func (s *State) syncSounds(ctx *frame.Context) {
-	if kindOfPlace(s.place) != sectionAudio || s.viewShown() != viewRows {
+	if kindOfPlace(s.place) != sectionAudio {
 		return
 	}
 	if !s.sounds.askedLoud {

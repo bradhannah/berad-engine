@@ -100,7 +100,7 @@ func (s *State) viewShown() string {
 func (s *State) gridShown() bool {
 	view := s.viewShown()
 
-	return view == viewPictures || view == viewCards
+	return view == viewPictures || view == viewCards || view == viewPreview
 }
 
 // pictureSize returns the size of Pictures' pictures for the place shown.

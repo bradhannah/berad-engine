@@ -126,6 +126,10 @@ func (s *State) hasNarrowingState(state string, docs frame.Docs) (bool, bool) {
 		return s.placeLabel() == strings.TrimPrefix(state, "place="), true
 	case strings.HasPrefix(state, "pane="):
 		return s.viewShown() == strings.TrimPrefix(state, "pane="), true
+	case strings.HasPrefix(state, "previewing="):
+		row, shown := s.previewed()
+
+		return shown && row.Label == strings.TrimPrefix(state, "previewing="), true
 	case strings.HasPrefix(state, "sound:"):
 		name, word, _ := strings.Cut(strings.TrimPrefix(state, "sound:"), "=")
 

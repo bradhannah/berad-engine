@@ -176,6 +176,7 @@ type State struct {
 	pictures    map[ids.ULID]*tileart.Picture
 	maps        map[ids.ULID]*minimap
 	sounds      *soundState
+	preview     *previewState
 	home        homeState
 	barBottom   int
 	place       string
@@ -230,7 +231,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
 		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{}, sounds: newSoundState(),
-		home: newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
+		preview: newPreviewState(),
+		home:    newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
 		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0,
@@ -520,7 +522,12 @@ func (s *State) updatePanes(input *ui.Input, ctx *frame.Context) {
 	s.updateBar(input, ctx)
 	s.updatePlaces(input, ctx)
 	s.updateHead(input, ctx)
-	if s.gridShown() {
+	switch {
+	case s.viewShown() == viewPreview:
+		s.updatePreview(input, ctx)
+
+		return
+	case s.gridShown():
 		s.updateGrid(input, ctx)
 
 		return
@@ -632,6 +639,10 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.step(-1)
 	case input.Consume(ui.KeyDown, plain):
 		s.step(1)
+	case s.viewShown() == viewPreview && input.Consume(ui.KeyLeft, plain):
+		s.stepPreview(-1)
+	case s.viewShown() == viewPreview && input.Consume(ui.KeyRight, plain):
+		s.stepPreview(1)
 	case input.Consume(ui.KeyLeft, plain):
 		s.fold(ctx.Docs, true)
 	case input.Consume(ui.KeyRight, plain):
@@ -1387,7 +1398,7 @@ func (s *State) allButtons() []*ui.Button {
 		s.newMenu, s.open, s.floorButton, s.up, s.down, s.remove, s.moveBn, s.newFolderBn, s.npc.choose, s.npc.open,
 		s.npc.chooseSprite, s.npc.openSprite, s.npc.showOnMap, s.loop.choose, s.loop.open,
 		s.audio.open, s.clearBn, s.saveViewBn, s.keepViewBn, s.deleteViewBn,
-	}, append(append(s.tagBns, s.facetButtons()...), s.viewButtons()...)...)
+	}, append(append(append(s.tagBns, s.facetButtons()...), s.viewButtons()...), s.preview.floorTabs...)...)
 }
 
 // locateInDialog finds a dialog button, or a dialog list row by its name,
@@ -1432,6 +1443,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		s.drawCards(screen, docs)
 	case viewPictures:
 		s.drawPictures(screen, docs)
+	case viewPreview:
+		s.drawPreview(screen, docs)
 	default:
 		s.drawHeadings(screen)
 		s.list.Draw(screen, s.theme)

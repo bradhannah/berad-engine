@@ -99,6 +99,8 @@ func (s *State) layoutPanes(docs frame.Docs, content image.Rectangle) {
 		s.grid.layout(s.list.Rows, s.list.Rect, cardTile())
 	case viewPictures:
 		s.grid.layout(s.list.Rows, s.list.Rect, s.pictureTile())
+	case viewPreview:
+		s.layoutPreview(docs, s.list.Rect)
 	}
 	s.layoutDropdown(things, labels)
 }

@@ -100,7 +100,7 @@ func cellTile(level *floor.Floor, col, row int) string {
 // syncCards asks for the floors the cards draw: each zone's ground floor,
 // and each floor shown.
 func (s *State) syncCards(ctx *frame.Context) {
-	if s.viewShown() != viewCards {
+	if s.viewShown() != viewCards && s.viewShown() != viewPreview {
 		return
 	}
 	index := s.index(ctx.Docs)
@@ -113,8 +113,8 @@ func (s *State) syncCards(ctx *frame.Context) {
 		switch {
 		case !found:
 		case entry.Format == zone.FormatName:
-			if floors := s.floorsOf(ctx.Docs, documentID); len(floors) > 0 {
-				s.subscribe(floors[0], ctx)
+			for _, floorID := range s.floorsOf(ctx.Docs, documentID) {
+				s.subscribe(floorID, ctx)
 			}
 		case entry.Format == floor.FormatName:
 			s.subscribe(documentID, ctx)

@@ -55,7 +55,7 @@ func spritesIn(index *project.Index, path string, most int) []ids.ULID {
 // sprite's tile and palettes, and each palette and template; and lets go
 // of the pictures no longer shown once it keeps many.
 func (s *State) syncPictures(ctx *frame.Context) {
-	if s.viewShown() != viewPictures && s.viewShown() != viewCards {
+	if !s.gridShown() {
 		return
 	}
 	index := s.index(ctx.Docs)
