@@ -2,6 +2,7 @@ package workflowview_test
 
 import (
 	"image"
+	"strings"
 	"testing"
 
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
@@ -164,5 +165,23 @@ func TestAConstantChosenSurvivesARebuild(t *testing.T) {
 	options, err := f.nth(flow.KindRandom, 1).Shares("options")
 	if err != nil || len(options) != 3 || options[0].Constant.Value != restockID {
 		t.Fatalf("Save keeps it beside the new option: %+v %v", options, err)
+	}
+}
+
+// TestALongLineGrowsItsField wraps a long line in its field, which grows a
+// row at a time, pushing Insert value… down, up to six rows.
+func TestALongLineGrowsItsField(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	short := f.at("ui:insert-value").Y
+	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 4))
+	grown := f.at("ui:insert-value").Y
+	if grown < short+ui.LineHeight/ui.Half {
+		t.Fatalf("a line that wraps grows its field: Insert value… from %d to %d", short, grown)
+	}
+	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 40))
+	tallest := f.at("ui:insert-value").Y
+	if tallest <= grown || tallest > short+6*ui.LineHeight {
+		t.Fatalf("it grows to six rows at most: Insert value… from %d to %d", short, tallest)
 	}
 }

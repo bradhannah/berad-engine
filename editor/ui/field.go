@@ -254,14 +254,55 @@ func (w *TextField) spans(value string) []berad.Span {
 }
 
 // origin is where the text's top-left corner sits on screen. A single-line
-// field centres its line in its height and never scrolls up or down.
+// field, or one of many lines only one row high and holding one, centres
+// its line in its height and never scrolls up or down.
 func (w *TextField) origin() image.Point {
 	top := w.Rect.Min.Y + fieldPad - w.scroll.Y
-	if !w.Multiline {
+	if !w.Multiline || w.oneRow() {
 		top = w.Rect.Min.Y + (w.Rect.Dy()-w.lineHeight())/Half
 	}
 
 	return image.Pt(w.Rect.Min.X+fieldPad-w.scroll.X, top)
+}
+
+// oneRow reports whether a field of many lines is only one row high and its
+// text one line, as a line that grows does before it wraps.
+func (w *TextField) oneRow() bool {
+	layout := w.layout()
+
+	return layout != nil && len(layout.Lines()) <= 1 && w.Rect.Dy() < Half*(w.lineHeight()+fieldPad)
+}
+
+// FitHeight is how high the field must be to show all its text, a row for
+// each line it wraps to: from a button's height to at most rows, beyond
+// which it scrolls. Its width must be set first.
+func (w *TextField) FitHeight(most int) int {
+	rows := 1
+	if layout := w.layout(); layout != nil {
+		rows = min(len(layout.Lines()), most)
+	}
+	if rows <= 1 {
+		return ButtonH
+	}
+
+	return max(ButtonH, rows*w.lineHeight()+Half*fieldPad)
+}
+
+// clampScroll keeps a field of many lines scrolled no further than its text
+// needs, as text taken away, or a field grown, needs less.
+func (w *TextField) clampScroll() {
+	layout := w.layout()
+	if !w.Multiline || layout == nil {
+		return
+	}
+	lines := layout.Lines()
+	if len(lines) == 0 || w.oneRow() {
+		w.scroll.Y = 0
+
+		return
+	}
+	height := int(math.Ceil(lines[len(lines)-1].Bounds.Max.Y))
+	w.scroll.Y = min(w.scroll.Y, max(height-(w.Rect.Dy()-Half*fieldPad), 0))
 }
 
 // lineHeight returns the height of one line of the field's text.
@@ -296,9 +337,10 @@ func (w *TextField) keepCaretVisible() {
 	inner := w.Rect.Inset(fieldPad)
 	caret := w.caretRect()
 	w.scroll.X = max(w.scroll.X+scrollToShow(caret.Min.X, caret.Max.X, inner.Min.X, inner.Max.X), 0)
-	if w.Multiline {
+	if w.Multiline && !w.oneRow() {
 		w.scroll.Y = max(w.scroll.Y+scrollToShow(caret.Min.Y, caret.Max.Y, inner.Min.Y, inner.Max.Y), 0)
 	}
+	w.clampScroll()
 }
 
 // scrollToShow returns how far to scroll so the span low..high shows inside
@@ -439,6 +481,7 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 	if !ok {
 		return
 	}
+	w.clampScroll()
 	value := w.Field.Value()
 	if value == "" && !w.focused && w.composition == "" {
 		w.theme.DrawText(area, w.Placeholder, w.Rect.Min.X+fieldPad, w.origin().Y, ColorSubdued())

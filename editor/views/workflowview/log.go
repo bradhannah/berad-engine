@@ -25,7 +25,7 @@ import (
 // A Log's Message: its Insert value… button, how a value stands in its
 // text, and how a value whose NPC is only known as it runs reads. Its field
 // holds messageBytes, its text and each value's path in braces; Save holds
-// the message to its own limits.
+// the message to its own limits. It wraps, growing to lineRows rows.
 const (
 	insertValueID = "insert-value"
 	tokenOpen     = "{"
@@ -33,6 +33,7 @@ const (
 	chipPad       = 4
 	chipGap       = 3
 	messageBytes  = 4096
+	lineRows      = 6
 )
 
 // typeForms lists how each type reads as text, under a Log's Message.
@@ -373,11 +374,13 @@ func (s *State) previewText(docs frame.Docs, node flow.Node) (string, color.RGBA
 	return line, ui.ColorInk()
 }
 
-// layoutMessage places a Log's Message field and Insert value…, leaving
-// room under them for the line as it would read and each type as text.
+// layoutMessage places a Log's Message field, as high as its text wraps
+// to, and Insert value…, leaving room under them for the line as it would
+// read and each type as text.
 func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top int) int {
 	made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
+	made.field.Rect.Max.Y = top + made.field.FitHeight(lineRows)
+	top = made.field.Rect.Max.Y + rowSpace
 	made.pick.Rect = image.Rect(left, top, left+s.theme.TextWidth(made.pick.Label)+ui.Inset*ui.Half, top+ui.ButtonH)
 	if s.form != nil && s.form.makeText != nil {
 		from := made.pick.Rect.Max.X + ui.Gap
@@ -468,9 +471,10 @@ func hasMessage(kind string) bool {
 }
 
 // messageField makes a message's field: one line, as Enter saves it, that
-// holds the paths of the values in it as well as its text.
+// holds the paths of the values in it as well as its text, wrapping so all
+// of it shows.
 func (s *State) messageField(id string) *ui.TextField {
-	field := ui.NewTextField(id, textedit.NewField("", false, messageBytes), false, s.theme)
+	field := ui.NewTextField(id, textedit.NewField("", false, messageBytes), true, s.theme)
 	field.Paints = writesheet.Paints
 	s.focus.Register(field)
 
