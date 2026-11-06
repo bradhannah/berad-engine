@@ -471,8 +471,9 @@ func (s *State) locatePlace(kind, label string) (image.Point, bool) {
 }
 
 // revealNamed shows, for a script, the place holding a thing named label:
-// a document, a sound, or World state's Values or Signals, leaving the
-// selection as it was. It reports whether it showed another place.
+// a document, a sound, or World state's Values, Signals or Constants,
+// leaving the selection as it was. It reports whether it showed another
+// place.
 func (s *State) revealNamed(docs frame.Docs, label string) bool {
 	index := s.index(docs)
 	for _, entry := range index.Entries() {
@@ -494,7 +495,7 @@ func (s *State) revealNamed(docs frame.Docs, label string) bool {
 			}
 		}
 	}
-	if (label == "Values" || label == "Signals") && s.place != sectionWorldState {
+	if (label == "Values" || label == "Signals" || label == "Constants") && s.place != sectionWorldState {
 		s.show(sectionWorldState)
 
 		return true
