@@ -50,9 +50,13 @@ empty folder: `make demo DEMO_PROJECT=.cache/demo-<name>`. `local.mk` is
 never committed; it holds what belongs to one computer, such as where its
 game's project is.
 
-- **Project browser:** create zones, floors, workflows, NPCs and art; rename in the
-  inspector (Enter or the Rename button saves); delete with a where-used check;
-  reorder floors; double-click or Enter opens.
+- **Project browser:** opens on Home: what you pinned, what needs attention
+  and what you opened or changed lately. The places on the left hold each
+  kind and its folders; the main pane shows the place picked as rows,
+  pictures, cards or a preview, and the bar's search and facets narrow it.
+  Create zones, floors, workflows, NPCs and art; rename in the inspector
+  (Enter or the Rename button saves); delete with a where-used check; reorder
+  floors; double-click or Enter opens.
 - **Map:** tools on the left (`G` ground, `W` walls, `O` doors, stairs
   and pickups, `E` erase, `A` anchors, `S` select walls, `R` resize floor), `1`-`9`
   pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
