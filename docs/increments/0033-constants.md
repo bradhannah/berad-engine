@@ -1,6 +1,6 @@
 # Increment 33: Constants
 
-**Status:** Planned
+**Status:** Built
 
 The thirty-third increment gives a game words and numbers that its designer
 sets and the game never changes: **constants**. Today a sign's text, a
@@ -238,26 +238,139 @@ Chosen while planning, for its author to check:
 
   The real-window tests that read them pass as before.
 
+Chosen while building, for its author to check:
+
+- **Make a constant is reached by buttons,** not a right-click:
+  - ◆ at the end of a number's field opens the picker on whole-number
+    constants. A constant declared there starts at the number typed.
+  - For words, select them in a message's field and press Make a
+    constant…, beside Insert value….
+  - No name is suggested. The name is typed in the picker's search, as
+    for declaring a value, which lists where it can go: the world, an NPC
+    template or a zone template.
+- **The other places typed the same** match the same kind of node, the
+  same field and the same number; a Wait's must also have the same unit
+  and clock. A Random choice's shares are not offered, as one share means
+  little on its own. Typed words are matched exactly.
+- **A type's buttons read text and integer,** as values' do.
+- **In the writing sheet,** Escape saves as Done does, so nothing written is
+  lost to a key.
+- **The markup:**
+  - `[[` writes a `[` that is not a tag.
+  - The named colours are drawn in shades that read on both the box's dark
+    ground and the speech bubble's light one.
+- **How much a box holds:** the sheet notes a text that wraps to more than
+  eight lines of a box. The node's warning counts 560 characters, about
+  eight lines of seventy.
+- **The Project window's inspector** lists up to four of an NPC's or a
+  zone's constants, then Open Constants for the rest.
+- **The inspector now scrolls.** At the editor's own window size an NPC's
+  inspector already ran past the save bar before this increment, and its
+  constants would have been hidden behind it. What is below the header
+  scrolls with the wheel, under a save bar and Delete that stay put.
+- **Previews read without markup:** a text constant's line in a list or an
+  inspector shows its words. The field and the sheet show the tags.
+- **A text constant's default field** in the Constants window is three
+  lines tall; Write… opens the sheet for more.
+- **Logs are written without markup,** as the Log window shows them.
+- **Older paths still read:** a picker, a message's `{world.x}` and an
+  input script find a value's path without `var.`.
+- **A use in a Say or a Show message** is named by its kind. It was named a
+  Log node, which the greeting's uses showed.
+
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Constants kept | In the engine: text and number constants declared in the world, in templates, and as an NPC's or zone's own; each NPC's and zone's own values in its file; world state at version 4, NPCs at 6 and zones at 7, each upgraded from the last; checks on names, types, lengths and owners; a constant's value for an NPC or zone | Unit tests upgrade each file, refuse a bad name, type or length, refuse a name taken by a value, and find an NPC's own value, the default, and a value kept while its template is off | Planned |
-| 2. Constants edited | The edits to add, rename, move, describe, retype and delete a constant and set its default; and to set or clear an NPC's or zone's own value, in its file; each undone | Unit tests make each edit and undo it, refuse a retype or delete while the constant is used, and bring a deleted constant's values back with Undo | Planned |
-| 3. One way to write a path | Every path written by one function, with `const.` and `var.` wherever both can appear and `local.` kept; the Log window reading both forms | Unit tests find prefixes on a node, in a picker and in a log, none in the Values list, and an older log still reading | Planned |
-| 4. The Constants window | World state's third part, laid out as Values is: the world, templates, zones and NPCs; adding constants and groups; Find a constant by path or words; the inspector with the preview, the count, each NPC's or zone's value for a template's constant, the uses and the type; deleting as for values; Constants under World state in the Project window | Unit tests make, rename, move, retype and delete a constant, find one by its words, set an NPC's value from the inspector, and list a constant's uses | Planned |
-| 5. The writing sheet | The sheet over the window: the text, the bold, italic and colour buttons, the preview drawn as the game draws it, the count, and a list switching between the default and each holder's value | A unit test writes a template constant's default and two NPCs' own values in one sheet, and its preview shows the bold, italic and colour | Planned |
-| 6. On an NPC and a zone | A Constants section on an NPC's and a zone's inspector in the Project window: the constants of its templates and its own, each with its value or the default, opening the sheet, with Use the default | A unit test sets an NPC's value on its inspector, finds it in the Constants window, and clears it back to the default | Planned |
-| 7. In messages, checks and values given | The value picker offering constants beside values, by type; constants as parts of messages; a constant checked by Check value and Find NPC nearby; constants in the operands of Set value, Check value and Find NPC nearby, and in a Call's inputs; operand uses counted for values and constants | Unit tests put a constant in a Say, a check, an operand and an input, find each use, and refuse to delete a value used only in an operand | Planned |
-| 8. In number fields | Workflow format 10; a constant in Wait's amount, Move's tiles, Find NPC nearby's distance, Say's, Show message's and Shake screen's seconds, and a Random choice's shares; a constant out of a field's limits flagged | Unit tests read a format 9 workflow unchanged, use a constant in each field, and flag one out of limits | Planned |
-| 9. Make a constant, and the other places | Make a constant on number fields and typed text; then the same field with the same value typed in other workflows, listed to tick and switch; one Undo for all of it | Unit tests make a constant from a Wait, find two other Waits typed the same, switch one, and undo all of it at once | Planned |
-| 10. In the game | Constants read as the game runs: an NPC's or zone's own value or the default, another's by name or found nearby, in messages, checks, operands, inputs and number fields, with numbers held to their fields' limits | Unit tests run two NPCs with the same template and their own greetings, a Wait from a constant, a check on an NPC's constant, and a Set value from a long text cut to 200 characters | Planned |
-| 11. Markup and long text | The engine reading markup into runs, with warnings for tags open or unknown; reading time from the text shown; the two long-text warnings; the Play tab and the previews drawing bold, italic and colour, with Plex Sans Italic and SemiBold Italic added; the Log window without markup; a value's text never read as markup | Unit tests read nested tags, flag a bad tag, time a line by its shown text, flag a long text that would go before it was read, and strip markup in a log; a screenshot shows a line in bold, italic and colour | Planned |
-| 12. Tests and checks | The sample's greeting and serving time as constants; a real-window test that adds a constant to a template, writes an NPC's own value in the sheet from its inspector, uses it in a Say with markup, makes a constant from a Wait and switches another Wait to it, plays and sees the line, and is refused deleting it while used; the real-window tests moved to the prefixed paths | `make check` passes, and so does the real-window suite | Planned |
+| 1. Constants kept | In the engine: text and number constants declared in the world, in templates, and as an NPC's or zone's own; each NPC's and zone's own values in its file; world state at version 4, NPCs at 6 and zones at 7, each upgraded from the last; checks on names, types, lengths and owners; a constant's value for an NPC or zone | Unit tests upgrade each file, refuse a bad name, type or length, refuse a name taken by a value, and find an NPC's own value, the default, and a value kept while its template is off | Built |
+| 2. Constants edited | The edits to add, rename, move, describe, retype and delete a constant and set its default; and to set or clear an NPC's or zone's own value, in its file; each undone | Unit tests make each edit and undo it, refuse a retype or delete while the constant is used, and bring a deleted constant's values back with Undo | Built |
+| 3. One way to write a path | Every path written by one function, with `const.` and `var.` wherever both can appear and `local.` kept; the Log window reading both forms | Unit tests find prefixes on a node, in a picker and in a log, none in the Values list, and an older log still reading | Built |
+| 4. The Constants window | World state's third part, laid out as Values is: the world, templates, zones and NPCs; adding constants and groups; Find a constant by path or words; the inspector with the preview, the count, each NPC's or zone's value for a template's constant, the uses and the type; deleting as for values; Constants under World state in the Project window | Unit tests make, rename, move, retype and delete a constant, find one by its words, set an NPC's value from the inspector, and list a constant's uses | Built |
+| 5. The writing sheet | The sheet over the window: the text, the bold, italic and colour buttons, the preview drawn as the game draws it, the count, and a list switching between the default and each holder's value | A unit test writes a template constant's default and two NPCs' own values in one sheet, and its preview shows the bold, italic and colour | Built |
+| 6. On an NPC and a zone | A Constants section on an NPC's and a zone's inspector in the Project window: the constants of its templates and its own, each with its value or the default, opening the sheet, with Use the default | A unit test sets an NPC's value on its inspector, finds it in the Constants window, and clears it back to the default | Built |
+| 7. In messages, checks and values given | The value picker offering constants beside values, by type; constants as parts of messages; a constant checked by Check value and Find NPC nearby; constants in the operands of Set value, Check value and Find NPC nearby, and in a Call's inputs; operand uses counted for values and constants | Unit tests put a constant in a Say, a check, an operand and an input, find each use, and refuse to delete a value used only in an operand | Built |
+| 8. In number fields | Workflow format 10; a constant in Wait's amount, Move's tiles, Find NPC nearby's distance, Say's, Show message's and Shake screen's seconds, and a Random choice's shares; a constant out of a field's limits flagged | Unit tests read a format 9 workflow unchanged, use a constant in each field, and flag one out of limits | Built |
+| 9. Make a constant, and the other places | Make a constant on number fields and typed text; then the same field with the same value typed in other workflows, listed to tick and switch; one Undo for all of it | Unit tests make a constant from a Wait, find two other Waits typed the same, switch one, and undo all of it at once | Built |
+| 10. In the game | Constants read as the game runs: an NPC's or zone's own value or the default, another's by name or found nearby, in messages, checks, operands, inputs and number fields, with numbers held to their fields' limits | Unit tests run two NPCs with the same template and their own greetings, a Wait from a constant, a check on an NPC's constant, and a Set value from a long text cut to 200 characters | Built |
+| 11. Markup and long text | The engine reading markup into runs, with warnings for tags open or unknown; reading time from the text shown; the two long-text warnings; the Play tab and the previews drawing bold, italic and colour, with Plex Sans Italic and SemiBold Italic added; the Log window without markup; a value's text never read as markup | Unit tests read nested tags, flag a bad tag, time a line by its shown text, flag a long text that would go before it was read, and strip markup in a log; a screenshot shows a line in bold, italic and colour | Built |
+| 12. Tests and checks | The sample's greeting and serving time as constants; a real-window test that adds a constant to a template, writes an NPC's own value in the sheet from its inspector, uses it in a Say with markup, makes a constant from a Wait and switches another Wait to it, plays and sees the line, and is refused deleting it while used; the real-window tests moved to the prefixed paths | `make check` passes, and so does the real-window suite | Built |
 
 ## Step results
 
-None yet.
+- **Constants kept:** unit tests declare constants where values are, with
+  text far longer than a value's, and refuse one of another type, with
+  limits, in a workflow, as a group, too long, or beside a value's name.
+  They read a template's constant as each NPC has it, its own or the
+  default, keep an NPC's value while the template is off, and keep
+  constants out of what reads values. A version 3 world state, an older
+  NPC and a version 6 zone read unchanged.
+- **Constants edited:** unit tests add, rename, retype and delete a world
+  constant and a template's, each undone, and find an NPC's own value of a
+  deleted constant counting again once Undo brings it back. Setting,
+  changing and clearing an NPC's own value meet the undo contract, and a
+  bad one is refused.
+- **One way to write a path:** unit tests write paths with `const.` and
+  `var.`. The workflow's, picker's and logging tests read them, and a
+  picker, a message and an input script still find a value's path without
+  `var.`.
+- **The Constants window:** unit tests list constants apart from values;
+  add a text constant, retype it, rename it into a group and delete it,
+  unused; keep a used one's type and refuse to delete it; find one by its
+  words; set an NPC's own value in the inspector and give the default
+  back; and write in the sheet from there.
+- **The writing sheet:** unit tests make a word bold and another gold with
+  the buttons, switch to an NPC's own value, which saves the default, and
+  save it with Done. They say a text's length and reading time, and warn of
+  a tag left open and of a text too long to read or for one box.
+- **On an NPC and a zone:** unit tests list a template's constants on an
+  NPC's and a zone's inspector, write the NPC's own greeting in the sheet,
+  type its own serving time, and give the default back.
+- **In messages, checks and values given:** unit tests put a constant in a
+  Say's line from the picker, check a constant and compare a value with
+  one, find Set value never offers a constant, and set a text value from a
+  page-long constant, cut with a warning. A value or constant used only in
+  an operand counts as used.
+- **In number fields:** unit tests read a format 9 workflow unchanged, and
+  save a Move's tiles, a Wait's amount and a share with constants standing
+  in, each resolved within its limits. In the editor, a Wait's amount
+  stands for a constant from the picker, goes back to the number typed,
+  and flags a constant outside its limits.
+- **Make a constant:** unit tests make one from a Wait's 30 minutes and
+  switch the other Wait typed the same, leaving one of 45, all in one
+  gesture; and make one from words in a Say, switching the other line with
+  the same words.
+- **In the game:** a unit test runs two shopkeepers on one workflow. Each
+  says the greeting as it has it, own or default, with its markup, logged
+  without it; checks it; waits its serving time; and copies a page-long
+  motto into a value, cut to 200 characters.
+- **Markup and long text:** unit tests read nested tags into runs, flag bad
+  ones, keep a value's text as written, and time a line by its shown text.
+  A workflow's warn of a tag left open, a line that would go before it was
+  read, and one longer than a box holds.
+- **Tests and checks:**
+  - The sample's clerk greets with the shop template's greeting, "Shop's
+    open!", and serves for the world's `shop.serve_minutes`, 20.
+  - A real-window test writes the clerk's own greeting, with italic, in the
+    sheet from her inspector. The Constants window shows it beside the
+    default and refuses to delete the serving time, used by a Wait. A new
+    workflow's Wait makes `const.world.tide_minutes` and switches the other
+    Wait typed the same. Previewed, the clerk says her own line, drawn in
+    italic.
+  - The real-window tests read the prefixed paths, as the logging test's
+    `{var.npc.name}` does.
+  - Writing the real-window test found three things, fixed with it:
+    - an NPC's inspector ran past the save bar at the editor's own size,
+      so it now scrolls, with a unit test;
+    - a constant in a Say was listed as used by a Log node;
+    - the sheet's menus drew a missing glyph for their arrow.
+  - Fonts: IBM Plex Sans Italic and SemiBold Italic, version 3.005, are
+    added under the SIL Open Font License 1.1, as its other faces are.
+- **Checks:**
+  - `make check` passes with nothing cached.
+  - The real-window suite passes, 59 tests, in one full run.
+  - The first `make check` ran beside that suite, and the orchestrator's
+    recording test timed out under the load. Alone it passed 3 times in 3,
+    and the rerun of `make check` passed.
 
 ## Not in this increment
 

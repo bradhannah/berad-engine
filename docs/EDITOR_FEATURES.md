@@ -586,7 +586,7 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   and not inside their own lists. An NPC's or a zone's constant can hold a
   value of its own for each one, edited on its inspector and in the
   Constants window, which is World state's third part. Markup comes with
-  them. [Increment 33](increments/0033-constants.md) plans them.
+  them. [Increment 33](increments/0033-constants.md) builds them.
 - **Agreed (2026-11-06):** constants follow templates, as values do. A
   template holds constants beside its values, and every NPC or zone it is
   on holds them, with a value of its own kept in its own file; an NPC or a
@@ -779,6 +779,11 @@ What the engine provides to games, as far as decided:
 - **Agreed:** uniform pixel scaling is guaranteed (no stretching), and layout
   supports several popular aspect ratios rather than one fixed layout. Text uses
   TTF fonts.
+- *Candidate (2026-11-06):* a project chooses its own fonts, as TTF files,
+  for its game's text. Until then a game's text uses the editor's faces,
+  which are free to use in a commercial game: IBM Plex Sans and Mono, under
+  the SIL Open Font License. [Increment 33](increments/0033-constants.md)
+  adds Plex Sans's italics for markup.
 - **Agreed:** OS-specific features stay behind abstractions; broad portability is
   intended, with development on macOS.
 - *Open:* the game save format. JSON (readable, possibly large) and SQLite
