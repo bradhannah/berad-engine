@@ -214,3 +214,33 @@ func TestOwnConstantValuesAreSaved(t *testing.T) {
 		t.Fatalf("a value for no constant is refused: %v", err)
 	}
 }
+
+// TestPathsSayWhichTheyName prefixes a constant's path with const. and a
+// value's with var., built-in ones too, leaves a workflow's own local value
+// as it is, and cuts either prefix off again.
+func TestPathsSayWhichTheyName(t *testing.T) {
+	t.Parallel()
+	greeting := worldstate.NewConstant(id(1), "greeting", worldstate.ScopeNPC, worldstate.TypeText)
+	served := worldstate.New(id(2), "served", worldstate.ScopeNPC, worldstate.TypeBool)
+	count := worldstate.New(id(3), "count", worldstate.ScopeLocal, worldstate.TypeInteger)
+	for path, want := range map[string]string{
+		worldstate.Prefixed("npc.shop.greeting", greeting):                 "const.npc.shop.greeting",
+		worldstate.Prefixed("npc.shop.served", served):                     "var.npc.shop.served",
+		worldstate.Prefixed("npc.name", worldstate.NameDeclaration("Ada")): "var.npc.name",
+		worldstate.Prefixed("local.count", count):                          "local.count",
+		worldstate.Prefixed("local.customer.shop.greeting", greeting):      "const.local.customer.shop.greeting",
+	} {
+		if path != want {
+			t.Errorf("%s, not %s", path, want)
+		}
+	}
+	if path, constant := worldstate.Unprefixed("const.npc.shop.greeting"); !constant || path != "npc.shop.greeting" {
+		t.Fatalf("const. cut off: %s", path)
+	}
+	if path, constant := worldstate.Unprefixed("var.world.done"); constant || path != "world.done" {
+		t.Fatalf("var. cut off: %s", path)
+	}
+	if path, constant := worldstate.Unprefixed("world.done"); constant || path != "world.done" {
+		t.Fatalf("a path without either stays: %s", path)
+	}
+}

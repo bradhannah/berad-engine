@@ -113,6 +113,10 @@ func (t declareTarget) located() string {
 	return t.Path + " for " + t.For
 }
 
+// samePath reports whether a path shown is the one a script names, which
+// may leave a value's var. off, as paths were named before constants.
+func samePath(shown, want string) bool { return shown == want || shown == worldstate.ValuePrefix+want }
+
 // catalog is every value the project declares, as far as the window holds
 // it; empty before the world state arrives.
 func (s *State) catalog(docs frame.Docs) *worldstate.Catalog {
@@ -182,21 +186,22 @@ func (s *State) resolve(docs frame.Docs, ref flow.ValueRef) (worldstate.Declarat
 			return declared, "", problemFoundGone
 		}
 
-		return declared, localPath(holder) + strings.TrimPrefix(path, string(worldstate.ScopeNPC)), ""
+		return declared, worldstate.Prefixed(localPath(holder)+strings.TrimPrefix(path, string(worldstate.ScopeNPC)),
+			declared), ""
 	case !ref.Owner.IsZero():
 		owner, known := catalog.Owner(ref.Owner)
 		if !known {
 			return declared, "", problemOwnerGone
 		}
-		named := worldstate.NamedPath(path, ownerPath(owner, ref.Owner))
+		named := worldstate.Prefixed(worldstate.NamedPath(path, ownerPath(owner, ref.Owner)), declared)
 		if _, has := catalog.Lookup(ref.Scope, ref.Owner, ref.Value); !has {
-			return declared, named, owner.Name + " has no " + path + "."
+			return declared, named, owner.Name + " has no " + worldstate.Prefixed(path, declared) + "."
 		}
 
 		return declared, named, ""
 	}
 
-	return declared, path, ""
+	return declared, worldstate.Prefixed(path, declared), ""
 }
 
 // missing says which NPC following this workflow lacks one of its own
@@ -267,7 +272,10 @@ func (o *options) add(where place, ref flow.ValueRef, path string, declared worl
 		return
 	}
 	o.seen[key] = true
-	o.listed = append(o.listed, valueOption{ref: ref, path: path, declared: declared, place: where})
+	where.root = worldstate.Prefixed(where.root, declared)
+	o.listed = append(o.listed, valueOption{
+		ref: ref, path: worldstate.Prefixed(path, declared), declared: declared, place: where,
+	})
 }
 
 func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef {
@@ -468,6 +476,7 @@ func (s *State) ownerName(docs frame.Docs, id ids.ULID) string {
 // following this workflow.
 func (s *State) declareTargets(docs frame.Docs, role valueRole, query string) []declareTarget {
 	var targets []declareTarget
+	query, _ = worldstate.Unprefixed(query)
 	for _, scope := range declareScopes(role) {
 		dotted := query
 		for _, other := range []worldstate.Scope{
@@ -485,7 +494,7 @@ func (s *State) declareTargets(docs frame.Docs, role valueRole, query string) []
 			continue
 		}
 		target := declareTarget{Scope: scope, Document: worldstate.ID(), Parent: ids.ULID{}, Name: dotted,
-			Path: string(scope) + "." + dotted, For: ""}
+			Path: worldstate.Prefixed(string(scope)+"."+dotted, worldstate.New(ids.ULID{}, "", scope, "")), For: ""}
 		switch scope {
 		case worldstate.ScopeLocal:
 			if len(names) == 1 {
@@ -1246,7 +1255,7 @@ func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
 		}
 		_, path, problem := s.resolve(docs, ref)
 
-		return problem == "" && path == want, true
+		return problem == "" && samePath(path, want), true
 	case strings.HasPrefix(state, "operand:"):
 		param, want, _ := strings.Cut(strings.TrimPrefix(state, "operand:"), "=")
 		saved, err := node.Operand(param)

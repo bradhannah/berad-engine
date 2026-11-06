@@ -528,7 +528,8 @@ func (p *Picker) drawList(screen *ebiten.Image) {
 }
 
 // Locate finds a part of the picker for input scripts: a row,
-// "valuerow:<path>"; where a value can be declared, "declare:<where>"; a
+// "valuerow:<path>"; where a value can be declared, "declare:<where>", a
+// value's path found with or without its var.; a
 // chip, a group or a scope on the rail, "picker:..." (see locatePart); a
 // field, "ui:value-search" or "ui:declare-start"; or a button, as
 // "ui:picker-choose", "ui:picker-declare", "ui:declare-type-bool" or
@@ -537,9 +538,17 @@ func (p *Picker) Locate(docs frame.Docs, window image.Rectangle, kind, value str
 	p.layout(docs, window)
 	switch kind {
 	case LocateValue:
-		return p.locateRow(value)
+		if at, found := p.locateRow(value); found {
+			return at, true
+		}
+
+		return p.locateRow(worldstate.ValuePrefix + value)
 	case LocateDeclare:
-		return p.declare.locateWhere(value)
+		if at, found := p.declare.locateWhere(value); found {
+			return at, true
+		}
+
+		return p.declare.locateWhere(worldstate.ValuePrefix + value)
 	case LocatePart:
 		return p.locatePart(value)
 	case "ui":
@@ -578,7 +587,7 @@ func (p *Picker) HasState(docs frame.Docs, window image.Rectangle, state string)
 		path, want, _ := strings.Cut(detailed, "=")
 
 		return slices.ContainsFunc(p.list.Rows, func(row ui.Row) bool {
-			return p.paths[row.ID] == path && row.Detail == want
+			return (p.paths[row.ID] == path || p.paths[row.ID] == worldstate.ValuePrefix+path) && row.Detail == want
 		}), true
 	}
 	scope, want, _ := strings.Cut(counted, "=")

@@ -130,6 +130,10 @@ func (s *State) parseMessage(docs frame.Docs, value string, saved []flow.Segment
 		addText(before)
 		ref, found := known[strings.TrimSpace(token)]
 		if !found {
+			// A path typed as before prefixes, as world.coins, is a value's.
+			ref, found = known[worldstate.ValuePrefix+strings.TrimSpace(token)]
+		}
+		if !found {
 			return nil, "No value is called " + strings.TrimSpace(token) + ". Put one in with Insert value…"
 		}
 		segments = append(segments, flow.Segment{Text: "", Ref: &ref})

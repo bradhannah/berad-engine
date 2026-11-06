@@ -316,7 +316,8 @@ func (p *Picker) locatePart(value string) (image.Point, bool) {
 		}
 	case "group":
 		for index, row := range p.list.Rows {
-			if strings.HasPrefix(row.ID, groupPrefix) && row.Label == named && p.list.RowRect(index).In(p.list.Rect) {
+			if strings.HasPrefix(row.ID, groupPrefix) && (row.Label == named || row.Label == worldstate.ValuePrefix+named) &&
+				p.list.RowRect(index).In(p.list.Rect) {
 				return image.Pt(p.list.Rect.Min.X+railWidth/ui.Half, ui.Center(p.list.RowRect(index)).Y), true
 			}
 		}

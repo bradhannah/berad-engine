@@ -13,10 +13,10 @@ func TestSayAndShake(t *testing.T) {
 	t.Parallel()
 	f := withNode(t, flow.KindSay)
 	f.typeInto("param-message", "Hello from {npc.name}")
-	if !f.has("message=Hello from {npc.name}") || !f.has("reads=Hello from Ada Clerk") {
+	if !f.has("message=Hello from {var.npc.name}") || !f.has("reads=Hello from Ada Clerk") {
 		t.Fatal("a Say's line holds a value and reads as it would for Ada")
 	}
-	if !f.has("title:" + flow.KindSay + ":1=Say · Hello from {npc.name}") {
+	if !f.has("title:" + flow.KindSay + ":1=Say · Hello from {var.npc.name}") {
 		t.Fatal("the node shows its line")
 	}
 	if _, found := f.state.Locate("ui:param-seconds", f.docs); found {

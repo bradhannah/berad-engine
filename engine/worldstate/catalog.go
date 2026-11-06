@@ -263,6 +263,40 @@ func walk(list *Declarations, scope Scope, parent ids.ULID, values []Held, keep 
 	return values
 }
 
+// Prefixes say, wherever values and constants mix, which one a path names:
+// on nodes, in pickers, in a message's text and in logs. Inside their own
+// lists, paths go without them.
+const (
+	ValuePrefix    = "var."
+	ConstantPrefix = "const."
+)
+
+// Prefixed returns how a declaration's path reads where values and constants
+// mix: a constant's after const., a world, zone or NPC value's after var.,
+// built-in ones too. A workflow's own local value keeps its local., as no
+// constant is local; a value of an NPC a local holds reads as that NPC's,
+// after var. or const. like any other.
+func Prefixed(path string, declared Declaration) string {
+	switch {
+	case declared.Scope == ScopeLocal:
+		return path
+	case declared.IsConstant():
+		return ConstantPrefix + path
+	}
+
+	return ValuePrefix + path
+}
+
+// Unprefixed returns a path without its const. or var., reporting whether
+// it named a constant; a path without either is returned as it is.
+func Unprefixed(path string) (string, bool) {
+	if rest, constant := strings.CutPrefix(path, ConstantPrefix); constant {
+		return rest, true
+	}
+
+	return strings.TrimPrefix(path, ValuePrefix), false
+}
+
 // NamedPath is how a workflow names another NPC's or zone's value: the path
 // it is named by for its own, such as npc.guards.how_many_arrested, with
 // the owner's path name after the scope, as npc.guard1.guards.how_many_arrested.

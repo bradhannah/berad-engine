@@ -132,7 +132,7 @@ func (s *State) hasOperandState(state string, docs frame.Docs) (bool, bool) {
 		ref, refers := flow.OperandRef(saved)
 		_, path, problem := s.resolve(docs, ref)
 
-		return selected && err == nil && refers && problem == "" && path == want, true
+		return selected && err == nil && refers && problem == "" && samePath(path, want), true
 	case strings.HasPrefix(state, "another:"):
 		return s.anotherValueLit(strings.TrimPrefix(state, "another:")), true
 	case strings.HasPrefix(state, "holds:"):

@@ -166,7 +166,8 @@ func (s *State) whereLabel(docs frame.Docs, target declareTarget) string {
 	case target.For != "":
 		return s.ownerName(docs, target.Document) + "'s own"
 	case target.Parent != (ids.ULID{}):
-		names := strings.Split(target.Path, ".")
+		path, _ := worldstate.Unprefixed(target.Path)
+		names := strings.Split(path, ".")
 
 		return target.Scope.Label() + " template " + names[1]
 	default:
