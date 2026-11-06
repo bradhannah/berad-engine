@@ -26,8 +26,8 @@ under consideration), **open** (undecided).
   dark outlines and rounded boxes, small uppercase labels, blue for selection
   and orange for anything live.
 - **Agreed:** typed changes wait for an explicit save: every inspector with
-  fields to type into, and Text, has a save bar with Revert and
-  Save, and Cmd+S saves in any pane. Enter saves a one-line field and
+  fields to type into has a save bar with Revert and Save, and Cmd+S saves
+  in any pane. Enter saves a one-line field and
   starts a new line in a field of several lines. Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
   closing a tab with unsaved changes asks: Save, Don't save or Cancel.
@@ -71,8 +71,7 @@ under consideration), **open** (undecided).
   Cancel.
 - **Agreed:** document types are told apart by an icon, always with a muted
   colour beside it, never by colour alone: zones and floors green, workflows
-  purple, NPCs slate, text brown. Blue and orange stay for selection and
-  live.
+  purple, NPCs slate. Blue and orange stay for selection and live.
 - **Agreed:** the editor window can be kept above every other application's
   windows with the On top toggle at the right of any pane's status bar.
 - **Agreed:** a view's keys are listed on a sheet opened with its Keys
@@ -486,12 +485,14 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   its arrowhead, small and muted; a short line does not, since the outcome's
   own row is in view.
 - **Agreed (2026-11-01):** several nodes and containers can be selected,
-  with Shift-click or a box dragged from empty canvas, and moved, coloured,
+  with Cmd+click or a box dragged from empty canvas, and moved, coloured,
   duplicated (Cmd+D, or copied and pasted into another workflow) or deleted
   together, each one undo step. Lines are never part of a group. A
   container brings its contents, and a dragged group stops at a container's
   wall, as one node does. Arrow keys nudge the selection, and Arrange can
-  lay out the selection alone.
+  lay out the selection alone. (Changed on 2026-11-06 from Shift-click:
+  Shift suggests a range, a path from one node to another, which a graph
+  does not have; and Ctrl+click is a Mac's right-click.)
 - **Replaced (2026-11-04):** dropping a node onto a line, from the palette
   or from the canvas, put it in the flow: the line ended at the new node,
   and the node's first output continued to the old target. In use it kept
@@ -555,9 +556,19 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   the box. (Rejected: columns of groups and signals, and type-ahead in the
   box.) [Increment 29](increments/0029-lines-state-and-picking.md) builds
   it.
-- **Candidate:** reusable blocks of text, paragraphs long, kept in the
-  project view rather than in one workflow (its author's "static strings").
-  *Open:* what they are for, given that the Texts view holds a game's texts.
+- **Agreed (2026-11-06):** reusable text, its author's "static strings",
+  becomes **constants**: a list of its own beside values, of strings, from a
+  sign to long dialogue, and whole numbers, which the designer sets and a
+  game never changes. Constants are scoped as values are, to the world, a
+  zone or an NPC. Messages, Check value and Set value can use them, and they
+  are deleted under the same rules as values. Their text takes markup for
+  colour, bold and italic, and nothing that changes the flow, such as a
+  pause. Long text is not paged for now. They are built once the Project
+  window's new design is settled. *Open:* whether a path says which it is,
+  as `const.` and `var.`.
+- **Removed (2026-11-06):** Text documents, a placeholder kept to prove the
+  text field and picking a place, are gone, as constants will hold a game's
+  text ([increment 31](increments/0031-no-text-documents.md)).
 - **Candidate:** cut scenes as workflows that block player input.
 
 ## NPCs
