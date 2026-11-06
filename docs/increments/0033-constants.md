@@ -454,6 +454,11 @@ Tests and checks:
   and a constant, opens it in the sheet, and saves it. Its screenshots
   showed the node inspector running into its notes, which led to the
   scrolling.
+- `make check` passes with nothing cached. In the full real-window run,
+  58 of the 59 tests passed. The call test (`TestClerkCallsFetchStock`)
+  failed as increment 32 records: the customer interrupts the clerk at
+  random while it waits for the clerk to reach Fetch stock. On its own it
+  then passed 3 times in 4.
 
 ## Not in this increment
 
