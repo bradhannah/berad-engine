@@ -225,10 +225,18 @@ func checkSampleShop(t *testing.T, project string, ground *floor.Floor) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var paths []string
+	var paths, constants []string
 	values := decoded.(*stateplugin.Document).State.Values
 	for _, value := range values.Values() {
+		if value.IsConstant() {
+			constants = append(constants, values.Path(value.ID)+"="+value.Label(value.Zero()))
+
+			continue
+		}
 		paths = append(paths, values.Path(value.ID))
+	}
+	if got := strings.Join(constants, " "); got != `npc.shop.greeting="Shop's open!" world.shop.serve_minutes=20` {
+		t.Fatalf("the sample's greeting and serving time are constants: %s", got)
 	}
 	if got := strings.Join(paths, " "); got != "npc.shop npc.shop.waiting npc.shop.serving npc.shop.served world.shop "+
 		"world.shop.customers_served" {

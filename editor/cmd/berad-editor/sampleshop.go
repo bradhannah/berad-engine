@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
@@ -43,11 +44,13 @@ const (
 )
 
 // shopValues are what the sample shop declares: a shop template of whether
-// an NPC is waiting, serving or served, a shop group holding how many
-// customers the world has served, and the signals the customer rings the
-// bell with and the clerk says the shelf is empty with.
+// an NPC is waiting, serving or served, and a constant of what it says on
+// opening; a shop group holding how many customers the world has served,
+// and a constant of how long serving takes; and the signals the customer
+// rings the bell with and the clerk says the shelf is empty with.
 type shopValues struct {
 	template, waiting, serving, served, group, count ids.ULID
+	greeting, serveMinutes                           ids.ULID
 	bell, emptyShelf                                 ids.ULID
 }
 
@@ -75,26 +78,51 @@ func sampleCustomer(orch *orchestrator.Orchestrator, anchors sampleAnchors, valu
 	return placeShop(orch, anchors.floor, floor.Placement{ID: placementID, NPC: npcID, Col: customerCol, Row: customerRow})
 }
 
+// shopDeclared is one of the shop's declarations: where its ID goes, its
+// parent's, its name, scope, type and description, and a constant's default.
+type shopDeclared struct {
+	id, parent  *ids.ULID
+	name        string
+	scope       worldstate.Scope
+	kind        worldstate.Type
+	description string
+	constant    json.RawMessage
+}
+
+// declaration is what the world state holds of it: a value, or a constant
+// with its default.
+func (d shopDeclared) declaration() worldstate.Declaration {
+	made := worldstate.New(*d.id, d.name, d.scope, d.kind)
+	if d.constant != nil {
+		made = worldstate.NewConstant(*d.id, d.name, d.scope, d.kind)
+		made.Default = d.constant
+	}
+	made.Description = d.description
+	if d.parent != nil {
+		made.Parent = *d.parent
+	}
+
+	return made
+}
+
 // declareShop declares the shop's template and group in the world state.
 func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 	var values shopValues
-	declared := []struct {
-		id, parent  *ids.ULID
-		name        string
-		scope       worldstate.Scope
-		kind        worldstate.Type
-		description string
-	}{
-		{&values.template, nil, shopName, worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share."},
+	declared := []shopDeclared{
+		{&values.template, nil, shopName, worldstate.ScopeNPC, worldstate.TypeTemplate, "What a shop's NPCs share.", nil},
 		{&values.waiting, &values.template, "waiting", worldstate.ScopeNPC, worldstate.TypeBool,
-			"Waiting at the desk to be served."},
+			"Waiting at the desk to be served.", nil},
 		{&values.serving, &values.template, "serving", worldstate.ScopeNPC, worldstate.TypeBool,
-			"Serving a customer at the desk."},
+			"Serving a customer at the desk.", nil},
 		{&values.served, &values.template, "served", worldstate.ScopeNPC, worldstate.TypeBool,
-			"Served, and on the way out."},
-		{&values.group, nil, shopName, worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts."},
+			"Served, and on the way out.", nil},
+		{&values.greeting, &values.template, "greeting", worldstate.ScopeNPC, worldstate.TypeText,
+			"What a shopkeeper says on opening.", json.RawMessage(`"Shop's open!"`)},
+		{&values.group, nil, shopName, worldstate.ScopeWorld, worldstate.TypeGroup, "The shop's own counts.", nil},
 		{&values.count, &values.group, "customers_served", worldstate.ScopeWorld, worldstate.TypeInteger,
-			"Customers served so far."},
+			"Customers served so far.", nil},
+		{&values.serveMinutes, &values.group, "serve_minutes", worldstate.ScopeWorld, worldstate.TypeInteger,
+			"How long serving a customer takes.", json.RawMessage(strconv.Itoa(serveMinutes))},
 	}
 	for _, each := range declared {
 		made, err := orch.NewID()
@@ -114,12 +142,7 @@ func declareShop(orch *orchestrator.Orchestrator) (shopValues, error) {
 		}
 		changed := state.State.Values.Clone()
 		for _, each := range declared {
-			made := worldstate.New(*each.id, each.name, each.scope, each.kind)
-			made.Description = each.description
-			if each.parent != nil {
-				made.Parent = *each.parent
-			}
-			if err := changed.Insert(made); err != nil {
+			if err := changed.Insert(each.declaration()); err != nil {
 				return fmt.Errorf("declare %s: %w", each.name, err)
 			}
 		}

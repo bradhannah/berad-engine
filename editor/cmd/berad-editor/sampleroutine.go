@@ -126,6 +126,21 @@ func (b *routineBuilder) wait(parent ids.ULID, amount int, unit string) ids.ULID
 	})
 }
 
+// serveWait waits as long as serving takes: the shop's constant, its
+// minutes typed as well.
+func (b *routineBuilder) serveWait(parent ids.ULID, values shopValues) ids.ULID {
+	return b.node(flow.KindWait, parent, map[string]any{
+		"duration": flow.Duration{
+			Amount: serveMinutes, Unit: flow.UnitMinutes, Clock: flow.ClockGame, Constant: worldValue(values.serveMinutes),
+		},
+	})
+}
+
+// sayValue says what a value or a constant holds.
+func (b *routineBuilder) sayValue(parent ids.ULID, ref flow.ValueRef) ids.ULID {
+	return b.node(flow.KindSay, parent, map[string]any{flow.ParamMessage: []flow.Segment{{Text: "", Ref: &ref}}})
+}
+
 // serving sets whether the clerk is serving.
 func (b *routineBuilder) serving(parent ids.ULID, values shopValues, serving string) ids.ULID {
 	return b.node(flow.KindSetValue, parent, setTo(npcValue(values.serving), serving))
@@ -236,13 +251,13 @@ func clerksDay(
 	toDoor, sleep := made.goTo(none, anchors, anchors.door), made.wait(none, nightHours, flow.UnitHours)
 	toDesk := made.goTo(shop, anchors, anchors.desk)
 	chime := made.node(flow.KindPlaySound, shop, map[string]any{"cue": chimeCue, "loudness": flow.LoudnessAsCue})
-	greet := made.show(shop, flow.KindSay, "Shop's open!")
+	greet := made.sayValue(shop, npcValue(values.greeting))
 	customer := localValue(made.local("customer", worldstate.TypeNPC))
 	find := made.node(flow.KindFindNPC, shop, map[string]any{
 		"within": shopWithin, "where": npcValue(values.waiting), "is": json.RawMessage(shopYes), "into": customer,
 	})
 	serving, open := made.logServing(shop, customer), made.serving(shop, values, shopYes)
-	serve, done := made.wait(shop, serveMinutes, flow.UnitMinutes), made.serving(shop, values, shopNo)
+	serve, done := made.serveWait(shop, values), made.serving(shop, values, shopNo)
 	choose := made.node(flow.KindRandom, shop, map[string]any{"options": []flow.Share{
 		share("o1", "tidy the shelf", tidyShare), share("o2", "stretch", stretchShare),
 	}})
