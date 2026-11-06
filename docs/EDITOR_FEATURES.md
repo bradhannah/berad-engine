@@ -579,8 +579,14 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   are deleted under the same rules as values. Their text takes markup for
   colour, bold and italic, and nothing that changes the flow, such as a
   pause. Long text is not paged for now. They are built once the Project
-  window's new design is settled. *Open:* whether a path says which it is,
-  as `const.` and `var.`.
+  window's new design is settled.
+- **Agreed (2026-11-06):** a constant belongs wherever a designer might
+  change a typed-in value later, rather than hunt for where it was typed.
+  Paths say which they are, as `const.` and `var.`, wherever the two mix,
+  and not inside their own lists. An NPC's or a zone's constant can hold a
+  value of its own for each one, edited on its inspector and in a table in
+  the Constants window, which is World state's third part. Markup comes with
+  them. [Increment 33](increments/0033-constants.md) plans them.
 - **Removed (2026-11-06):** Text documents, a placeholder kept to prove the
   text field and picking a place, are gone, as constants will hold a game's
   text ([increment 31](increments/0031-no-text-documents.md)).
