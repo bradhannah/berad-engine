@@ -16,6 +16,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/valuetree"
+	"github.com/bradhannah/berad-engine/editor/views/writesheet"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -27,6 +29,7 @@ const (
 	heldTextHeight = 160
 	heldTextID     = "held-value"
 	useDefaultID   = "use-default"
+	writeID        = "write"
 	holdersShown   = 8
 	previewRunes   = 32
 	quoteOpen      = "“"
@@ -41,6 +44,7 @@ type heldConstant struct {
 	text       *ui.TextField
 	number     *ui.TextField
 	useDefault *ui.Button
+	write      *ui.Button
 	kind       worldstate.Type
 }
 
@@ -50,6 +54,7 @@ func newHeldConstant(theme *ui.Theme) heldConstant {
 		text:       ui.NewTextField(heldTextID, textedit.NewField("", true, worldstate.MaxConstantText), true, theme),
 		number:     ui.NewTextField(heldTextID, textedit.NewField("", false, maxNumberText), false, theme),
 		useDefault: ui.NewButton(useDefaultID, "Use the default"),
+		write:      ui.NewButton(writeID, "Write…"),
 		kind:       worldstate.TypeText,
 	}
 }
@@ -243,7 +248,14 @@ func (s *State) layoutHeld(panel image.Rectangle) {
 	s.held.text.Rect, s.held.number.Rect = ui.Zero(), ui.Zero()
 	s.held.field().Rect = image.Rect(left, top, left+width, top+height)
 	top += height + ui.Gap
-	s.held.useDefault.Rect = image.Rect(left, top, left+min(width, s.theme.TextWidth(s.held.useDefault.Label)+
+	s.held.write.Rect = ui.Zero()
+	from := left
+	if s.held.kind == worldstate.TypeText {
+		writeWidth := s.theme.TextWidth(s.held.write.Label) + ui.Half*ui.Inset
+		s.held.write.Rect = image.Rect(left, top, left+writeWidth, top+ui.ButtonH)
+		from += writeWidth + ui.Gap
+	}
+	s.held.useDefault.Rect = image.Rect(from, top, from+min(width, s.theme.TextWidth(s.held.useDefault.Label)+
 		ui.Half*ui.Inset), top+ui.ButtonH)
 	bottom := panel.Max.Y - ui.Inset
 	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
@@ -252,6 +264,11 @@ func (s *State) layoutHeld(panel image.Rectangle) {
 // updateHeld handles Use the default, which clears the NPC's or zone's own
 // value.
 func (s *State) updateHeld(input *ui.Input, ctx *frame.Context, selected item) {
+	if s.held.write.Update(input) {
+		s.openSheet(ctx, selected)
+
+		return
+	}
 	if !s.held.useDefault.Update(input) {
 		return
 	}
@@ -310,6 +327,7 @@ func (s *State) drawHeld(screen *ebiten.Image, selected item, left, top, width i
 	s.theme.Heading(screen, "VALUE", left, top)
 	s.held.field().Draw(screen)
 	s.held.useDefault.Draw(screen, s.theme)
+	s.held.write.Draw(screen, s.theme)
 	template := "its template"
 	if id, inTemplate := s.shown.catalog.World().Template(selected.declared.ID); inTemplate {
 		if declared, found := s.shown.catalog.World().Value(id); found {
@@ -399,4 +417,125 @@ func words(declared worldstate.Declaration, catalog *worldstate.Catalog) string 
 	}
 
 	return strings.Join(said, "\n")
+}
+
+// openSheet opens the writing sheet for a text constant: its default, and
+// for a template's, each NPC's or zone's own value, starting with the one
+// selected. What is typed in the inspector is saved first.
+func (s *State) openSheet(ctx *frame.Context, selected item) {
+	declared := selected.declared
+	if !declared.IsConstant() || declared.Type != worldstate.TypeText || (s.Unsaved(ctx.Docs) > 0 && !s.Save(ctx)) {
+		return
+	}
+	list := selected.list
+	if selected.kind == itemHeld {
+		world, _ := valuetree.World(ctx.Docs)
+		list = world
+	}
+	catalog := s.shown.catalog
+	holders := []writesheet.Holder{{Key: "", Label: "Default", Text: declared.Zero().Text}}
+	chosen := 0
+	if template, inTemplate := catalog.World().Template(declared.ID); inTemplate && list.Document == worldstate.ID() {
+		for _, holder := range catalog.Holders(template) {
+			owner, _ := catalog.Owner(holder)
+			value, _ := ownValue(declared, owner)
+			holders = append(holders, writesheet.Holder{Key: holder.String(), Label: owner.Name + "'s own",
+				Text: value.Text})
+			if selected.kind == itemHeld && selected.ownerID == holder {
+				chosen = len(holders) - 1
+			}
+		}
+	}
+	said := ""
+	if s.usesOf == s.list.Selected && len(s.uses) > 0 {
+		said = "used in " + s.uses[0].Name
+	}
+	s.sheet = writesheet.New(s.theme, list.Values.Path(declared.ID), holders, chosen, said)
+	s.sheetOf, s.sheetIn = declared.ID, list
+}
+
+// updateSheet gives a frame to the writing sheet, saving what it hands
+// back, and closes it when it is done.
+func (s *State) updateSheet(input *ui.Input, ctx *frame.Context) {
+	if !s.syncSheet(ctx.Docs) {
+		s.sheet = nil
+
+		return
+	}
+	saving, open := s.sheet.Update(input, s.screen(), ctx.Clipboard)
+	if saving != nil {
+		s.saveSheet(ctx, *saving)
+	}
+	if !open {
+		s.sheet = nil
+	}
+}
+
+// saveSheet saves text written in the sheet: the constant's default, or an
+// NPC's or zone's own value.
+func (s *State) saveSheet(ctx *frame.Context, saving writesheet.Saving) {
+	declared, found := s.sheetIn.Values.Value(s.sheetOf)
+	if !found {
+		return
+	}
+	value := worldstate.NoValue()
+	value.Type, value.Text = worldstate.TypeText, saving.Text
+	if saving.Key == "" {
+		declared.Default = value.Encode()
+		s.change(ctx, s.sheetIn, setOnly(declared), "Saved "+declared.Name+"'s default.")
+
+		return
+	}
+	owner, err := ids.Parse(saving.Key)
+	if err != nil {
+		return
+	}
+	held, known := s.shown.catalog.Owner(owner)
+	if !known {
+		return
+	}
+	s.setOwnConstant(ctx, item{
+		kind: itemHeld, scope: held.Scope, list: s.sheetIn, declared: declared, owner: held, ownerID: owner, path: "",
+	}, value.Encode(), "Saved "+held.Name+"'s "+declared.Name+".")
+}
+
+// syncSheet gives the sheet what is saved now, as documents change, and
+// reports whether the constant it writes is still declared.
+func (s *State) syncSheet(docs frame.Docs) bool {
+	list, loaded := valuetree.Owned(docs, s.sheetIn.Document)
+	if s.sheetIn.Document == worldstate.ID() {
+		list, loaded = valuetree.World(docs)
+	}
+	if !loaded {
+		return false
+	}
+	declared, found := list.Values.Value(s.sheetOf)
+	if !found {
+		return false
+	}
+	s.sheetIn = list
+	s.sheet.SetSaved("", declared.Zero().Text)
+	catalog := s.shown.catalog
+	if template, inTemplate := catalog.World().Template(declared.ID); inTemplate && list.Document == worldstate.ID() {
+		for _, holder := range catalog.Holders(template) {
+			owner, _ := catalog.Owner(holder)
+			value, _ := ownValue(declared, owner)
+			s.sheet.SetSaved(holder.String(), value.Text)
+		}
+	}
+
+	return true
+}
+
+// sheetState answers "sheet", whether the writing sheet is open, and the
+// sheet's own states while it is.
+func (s *State) sheetState(state string) (bool, bool) {
+	if state == "sheet" {
+		return s.sheet != nil, true
+	}
+	if s.sheet == nil {
+		return false, false
+	}
+
+	return s.sheet.HasState(state)
 }

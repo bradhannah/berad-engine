@@ -89,6 +89,10 @@ var (
 	sansRegular []byte
 	//go:embed fonts/IBMPlexSans-SemiBold.ttf
 	sansSemiBold []byte
+	//go:embed fonts/IBMPlexSans-Italic.ttf
+	sansItalic []byte
+	//go:embed fonts/IBMPlexSans-SemiBoldItalic.ttf
+	sansSemiBoldItalic []byte
 	//go:embed fonts/IBMPlexMono-Regular.ttf
 	monoRegular []byte
 	//go:embed fonts/IBMPlexMono-SemiBold.ttf
@@ -183,16 +187,19 @@ func ColorShade() color.RGBA { return HexAlpha(0, shadeAlpha) }
 
 // Theme holds the fonts every widget draws with.
 type Theme struct {
-	// Face draws text, Strong its semi-bold form, Small the small uppercase
+	// Face draws text, Strong its semi-bold form, Italic and StrongItalic
+	// their italics, for a message's markup, Small the small uppercase
 	// labels, Title headings, Mono and MonoStrong numbers, times and IDs,
 	// and Display large figures.
-	Face       *etext.GoTextFace
-	Strong     *etext.GoTextFace
-	Small      *etext.GoTextFace
-	Title      *etext.GoTextFace
-	Mono       *etext.GoTextFace
-	MonoStrong *etext.GoTextFace
-	Display    *etext.GoTextFace
+	Face         *etext.GoTextFace
+	Strong       *etext.GoTextFace
+	Italic       *etext.GoTextFace
+	StrongItalic *etext.GoTextFace
+	Small        *etext.GoTextFace
+	Title        *etext.GoTextFace
+	Mono         *etext.GoTextFace
+	MonoStrong   *etext.GoTextFace
+	Display      *etext.GoTextFace
 	// Font lays out and draws editable text.
 	Font *berad.Font
 	// Text draws laid-out editable text.
@@ -205,6 +212,7 @@ func NewTheme() (*Theme, error) {
 	sources := map[string]*etext.GoTextFaceSource{}
 	for name, data := range map[string][]byte{
 		"sans": sansRegular, "sans-bold": sansSemiBold, "mono": monoRegular, "mono-bold": monoSemiBold,
+		"sans-italic": sansItalic, "sans-bold-italic": sansSemiBoldItalic,
 	} {
 		source, err := etext.NewGoTextFaceSource(bytes.NewReader(data))
 		if err != nil {
@@ -235,7 +243,8 @@ func NewTheme() (*Theme, error) {
 	}
 
 	return &Theme{
-		Face: face("sans", TextSize), Strong: face("sans-bold", TextSize), Small: face("sans-bold", LabelSize),
+		Face: face("sans", TextSize), Strong: face("sans-bold", TextSize), Italic: face("sans-italic", TextSize),
+		StrongItalic: face("sans-bold-italic", TextSize), Small: face("sans-bold", LabelSize),
 		Title: face("sans-bold", TitleSize), Mono: face("mono", MonoSize), MonoStrong: face("mono-bold", MonoSize),
 		Display: face("mono-bold", DisplaySize), Font: font, Text: renderer,
 	}, nil

@@ -60,6 +60,7 @@ const (
 	pickPlaceID   = "value-pick-place"
 	placeBoxID    = "value-place"
 	clearPlaceID  = "value-clear-place"
+	writeID       = "write"
 )
 
 // What each role means, under its buttons.
@@ -101,8 +102,10 @@ type Form struct {
 	defaults                                         []*ui.Button
 	choices                                          []choiceRow
 	addChoice                                        *ui.Button
-	// Delete removes the declaration; the window places it.
+	// Delete removes the declaration; the window places it. Write opens a
+	// text constant's default in the writing sheet.
 	Delete *ui.Button
+	Write  *ui.Button
 	// heads are where each label goes, by label; hint is where the line
 	// under the name goes, when it has one.
 	heads map[string]image.Point
@@ -155,6 +158,7 @@ func New(theme *ui.Theme) *Form {
 		PickPlace: ui.NewButton(pickPlaceID, "Pick on map"), ClearPlace: ui.NewButton(clearPlaceID, "Clear"),
 		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceWarn: false, PlaceLit: false, PlaceOpen: false,
 		means: image.Pt(0, 0), meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
+		Write: ui.NewButton(writeID, "Write…"),
 	}
 	form.PickPlace.Primary = true
 	form.description.Placeholder = "What it is for, for whoever reads it next"
@@ -380,7 +384,7 @@ func (f *Form) Layout(left, top, width int) int {
 	for _, field := range f.Fields() {
 		field.Rect = ui.Zero()
 	}
-	f.long.Rect, f.text.Rect = ui.Zero(), ui.Zero()
+	f.long.Rect, f.text.Rect, f.Write.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	f.addChoice.Rect = ui.Zero()
 	for _, row := range f.choices {
 		row.remove.Rect = ui.Zero()
@@ -496,18 +500,29 @@ func (f *Form) layoutValue(left, top, width int) int {
 		f.number.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
 	case worldstate.TypeText:
-		height := ui.ButtonH
-		if f.shown.Constant {
-			height = longHeight
-		}
-		f.textField().Rect = image.Rect(left, top, left+width, top+height)
-		top += height + fieldSpace
+		top = f.layoutText(left, top, width)
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
 		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		top = buttonRows(f.defaults, left, top, width, choicesPerLine)
 	}
 
 	return top
+}
+
+// layoutText places a text's default: a value's one line, or a constant's
+// few, with Write… under them.
+func (f *Form) layoutText(left, top, width int) int {
+	if !f.shown.Constant {
+		f.text.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
+
+		return top + ui.ButtonH + fieldSpace
+	}
+	f.long.Rect = image.Rect(left, top, left+width, top+longHeight)
+	top += longHeight + rowSpace
+	f.Write.Rect = image.Rect(left, top, left+min(width, f.theme.TextWidth(f.Write.Label)+ui.Half*ui.Inset),
+		top+ui.ButtonH)
+
+	return top + ui.ButtonH + fieldSpace
 }
 
 // buttonRows places buttons in rows of at most perRow, and returns where the
@@ -561,17 +576,17 @@ const (
 	// map, and ChangeChoosePlace to open its list of places.
 	ChangePickPlace
 	ChangeChoosePlace
+	// ChangeWrite asks the window to open a text constant's default in the
+	// writing sheet.
+	ChangeWrite
 )
 
 // Update handles the form's buttons. A changed declaration is returned for
 // the window to save; buttons never wait for Save.
 func (f *Form) Update(input *ui.Input) (worldstate.Declaration, Change) {
 	declared := f.shown.Clone()
-	if f.Delete.Update(input) {
-		return declared, ChangeDelete
-	}
-	if f.DeclareNew.Update(input) {
-		return declared, ChangeDeclareNew
+	if change := f.updateActions(input); change != ChangeNone {
+		return declared, change
 	}
 	if change := f.updatePlace(input); change != ChangeNone {
 		if change == ChangeValue {
@@ -601,6 +616,21 @@ func (f *Form) Update(input *ui.Input) (worldstate.Declaration, Change) {
 	}
 
 	return declared, ChangeNone
+}
+
+// updateActions handles the buttons that ask the window to act: Delete,
+// Write… and Declare a new value….
+func (f *Form) updateActions(input *ui.Input) Change {
+	switch {
+	case f.Delete.Update(input):
+		return ChangeDelete
+	case f.Write.Update(input):
+		return ChangeWrite
+	case f.DeclareNew.Update(input):
+		return ChangeDeclareNew
+	}
+
+	return ChangeNone
 }
 
 // updateDefaults handles a click on a value's default.
@@ -775,7 +805,7 @@ func (f *Form) Buttons() []*ui.Button {
 		buttons = append(buttons, row.remove)
 	}
 
-	return append(buttons, f.addChoice, f.DeclareNew, f.PickPlace, f.ClearPlace, f.Delete)
+	return append(buttons, f.addChoice, f.DeclareNew, f.PickPlace, f.ClearPlace, f.Write, f.Delete)
 }
 
 // Locate finds a field or button by its ID.

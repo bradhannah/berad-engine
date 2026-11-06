@@ -51,7 +51,7 @@ func (n *NPC) actSay(world World, node flow.Node) (string, bool) {
 		return flow.OutputNext, true
 	}
 	said := n.speech.Say(text, showTicks(node, text))
-	n.writeLine(world, node, n.names(world).NPC(n.NPC)+" says: "+text)
+	n.writeLine(world, node, n.names(world).NPC(n.NPC)+" says: "+show.Plain(text))
 	if !waitsToFinish(node) {
 		return flow.OutputNext, true
 	}
@@ -78,7 +78,7 @@ func (n *NPC) actShowMessage(world World, node flow.Node) (string, bool) {
 	}
 	away, _ := node.Choice(flow.ParamAway) //nolint:errcheck // A box with no way set goes when read.
 	box := world.Stage.Ask(text, name, showTicks(node, text), away == flow.AwayClosed)
-	n.writeLine(world, node, "Box: "+text)
+	n.writeLine(world, node, "Box: "+show.Plain(text))
 	if !waitsToFinish(node) {
 		return flow.OutputNext, true
 	}

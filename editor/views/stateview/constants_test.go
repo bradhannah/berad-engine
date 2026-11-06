@@ -163,3 +163,37 @@ func TestFindAConstantByItsWords(t *testing.T) {
 		t.Fatalf("a constant is found by what it says, and shown: %q", f.status())
 	}
 }
+
+// TestWritingInTheSheet opens the guards' greeting in the writing sheet,
+// writes its default, switches to Guard 1's own and writes that, and finds
+// both saved.
+func TestWritingInTheSheet(t *testing.T) {
+	t.Parallel()
+	f := constantsFixture(t)
+	f.click("row:npc.guards.greeting")
+	f.answerUses(nil)
+	f.click("ui:write")
+	if !f.has("sheet") || !f.has("sheet-holder=Default") {
+		t.Fatal("Write… opens the sheet on the default")
+	}
+	f.keys("Cmd+A", "Backspace")
+	f.typed("Halt! [b]Who[/b] goes there?")
+	f.click("ui:sheet-holder")
+	f.click("menu:sheet-holder-1")
+	if !f.has("sheet-holder=Guard 1's own") || !f.has("sheet-text=Stand fast, brave one.") {
+		t.Fatal("the list switches to Guard 1's own")
+	}
+	f.keys("Cmd+A", "Backspace")
+	f.typed("Stand fast.\nThe gate is shut.")
+	f.click("ui:sheet-done")
+	greeting, _ := f.world().Value(greetingID)
+	if greeting.Zero().Text != "Halt! [b]Who[/b] goes there?" {
+		t.Fatalf("the default is saved: %q %q", greeting.Zero().Text, f.status())
+	}
+	if own, has := f.npcDoc(guardID).Owned.ConstantValue(greeting); !has || own.Text != "Stand fast.\nThe gate is shut." {
+		t.Fatalf("Guard 1's own is saved: %+v", own)
+	}
+	if f.has("sheet") {
+		t.Fatal("Done closes the sheet")
+	}
+}

@@ -182,6 +182,8 @@ func (s *State) updateDeclared(input *ui.Input, ctx *frame.Context, selected ite
 		s.startDelete(ctx, selected)
 	case valueform.ChangeDeclareNew:
 		s.openFind(ctx, strings.TrimSuffix(selected.path, selected.declared.Name))
+	case valueform.ChangeWrite:
+		s.openSheet(ctx, selected)
 	case valueform.ChangeNone, valueform.ChangePickPlace, valueform.ChangeChoosePlace:
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/show"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -27,15 +28,16 @@ type Line struct {
 // carries on.
 func (n *NPC) actLog(world World, node flow.Node) {
 	if line, ok := n.messageText(world, node); ok {
-		n.writeLine(world, node, line)
+		n.writeLine(world, node, show.Plain(line))
 	}
 }
 
 // names is what turns the documents and places values refer to into text.
 func (n *NPC) names(world World) namer { return namer{names: world.Names, state: world.State} }
 
-// messageText is a node's message as it reads now: its text, and each value
-// in it as its text form; ok is false for a message that can't be read.
+// messageText is a node's message as it reads now: its text, with its
+// markup, and each value in it as its text form, written so it is never
+// read as markup; ok is false for a message that can't be read.
 func (n *NPC) messageText(world World, node flow.Node) (string, bool) {
 	segments, err := node.Message()
 	if err != nil {
@@ -55,7 +57,7 @@ func (n *NPC) messageText(world World, node flow.Node) (string, bool) {
 
 			continue
 		}
-		text.WriteString(worldstate.Text(declared, value, names))
+		text.WriteString(show.Escape(worldstate.Text(declared, value, names)))
 	}
 
 	return text.String(), true

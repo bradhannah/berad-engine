@@ -34,6 +34,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
 	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
+	"github.com/bradhannah/berad-engine/editor/views/writesheet"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -156,6 +157,11 @@ type State struct {
 	// template's constant, by where each is drawn.
 	held    heldConstant
 	holders map[string]image.Rectangle
+	// sheet is the writing sheet while it is open, writing a text constant
+	// declared in sheetIn.
+	sheet   *writesheet.Sheet
+	sheetOf ids.ULID
+	sheetIn valuetree.List
 }
 
 // New returns the Values window for the project's world state.
@@ -198,6 +204,7 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 		menuOf: "", revealPath: "", revealRename: false, nameAdded: false, find: nil,
 		findButton: ui.NewButton(findID, "Find a value"),
 		findUses:   nil, lastGroup: "", signal: newSignalFields(theme), held: newHeldConstant(theme), holders: nil,
+		sheet: nil, sheetOf: ids.ULID{}, sheetIn: valuetree.List{Document: ids.ULID{}, Edit: "", Values: nil},
 		path: ui.NewTextField(pathID, textedit.NewField("", false, worldstate.MaxName), false, theme), pathOf: "",
 	}
 	view.path.Placeholder = "such as george or market"
@@ -256,6 +263,9 @@ func (s *State) about() string {
 // Focused returns the focused text field.
 // While Find is open, it is Find's.
 func (s *State) Focused() *ui.TextField {
+	if s.sheet != nil {
+		return s.sheet.Focused()
+	}
 	if s.find != nil {
 		return s.find.Focused()
 	}
@@ -397,6 +407,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 // or Find while one is open, and reports whether one was.
 func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
 	switch {
+	case s.sheet != nil:
+		s.updateSheet(input, ctx)
 	case s.dialog != nil:
 		s.updateDialog(input, ctx)
 	case s.menu.IsOpen():
@@ -553,6 +565,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	switch {
 	case kind+":" == statePrefix:
 		return image.Pt(0, 0), loaded && s.hasState(docs, value)
+	case s.sheet != nil:
+		return s.sheet.Locate(name)
 	case s.dialog != nil:
 		return s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
 	case s.find != nil:
@@ -597,7 +611,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if widget == deleteSignalID && !s.signal.remove.Rect.Empty() {
 		return ui.Center(s.signal.remove.Rect), true
 	}
-	buttons := append(append([]*ui.Button{s.findButton, s.held.useDefault}, s.adds...), s.templates...)
+	buttons := append(append([]*ui.Button{s.findButton, s.held.useDefault, s.held.write}, s.adds...), s.templates...)
 	for _, button := range append(buttons, s.takeOff) {
 		if button.ID == widget && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
@@ -608,6 +622,9 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 }
 
 func (s *State) hasState(docs frame.Docs, state string) bool {
+	if found, handled := s.sheetState(state); handled {
+		return found
+	}
 	if s.find != nil {
 		if found, handled := s.find.HasState(docs, s.screen(), state); handled {
 			return found
@@ -711,6 +728,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	}
 	if s.find != nil {
 		s.find.Draw(screen, docs, s.screen())
+	}
+	if s.sheet != nil {
+		s.sheet.Draw(screen, s.screen())
 	}
 }
 
