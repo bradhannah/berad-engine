@@ -28,7 +28,7 @@ func (f *fixture) withConstants() {
 	restock := worldstate.NewConstant(restockID, "restock_minutes", worldstate.ScopeWorld, worldstate.TypeInteger)
 	restock.Default = json.RawMessage(`30`)
 	motto := worldstate.NewConstant(mottoID, "motto_page", worldstate.ScopeWorld, worldstate.TypeText)
-	motto.Default = worldstate.Value{Type: worldstate.TypeText, Text: strings.Repeat("Fair winds. ", 30)}.Encode()
+	motto.Default = worldstate.Value{Type: worldstate.TypeText, Text: strings.Repeat("Fair winds. ", 60)}.Encode()
 	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
 		Add: []worldstate.Declaration{greeting, restock, motto}, Set: nil, Remove: nil,
 	})
@@ -137,5 +137,34 @@ func TestAWaitForAConstant(t *testing.T) {
 	move.click("valuerow:const.world.far_walk")
 	if !move.has("problem:" + flow.KindMove + ":1") {
 		t.Fatal("a constant outside a Move's 64 tiles is a problem")
+	}
+}
+
+// TestLongTextWarnings warns of a Say's tag left open, of a Show message
+// that goes when read with a page-long constant, which would go before it
+// was read, and, going when closed, of one longer than a box holds.
+func TestLongTextWarnings(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "[b]Mackerel today")
+	if !f.has("warning:" + flow.KindSay + ":1=Its markup: [b] is never closed.") {
+		t.Fatal("a tag left open is warned of")
+	}
+	box := withNode(t, flow.KindShowMessage)
+	box.withConstants()
+	box.typeInto("param-message", "{const.world.motto_page}")
+	if !box.has("warning:" + flow.KindShowMessage + ":1") {
+		t.Fatal("a page-long constant that goes when read would go before it was read")
+	}
+	shown := box.nth(flow.KindShowMessage, 1)
+	shown, err := shown.WithParam(flow.ParamAway, flow.AwayClosed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box.replaceNode(shown)
+	if !box.has("warning:" + flow.KindShowMessage + ":1=Its line can be longer than one box holds. " +
+		"Paging is not built yet.") {
+		t.Fatal("a box closed by the player still warns of a text longer than one box holds")
 	}
 }

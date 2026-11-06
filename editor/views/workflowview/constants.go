@@ -7,6 +7,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/show"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -199,8 +200,75 @@ func (s *State) warningOf(node flow.Node, docs frame.Docs) string {
 	if warning := s.signalWarning(node, docs); warning != "" {
 		return warning
 	}
+	if warning := s.messageWarning(node, docs); warning != "" {
+		return warning
+	}
 
 	return s.constantWarning(node, docs)
+}
+
+// messageWarning warns of a Say's or a Show message's line: a tag in its
+// typed words left open or not known, a line that would go before it was
+// read, as it needs longer than a line or a box shows for, or one too long
+// for one box, while there is no paging.
+func (s *State) messageWarning(node flow.Node, docs frame.Docs) string {
+	if node.Kind != flow.KindSay && node.Kind != flow.KindShowMessage {
+		return ""
+	}
+	segments, err := node.Message()
+	if err != nil {
+		return ""
+	}
+	var typed, longest strings.Builder
+	for _, segment := range segments {
+		if segment.Ref == nil {
+			typed.WriteString(segment.Text)
+			longest.WriteString(segment.Text)
+
+			continue
+		}
+		longest.WriteString(s.longestText(docs, *segment.Ref))
+	}
+	if problems := show.Problems(typed.String()); len(problems) > 0 {
+		return "Its markup: " + problems[0] + "."
+	}
+	goesWhenRead := !node.UsesSeconds() && (node.Kind == flow.KindSay || choiceOf(node, flow.ParamAway) == flow.AwayRead)
+	if goesWhenRead && show.TooLongToRead(longest.String()) {
+		return "Its line can take longer to read than the ten seconds it shows for, so it would go before it was " +
+			"read. A Show message that goes when the player closes it suits a long text."
+	}
+	if utf8.RuneCountInString(show.Plain(longest.String())) > longBox {
+		return "Its line can be longer than one box holds. Paging is not built yet."
+	}
+
+	return ""
+}
+
+// longBox is how many characters a box holds before it would need paging:
+// its lines, about seventy characters each.
+const longBox = 560
+
+// longestText is the longest a value or constant in a line can be: a
+// constant's longest of its default and every NPC's or zone's own; a
+// value's nothing, as the game sets it.
+func (s *State) longestText(docs frame.Docs, ref flow.ValueRef) string {
+	declared, _, problem := s.resolve(docs, ref)
+	if problem != "" || !declared.IsConstant() || declared.Type != worldstate.TypeText {
+		return ""
+	}
+	longest := declared.Zero().Text
+	catalog := s.catalog(docs)
+	if template, inTemplate := catalog.World().Template(declared.ID); inTemplate {
+		for _, holder := range catalog.Holders(template) {
+			owner, _ := catalog.Owner(holder)
+			if value, own := owner.Owned.ConstantValue(declared); own &&
+				utf8.RuneCountInString(value.Text) > utf8.RuneCountInString(longest) {
+				longest = value.Text
+			}
+		}
+	}
+
+	return longest
 }
 
 // setProblem says what a Set value cannot set: a constant, another's value,

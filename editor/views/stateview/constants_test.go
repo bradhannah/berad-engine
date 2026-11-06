@@ -197,3 +197,25 @@ func TestWritingInTheSheet(t *testing.T) {
 		t.Fatal("Done closes the sheet")
 	}
 }
+
+// TestAMarkupWarning warns of a tag left open in a text constant.
+func TestAMarkupWarning(t *testing.T) {
+	t.Parallel()
+	f := constantsFixture(t)
+	f.click("row:world.letter")
+	if f.has("markup-warning") {
+		t.Fatal("a letter with no markup has no warning")
+	}
+	letter, _ := f.world().Value(letterID)
+	letter.Default = json.RawMessage(`"[b]Dear Marta"`)
+	f.docs.View(worldstate.ID(), func(document client.Document) {
+		if _, err := document.Model.(*stateplugin.Document).State.Values.Replace(letter); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.docs.Touch(worldstate.ID())
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("markup-warning") {
+		t.Fatal("a tag left open is warned of")
+	}
+}

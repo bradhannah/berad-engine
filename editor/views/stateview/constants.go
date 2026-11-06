@@ -19,6 +19,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/editor/views/writesheet"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/show"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
@@ -340,9 +341,12 @@ func (s *State) drawHeld(screen *ebiten.Image, selected item, left, top, width i
 		about = "It has the default, from " + template + ". Type its own value here."
 	}
 	under := s.held.useDefault.Rect.Max.Y + ui.Gap
-	for index, line := range s.theme.Wrap(about, width) {
+	lines := s.theme.Wrap(about, width)
+	for index, line := range lines {
 		s.theme.DrawText(screen, line, left, under+index*ui.LineHeight, ui.ColorMuted())
 	}
+	value, _ := ownValue(selected.declared, selected.owner)
+	s.drawMarkupWarning(screen, selected.declared, value, left, under+len(lines)*ui.LineHeight+ui.Gap, width)
 	s.save.Draw(screen, s.theme)
 }
 
@@ -533,9 +537,47 @@ func (s *State) sheetState(state string) (bool, bool) {
 	if state == "sheet" {
 		return s.sheet != nil, true
 	}
+	if state == "markup-warning" {
+		return s.markupWarning(), true
+	}
 	if s.sheet == nil {
 		return false, false
 	}
 
 	return s.sheet.HasState(state)
+}
+
+// drawMarkupWarning warns of a tag in a text constant's value left open or
+// not known, and returns where the next part goes.
+func (s *State) drawMarkupWarning(screen *ebiten.Image, declared worldstate.Declaration, value worldstate.Value,
+	left, top, width int,
+) int {
+	if !declared.IsConstant() || declared.Type != worldstate.TypeText {
+		return top
+	}
+	problems := show.Problems(value.Text)
+	if len(problems) == 0 {
+		return top
+	}
+	for _, line := range s.theme.Wrap("Its markup: "+problems[0]+". It shows as typed.", width) {
+		s.theme.DrawText(screen, line, left, top, ui.ColorWarn())
+		top += ui.LineHeight
+	}
+
+	return top
+}
+
+// markupWarning answers "markup-warning", whether the selected text
+// constant's value has a tag left open or not known.
+func (s *State) markupWarning() bool {
+	selected, found := s.selected()
+	if !found || !selected.declared.IsConstant() || selected.declared.Type != worldstate.TypeText {
+		return false
+	}
+	value := selected.declared.Zero()
+	if selected.kind == itemHeld {
+		value, _ = ownValue(selected.declared, selected.owner)
+	}
+
+	return len(show.Problems(value.Text)) > 0
 }

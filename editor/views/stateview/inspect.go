@@ -250,6 +250,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	case itemDeclared:
 		s.form.Draw(screen)
 		under := s.drawUses(screen, left, s.form.Layout(left, top, width), width)
+		under = s.drawMarkupWarning(screen, selected.declared, selected.declared.Zero(), left, under, width)
 		s.drawHolders(screen, selected, left, under+ui.Gap, width)
 		s.save.Draw(screen, s.theme)
 		s.form.Delete.Draw(screen, s.theme)
