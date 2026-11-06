@@ -174,6 +174,7 @@ type State struct {
 	sizeBns     []*ui.Button
 	grid        *tileGrid
 	pictures    map[ids.ULID]*tileart.Picture
+	maps        map[ids.ULID]*minimap
 	home        homeState
 	barBottom   int
 	place       string
@@ -227,8 +228,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
-		pictures: map[ids.ULID]*tileart.Picture{}, home: newHomeState(), barBottom: 0, place: placeHome,
-		placeBefore: "", wasNarrowed: false,
+		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{},
+		home: newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
 		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0,
@@ -498,6 +499,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	frame.CommonKeys(input, ctx)
 	s.updateChecks(ctx)
 	s.syncPictures(ctx)
+	s.syncCards(ctx)
 	s.updatePanes(input, ctx)
 	s.followNarrowing()
 	s.buttons(input, ctx)
@@ -1423,9 +1425,12 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.newMenu.Draw(screen, s.theme)
 	s.drawBar(screen)
 	s.drawHead(screen)
-	if s.gridShown() {
+	switch s.viewShown() {
+	case viewCards:
+		s.drawCards(screen, docs)
+	case viewPictures:
 		s.drawPictures(screen, docs)
-	} else {
+	default:
 		s.drawHeadings(screen)
 		s.list.Draw(screen, s.theme)
 	}

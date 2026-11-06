@@ -94,7 +94,10 @@ func (s *State) layoutPanes(docs frame.Docs, content image.Rectangle) {
 	if len(s.columns) > 0 {
 		s.list.Rect.Min.Y += headerHeight
 	}
-	if s.gridShown() {
+	switch s.viewShown() {
+	case viewCards:
+		s.grid.layout(s.list.Rows, s.list.Rect, cardTile())
+	case viewPictures:
 		s.grid.layout(s.list.Rows, s.list.Rect, s.pictureTile())
 	}
 	s.layoutDropdown(things, labels)
