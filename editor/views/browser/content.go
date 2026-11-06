@@ -49,7 +49,7 @@ func (s *State) contentRows(docs frame.Docs, index *project.Index, things []thin
 		return nil
 	}
 
-	return s.folderContent(docs, index, format, path, kept, counted)
+	return s.folderContent(docs, index, format, path, kept, counted, 0)
 }
 
 // placeFolderOf reads the document type and folder of a kind's or a
@@ -82,19 +82,30 @@ func (s *State) keptIDs(things []thing) map[string]bool {
 }
 
 // folderContent lists a folder: its folders, each with how many things it
-// holds, then the things directly in it.
+// holds and, when opened in place, what it holds beneath it; then the
+// things directly in it.
 func (s *State) folderContent(
-	docs frame.Docs, index *project.Index, format, path string, kept map[string]bool, counted placeCounts,
+	docs frame.Docs, index *project.Index, format, path string, kept map[string]bool, counted placeCounts, depth int,
 ) []ui.Row {
 	var rows []ui.Row
 	for _, folder := range index.Folders(format) {
-		id := folderRowID(format, folder)
-		if project.FolderParent(folder) != path || kept != nil && counted.kept[id] == 0 {
+		rowID := folderRowID(format, folder)
+		if project.FolderParent(folder) != path || kept != nil && counted.kept[rowID] == 0 {
 			continue
 		}
-		row := ui.NewRow(id, project.FolderName(folder))
-		row.Icon, row.Detail = ui.IconFolder, s.countLabel(counted, id)
+		row := ui.NewRow(rowID, project.FolderName(folder))
+		row.Icon, row.Detail, row.Indent = ui.IconFolder, s.countLabel(counted, rowID), depth
+		inside := s.folderContent(docs, index, format, folder, kept, counted, depth+1)
+		if len(inside) > 0 {
+			row.Toggle = ui.DisclosureClosed
+			if s.folderOpen(rowID) {
+				row.Toggle = ui.DisclosureOpen
+			}
+		}
 		rows = append(rows, row)
+		if s.folderOpen(rowID) {
+			rows = append(rows, inside...)
+		}
 	}
 	var uses map[ids.ULID]int
 	if format == flow.FormatName {
@@ -102,7 +113,7 @@ func (s *State) folderContent(
 	}
 	for _, entry := range index.OfFormat(format) {
 		if entry.Folder == path && s.keptDocument(docs, entry, kept) {
-			rows = append(rows, s.documentRows(docs, index, entry, uses)...)
+			rows = append(rows, s.documentRows(docs, index, entry, uses, depth)...)
 		}
 	}
 
@@ -126,21 +137,21 @@ func (s *State) keptDocument(docs frame.Docs, entry project.Entry, kept map[stri
 // workflow with how many use it, an NPC with what it follows, and art with
 // its detail.
 func (s *State) documentRows(
-	docs frame.Docs, index *project.Index, entry project.Entry, uses map[ids.ULID]int,
+	docs frame.Docs, index *project.Index, entry project.Entry, uses map[ids.ULID]int, depth int,
 ) []ui.Row {
 	switch entry.Format {
 	case zone.FormatName:
-		return s.zoneRows(index, entry, s.floorsOf(docs, entry.ID), 0, false)
+		return s.zoneRows(index, entry, s.floorsOf(docs, entry.ID), depth, false)
 	case flow.FormatName:
-		return []ui.Row{workflowRow(entry, uses[entry.ID], 0)}
+		return []ui.Row{workflowRow(entry, uses[entry.ID], depth)}
 	case npc.FormatName:
-		return []ui.Row{item(entry, ui.IconNPC, s.follows(docs, index, entry.ID), 0)}
+		return []ui.Row{item(entry, ui.IconNPC, s.follows(docs, index, entry.ID), depth)}
 	case floor.FormatName:
-		return []ui.Row{item(entry, ui.IconFloor, "", 0)}
+		return []ui.Row{item(entry, ui.IconFloor, "", depth)}
 	}
 	info, _ := kindInfoOf(entry.Format)
 
-	return []ui.Row{item(entry, info.icon, paletteDetail(entry), 0)}
+	return []ui.Row{item(entry, info.icon, paletteDetail(entry), depth)}
 }
 
 // worldParts lists World state's Values and Signals.
@@ -247,7 +258,7 @@ func (s *State) matchRows(docs frame.Docs, index *project.Index, things []thing)
 func (s *State) matchRow(docs frame.Docs, index *project.Index, found thing, uses map[ids.ULID]int) []ui.Row {
 	if documentID, err := ids.Parse(found.row.ID); err == nil {
 		if entry, ok := index.Entry(documentID); ok {
-			return s.documentRows(docs, index, entry, uses)
+			return s.documentRows(docs, index, entry, uses, 0)
 		}
 	}
 	row := found.row
@@ -267,7 +278,7 @@ func groupOf(found thing) (string, string, int) {
 	place := kindPlace(kinds[0])
 	label, _ := kindLabel(place)
 	if kinds[0] == floor.FormatName {
-		label = "Floors"
+		label = floorsLabel
 	}
 	rank := slices.Index(placeKinds(), place)
 	folders := found.values[facetFolder]

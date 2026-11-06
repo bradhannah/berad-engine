@@ -166,6 +166,7 @@ type State struct {
 	// shows; placeBefore is the one picked before narrowing showed Matches,
 	// and wasNarrowed whether it did last frame.
 	places      *ui.List
+	columns     []placedColumn
 	home        homeState
 	barBottom   int
 	place       string
@@ -218,7 +219,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		zones: nil, zonesFor: ids.ULID{}, recentZones: nil, zoneNotes: newZoneNotes(theme), zoneNoted: ids.ULID{},
 		loop: newLoopPanel(), loopFor: ids.ULID{},
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
-		places: ui.NewList("places", placeHome), home: newHomeState(), barBottom: 0, place: placeHome,
+		places: ui.NewList("places", placeHome), columns: nil, home: newHomeState(), barBottom: 0, place: placeHome,
 		placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
@@ -487,15 +488,24 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	frame.CommonKeys(input, ctx)
 	s.updateChecks(ctx)
-	if !s.updateDropdown(input) {
-		s.updateBar(input, ctx)
-		s.updatePlaces(input, ctx)
-		s.updateList(input, ctx)
-	}
+	s.updatePanes(input, ctx)
 	s.followNarrowing()
 	s.buttons(input, ctx)
 	s.guardSelection(ctx)
 	s.openContextMenu(ctx.Docs)
+}
+
+// updatePanes handles an open facet's dropdown, which takes the input while
+// it shows, or else the bar, the places, the column headings and the main
+// pane.
+func (s *State) updatePanes(input *ui.Input, ctx *frame.Context) {
+	if s.updateDropdown(input) {
+		return
+	}
+	s.updateBar(input, ctx)
+	s.updatePlaces(input, ctx)
+	s.updateHeader(input, ctx)
+	s.updateList(input, ctx)
 }
 
 // sync keeps the inspector showing what is selected.
@@ -558,7 +568,11 @@ func (s *State) updateList(input *ui.Input, ctx *frame.Context) {
 		s.openRow(ctx)
 	}
 	if result.Toggled != "" {
-		s.closed[result.Toggled] = !s.closed[result.Toggled]
+		key := result.Toggled
+		if _, isFolder := parseFolderRow(key); isFolder {
+			key = openPrefix + key
+		}
+		s.closed[key] = !s.closed[key]
 	}
 	if result.Added != "" {
 		s.create(ctx, sectionNew(result.Added))
@@ -1227,6 +1241,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	switch kind {
 	case "row", toggleKind:
 		return s.locateRow(kind, value, docs)
+	case "sort":
+		return s.locateHeading(value)
 	case "section":
 		s.places.Reveal(sectionPrefix + value)
 
@@ -1372,6 +1388,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))
 	s.newMenu.Draw(screen, s.theme)
 	s.drawBar(screen)
+	s.drawHeadings(screen)
 	s.list.Draw(screen, s.theme)
 	s.drawInspector(screen, docs)
 	s.drawDropdown(screen)

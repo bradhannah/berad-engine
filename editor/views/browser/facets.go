@@ -111,7 +111,7 @@ const zoneWord = "Zone"
 // whether the table lists that kind.
 func kindInfoOf(format string) (kindInfo, bool) {
 	many, listed := map[string]string{
-		zone.FormatName: "Zones", floor.FormatName: "Floors", flow.FormatName: "Workflows", npc.FormatName: "NPCs",
+		zone.FormatName: "Zones", floor.FormatName: floorsLabel, flow.FormatName: "Workflows", npc.FormatName: "NPCs",
 		art.SpriteFormatName: "Sprites", art.PaletteFormatName: "Palettes",
 		artplugin.TemplateFormatName: "Templates", kindSound: "Sounds",
 	}[format]
