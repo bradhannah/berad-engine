@@ -252,8 +252,7 @@ func (s *State) about() string {
 	case PartSignals:
 		return "Signals workflows send and answer. Only the zone running hears one; tell another with a value."
 	case PartConstants:
-		return "Words and numbers the game never changes: the world's, and each zone's and NPC's. " +
-			"Templates give many the same constants, each with a value of its own."
+		return "Words and numbers the game never changes: the world's, and each zone's and NPC's."
 	case PartValues:
 	}
 
@@ -702,7 +701,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.layout()
 	screen.Fill(ui.ColorBackground())
 	s.theme.DrawTitle(screen, "World state › "+s.heading(), ui.Inset, ui.Inset, ui.ColorInk())
-	s.theme.DrawText(screen, s.about(), ui.Inset, ui.Inset+ui.LineHeight, ui.ColorMuted())
+	s.theme.DrawText(screen, s.theme.FitText(s.about(), s.listRight()-ui.Inset), ui.Inset, ui.Inset+ui.LineHeight,
+		ui.ColorMuted())
 	for _, button := range s.adds {
 		button.Draw(screen, s.theme)
 	}

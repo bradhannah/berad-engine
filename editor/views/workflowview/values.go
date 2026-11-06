@@ -709,7 +709,8 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 		default:
 			s.chooseValue(ctx, ctx.Docs, current, param, ref)
 		}
-		ctx.Frame.Status("Declared " + target.Path + ". Change it in " + declaredWhere(target.Scope) + ".")
+		ctx.Frame.Status("Declared " + target.Path + ". Change it in " + declaredWhere(target.Scope, made.constant) +
+			".")
 	})
 }
 
@@ -728,9 +729,13 @@ func (s *State) declareList(docs frame.Docs, target declareTarget) (valuetree.Li
 	return valuetree.Owned(docs, target.Document)
 }
 
-func declaredWhere(scope worldstate.Scope) string {
-	if scope == worldstate.ScopeLocal {
+// declaredWhere names where a value or constant just declared is changed.
+func declaredWhere(scope worldstate.Scope, constant bool) string {
+	switch {
+	case scope == worldstate.ScopeLocal:
 		return "Local values, with no node selected"
+	case constant:
+		return "World state's Constants window"
 	}
 
 	return "World state's Values window"

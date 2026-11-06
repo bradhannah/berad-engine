@@ -154,12 +154,12 @@ func ownValue(declared worldstate.Declaration, owner worldstate.Owner) (worldsta
 }
 
 // preview shows a constant's value in a row: a number as it is, a text's
-// first line, cut short, in quotes.
+// first line as it reads, without its markup, cut short, in quotes.
 func preview(declared worldstate.Declaration, value worldstate.Value) string {
 	if declared.Type != worldstate.TypeText {
 		return declared.Label(value)
 	}
-	first, _, more := strings.Cut(value.Text, "\n")
+	first, _, more := strings.Cut(show.Plain(value.Text), "\n")
 	if utf8.RuneCountInString(first) > previewRunes {
 		first, more = string([]rune(first)[:previewRunes]), true
 	}
@@ -362,12 +362,16 @@ func (s *State) drawHolders(screen *ebiten.Image, selected item, left, top, widt
 	}
 	holders := catalog.Holders(template)
 	declared, _ := catalog.World().Value(template)
+	shown := s.holdersRoom(top, len(holders))
+	if shown < 0 {
+		return
+	}
 	s.theme.Heading(screen, "ON "+strconv.Itoa(len(holders))+" "+strings.ToUpper(plural(selected.scope))+
 		", WITH THE "+strings.ToUpper(declared.Name)+" TEMPLATE", left, top)
 	top += ui.LineHeight
 	for index, holder := range holders {
-		if index == holdersShown {
-			s.theme.DrawText(screen, "and "+strconv.Itoa(len(holders)-holdersShown)+" more", left, top, ui.ColorMuted())
+		if index == shown {
+			s.theme.DrawText(screen, "and "+strconv.Itoa(len(holders)-shown)+" more", left, top, ui.ColorMuted())
 
 			break
 		}
@@ -382,6 +386,24 @@ func (s *State) drawHolders(screen *ebiten.Image, selected item, left, top, widt
 			top+ui.LineHeight)
 		top += ui.LineHeight
 	}
+}
+
+// holdersRoom is how many of a constant's holders the list shows from top,
+// above the save bar, keeping a line for how many more: at most
+// holdersShown, or -1 when not even its heading fits.
+func (s *State) holdersRoom(top, holders int) int {
+	room := holdersShown + 1
+	if !s.save.Rect.Empty() {
+		room = (s.save.Rect.Min.Y-ui.Gap-top)/ui.LineHeight - 1
+	}
+	if room < 1 && holders > 0 {
+		return -1
+	}
+	if holders <= min(room, holdersShown) {
+		return holders
+	}
+
+	return max(min(room-1, holdersShown), 0)
 }
 
 // updateHolders selects an NPC's or zone's value of a constant clicked in

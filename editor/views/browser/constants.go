@@ -17,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/writesheet"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
+	"github.com/bradhannah/berad-engine/engine/show"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 	"github.com/bradhannah/berad-engine/engine/zone"
 )
@@ -192,7 +193,7 @@ func (s *State) layoutConstants(left, width, top int) int {
 	panel.open.Rect = image.Rect(left, rowY, left+min(width, s.theme.TextWidth(panel.open.Label)+ui.Half*ui.Inset),
 		rowY+ui.ButtonH)
 
-	return rowY + ui.ButtonH + ui.Gap
+	return rowY + ui.ButtonH + panelGap
 }
 
 // updateConstants handles the Constants section: Write…, Default, a number
@@ -362,9 +363,10 @@ func (s *State) drawConstants(screen *ebiten.Image, left int) {
 	panel.open.Draw(screen, s.theme)
 }
 
-// textPreview is a text's first line, cut short, in quotes.
+// textPreview is a text's first line as it reads, without its markup, cut
+// short, in quotes.
 func textPreview(text string) string {
-	first, _, more := strings.Cut(text, "\n")
+	first, _, more := strings.Cut(show.Plain(text), "\n")
 	if runes := []rune(first); len(runes) > previewLength {
 		first, more = string(runes[:previewLength]), true
 	}

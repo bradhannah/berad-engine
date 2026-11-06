@@ -132,7 +132,7 @@ func (v *valueSource) Targets(docs frame.Docs, query string) []valuepicker.Targe
 		v.targets[target.located()] = target
 		targets = append(targets, valuepicker.Target{
 			ID: target.located(), Path: target.Path, Label: v.state.whereLabel(docs, target), Heading: heading,
-			SetIn: declaredWhere(target.Scope),
+			SetIn: declaredWhere(target.Scope, makesConstant(v.role)),
 		})
 	}
 

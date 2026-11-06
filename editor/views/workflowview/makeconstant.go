@@ -524,8 +524,12 @@ func (s *State) drawOthers(screen *ebiten.Image) {
 	if others.words != "" {
 		what = "“" + others.words + "”"
 	}
-	s.theme.DrawStrong(screen, s.theme.FitText(strconv.Itoa(len(others.rows))+" other places have "+what+
-		" typed in. Tick the ones that mean "+others.path+":", inner.Dx()), inner.Min.X, inner.Min.Y, ui.ColorInk())
+	places := strconv.Itoa(len(others.rows)) + " other places have "
+	if len(others.rows) == 1 {
+		places = "1 other place has "
+	}
+	s.theme.DrawStrong(screen, s.theme.FitText(places+what+" typed in. Tick the ones that mean "+others.path+":",
+		inner.Dx()), inner.Min.X, inner.Min.Y, ui.ColorInk())
 	for _, row := range others.rows {
 		row.tick.Draw(screen, s.theme)
 	}

@@ -94,11 +94,11 @@ func New(theme *ui.Theme, path string, holders []Holder, chosen int, said string
 		theme: theme, path: path, holders: holders, chosen: min(max(chosen, 0), max(len(holders)-1, 0)), said: said,
 		field: ui.NewTextField(textID, textedit.NewField("", true, worldstate.MaxConstantText), true, theme),
 		focus: ui.Focus{}, bold: ui.NewButton(boldID, "B"), italic: ui.NewButton(italicID, "I"),
-		colour: ui.NewButton(colourID, "Colour ▾"), holder: ui.NewButton(holderID, ""),
+		colour: ui.NewButton(colourID, "Colour"), holder: ui.NewButton(holderID, ""),
 		done: ui.NewButton(doneID, "Done"), menu: ui.Menu{Items: nil, Width: 0}, menuOf: "", rect: ui.Zero(),
 		preview: ui.Zero(), notesAt: image.Pt(0, 0),
 	}
-	sheet.done.Primary = true
+	sheet.done.Primary, sheet.colour.Caret, sheet.holder.Caret = true, true, true
 	sheet.focus.Register(sheet.field)
 	sheet.show()
 	sheet.focus.Set(sheet.field)
@@ -112,7 +112,7 @@ func (s *Sheet) show() {
 	s.field.Field.Revert()
 	if len(s.holders) > 0 {
 		s.field.Field.SetSaved(s.holders[s.chosen].Text)
-		s.holder.Label = s.holders[s.chosen].Label + " ▾"
+		s.holder.Label = s.holders[s.chosen].Label
 	}
 }
 

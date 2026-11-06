@@ -28,8 +28,9 @@ const (
 	rowSpace    = 6
 	removeWidth = 76
 	descHeight  = 72
-	// longHeight is a text constant's default, a few lines of it.
-	longHeight     = 112
+	// longHeight is a text constant's default, three lines of it: Write…
+	// opens the sheet for more.
+	longHeight     = 72
 	choicesPerLine = 3
 	maxNumberText  = 20
 	// dottedLength bounds a dotted name: a name and its groups.
@@ -443,7 +444,7 @@ func (f *Form) layoutPlaceLine(left, top, width int) int {
 }
 
 // layoutLock greys the types a locked value cannot change to, and places
-// why under them, with Declare a new value….
+// why under them, with Declare a new value… or constant….
 func (f *Form) layoutLock(left, top, width int) int {
 	for _, button := range f.types {
 		button.Disabled = f.Locked != "" && !button.On
@@ -452,6 +453,7 @@ func (f *Form) layoutLock(left, top, width int) int {
 		return top
 	}
 	f.lock, f.lockLines = image.Pt(left, top-rowSpace), f.theme.Wrap(f.Locked, width)
+	f.DeclareNew.Label = "Declare a new " + kindName(f.shown) + "…"
 	top += len(f.lockLines)*ui.LineHeight - rowSpace
 	f.DeclareNew.Rect = image.Rect(left, top, left+min(width, f.theme.TextWidth(f.DeclareNew.Label)+ui.Inset*ui.Half),
 		top+ui.ButtonH)

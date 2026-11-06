@@ -402,6 +402,25 @@ func TestReferencesListLogValues(t *testing.T) {
 	}
 }
 
+// TestReferencesNameASaysKind lists a constant a Say puts in its line as
+// used by a Say node, not a Log node.
+func TestReferencesNameASaysKind(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	greeting := flow.ValueRef{Scope: worldstate.ScopeNPC, Value: id(20), Owner: ids.ULID{}, Found: ids.ULID{}}
+	said, err := newNode(t, flow.KindSay, 3, ids.ULID{}).WithParam(flow.ParamMessage, []flow.Segment{
+		{Text: "", Ref: &greeting},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, encode(t, workflow.AddArgs{Nodes: []flow.Node{said}, Boxes: nil, Links: nil}))
+	references := document.References()
+	if len(references) != 1 || references[0].Item != id(20).String() || references[0].Label != "a Say node" {
+		t.Fatalf("a Say refers to the constant in its line as a Say node: %+v", references)
+	}
+}
+
 // TestAZoneLoopAndWhereItRuns makes a zone loop as the orchestrator does,
 // keeping its kind through preparing, refuses a Go to in it, and sets the
 // zone it runs in, which it then refers to, undoably.

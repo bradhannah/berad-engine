@@ -152,7 +152,7 @@ func (d *Document) References() []model.Reference {
 		case flow.KindCall:
 			references = append(references, callReferences(node)...)
 		case flow.KindLog, flow.KindSay, flow.KindShowMessage:
-			references = append(references, logReferences(node)...)
+			references = append(references, messageReferences(node)...)
 		}
 	}
 
@@ -578,12 +578,15 @@ func callReferences(node flow.Node) []model.Reference {
 	return append(references, refReferences(refs, label)...)
 }
 
-// logReferences lists the values outside the workflow a Log writes.
-func logReferences(node flow.Node) []model.Reference {
+// messageReferences lists the values and constants outside the workflow
+// that a Log, a Say or a Show message puts in its line, each named by its
+// node's kind.
+func messageReferences(node flow.Node) []model.Reference {
 	segments, err := node.Message()
 	if err != nil {
 		return nil
 	}
+	kind, _ := flow.KindOf(node.Kind)
 	var refs []flow.ValueRef
 	for _, segment := range segments {
 		if segment.Ref != nil {
@@ -591,7 +594,7 @@ func logReferences(node flow.Node) []model.Reference {
 		}
 	}
 
-	return refReferences(refs, "a Log node")
+	return refReferences(refs, "a "+kind.Label+" node")
 }
 
 // refReferences lists values outside the workflow by ID under the world
