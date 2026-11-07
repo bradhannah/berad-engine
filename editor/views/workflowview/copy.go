@@ -107,19 +107,26 @@ func (s *State) selectAddedNodes() {
 	s.selectNodes(added)
 }
 
-// selectionKeys handles the keys that act on the selection, Cmd+D and the
-// arrows, and reports whether one did.
+// selectionKeys handles the keys that act on the selection, Cmd+D, Cmd+C,
+// Cmd+V and the arrows, and reports whether one did.
 func (s *State) selectionKeys(input *ui.Input, ctx *frame.Context) bool {
 	return s.copyKeys(input, ctx) || s.nudge(input, ctx)
 }
 
-// copyKeys handles Cmd+D, which duplicates the selection, and reports
-// whether it did.
+// copyKeys handles Cmd+D, which duplicates the selection, Cmd+C, which
+// copies it, and Cmd+V, which pastes; it reports whether one did.
 func (s *State) copyKeys(input *ui.Input, ctx *frame.Context) bool {
-	if len(s.selection()) == 0 || !input.Consume(ui.KeyD, ui.Cmd()) {
+	selected := len(s.selection()) > 0
+	switch {
+	case selected && input.Consume(ui.KeyD, ui.Cmd()):
+		s.duplicate(ctx)
+	case selected && input.Consume(ui.KeyC, ui.Cmd()):
+		s.copySelection(ctx)
+	case input.Consume(ui.KeyV, ui.Cmd()):
+		s.paste(ctx)
+	default:
 		return false
 	}
-	s.duplicate(ctx)
 
 	return true
 }

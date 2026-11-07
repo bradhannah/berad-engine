@@ -15,6 +15,8 @@ const (
 	menuDeleteNode = "delete-node"
 	menuDeleteLine = "delete-line"
 	menuDeleteAll  = "delete-group"
+	menuDuplicate  = "duplicate"
+	menuCopy       = "copy"
 	locateMenu     = "menu"
 )
 
@@ -71,6 +73,15 @@ func (s *State) openContextMenu() {
 		item.Disabled = true
 	}
 	items := []ui.MenuItem{item}
+	if !s.lineSelected() {
+		item.Rule = true
+		none := len(s.removable()) == 0
+		items = []ui.MenuItem{
+			{ID: menuDuplicate, Label: "Duplicate", Icon: ui.IconNone, Disabled: none, Danger: false, Rule: false},
+			{ID: menuCopy, Label: "Copy", Icon: ui.IconNone, Disabled: none, Danger: false, Rule: false},
+			item,
+		}
+	}
 	s.contextMenu.Items, s.contextMenu.Width = items, ui.MenuWidth(items, s.theme)
 	s.contextMenu.OpenAt(click.at, frame.AboveStatus(s.size))
 }
@@ -115,6 +126,10 @@ func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
 	switch chosen {
 	case menuDeleteNode, menuDeleteAll:
 		s.removeSelected(ctx)
+	case menuDuplicate:
+		s.duplicate(ctx)
+	case menuCopy:
+		s.copySelection(ctx)
 	case menuDeleteLine:
 		if s.lineSelected() {
 			s.removeLine(ctx)
