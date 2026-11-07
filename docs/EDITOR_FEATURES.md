@@ -103,6 +103,11 @@ under consideration), **open** (undecided).
   disk. Tags group documents across types. The search box matches names,
   folder names and tags, and "#" searches tags only. Documents and folders
   move by dragging or with Move to….
+- **Agreed (2026-11-06):** the Project window's search also finds what the
+  game says: each constant whose path, default or own text has the words,
+  and each line typed into a Say, Show message or Log. Opening one selects
+  it in the Constants window or in its workflow.
+  [Increment 35](increments/0035-finding-by-words.md) builds it.
 - **Agreed:** right-clicking in the project browser makes documents and
   folders where the click landed: a section heading makes them at the top
   of its section, a folder inside it, and a document beside it.
