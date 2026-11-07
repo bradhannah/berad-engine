@@ -515,9 +515,11 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   Shift suggests a range, a path from one node to another, which a graph
   does not have; and Ctrl+click is a Mac's right-click.)
   [Increment 34](increments/0034-multi-select.md) builds it. A copy keeps
-  the lines between its nodes, a paste declares the locals it needs, and
-  the inspector shows how many are selected, with Colour and Delete
-  (2026-11-06).
+  the lines between its nodes and their colours, a paste declares the
+  locals it needs, and the inspector shows how many are selected, with
+  Colour and Delete (2026-11-06). The right-click menu offers Duplicate,
+  Copy and Delete, and Auto-arrange lays out the selection alone while
+  several are selected.
 - **Replaced (2026-11-04):** dropping a node onto a line, from the palette
   or from the canvas, put it in the flow: the line ended at the new node,
   and the node's first output continued to the old target. In use it kept
