@@ -1048,7 +1048,7 @@ func (s *State) guardSelection(ctx *frame.Context) {
 	}
 	wanted, wantedLink, wantedGroup := s.selected, s.selectedLink, s.group
 	s.selected, s.selectedLink, s.group = s.form.node, noRoute(), nil
-	s.drag, s.link, s.adding, s.resize, s.bending = nil, nil, nil, nil, nil
+	s.drag, s.link, s.adding, s.resize, s.bending, s.box = nil, nil, nil, nil, nil, nil
 	s.focus.Set(nil)
 	s.guard.Ask(unsaved, s.formName(), func() { s.selected, s.selectedLink, s.group = wanted, wantedLink, wantedGroup })
 }

@@ -95,7 +95,10 @@ func (s *State) pressCanvas(input *ui.Input, ctx *frame.Context, point image.Poi
 func (s *State) pressWithCmd(point image.Point) {
 	if hit, ok := s.nodeAt(point); ok {
 		s.toggleSelected(hit)
+
+		return
 	}
+	s.startBox(point, true)
 }
 
 // drawSelection rings each selected node.

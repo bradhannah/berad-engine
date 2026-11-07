@@ -162,6 +162,7 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	}
 	s.drawCrossings(area)
 	s.drawSelection(area)
+	s.drawBox(area)
 	s.drawLiveNode(area)
 	if s.link != nil {
 		if from, ok := s.shapes[s.link.from].portOf(s.link.output); ok {

@@ -130,6 +130,8 @@ type State struct {
 	// then none. removeGroup is the inspector's Delete N nodes.
 	group       []ids.ULID
 	removeGroup *ui.Button
+	// box is the box being dragged on empty canvas to select what it holds.
+	box *selectBox
 	// showing is a node asked for with NodeItem, to select once it arrives.
 	showing  ids.ULID
 	cursor   image.Point
@@ -248,8 +250,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		problems: map[ids.ULID]string{}, warnings: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{},
 		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
-		offset: image.Pt(0, 0), selected: ids.ULID{}, group: nil, removeGroup: groupDeleteButton(), showing: ids.ULID{},
-		cursor: image.Pt(0, 0), gestures: 0,
+		offset: image.Pt(0, 0), selected: ids.ULID{}, group: nil, removeGroup: groupDeleteButton(), box: nil,
+		showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
@@ -611,7 +613,7 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case s.pal.help != "" && input.Consume(ui.KeyEscape, plain):
 		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
-		s.selected, s.selectedLink, s.link, s.adding, s.group = ids.ULID{}, noRoute(), nil, nil, nil
+		s.selected, s.selectedLink, s.link, s.adding, s.group, s.box = ids.ULID{}, noRoute(), nil, nil, nil, nil
 	case input.Consume(ui.KeyEqual, ui.Cmd()):
 		s.zoomTo(s.zoom+1, s.zoomFocus(input.Cursor))
 	case input.Consume(ui.KeyMinus, ui.Cmd()):
@@ -657,6 +659,21 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	point := s.toCanvas(input.Cursor)
 	onCanvas := input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor) && !input.Cursor.In(s.legendBox)
 	s.updateHover(ctx, onCanvas, point)
+	if s.updateGesture(input, ctx, point) {
+		return
+	}
+	switch {
+	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
+		s.rightClick(point, input.Cursor)
+	case input.Pressed && input.Cursor.In(canvas):
+		s.pressCanvas(input, ctx, point)
+	}
+}
+
+// updateGesture carries on a gesture begun by a press, and reports whether
+// one was under way: drawing a line, bending one, dragging a node, sizing a
+// container or dragging a box.
+func (s *State) updateGesture(input *ui.Input, ctx *frame.Context, point image.Point) bool {
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
@@ -666,11 +683,13 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
 		s.updateResize(input, ctx, point)
-	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
-		s.rightClick(point, input.Cursor)
-	case input.Pressed && input.Cursor.In(canvas):
-		s.pressCanvas(input, ctx, point)
+	case s.box != nil:
+		s.updateBox(input, point)
+	default:
+		return false
 	}
+
+	return true
 }
 
 func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
@@ -735,6 +754,7 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	hit, ok := s.nodeAt(point)
 	if !ok {
 		s.selected, s.selectedLink = ids.ULID{}, noRoute()
+		s.startBox(point, false)
 
 		return
 	}

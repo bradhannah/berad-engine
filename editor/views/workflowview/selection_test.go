@@ -1,6 +1,8 @@
 package workflowview_test
 
 import (
+	"fmt"
+	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -102,5 +104,70 @@ func TestCmdClickAsksBeforeLeaving(t *testing.T) {
 	f.click("ui:discard-changes")
 	if !f.has("selection=2") || !f.has("in-selection:start:1") {
 		t.Fatal("Don't save goes on to the two selected")
+	}
+}
+
+// cmdDrag drags from one point to another with Cmd held.
+func (f *fixture) cmdDrag(from, to image.Point) {
+	f.t.Helper()
+	for index, at := range []image.Point{from, from.Add(to).Div(2), to} {
+		input := ui.NewInput(at)
+		input.Down, input.Pressed, input.Held = true, index == 0, ui.Cmd()
+		f.frame(input)
+	}
+	f.release(to)
+}
+
+// TestABoxSelects drags a box over a Wait and a Say, then with Cmd over the
+// Log too.
+func TestABoxSelects(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	f.drag(f.at("canvas:200,170"), f.at("canvas:660,30"))
+	if !f.has("selection=2") || !f.has("in-selection:"+flow.KindWait+":1") ||
+		!f.has("in-selection:"+flow.KindSay+":1") {
+		t.Fatal("a box selects the nodes it touches")
+	}
+	f.cmdDrag(f.at("canvas:700,170"), f.at("canvas:660,30"))
+	if !f.has("selection=3") || !f.has("in-selection:"+flow.KindLog+":1") {
+		t.Fatal("a box dragged with Cmd adds to the selection")
+	}
+	f.drag(f.at("canvas:700,170"), f.at("canvas:660,30"))
+	if !f.has("selection=1") || !f.has("selected:"+flow.KindLog) {
+		t.Fatal("a box without Cmd starts afresh")
+	}
+}
+
+// TestABoxTakesAContainerOnlyWhole drags a box across a container's edge,
+// which leaves it, then around all of it.
+func TestABoxTakesAContainerOnlyWhole(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindContainer)
+	box, _ := f.workflow().Box(f.nth(flow.KindContainer, 1).ID)
+	if box.W == 0 || box.H == 0 {
+		t.Fatalf("a container has a size: %+v", box)
+	}
+	canvas := func(x, y int) image.Point { return f.at(fmt.Sprintf("canvas:%d,%d", x, y)) }
+	f.drag(canvas(box.X-5, box.Y+box.H/2), canvas(box.X+box.W/2, box.Y-5))
+	if !f.has("selection=0") {
+		t.Fatal("a box across a container's edge leaves it")
+	}
+	f.drag(canvas(box.X-5, box.Y+box.H+5), canvas(box.X+box.W+5, box.Y-5))
+	if !f.has("selection=1") || !f.has("selected:"+flow.KindContainer) {
+		t.Fatal("a box around a container takes it")
+	}
+}
+
+// TestABoxIsDrawn draws the window while a box is dragged.
+func TestABoxIsDrawn(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	from, to := f.at("canvas:200,170"), f.at("canvas:660,30")
+	f.press(from)
+	f.hold(to)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.release(to)
+	if !f.has("selection=2") {
+		t.Fatal("the box selected as it was drawn")
 	}
 }
