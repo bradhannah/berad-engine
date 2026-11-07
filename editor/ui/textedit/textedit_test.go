@@ -158,6 +158,30 @@ func TestEnterSavesAndNewLineKeys(t *testing.T) {
 	}
 }
 
+// TestALineKeepsBreaks checks a one-line field that keeps line breaks:
+// Enter saves it, Shift+Enter starts a new line, and a pasted break stays.
+func TestALineKeepsBreaks(t *testing.T) {
+	t.Parallel()
+	line := textedit.NewField("", false, 0)
+	line.KeepBreaks()
+	line.Focus()
+	line.Type("Good morning.")
+	if got := press(line, textedit.KeyEnter, shift, nil); got != textedit.OutcomeNone {
+		t.Fatalf("Shift+Enter: %v", got)
+	}
+	line.Type("Come in.\r\nLook around.")
+	if line.Value() != "Good morning.\nCome in.\nLook around." {
+		t.Fatalf("value %q", line.Value())
+	}
+	if got := press(line, textedit.KeyEnter, none, nil); got != textedit.OutcomeCommit {
+		t.Fatalf("Enter: %v", got)
+	}
+	press(line, textedit.KeyJ, control, nil)
+	if line.Value() != "Good morning.\nCome in.\nLook around." {
+		t.Fatalf("Ctrl+J broke a line: %q", line.Value())
+	}
+}
+
 // TestDraftLifecycle follows strict updates: the draft stays until the
 // document shows the saved value.
 func TestDraftLifecycle(t *testing.T) {

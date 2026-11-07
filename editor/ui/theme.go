@@ -83,12 +83,25 @@ const (
 	hexArt      = 0x267378
 )
 
+// Where constants and values meet, a constant's path is amber and a value's
+// slate, each with a wash to sit on.
+const (
+	hexConstant     = 0x8a5a1c
+	hexConstantWash = 0xf7efe2
+	hexValue        = 0x3d5f8a
+	hexValueWash    = 0xe8eef6
+)
+
 // Embedded IBM Plex fonts (SIL Open Font License; see fonts/OFL.txt).
 var (
 	//go:embed fonts/IBMPlexSans-Regular.ttf
 	sansRegular []byte
 	//go:embed fonts/IBMPlexSans-SemiBold.ttf
 	sansSemiBold []byte
+	//go:embed fonts/IBMPlexSans-Italic.ttf
+	sansItalic []byte
+	//go:embed fonts/IBMPlexSans-SemiBoldItalic.ttf
+	sansSemiBoldItalic []byte
 	//go:embed fonts/IBMPlexMono-Regular.ttf
 	monoRegular []byte
 	//go:embed fonts/IBMPlexMono-SemiBold.ttf
@@ -169,6 +182,18 @@ func ColorSound() color.RGBA { return Hex(hexSound) }
 // ColorArt tints the icons of sprites and palettes.
 func ColorArt() color.RGBA { return Hex(hexArt) }
 
+// ColorConstant is the colour of a constant's path among values'.
+func ColorConstant() color.RGBA { return Hex(hexConstant) }
+
+// ColorConstantWash is the background of a constant's chip.
+func ColorConstantWash() color.RGBA { return Hex(hexConstantWash) }
+
+// ColorValue is the colour of a value's path among constants'.
+func ColorValue() color.RGBA { return Hex(hexValue) }
+
+// ColorValueWash is the background of a value's chip.
+func ColorValueWash() color.RGBA { return Hex(hexValueWash) }
+
 // ColorLive is the colour of anything happening now in a preview.
 func ColorLive() color.RGBA { return Hex(hexLive) }
 
@@ -183,16 +208,19 @@ func ColorShade() color.RGBA { return HexAlpha(0, shadeAlpha) }
 
 // Theme holds the fonts every widget draws with.
 type Theme struct {
-	// Face draws text, Strong its semi-bold form, Small the small uppercase
+	// Face draws text, Strong its semi-bold form, Italic and StrongItalic
+	// their italics, for a message's markup, Small the small uppercase
 	// labels, Title headings, Mono and MonoStrong numbers, times and IDs,
 	// and Display large figures.
-	Face       *etext.GoTextFace
-	Strong     *etext.GoTextFace
-	Small      *etext.GoTextFace
-	Title      *etext.GoTextFace
-	Mono       *etext.GoTextFace
-	MonoStrong *etext.GoTextFace
-	Display    *etext.GoTextFace
+	Face         *etext.GoTextFace
+	Strong       *etext.GoTextFace
+	Italic       *etext.GoTextFace
+	StrongItalic *etext.GoTextFace
+	Small        *etext.GoTextFace
+	Title        *etext.GoTextFace
+	Mono         *etext.GoTextFace
+	MonoStrong   *etext.GoTextFace
+	Display      *etext.GoTextFace
 	// Font lays out and draws editable text.
 	Font *berad.Font
 	// Text draws laid-out editable text.
@@ -205,6 +233,7 @@ func NewTheme() (*Theme, error) {
 	sources := map[string]*etext.GoTextFaceSource{}
 	for name, data := range map[string][]byte{
 		"sans": sansRegular, "sans-bold": sansSemiBold, "mono": monoRegular, "mono-bold": monoSemiBold,
+		"sans-italic": sansItalic, "sans-bold-italic": sansSemiBoldItalic,
 	} {
 		source, err := etext.NewGoTextFaceSource(bytes.NewReader(data))
 		if err != nil {
@@ -235,7 +264,8 @@ func NewTheme() (*Theme, error) {
 	}
 
 	return &Theme{
-		Face: face("sans", TextSize), Strong: face("sans-bold", TextSize), Small: face("sans-bold", LabelSize),
+		Face: face("sans", TextSize), Strong: face("sans-bold", TextSize), Italic: face("sans-italic", TextSize),
+		StrongItalic: face("sans-bold-italic", TextSize), Small: face("sans-bold", LabelSize),
 		Title: face("sans-bold", TitleSize), Mono: face("mono", MonoSize), MonoStrong: face("mono-bold", MonoSize),
 		Display: face("mono-bold", DisplaySize), Font: font, Text: renderer,
 	}, nil

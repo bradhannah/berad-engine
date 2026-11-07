@@ -57,7 +57,8 @@ const (
 // is picked; its path; its declaration; and where it is listed: under a
 // heading, in a scope on the rail, and from a root, so what its path has
 // between the root and its own name is its group. Detail, when set, is
-// added to the type at the right of its row.
+// added to the type at the right of its row; Words, when set, are found by
+// the search as well as the path, such as a text constant's.
 type Option struct {
 	ID       string
 	Path     string
@@ -66,6 +67,7 @@ type Option struct {
 	Rail     string
 	Root     string
 	Detail   string
+	Words    string
 }
 
 // group is the group a value is in below its root, as world.quests, or ""
@@ -111,7 +113,8 @@ type Source interface {
 
 // Config is what a picker is for: its title and what it chooses for, the
 // search's placeholder and what an empty list says; the one type it offers,
-// locked, or none; the rail; the row selected at open and the search typed;
+// locked, or none; the types it offers otherwise, a constant's, or with
+// none a value's; the rail; the row selected at open and the search typed;
 // the group last
 // opened, kept by the window between pickers; and its buttons' and the
 // declare panel's words.
@@ -121,6 +124,11 @@ type Config struct {
 	Placeholder string
 	Empty       string
 	Only        worldstate.Type
+	Kinds       []worldstate.Type
+	// Start is what a declared integer or text starts at, such as the
+	// number typed in the field a constant is made from; "" for its type's
+	// own.
+	Start       string
 	Rail        []RailEntry
 	Selected    string
 	Query       string
@@ -173,7 +181,7 @@ func New(config Config, source Source, theme *ui.Theme) *Picker {
 	search := ui.NewTextField("value-search", textedit.NewField("", false, maxSearch), false, theme)
 	search.Placeholder, search.Unmarked = config.Placeholder, true
 	search.Field.SetSaved(config.Query)
-	chips, kinds := typeChips(config.Only)
+	chips, kinds := typeChips(config.Only, config.Kinds)
 	last := ""
 	if config.LastGroup != nil {
 		last = *config.LastGroup
@@ -196,8 +204,8 @@ func New(config Config, source Source, theme *ui.Theme) *Picker {
 }
 
 // typeChips makes the type chips: the one type offered, locked on, or All
-// and each type a saved value can have.
-func typeChips(only worldstate.Type) ([]*ui.Button, []worldstate.Type) {
+// and each type offered, by default each a saved value can have.
+func typeChips(only worldstate.Type, offered []worldstate.Type) ([]*ui.Button, []worldstate.Type) {
 	if only != "" {
 		chip := ui.NewButton(chipPrefix+string(only), only.Label()+" only")
 		chip.On = true
@@ -207,7 +215,10 @@ func typeChips(only worldstate.Type) ([]*ui.Button, []worldstate.Type) {
 
 		return []*ui.Button{chip}, []worldstate.Type{only}
 	}
-	kinds := append([]worldstate.Type{""}, worldstate.Types(worldstate.ScopeWorld)...)
+	if len(offered) == 0 {
+		offered = worldstate.Types(worldstate.ScopeWorld)
+	}
+	kinds := append([]worldstate.Type{""}, offered...)
 	chips := make([]*ui.Button, 0, len(kinds))
 	for _, kind := range kinds {
 		id, label := string(kind), kind.Label()
@@ -528,7 +539,8 @@ func (p *Picker) drawList(screen *ebiten.Image) {
 }
 
 // Locate finds a part of the picker for input scripts: a row,
-// "valuerow:<path>"; where a value can be declared, "declare:<where>"; a
+// "valuerow:<path>"; where a value can be declared, "declare:<where>", a
+// value's path found with or without its var.; a
 // chip, a group or a scope on the rail, "picker:..." (see locatePart); a
 // field, "ui:value-search" or "ui:declare-start"; or a button, as
 // "ui:picker-choose", "ui:picker-declare", "ui:declare-type-bool" or
@@ -537,9 +549,17 @@ func (p *Picker) Locate(docs frame.Docs, window image.Rectangle, kind, value str
 	p.layout(docs, window)
 	switch kind {
 	case LocateValue:
-		return p.locateRow(value)
+		if at, found := p.locateRow(value); found {
+			return at, true
+		}
+
+		return p.locateRow(worldstate.ValuePrefix + value)
 	case LocateDeclare:
-		return p.declare.locateWhere(value)
+		if at, found := p.declare.locateWhere(value); found {
+			return at, true
+		}
+
+		return p.declare.locateWhere(worldstate.ValuePrefix + value)
 	case LocatePart:
 		return p.locatePart(value)
 	case "ui":
@@ -578,7 +598,7 @@ func (p *Picker) HasState(docs frame.Docs, window image.Rectangle, state string)
 		path, want, _ := strings.Cut(detailed, "=")
 
 		return slices.ContainsFunc(p.list.Rows, func(row ui.Row) bool {
-			return p.paths[row.ID] == path && row.Detail == want
+			return (p.paths[row.ID] == path || p.paths[row.ID] == worldstate.ValuePrefix+path) && row.Detail == want
 		}), true
 	}
 	scope, want, _ := strings.Cut(counted, "=")

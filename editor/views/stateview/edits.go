@@ -118,7 +118,7 @@ func (s *State) updateAdds(input *ui.Input, ctx *frame.Context) {
 	s.adds[0].Disabled, s.adds[1].Disabled, s.adds[2].Disabled = !canAdd, !canAdd, !canTemplate
 	switch {
 	case s.adds[0].Update(input):
-		s.declare(ctx, into, "value", worldstate.TypeInteger)
+		s.declare(ctx, into, s.valueWord(), s.valueTypes(into.scope)[0])
 	case s.adds[1].Update(input):
 		s.declare(ctx, into, "group", worldstate.TypeGroup)
 	case s.adds[2].Update(input):
@@ -139,7 +139,11 @@ func (s *State) declare(ctx *frame.Context, into target, base string, kind world
 		}
 		name = base + "_" + strconv.Itoa(number)
 	}
-	change, err := valuetree.Declare(into.list.Values, into.scope, into.parent, name, kind)
+	declare := valuetree.Declare
+	if s.part == PartConstants && kind.IsValue() {
+		declare = valuetree.DeclareConstant
+	}
+	change, err := declare(into.list.Values, into.scope, into.parent, name, kind)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
@@ -153,7 +157,7 @@ func (s *State) declare(ctx *frame.Context, into target, base string, kind world
 	default:
 		s.toggled[ownerPrefix+into.list.Document.String()] = true
 	}
-	added := "Added " + name + ", " + kindPhrase(kind) + ", " + s.addsWhere(into) + ". Type its name."
+	added := "Added " + name + ", " + s.kindPhrase(kind) + ", " + s.addsWhere(into) + ". Type its name."
 	s.send(ctx, into.list.Document, into.list.Edit, change, func(result protocol.Result, err error) {
 		ctx.Frame.Report(added)(result, err)
 		if err == nil {
@@ -261,7 +265,7 @@ func (s *State) decideDelete(
 
 func valuesWord(count int) string {
 	if count == 1 {
-		return "value"
+		return wordValue
 	}
 
 	return "values"

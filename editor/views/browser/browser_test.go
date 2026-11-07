@@ -182,18 +182,19 @@ func TestOpening(t *testing.T) {
 	}
 }
 
-// TestWorldStatePlace shows World state's Values and Signals, and opens each
-// in its own window on the world-state document.
+// TestWorldStatePlace shows World state's Values, Signals and Constants, and
+// opens each in its own window on the world-state document.
 func TestWorldStatePlace(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.click("place:World state", false)
-	if labels := f.labels(); !slices.Equal(labels, []string{"Values", "Signals"}) {
-		t.Fatalf("World state holds Values and Signals: %v", labels)
+	if labels := f.labels(); !slices.Equal(labels, []string{"Values", "Signals", "Constants"}) {
+		t.Fatalf("World state holds Values, Signals and Constants: %v", labels)
 	}
 	f.click("row:Values", true)
 	f.click("row:Signals", true)
-	want := []string{"world-state", "world-signals"}
+	f.click("row:Constants", true)
+	want := []string{"world-state", "world-signals", "world-constants"}
 	if len(f.requests.Opened) != len(want) {
 		t.Fatalf("opened %+v", f.requests.Opened)
 	}

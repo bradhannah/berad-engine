@@ -327,6 +327,75 @@ func (u UnapplyTemplate) Apply(document model.Document, args json.RawMessage) (m
 	}, nil
 }
 
+// ConstantArgs sets an NPC's or zone's own value of one of its templates'
+// constants, as saved, or with no value clears it, so it has the default
+// again.
+type ConstantArgs struct {
+	Constant ids.ULID        `json:"constant"`
+	Value    json.RawMessage `json:"value,omitempty"`
+}
+
+// SetConstant is an edit kind that sets or clears an NPC's or zone's own
+// value of a constant.
+type SetConstant struct {
+	Kind, On string
+	Owned    OwnedOf
+}
+
+// Name identifies the edit kind.
+func (s SetConstant) Name() string { return s.Kind }
+
+// Format names the document format the edit applies to.
+func (s SetConstant) Format() string { return s.On }
+
+// Apply sets or clears the value; its inverse puts back what was there.
+func (s SetConstant) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
+	owned, err := s.Owned(document)
+	if err != nil {
+		return model.Applied{}, err
+	}
+	var set ConstantArgs
+	if err := json.Unmarshal(args, &set); err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
+	}
+	clearing := len(set.Value) == 0 || string(set.Value) == "null"
+	switch {
+	case set.Constant.IsZero():
+		return model.Applied{}, fmt.Errorf("%w: no constant", model.ErrArgs)
+	case !clearing && !json.Valid(set.Value):
+		return model.Applied{}, fmt.Errorf("%w: the value is not JSON", model.ErrArgs)
+	case !clearing && len(set.Value) > maxConstantBytes:
+		return model.Applied{}, fmt.Errorf("%w: the value is too long", model.ErrArgs)
+	}
+	_, had := owned.Constants[set.Constant]
+	if !clearing && !had && len(owned.Constants) >= worldstate.MaxValues {
+		return model.Applied{}, fmt.Errorf("%w: at most %d constants of its own", model.ErrArgs, worldstate.MaxValues)
+	}
+	before := ConstantArgs{Constant: set.Constant, Value: nil}
+	if previous, kept := owned.ClearConstant(set.Constant); kept {
+		before.Value = previous
+	}
+	if !clearing {
+		owned.SetConstant(set.Constant, set.Value)
+	}
+	data, err := encode(before)
+	if err != nil {
+		return model.Applied{}, err
+	}
+
+	return model.Applied{
+		Inverse: data, InverseEdit: s.Kind, Touched: []string{ConstantItem(set.Constant)}, Covers: nil,
+	}, nil
+}
+
+// maxConstantBytes bounds one saved constant value: a page of text, each
+// character written as an escape at worst.
+const maxConstantBytes = worldstate.MaxConstantText*6 + 2
+
+// ConstantItem names an NPC's or zone's own value of a constant as an edit
+// touches it.
+func ConstantItem(constant ids.ULID) string { return "constant:" + constant.String() }
+
 // TemplateItem names an applied template as an edit touches it.
 func templateItem(template ids.ULID) string { return "template:" + template.String() }
 
@@ -344,8 +413,9 @@ func TemplateReferences(owned worldstate.Owned) []model.Reference {
 }
 
 // OwnerEdits returns the edits an NPC or zone plug-in needs for what its
-// documents own: a change to its own values, and applying and taking off
-// templates, named with a prefix such as "npc".
+// documents own: a change to its own values and constants, applying and
+// taking off templates, and setting its own value of a constant, named
+// with a prefix such as "npc".
 func OwnerEdits(prefix, format string, owned OwnedOf) []model.EditKind {
 	values := func(document model.Document) (*worldstate.Declarations, error) {
 		held, err := owned(document)
@@ -361,6 +431,7 @@ func OwnerEdits(prefix, format string, owned OwnedOf) []model.EditKind {
 		Change{Kind: prefix + ".values.change", On: format, List: values},
 		ApplyTemplate{Kind: apply, On: format, Inverse: unapply, Owned: owned},
 		UnapplyTemplate{Kind: unapply, On: format, Inverse: apply, Owned: owned},
+		SetConstant{Kind: prefix + ".constant.set", On: format, Owned: owned},
 	}
 }
 

@@ -28,7 +28,13 @@ under consideration), **open** (undecided).
 - **Agreed:** typed changes wait for an explicit save: every inspector with
   fields to type into has a save bar with Revert and Save, and Cmd+S saves
   in any pane. Enter saves a one-line field and
-  starts a new line in a field of several lines. Buttons, choices and pick
+  starts a new line in a field of several lines. A Say's and a Show
+  message's line is one field that may break: Enter saves it, and
+  Shift+Enter starts a new line (2026-11-06). What is put in a field
+  another way waits for Save as typing does: a colour picked, a value or
+  constant inserted, a constant chosen for a number, a line written in the
+  writing sheet (2026-11-06, [increment 33](increments/0033-constants.md)).
+  Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
   closing a tab with unsaved changes asks: Save, Don't save or Cancel.
 - **Agreed (2026-10-30):** the editor is **one window**, the editor window,
@@ -579,8 +585,21 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   are deleted under the same rules as values. Their text takes markup for
   colour, bold and italic, and nothing that changes the flow, such as a
   pause. Long text is not paged for now. They are built once the Project
-  window's new design is settled. *Open:* whether a path says which it is,
-  as `const.` and `var.`.
+  window's new design is settled.
+- **Agreed (2026-11-06):** a constant belongs wherever a designer might
+  change a typed-in value later, rather than hunt for where it was typed.
+  Paths say which they are, as `const.` and `var.`, wherever the two mix,
+  and not inside their own lists. An NPC's or a zone's constant can hold a
+  value of its own for each one, edited on its inspector and in the
+  Constants window, which is World state's third part. Markup comes with
+  them. [Increment 33](increments/0033-constants.md) builds them.
+- **Agreed (2026-11-06):** constants follow templates, as values do. A
+  template holds constants beside its values, and every NPC or zone it is
+  on holds them, with a value of its own kept in its own file; an NPC or a
+  zone can also have constants of its own. Long text is written in a sheet
+  over the window, beside a preview of how the game draws it. Making a
+  constant from a typed-in value lists the other places typed the same, to
+  tick and switch, with one Undo for all of it.
 - **Removed (2026-11-06):** Text documents, a placeholder kept to prove the
   text field and picking a place, are gone, as constants will hold a game's
   text ([increment 31](increments/0031-no-text-documents.md)).
@@ -766,6 +785,11 @@ What the engine provides to games, as far as decided:
 - **Agreed:** uniform pixel scaling is guaranteed (no stretching), and layout
   supports several popular aspect ratios rather than one fixed layout. Text uses
   TTF fonts.
+- *Candidate (2026-11-06):* a project chooses its own fonts, as TTF files,
+  for its game's text. Until then a game's text uses the editor's faces,
+  which are free to use in a commercial game: IBM Plex Sans and Mono, under
+  the SIL Open Font License. [Increment 33](increments/0033-constants.md)
+  adds Plex Sans's italics for markup.
 - **Agreed:** OS-specific features stay behind abstractions; broad portability is
   intended, with development on macOS.
 - *Open:* the game save format. JSON (readable, possibly large) and SQLite

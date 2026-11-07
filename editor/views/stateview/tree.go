@@ -171,7 +171,7 @@ func (s *State) ownerRows(built *tree, docs frame.Docs, world valuetree.List, ow
 	if !s.open(rowID) || !loaded {
 		return
 	}
-	if owner.Scope == worldstate.ScopeNPC {
+	if owner.Scope == worldstate.ScopeNPC && s.part != PartConstants {
 		name := worldstate.NameDeclaration(owner.Name)
 		nameRow := ui.NewRow(namePrefix+ownerID.String(), "name")
 		nameRow.Indent, nameRow.Detail = 1, detail(name, built.catalog)
@@ -219,8 +219,14 @@ func (s *State) heldRows(
 	built *tree, world valuetree.List, parent ids.ULID, depth int, ownerID ids.ULID, owner worldstate.Owner,
 ) {
 	for _, declared := range world.Values.Children(owner.Scope, parent) {
+		if !s.shows(declared) {
+			continue
+		}
 		row := ui.NewRow(heldPrefix+ownerID.String()+":"+declared.ID.String(), declared.Name)
 		row.Indent, row.Detail = depth, detail(declared, built.catalog)
+		if declared.IsConstant() {
+			row.Detail = heldDetail(declared, owner)
+		}
 		row.Strong = !declared.Type.IsValue()
 		row.Icon = declaredIcon(declared.Type)
 		built.add(row, item{
@@ -239,6 +245,9 @@ func (s *State) declaredRows(
 	built *tree, list valuetree.List, scope worldstate.Scope, parent ids.ULID, depth int, owner *ownerRef,
 ) {
 	for _, declared := range list.Values.Children(scope, parent) {
+		if !s.shows(declared) {
+			continue
+		}
 		rowID := declaredPrefix + declared.ID.String()
 		row := ui.NewRow(rowID, declared.Name)
 		row.Indent, row.Detail = depth, detail(declared, built.catalog)
@@ -254,7 +263,7 @@ func (s *State) declaredRows(
 		row.Icon = declaredIcon(declared.Type)
 		if !declared.Type.IsValue() {
 			row.Strong = true
-			if len(list.Values.Children(scope, declared.ID)) > 0 {
+			if s.shownChildren(list.Values, scope, declared.ID) > 0 {
 				row.Toggle = s.disclosure(rowID)
 			}
 		}
@@ -303,6 +312,9 @@ func noOwner() worldstate.Owner {
 // detail says what a declaration is: a value's type, limits and default, a
 // group, or a template and how many it is applied to.
 func detail(declared worldstate.Declaration, catalog *worldstate.Catalog) string {
+	if declared.IsConstant() {
+		return constantDetail(declared, catalog)
+	}
 	switch declared.Type {
 	case worldstate.TypeGroup:
 		return newGroupName

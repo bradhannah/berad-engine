@@ -416,11 +416,11 @@ func (n *NPC) act(world World, node flow.Node) (string, bool) {
 	case flow.KindTimeSwitch:
 		return timeSwitch(node, world.Clock.MinuteOfDay()), true
 	case flow.KindRandom:
-		return n.choose(node), true
+		return n.choose(world, node), true
 	case flow.KindContainer:
 		return n.enterContainer(node, world.Clock.MinuteOfDay()), true
 	case flow.KindWait:
-		return n.actWait(node)
+		return n.actWait(world, node)
 	case flow.KindMove:
 		return n.actMove(world, node)
 	case flow.KindGoTo:
@@ -500,15 +500,18 @@ func timeSwitch(node flow.Node, minute int) string {
 	return flow.OutputOtherwise
 }
 
-// choose picks one of a random choice's options, each its share of the time.
-func (n *NPC) choose(node flow.Node) string {
+// choose picks one of a random choice's options, each its share of the
+// time: its share typed, or the constant standing in for it.
+func (n *NPC) choose(world World, node flow.Node) string {
 	options, err := node.Shares("options")
 	if err != nil || len(options) == 0 {
 		return ""
 	}
 	total := 0
-	for _, option := range options {
-		total += option.Share
+	low, high := flow.Limits(flow.TypeShares)
+	for index, option := range options {
+		options[index].Share = n.numberOf(world, flow.Amount{Number: option.Share, Constant: option.Constant}, low, high)
+		total += options[index].Share
 	}
 	if total <= 0 {
 		return options[0].Port
@@ -537,13 +540,16 @@ func (n *NPC) enterContainer(node flow.Node, minute int) string {
 	return flow.OutputExit
 }
 
-// actWait starts or finishes a Wait.
-func (n *NPC) actWait(node flow.Node) (string, bool) {
+// actWait starts or finishes a Wait, for its amount typed or the constant
+// standing in for it.
+func (n *NPC) actWait(world World, node flow.Node) (string, bool) {
 	if !n.work.started {
 		duration, err := node.Duration("duration")
 		if err != nil {
 			return flow.OutputNext, true
 		}
+		low, high := flow.WaitLimits(duration)
+		duration.Amount = n.numberOf(world, flow.Amount{Number: duration.Amount, Constant: duration.Constant}, low, high)
 		seconds := float64(duration.Seconds())
 		n.work = waitWork(seconds, duration.Clock == flow.ClockReal)
 	}
@@ -559,11 +565,12 @@ func (n *NPC) actWait(node flow.Node) (string, bool) {
 func (n *NPC) actMove(world World, node flow.Node) (string, bool) {
 	if !n.work.started {
 		direction, dirErr := node.Choice("direction")
-		tiles, tilesErr := node.Number("tiles")
+		tiles, tilesErr := node.Amount("tiles")
 		if dirErr != nil || tilesErr != nil {
 			return flow.OutputNext, true
 		}
-		n.work = moveWork(tiles, direction)
+		low, high := flow.Limits(flow.TypeTiles)
+		n.work = moveWork(n.numberOf(world, tiles, low, high), direction)
 	}
 	if n.work.movesLeft <= 0 {
 		return flow.OutputNext, true

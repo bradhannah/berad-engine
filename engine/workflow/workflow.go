@@ -33,12 +33,15 @@ import (
 // comparisons by type, a range's top and a list as operands, and operands
 // that refer to another value; version 7 gave Go to a place value, and added
 // Return, Call workflow and place locals; version 8 gave each workflow its
-// kind and the zone it runs in. Layout version 2 added lines moved by hand;
+// kind and the zone it runs in; version 9 let a Play sound carry on when its
+// sound has played; version 10 let a constant stand in for a typed-in
+// number, and constants stand in messages, checks and operands. Layout
+// version 2 added lines moved by hand;
 // version 3 let a back line's drop and end legs be moved too, and added the
 // tints of nodes, outcomes and lines.
 const (
 	FormatName          = "workflow"
-	FormatVersion       = 9
+	FormatVersion       = 10
 	LayoutFormatName    = "workflow-layout"
 	LayoutFormatVersion = 3
 )
@@ -427,10 +430,14 @@ func Format() content.Format {
 		Name: FormatName, Current: FormatVersion,
 		Migrations: map[int]content.Migration{
 			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3, 4: upgradeFrom4, 5: upgradeFrom5, 6: upgradeFrom6,
-			7: upgradeFrom7, 8: upgradeFrom8,
+			7: upgradeFrom7, 8: upgradeFrom8, 9: upgradeFrom9,
 		},
 	}
 }
+
+// upgradeFrom9 reads a version 9 workflow unchanged: version 10 let a
+// constant stand in for a number, and every number it holds is typed.
+func upgradeFrom9(data json.RawMessage) (json.RawMessage, error) { return data, nil }
 
 // upgradeFrom8 gives every Play sound the way it carries on it had, at
 // once: version 9 let a Play sound carry on when its sound has played.
@@ -592,15 +599,17 @@ func upgradeFrom1(data json.RawMessage) (json.RawMessage, error) {
 			if err = node.decode("chance", &chance); err == nil {
 				delete(node.Params, "chance")
 				node, err = node.WithParam("options", []Share{
-					{Port: "yes", Label: "chance", Share: chance},
-					{Port: OutputOtherwise, Label: "otherwise", Share: percent - chance},
+					{Port: "yes", Label: "chance", Share: chance, Constant: noRef()},
+					{Port: OutputOtherwise, Label: "otherwise", Share: percent - chance, Constant: noRef()},
 				})
 			}
 		case KindWait:
 			var minutes int
 			if err = node.decode("minutes", &minutes); err == nil {
 				delete(node.Params, "minutes")
-				node, err = node.WithParam("duration", Duration{Amount: minutes, Unit: UnitMinutes, Clock: ClockGame})
+				node, err = node.WithParam("duration", Duration{
+					Amount: minutes, Unit: UnitMinutes, Clock: ClockGame, Constant: noRef(),
+				})
 			}
 		}
 		if err != nil {

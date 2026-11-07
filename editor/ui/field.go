@@ -19,6 +19,22 @@ const (
 	unsavedMark = 6
 )
 
+// TextPaint is a stretch of a field's text drawn apart from the rest: from
+// Start to End, in bytes, in one of the paints PaintConstant, PaintValue and
+// PaintTag.
+type TextPaint struct {
+	Start, End int
+	Paint      string
+}
+
+// The paints a field's stretches are drawn in: a constant's path, a value's,
+// and markup's tags, quieter than the words.
+const (
+	PaintConstant = "constant"
+	PaintValue    = "value"
+	PaintTag      = "tag"
+)
+
 // TextField draws a textedit.Field and turns input into edits. Text is laid
 // out with berad-text, which supplies wrapping, caret positions and selection
 // rectangles.
@@ -31,6 +47,9 @@ type TextField struct {
 	// Unmarked fields, such as a search box, never show the unsaved mark:
 	// what is typed in them is never saved.
 	Unmarked bool
+	// Paints, when set, says which stretches of the text to draw apart, in
+	// order; the rest is drawn in ink.
+	Paints func(text string) []TextPaint
 
 	theme       *Theme
 	focused     bool
@@ -50,7 +69,7 @@ type layoutCache struct {
 func NewTextField(id string, field *textedit.Field, multiline bool, theme *Theme) *TextField {
 	return &TextField{
 		ID: id, Rect: image.Rect(0, 0, 0, 0), Field: field, Placeholder: "", Multiline: multiline, Unmarked: false,
-		theme: theme, focused: false, dragging: false, composition: "", scroll: image.Pt(0, 0),
+		Paints: nil, theme: theme, focused: false, dragging: false, composition: "", scroll: image.Pt(0, 0),
 		cache: layoutCache{text: "", width: -1, layout: nil},
 	}
 }
@@ -191,7 +210,7 @@ func (w *TextField) layoutOf(value string) *berad.Layout {
 	if w.cache.layout != nil && w.cache.text == value && w.cache.width == width {
 		return w.cache.layout
 	}
-	content, err := berad.NewContent([]berad.Span{{Text: value, Font: w.theme.Font, Paint: paintInk}})
+	content, err := berad.NewContent(w.spans(value))
 	if err != nil {
 		return nil
 	}
@@ -207,15 +226,83 @@ func (w *TextField) layoutOf(value string) *berad.Layout {
 	return layout
 }
 
+// spans splits a text into what is drawn: its stretches in their paints,
+// in order, and the rest in ink. A stretch out of order or out of the text
+// is left out.
+func (w *TextField) spans(value string) []berad.Span {
+	ink := func(text string) berad.Span { return berad.Span{Text: text, Font: w.theme.Font, Paint: paintInk} }
+	if w.Paints == nil {
+		return []berad.Span{ink(value)}
+	}
+	var spans []berad.Span
+	offset := 0
+	for _, tint := range w.Paints(value) {
+		if tint.Start < offset || tint.End > len(value) || tint.Start >= tint.End {
+			continue
+		}
+		if tint.Start > offset {
+			spans = append(spans, ink(value[offset:tint.Start]))
+		}
+		spans = append(spans, berad.Span{Text: value[tint.Start:tint.End], Font: w.theme.Font, Paint: tint.Paint})
+		offset = tint.End
+	}
+	if offset < len(value) || len(spans) == 0 {
+		spans = append(spans, ink(value[offset:]))
+	}
+
+	return spans
+}
+
 // origin is where the text's top-left corner sits on screen. A single-line
-// field centres its line in its height and never scrolls up or down.
+// field, or one of many lines only one row high and holding one, centres
+// its line in its height and never scrolls up or down.
 func (w *TextField) origin() image.Point {
 	top := w.Rect.Min.Y + fieldPad - w.scroll.Y
-	if !w.Multiline {
+	if !w.Multiline || w.oneRow() {
 		top = w.Rect.Min.Y + (w.Rect.Dy()-w.lineHeight())/Half
 	}
 
 	return image.Pt(w.Rect.Min.X+fieldPad-w.scroll.X, top)
+}
+
+// oneRow reports whether a field of many lines is only one row high and its
+// text one line, as a line that grows does before it wraps.
+func (w *TextField) oneRow() bool {
+	layout := w.layout()
+
+	return layout != nil && len(layout.Lines()) <= 1 && w.Rect.Dy() < Half*(w.lineHeight()+fieldPad)
+}
+
+// FitHeight is how high the field must be to show all its text, a row for
+// each line it wraps to: from a button's height to at most rows, beyond
+// which it scrolls. Its width must be set first.
+func (w *TextField) FitHeight(most int) int {
+	rows := 1
+	if layout := w.layout(); layout != nil {
+		rows = min(len(layout.Lines()), most)
+	}
+	if rows <= 1 {
+		return ButtonH
+	}
+
+	return max(ButtonH, rows*w.lineHeight()+Half*fieldPad)
+}
+
+// clampScroll keeps a field of many lines scrolled no further than its text
+// needs, as text taken away, or a field grown, needs less.
+func (w *TextField) clampScroll() {
+	layout := w.layout()
+	if !w.Multiline || layout == nil {
+		return
+	}
+	lines := layout.Lines()
+	if len(lines) == 0 || w.oneRow() {
+		w.scroll.Y = 0
+
+		return
+	}
+	height := int(math.Ceil(lines[len(lines)-1].Bounds.Max.Y))
+	w.scroll.Y = min(w.scroll.Y, max(height-(w.Rect.Dy()-Half*fieldPad), 0))
 }
 
 // lineHeight returns the height of one line of the field's text.
@@ -250,9 +337,10 @@ func (w *TextField) keepCaretVisible() {
 	inner := w.Rect.Inset(fieldPad)
 	caret := w.caretRect()
 	w.scroll.X = max(w.scroll.X+scrollToShow(caret.Min.X, caret.Max.X, inner.Min.X, inner.Max.X), 0)
-	if w.Multiline {
+	if w.Multiline && !w.oneRow() {
 		w.scroll.Y = max(w.scroll.Y+scrollToShow(caret.Min.Y, caret.Max.Y, inner.Min.Y, inner.Max.Y), 0)
 	}
+	w.clampScroll()
 }
 
 // scrollToShow returns how far to scroll so the span low..high shows inside
@@ -393,15 +481,23 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 	if !ok {
 		return
 	}
+	w.clampScroll()
 	value := w.Field.Value()
 	if value == "" && !w.focused && w.composition == "" {
 		w.theme.DrawText(area, w.Placeholder, w.Rect.Min.X+fieldPad, w.origin().Y, ColorSubdued())
 	}
 	w.drawText(area, value)
 	if w.Field.Dirty() && !w.Unmarked {
-		mark := image.Rect(w.Rect.Max.X-unsavedMark-Gap, w.Rect.Min.Y+Gap, w.Rect.Max.X-Gap, w.Rect.Min.Y+Gap+unsavedMark)
-		FillRect(screen, mark, ColorWarn())
+		DrawUnsavedMark(screen, w.Rect)
 	}
+}
+
+// DrawUnsavedMark draws the small red square at the top right of a box that
+// says what it holds is not saved yet: a field's draft, or a choice that
+// waits for Save as typing does.
+func DrawUnsavedMark(screen *ebiten.Image, box image.Rectangle) {
+	mark := image.Rect(box.Max.X-unsavedMark-Gap, box.Min.Y+Gap, box.Max.X-Gap, box.Min.Y+Gap+unsavedMark)
+	FillRect(screen, mark, ColorWarn())
 }
 
 // drawText draws the text with the selection under it and the caret, or the
@@ -426,7 +522,10 @@ func (w *TextField) drawText(area *ebiten.Image, value string) {
 	var options berad.DrawOptions
 	options.GeoM.Translate(float64(origin.X), float64(origin.Y))
 	options.Filter = ebiten.FilterNearest
-	palette := berad.Palette{paintInk: ColorInk(), paintMuted: ColorMuted()}
+	palette := berad.Palette{
+		paintInk: ColorInk(), paintMuted: ColorMuted(), PaintConstant: ColorConstant(), PaintValue: ColorValue(),
+		PaintTag: ColorSubdued(),
+	}
 	if err := w.theme.Text.Draw(area, layout, palette, options); err != nil {
 		return
 	}

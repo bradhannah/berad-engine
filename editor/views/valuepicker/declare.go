@@ -1,6 +1,7 @@
 package valuepicker
 
 import (
+	"cmp"
 	"encoding/json"
 	"image"
 	"slices"
@@ -42,8 +43,10 @@ type declarePanel struct {
 	types   []*ui.Button
 	kinds   []worldstate.Type
 	kind    worldstate.Type
-	// start is what an integer or text starts at, truth a bool's.
+	// start is what an integer or text starts at, truth a bool's; given
+	// is what they start at, when the picker is told.
 	start   *ui.TextField
+	given   string
 	truth   []*ui.Button
 	truthOn bool
 	ask     *ui.Button
@@ -57,6 +60,9 @@ type declarePanel struct {
 // have, or only the picker's one, locked.
 func newDeclarePanel(config Config, theme *ui.Theme) *declarePanel {
 	kinds := worldstate.Types(worldstate.ScopeWorld)
+	if len(config.Kinds) > 0 {
+		kinds = config.Kinds
+	}
 	if config.Only != "" {
 		kinds = []worldstate.Type{config.Only}
 	}
@@ -72,7 +78,7 @@ func newDeclarePanel(config Config, theme *ui.Theme) *declarePanel {
 	start.Unmarked = true
 	panel := &declarePanel{
 		targets: nil, where: nil, chosen: "", matched: 0, asked: false, lead: config.DeclareLead, types: types,
-		kinds: kinds, kind: "", start: start, truth: []*ui.Button{
+		kinds: kinds, kind: "", start: start, given: config.Start, truth: []*ui.Button{
 			ui.NewButton("declare-start-false", "false"), ui.NewButton("declare-start-true", "true"),
 		}, truthOn: false,
 		ask: ui.NewButton("picker-new", ""), declare: ui.NewButton("picker-declare", config.DeclareAs),
@@ -96,9 +102,9 @@ func (d *declarePanel) setKind(index int) {
 	}
 	switch d.kind {
 	case worldstate.TypeInteger:
-		d.start.Field.SetSaved("0")
+		d.start.Field.SetSaved(cmp.Or(d.given, "0"))
 	case worldstate.TypeText:
-		d.start.Field.SetSaved("")
+		d.start.Field.SetSaved(d.given)
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
 		worldstate.TypeTemplate,
 		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:

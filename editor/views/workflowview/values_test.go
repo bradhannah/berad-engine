@@ -204,7 +204,7 @@ func TestAtItsLimit(t *testing.T) {
 	if f.has("problem:" + flow.KindCheckValue + ":1") {
 		t.Fatal("with a maximum it can be at it, with nothing to compare with")
 	}
-	if !f.has("title:check-value:1=Is world.patience at its maximum?") {
+	if !f.has("title:check-value:1=Is var.world.patience at its maximum?") {
 		t.Fatal("titled as a question")
 	}
 }
@@ -278,7 +278,7 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	f.typeText("5")
 	f.keys("Enter")
 	if !f.has("operand:to=5") || !f.has("operand:against=0") || f.has("problem:"+flow.KindCheckValue+":1") ||
-		!f.has("title:check-value:1=Is world.patience between 0 and 5?") {
+		!f.has("title:check-value:1=Is var.world.patience between 0 and 5?") {
 		t.Fatalf("between 0 and 5 is whole: %q", f.status())
 	}
 	f.click("ui:compare-" + flow.CompareLeast)
@@ -297,7 +297,7 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 	f.click("valuerow:world.patience")
 	if !f.has("refers:against=world.patience") || f.has("problem:"+flow.KindCheckValue+":1") ||
-		!f.has("title:check-value:1=Is world.patience ≥ world.patience?") {
+		!f.has("title:check-value:1=Is var.world.patience ≥ var.world.patience?") {
 		t.Fatal("at least another integer value, read when it runs")
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
@@ -317,7 +317,7 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	}
 	f.click("ui:operand-" + flow.ParamAgainst + "-true")
 	if !f.has("operand:against=true") || !f.has(`operand:compare="is"`) || f.has("problem:"+flow.KindCheckValue+":1") ||
-		!f.has("title:check-value:1=Is world.patience true?") {
+		!f.has("title:check-value:1=Is var.world.patience true?") {
 		t.Fatal("true mends the comparison to is")
 	}
 	value.Type, value.Default = worldstate.TypeChoice, []byte(`"c1"`)
@@ -333,7 +333,7 @@ func TestComparisonsFollowTheType(t *testing.T) {
 	f.click("ui:operand-" + flow.ParamAmong + "-c1")
 	f.click("ui:operand-" + flow.ParamAmong + "-c3")
 	if !f.has(`operand:among=["c1","c3"]`) || !f.has(`operand:compare="`+flow.CompareAnyOf+`"`) ||
-		f.has("problem:"+flow.KindCheckValue+":1") || !f.has("title:check-value:1=Is world.patience any of calm, glad?") {
+		f.has("problem:"+flow.KindCheckValue+":1") || !f.has("title:check-value:1=Is var.world.patience any of calm, glad?") {
 		t.Fatalf("ticking two choices makes any of them: %q", f.status())
 	}
 	f.click("ui:operand-" + flow.ParamAmong + "-c1")
@@ -415,9 +415,9 @@ func TestTextOnANode(t *testing.T) {
 	f.click("ui:pick-value")
 	f.click("valuerow:world.motto")
 	for typed, title := range map[string]string{
-		`""`:                              "Is world.motto empty?",
-		`"Ada"`:                           "Is world.motto “Ada”?",
-		`"Say \"hi\" to the clerk today"`: "Is world.motto “Say \"hi\" to the clerk t…”?",
+		`""`:                              "Is var.world.motto empty?",
+		`"Ada"`:                           "Is var.world.motto “Ada”?",
+		`"Say \"hi\" to the clerk today"`: "Is var.world.motto “Say \"hi\" to the clerk t…”?",
 	} {
 		node, err := f.nth(flow.KindCheckValue, 1).WithParam(flow.ParamAgainst, json.RawMessage(typed))
 		if err != nil {

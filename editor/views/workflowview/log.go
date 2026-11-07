@@ -2,6 +2,7 @@ package workflowview
 
 import (
 	"image"
+	"image/color"
 	"slices"
 	"strconv"
 	"strings"
@@ -10,22 +11,29 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
+	"github.com/bradhannah/berad-engine/editor/views/writesheet"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
+	"github.com/bradhannah/berad-engine/engine/show"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
 // A Log's Message: its Insert value… button, how a value stands in its
-// text, and how a value whose NPC is only known as it runs reads.
+// text, and how a value whose NPC is only known as it runs reads. Its field
+// holds messageBytes, its text and each value's path in braces; Save holds
+// the message to its own limits. It wraps, growing to lineRows rows.
 const (
 	insertValueID = "insert-value"
 	tokenOpen     = "{"
 	tokenClose    = "}"
 	chipPad       = 4
 	chipGap       = 3
+	messageBytes  = 4096
+	lineRows      = 6
 )
 
 // typeForms lists how each type reads as text, under a Log's Message.
@@ -130,6 +138,10 @@ func (s *State) parseMessage(docs frame.Docs, value string, saved []flow.Segment
 		addText(before)
 		ref, found := known[strings.TrimSpace(token)]
 		if !found {
+			// A path typed as before prefixes, as world.coins, is a value's.
+			ref, found = known[worldstate.ValuePrefix+strings.TrimSpace(token)]
+		}
+		if !found {
 			return nil, "No value is called " + strings.TrimSpace(token) + ". Put one in with Insert value…"
 		}
 		segments = append(segments, flow.Segment{Text: "", Ref: &ref})
@@ -155,21 +167,46 @@ func messageLimits(segments []flow.Segment) string {
 	return ""
 }
 
-// insertForLog puts a value picked for a Log into its message where the
-// caret was, and saves it, reporting whether the node is a Log.
+// caretMark is where the caret was in a message's field: the ends of what
+// was selected, and the text they were in.
+type caretMark struct {
+	start, end int
+	text       string
+}
+
+// trackCaret keeps where the caret is in the message's field while it has
+// focus, as a click on Insert value… takes the focus before a value is
+// picked.
+func (s *State) trackCaret() {
+	made, has := s.messageControl()
+	if !has || !made.field.Focused() {
+		return
+	}
+	if buffer := made.field.Field.Buffer(); buffer != nil {
+		start, end := buffer.Selection()
+		s.form.caret = &caretMark{start: start, end: end, text: buffer.Text()}
+	}
+}
+
+// insertForLog puts a value picked for a message where the caret last was
+// in its field, or at its end: a change that waits for Save, as typing
+// does, the field keeping focus with the caret after the value. It reports
+// whether the node has a message.
 func (s *State) insertForLog(ctx *frame.Context, node flow.Node, ref flow.ValueRef) bool {
 	if !hasMessage(node.Kind) || s.form == nil || s.form.node != node.ID {
 		return hasMessage(node.Kind)
 	}
-	for index := range s.form.controls {
-		made := &s.form.controls[index]
-		if made.param.Type != flow.TypeMessage || made.field == nil {
-			continue
-		}
-		made.field.Field.Focus()
-		made.field.Field.Type(s.tokenOf(ctx.Docs, ref))
-		s.Save(ctx)
+	made, has := s.messageControl()
+	if !has {
+		return true
 	}
+	field := made.field.Field
+	field.Focus()
+	if mark := s.form.caret; mark != nil && mark.text == field.Value() {
+		field.Buffer().Select(mark.start, mark.end)
+	}
+	field.Type(s.tokenOf(ctx.Docs, ref))
+	s.focus.Set(made.field)
 
 	return true
 }
@@ -239,14 +276,10 @@ func (s *State) sampleOwner(docs frame.Docs, catalog *worldstate.Catalog) (ids.U
 	return followers[0], true
 }
 
-// sampleLine is how a Log's line would read as its values start, for the
-// first NPC following the workflow; a value known only as it runs, as the
-// NPC a local holds, stands as its path.
-func (s *State) sampleLine(docs frame.Docs, node flow.Node) string {
-	segments, err := node.Message()
-	if err != nil {
-		return ""
-	}
+// readSegments is how a message's parts would read as their values start,
+// for the first NPC following the workflow, markup kept; a value known
+// only as it runs, as the NPC a local holds, stands as its path.
+func (s *State) readSegments(docs frame.Docs, segments []flow.Segment) string {
 	catalog := s.catalog(docs)
 	namer := s.namer(docs)
 	sample, hasSample := s.sampleOwner(docs, catalog)
@@ -275,14 +308,16 @@ func (s *State) sampleLine(docs frame.Docs, node flow.Node) string {
 			owner, startsKnown = ids.ULID{}, true
 		}
 		if !startsKnown {
-			line.WriteString("‹" + path + "›")
+			line.WriteString(show.Escape("‹" + path + "›"))
 
 			continue
 		}
-		if own, ok := catalog.Lookup(ref.Scope, owner, ref.Value); ok {
-			declared = own
+		declared, value := constantValue(catalog, ref.Scope, owner, declared)
+		said := worldstate.Text(declared, value, namer)
+		if !declared.IsConstant() {
+			said = show.Escape(said)
 		}
-		line.WriteString(worldstate.Text(declared, declared.Zero(), namer))
+		line.WriteString(said)
 	}
 
 	return line.String()
@@ -298,15 +333,57 @@ func (s *State) sampleHeading(docs frame.Docs) string {
 	return "As it would read"
 }
 
-// layoutMessage places a Log's Message field and Insert value…, leaving
-// room under them for the line as it would read and each type as text.
+// typedSegments reads the message in the field: what is typed there, or
+// the message saved, or what keeps what is typed from being read.
+func (s *State) typedSegments(docs frame.Docs, node flow.Node) ([]flow.Segment, string) {
+	saved, err := node.Message()
+	if err != nil {
+		return nil, err.Error()
+	}
+	made, has := s.messageControl()
+	if !has || s.form.node != node.ID || !made.field.Field.Dirty() {
+		return saved, ""
+	}
+	segments, problem := s.parseMessage(docs, made.field.Field.Value(), saved)
+	if segments == nil && problem != "" {
+		return nil, problem
+	}
+
+	return segments, ""
+}
+
+// previewLine is how the line in the field would read, without its markup,
+// or what keeps it from being read.
+func (s *State) previewLine(docs frame.Docs, node flow.Node) (string, string) {
+	segments, problem := s.typedSegments(docs, node)
+	if problem != "" {
+		return "", problem
+	}
+
+	return show.Plain(s.readSegments(docs, segments)), ""
+}
+
+// previewText is what is drawn under the heading: the line as it would
+// read, or in warning colour what keeps it from being read.
+func (s *State) previewText(docs frame.Docs, node flow.Node) (string, color.RGBA) {
+	line, problem := s.previewLine(docs, node)
+	if problem != "" {
+		return problem, ui.ColorWarn()
+	}
+
+	return line, ui.ColorInk()
+}
+
+// layoutMessage places a Log's Message field, as high as its text wraps
+// to, and Insert value…, leaving room under them for the line as it would
+// read and each type as text.
 func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top int) int {
 	made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-	top += ui.ButtonH + rowSpace
-	made.pick.Rect = image.Rect(left, top, left+s.theme.TextWidth(made.pick.Label)+ui.Inset*ui.Half, top+ui.ButtonH)
-	top += ui.ButtonH + fieldSpace
+	made.field.Rect.Max.Y = top + made.field.FitHeight(lineRows)
+	top = s.layoutMessageButtons(made, left, width, made.field.Rect.Max.Y+rowSpace) + fieldSpace
 	if node, ok := s.selectedNode(); ok {
-		top += (1 + len(s.wrap(s.sampleLine(docs, node), width))) * ui.LineHeight
+		shown, _ := s.previewText(docs, node)
+		top += (1 + len(s.wrap(shown, width))) * ui.LineHeight
 	}
 
 	return top + fieldSpace + (1+len(typeForms()))*ui.LineHeight
@@ -317,12 +394,19 @@ func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top i
 func (s *State) drawMessage(screen *ebiten.Image, docs frame.Docs, made *control, node flow.Node, left int) {
 	made.field.Draw(screen)
 	made.pick.Draw(screen, s.theme)
-	width := made.field.Rect.Dx()
 	top := made.pick.Rect.Max.Y + fieldSpace
+	for _, button := range []*ui.Button{s.form.makeText, s.form.writeLine} {
+		if button != nil {
+			button.Draw(screen, s.theme)
+			top = max(top, button.Rect.Max.Y+fieldSpace)
+		}
+	}
+	width := made.field.Rect.Dx()
 	s.theme.DrawStrong(screen, s.sampleHeading(docs), left, top, ui.ColorInk())
-	for _, line := range s.wrap(s.sampleLine(docs, node), width) {
+	shown, ink := s.previewText(docs, node)
+	for _, line := range s.wrap(shown, width) {
 		top += ui.LineHeight
-		s.theme.DrawText(screen, line, left, top, ui.ColorInk())
+		s.theme.DrawText(screen, line, left, top, ink)
 	}
 	top += ui.LineHeight + fieldSpace
 	s.theme.DrawStrong(screen, "Each type as text", left, top, ui.ColorInk())
@@ -337,8 +421,9 @@ func (s *State) drawMessage(screen *ebiten.Image, docs frame.Docs, made *control
 	}
 }
 
-// drawLogNode writes LOG and a Log's message on its node: its text, and
-// each value as a chip holding its path, cut short at the node's edge.
+// drawLogNode writes LOG and a Log's message on its node: its text, its
+// line breaks as spaces, and each value as a chip holding its path, cut
+// short at the node's edge.
 func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 	rect := s.screenRect(drawn.rect)
 	s.theme.DrawLabel(area, labelOf(drawn.node.Kind), rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
@@ -355,7 +440,7 @@ func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			return
 		}
 		if segment.Ref == nil {
-			text := s.clip(segment.Text, room)
+			text := s.clip(strings.ReplaceAll(segment.Text, "\n", " "), room)
 			s.theme.DrawText(area, text, along, baseline, ui.ColorInk())
 			along += s.theme.TextWidth(text)
 
@@ -364,9 +449,10 @@ func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		path := strings.Trim(s.tokenOf(docs, *segment.Ref), tokenOpen+tokenClose)
 		chipW := min(s.theme.SmallWidth(path)+ui.Half*chipPad, room)
 		chip := image.Rect(along+1, baseline-chipPad/ui.Half, along+1+chipW, baseline+ui.TextSize+chipPad/ui.Half)
-		ui.FillRound(area, chip, chipPad, ui.ColorHover())
+		wash, ink := refColours(path)
+		ui.FillRound(area, chip, chipPad, wash)
 		ui.StrokeRound(area, chip, chipPad, 1, ui.ColorRule())
-		s.theme.DrawSmall(area, s.clip(path, chipW-chipPad), chip.Min.X+chipPad, baseline+1, ui.ColorInk())
+		s.theme.DrawSmall(area, s.clip(path, chipW-chipPad), chip.Min.X+chipPad, baseline+1, ink)
 		along = chip.Max.X + chipGap
 	}
 }
@@ -381,6 +467,38 @@ func hasMessage(kind string) bool {
 	})
 }
 
+// messageField makes a message's field that holds the paths of the values
+// in it as well as its text, wrapping so all of it shows. Enter saves it. A
+// Say's and a Show message's line break where Shift+Enter starts a new
+// line; a Log's stays one line, as the log writes it.
+func (s *State) messageField(id, kind string) *ui.TextField {
+	field := ui.NewTextField(id, textedit.NewField("", false, messageBytes), true, s.theme)
+	if keepsBreaks(kind) {
+		field.Field.KeepBreaks()
+	}
+	field.Paints = writesheet.Paints
+	s.focus.Register(field)
+
+	return field
+}
+
+// keepsBreaks reports whether a kind of node's line may break: a Say's and
+// a Show message's, not a Log's.
+func keepsBreaks(kind string) bool { return kind != flow.KindLog }
+
+// refColours are a value's chip's wash and ink, by its path: a constant's
+// amber, a value's slate, and one deleted plain.
+func refColours(path string) (color.RGBA, color.RGBA) {
+	switch {
+	case strings.HasPrefix(path, worldstate.ConstantPrefix):
+		return ui.ColorConstantWash(), ui.ColorConstant()
+	case strings.HasPrefix(path, "#"):
+		return ui.ColorHover(), ui.ColorInk()
+	default:
+		return ui.ColorValueWash(), ui.ColorValue()
+	}
+}
+
 // insertButton is Insert value… for a message, and none for plain text.
 func insertButton(paramType flow.ParamType) *ui.Button {
 	if paramType != flow.TypeMessage {
@@ -390,15 +508,27 @@ func insertButton(paramType flow.ParamType) *ui.Button {
 	return ui.NewButton(insertValueID, "Insert value…")
 }
 
-// hasLogState answers "message=<text>", the selected Log's message as its
-// field shows it, and "reads=<line>", how its line would read.
+// hasLogState answers "message=<text>", the selected Log's message as
+// saved, as its field shows it; "line=<text>", what its field holds now,
+// typed or saved; "reads=<line>", how the line in the field would read; and
+// "reads-problem=<text>", what keeps it from being read.
 func (s *State) hasLogState(state string, docs frame.Docs) (bool, bool) {
 	node, selected := s.selectedNode()
 	switch {
 	case strings.HasPrefix(state, "message="):
 		return selected && s.logSummary(docs, node) == strings.TrimPrefix(state, "message="), true
+	case strings.HasPrefix(state, "line="):
+		made, has := s.messageControl()
+
+		return selected && has && made.field.Field.Value() == strings.TrimPrefix(state, "line="), true
 	case strings.HasPrefix(state, "reads="):
-		return selected && s.sampleLine(docs, node) == strings.TrimPrefix(state, "reads="), true
+		line, problem := s.previewLine(docs, node)
+
+		return selected && problem == "" && line == strings.TrimPrefix(state, "reads="), true
+	case strings.HasPrefix(state, "reads-problem="):
+		_, problem := s.previewLine(docs, node)
+
+		return selected && problem == strings.TrimPrefix(state, "reads-problem="), true
 	}
 
 	return false, false

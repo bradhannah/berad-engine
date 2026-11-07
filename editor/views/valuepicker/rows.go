@@ -44,7 +44,8 @@ func (p *Picker) rows(docs frame.Docs) []ui.Row {
 	taken := map[string]bool{}
 	for _, option := range p.source.Options(docs) {
 		taken[option.Path] = true
-		if query != "" && !strings.Contains(option.Path, query) {
+		if query != "" && !strings.Contains(option.Path, query) &&
+			!strings.Contains(strings.ToLower(option.Words), strings.ToLower(query)) {
 			continue
 		}
 		inScope := p.scope == Everywhere || option.Rail == p.scope
@@ -316,7 +317,8 @@ func (p *Picker) locatePart(value string) (image.Point, bool) {
 		}
 	case "group":
 		for index, row := range p.list.Rows {
-			if strings.HasPrefix(row.ID, groupPrefix) && row.Label == named && p.list.RowRect(index).In(p.list.Rect) {
+			if strings.HasPrefix(row.ID, groupPrefix) && (row.Label == named || row.Label == worldstate.ValuePrefix+named) &&
+				p.list.RowRect(index).In(p.list.Rect) {
 				return image.Pt(p.list.Rect.Min.X+railWidth/ui.Half, ui.Center(p.list.RowRect(index)).Y), true
 			}
 		}

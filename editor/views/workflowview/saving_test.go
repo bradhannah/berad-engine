@@ -2,6 +2,7 @@ package workflowview_test
 
 import (
 	"image"
+	"strings"
 	"testing"
 
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
@@ -87,5 +88,175 @@ func TestSelectingAnotherNodeAsks(t *testing.T) {
 	f.click("ui:discard-changes")
 	if !f.has("selected:"+flow.KindStart) || len(f.requests.Of(workflowplugin.ReplaceEdit)) != before {
 		t.Fatal("Don't save selects the start and saves nothing")
+	}
+}
+
+// TestInsertValueKeepsTheCaret puts a constant where the caret was in a
+// line typed and saved, though clicking Insert value… took the focus; the
+// field keeps it, so typing goes on after the constant.
+func TestInsertValueKeepsTheCaret(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "Hello there")
+	f.click("ui:param-message")
+	f.keys("Home")
+	f.click("ui:insert-value")
+	f.typeText("greeting")
+	f.click("valuerow:const.npc.shop.greeting")
+	if !f.has("line={const.npc.shop.greeting}Hello there") {
+		t.Fatal("the constant goes where the caret was, not at the end")
+	}
+	f.typeText(" ")
+	if !f.has("line={const.npc.shop.greeting} Hello there") || !f.has("unsaved=1") {
+		t.Fatal("typing goes on after it, all waiting for Save")
+	}
+}
+
+// TestThePreviewReadsTheField reads the line typed and not saved yet, and
+// says what keeps one naming no value from being read.
+func TestThePreviewReadsTheField(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeOnly("param-message", "Back in {const.world.restock_minutes} minutes")
+	if !f.has("reads=Back in 30 minutes") || !f.has("unsaved=1") {
+		t.Fatal("the line as it would read follows what is typed")
+	}
+	f.typeOnly("param-message", "Back in {const.world.restock}")
+	if !f.has("reads-problem=No value is called const.world.restock. Put one in with Insert value…") {
+		t.Fatal("a path naming no value says so where the line would read")
+	}
+}
+
+// TestAConstantChosenAsksBeforeLeaving chooses a constant for a Wait, then
+// clicks the start: the window asks, as for typing, and Don't save leaves
+// the Wait as it was.
+func TestAConstantChosenAsksBeforeLeaving(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindWait)
+	f.withConstants()
+	f.click("ui:constant-duration")
+	f.typeText("restock")
+	f.click("valuerow:const.world.restock_minutes")
+	f.click("node:start:1")
+	f.click("ui:discard-changes")
+	wait, err := f.nth(flow.KindWait, 1).Duration("duration")
+	if !f.has("selected:"+flow.KindStart) || err != nil || !wait.Constant.IsZero() {
+		t.Fatalf("Don't save moves on and leaves the Wait typed: %+v %v", wait, err)
+	}
+}
+
+// TestAConstantChosenSurvivesARebuild chooses a constant for a random
+// choice's first share, then adds an option, which rebuilds the form: the
+// constant is still chosen, and Save keeps it with the new option.
+func TestAConstantChosenSurvivesARebuild(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindRandom)
+	f.withConstants()
+	f.click("ui:constant-options-1")
+	f.typeText("restock")
+	f.click("valuerow:const.world.restock_minutes")
+	f.click("ui:add-option")
+	if !f.has("constant:options-1=const.world.restock_minutes") || !f.has("unsaved=1") {
+		t.Fatal("the constant chosen outlasts the form being rebuilt")
+	}
+	f.click("ui:save")
+	options, err := f.nth(flow.KindRandom, 1).Shares("options")
+	if err != nil || len(options) != 3 || options[0].Constant.Value != restockID {
+		t.Fatalf("Save keeps it beside the new option: %+v %v", options, err)
+	}
+}
+
+// TestALongLineGrowsItsField wraps a long line in its field, which grows a
+// row at a time, pushing Insert value… down, up to six rows.
+func TestALongLineGrowsItsField(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	short := f.at("ui:insert-value").Y
+	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 4))
+	grown := f.at("ui:insert-value").Y
+	if grown < short+ui.LineHeight/ui.Half {
+		t.Fatalf("a line that wraps grows its field: Insert value… from %d to %d", short, grown)
+	}
+	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 40))
+	tallest := f.at("ui:insert-value").Y
+	if tallest <= grown || tallest > short+6*ui.LineHeight {
+		t.Fatalf("it grows to six rows at most: Insert value… from %d to %d", short, tallest)
+	}
+}
+
+// TestWriteOpensTheLineInTheSheet writes a Say's line in the writing
+// sheet, from what its field holds; Done puts what was written back in the
+// field, waiting for Save as typing does.
+func TestWriteOpensTheLineInTheSheet(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "Hello! {const.npc.shop.greeting}")
+	f.click("ui:write-line")
+	if !f.has("sheet") || !f.has("sheet-text=Hello! {const.npc.shop.greeting}") {
+		t.Fatal("Write… opens the line in the sheet")
+	}
+	f.typeText(" Come again.")
+	f.click("ui:sheet-done")
+	if f.has("sheet") || !f.has("line=Hello! {const.npc.shop.greeting} Come again.") || !f.has("unsaved=1") {
+		t.Fatal("Done puts the line back in its field, waiting for Save")
+	}
+	f.click("ui:save")
+	if !f.has("message=Hello! {const.npc.shop.greeting} Come again.") {
+		t.Fatal("Save keeps it")
+	}
+}
+
+// TestASayBreaksItsLine breaks a Say's line with Shift+Enter, and Save
+// keeps the break; Enter in a Log's message still saves it as one line.
+func TestASayBreaksItsLine(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.typeOnly("param-message", "Good morning.")
+	f.keys("Shift+Enter")
+	f.typeText("Come in.")
+	if !f.has("line=Good morning.\nCome in.") || !f.has("unsaved=1") {
+		t.Fatal("Shift+Enter starts a new line in a Say's line, waiting for Save")
+	}
+	f.keys("Enter")
+	if !f.has("message=Good morning.\nCome in.") {
+		t.Fatal("Enter saves the line, its break kept")
+	}
+	log := withNode(t, flow.KindLog)
+	log.typeOnly("param-message", "Opened the shop.")
+	log.keys("Shift+Enter")
+	if !log.has("message=Opened the shop.") {
+		t.Fatal("a Log's message stays one line: Shift+Enter saves it")
+	}
+}
+
+// TestTheInspectorScrolls fills a Say's inspector past its notes with a long
+// line in a short window: the wheel scrolls it, a script finds the colours
+// below by scrolling to them, and another node starts at the top.
+func TestTheInspectorScrolls(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.ctx.Size = image.Pt(1200, 600)
+	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 40))
+	if !f.has("inspector-scrolls") {
+		t.Fatal("a long line in a short window fills the inspector past its notes, so it scrolls")
+	}
+	top := f.at("ui:insert-value")
+	wheel := ui.NewInput(top)
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if scrolled := f.at("ui:insert-value"); scrolled.Y != top.Y-ui.RowHeight {
+		t.Fatalf("a notch of the wheel scrolls a row: Insert value… from %d to %d", top.Y, scrolled.Y)
+	}
+	f.click("ui:swatch:node:green")
+	if !f.has("tint:" + flow.KindSay + ":1=green") {
+		t.Fatal("a script finds the colours under the notes by scrolling to them")
+	}
+	f.click("ui:save")
+	f.click("node:start:1")
+	if f.has("inspector-scrolls") {
+		t.Fatal("the start's inspector starts at the top, and has no need to scroll")
 	}
 }

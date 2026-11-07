@@ -94,9 +94,9 @@ func kindName(view string) string {
 }
 
 // kindOf is the kind a tab is filed under: its first pane's, with World
-// state's Values and Signals filed together.
+// state's Values, Signals and Constants filed together.
 func kindOf(each *tab) string {
-	if view := each.panes[0].view; view != stateview.SignalsViewName {
+	if view := each.panes[0].view; view != stateview.SignalsViewName && view != stateview.ConstantsViewName {
 		return view
 	}
 

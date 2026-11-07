@@ -1,6 +1,9 @@
 package browser
 
 import (
+	"image"
+	"strings"
+
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -50,4 +53,19 @@ func (s *State) DialogLines() []string {
 	}
 
 	return s.dialog.Lines
+}
+
+// InspectorScroll returns how far the inspector is scrolled, and the
+// furthest it scrolls, for tests.
+func (s *State) InspectorScroll() (int, int) { return s.scroll.offset, s.scroll.most }
+
+// LocateInPlace locates an inspector's widget without scrolling to it, for
+// tests.
+func (s *State) LocateInPlace(name string, docs frame.Docs) (image.Point, bool) {
+	s.layout(docs)
+	if point, found := s.locateConstant(name); found {
+		return point, true
+	}
+
+	return s.locateWidget(strings.TrimPrefix(name, "ui:"))
 }

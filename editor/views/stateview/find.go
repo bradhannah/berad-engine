@@ -87,13 +87,19 @@ func (s *State) openFind(ctx *frame.Context, query string) {
 		s.findUses = counts
 	})
 	source := &findSource{state: s, places: nil, targets: nil}
-	s.find = valuepicker.New(valuepicker.Config{
+	config := valuepicker.Config{
 		Title: "Find a value", For: "in World state", Placeholder: "Find a value, or type a new name",
-		Empty: "No value matches. Type a name to declare one.", Only: "", Rail: findRail(), Selected: "",
+		Empty: "No value matches. Type a name to declare one.", Only: "", Kinds: nil, Start: "", Rail: findRail(),
+		Selected:  "",
 		Query:     query,
 		LastGroup: &s.lastGroup, PickLabel: "Show", PickHint: "shows it", DeclareAs: "Declare and show",
 		DeclareLead: "It is shown in the tree once declared.",
-	}, source, s.theme)
+	}
+	if s.part == PartConstants {
+		config.Title, config.Placeholder = "Find a constant", "Find a constant by its path or its words"
+		config.Empty, config.Kinds = "No constant matches. Type a name to declare one.", worldstate.ConstantTypes()
+	}
+	s.find = valuepicker.New(config, source, s.theme)
 }
 
 // walk hands on the values under a parent, depth first, with the groups
@@ -121,12 +127,15 @@ func (f *findSource) Options(docs frame.Docs) []valuepicker.Option {
 		return nil
 	}
 	var listed []valuepicker.Option
-	add := func(declared worldstate.Declaration, at place, heading, rail, root string) {
+	add := func(declared worldstate.Declaration, where place, heading, rail, root string) {
+		if !f.state.shows(declared) {
+			return
+		}
 		rowID := declaredPrefix + declared.ID.String()
-		f.places[rowID] = at
+		f.places[rowID] = where
 		listed = append(listed, valuepicker.Option{
-			ID: rowID, Path: at.path, Declared: declared, Heading: heading, Rail: rail, Root: root,
-			Detail: f.state.usedBy(declared.ID),
+			ID: rowID, Path: where.path, Declared: declared, Heading: heading, Rail: rail, Root: root,
+			Detail: f.state.usedBy(declared.ID), Words: words(declared, catalog),
 		})
 	}
 	walk(world.Values, worldstate.ScopeWorld, ids.ULID{}, nil, func(declared worldstate.Declaration, groups []ids.ULID) {
@@ -293,7 +302,11 @@ func (f *findSource) Declare(ctx *frame.Context, target valuepicker.Target, kind
 	if !found {
 		return
 	}
-	change, err := valuetree.Declare(going.list.Values, going.scope, going.parent, going.dotted, kind)
+	declare := valuetree.Declare
+	if f.state.part == PartConstants {
+		declare = valuetree.DeclareConstant
+	}
+	change, err := declare(going.list.Values, going.scope, going.parent, going.dotted, kind)
 	if first, _, _ := strings.Cut(going.dotted, "."); err == nil && !going.at.owner.IsZero() {
 		if clash := valuetree.Clash(f.state.shown.catalog, going.at.owner, first); clash != "" {
 			ctx.Frame.Status(clash + ".")
@@ -386,7 +399,7 @@ func (s *State) nameToType() {
 // layoutFind places Find a value at the right of the add buttons, in the
 // Values window only.
 func (s *State) layoutFind(right int) {
-	if s.part != PartValues {
+	if s.part == PartSignals {
 		s.findButton.Rect = image.Rect(0, 0, 0, 0)
 
 		return

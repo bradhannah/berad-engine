@@ -78,32 +78,38 @@ func kindOf(format string) kind {
 
 // layoutInspector places the inspector for what is selected: a document's
 // fields and actions, or a folder's or the settings', the save bar and
-// Delete at the foot. A document every project holds keeps its name and
-// cannot be deleted.
+// Delete at the foot. A document's scrolls between its header and the save
+// bar when it is taller than the window. A document every project holds
+// keeps its name and cannot be deleted.
 func (s *State) layoutInspector(docs frame.Docs) {
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	for _, button := range s.inspectorButtons() {
 		button.Rect = ui.Zero()
 	}
+	if s.scroll.of != s.list.Selected {
+		s.scroll = inspectorScroll{offset: 0, most: 0, of: s.list.Selected}
+	}
+	s.scroll.most = 0
 	s.zonePalettes.Layout(docs, ids.ULID{}, 0, 0, 0, s.size)
 	s.spritePalettes = nil
 	s.tagBns, s.remove.Disabled, s.audio.open.Rect = nil, false, ui.Zero()
 	s.name.Rect, s.tags.Rect, s.save.Rect, s.tileSize.Rect = ui.Zero(), ui.Zero(), ui.Zero(), ui.Zero()
 	s.screenCols.Rect, s.screenRows.Rect = ui.Zero(), ui.Zero()
 	if s.layoutRow(docs, left, width) {
-		s.layoutNPC(docs, left, width, 0, 0)
+		s.layoutNPC(docs, left, width, 0)
 
 		return
 	}
 	_, isFolder := s.selectedFolder()
 	entry, isDocument := s.selected(docs)
 	if !isFolder && !isDocument {
-		s.layoutNPC(docs, left, width, 0, 0)
+		s.layoutNPC(docs, left, width, 0)
 
 		return
 	}
-	s.name.Rect = image.Rect(left, nameFieldTop, left+width, nameFieldTop+ui.ButtonH)
+	shift := -s.scroll.offset
+	s.name.Rect = image.Rect(left, nameFieldTop+shift, left+width, nameFieldTop+shift+ui.ButtonH)
 	bottom := panel.Max.Y - ui.Inset
 	s.remove.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 	saveTop := s.remove.Rect.Min.Y - footerGap - ui.SaveBarHeight(width)
@@ -118,12 +124,11 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	if everyProjectHolds(entry.ID) {
 		s.name.Rect, s.remove.Disabled = ui.Zero(), true
 	}
-	top := s.layoutTags(entry, left, width)
+	top := s.layoutTags(entry, left, width, shift)
 	top = s.layoutActions(docs, entry, left, width, top)
 	top = s.layoutArt(docs, entry, left, width, top)
 	top = s.layoutZoneLoop(docs, left, width, top)
-	s.layoutZoneNotes(docs, left, width, top, saveTop-footerGap)
-	s.layoutNPC(docs, left, width, top, saveTop-footerGap)
+	s.fitScroll(docs, max(top, s.layoutZoneNotes(docs, left, width, top), s.layoutNPC(docs, left, width, top)))
 }
 
 // layoutRow places the inspector for a row that is not a document or a
@@ -132,7 +137,7 @@ func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.layoutSettings(docs, left, width)
-	case worldStateRow, worldSignalsRow:
+	case worldStateRow, worldSignalsRow, worldConstantsRow:
 		s.layoutWorldState(left, width)
 	default:
 		if _, isCue := s.selectedCue(); !isCue {
@@ -150,10 +155,10 @@ func (s *State) inspectorButtons() []*ui.Button {
 }
 
 // layoutTags places the tags field, a button for each tag that searches for
-// it, and the folder and Move to… for a type with folders. It returns where
-// the actions start.
-func (s *State) layoutTags(entry project.Entry, left, width int) int {
-	s.tags.Rect = image.Rect(left, tagsFieldTop, left+width, tagsFieldTop+ui.ButtonH)
+// it, and the folder and Move to… for a type with folders, all moved by
+// shift as the inspector scrolls. It returns where the actions start.
+func (s *State) layoutTags(entry project.Entry, left, width, shift int) int {
+	s.tags.Rect = image.Rect(left, tagsFieldTop+shift, left+width, tagsFieldTop+shift+ui.ButtonH)
 	top := s.tags.Rect.Max.Y + ui.Gap
 	chipLeft := left
 	for _, tag := range entry.Tags {
@@ -368,7 +373,7 @@ func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
 	switch s.list.Selected {
 	case settingsRow:
 		s.drawSettings(screen, docs, left)
-	case worldStateRow, worldSignalsRow:
+	case worldStateRow, worldSignalsRow, worldConstantsRow:
 		s.drawWorldState(screen, left)
 	default:
 		return false
@@ -408,36 +413,46 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	}
 	about := kindOfEntry(entry)
 	s.drawHeader(screen, about.icon, about.label, entry.Name, left)
-	s.theme.Heading(screen, "NAME", left, nameFieldTop-ui.LineHeight)
-	if s.name.Rect.Empty() {
-		s.theme.DrawText(screen, "Every project holds it, so it keeps its name.", left,
-			nameFieldTop+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
-	} else {
-		s.name.Draw(screen)
-	}
-	s.theme.DrawText(screen, "ID "+entry.ID.String(), left, nameFieldTop+ui.ButtonH+ui.Gap, ui.ColorSubdued())
-	s.theme.Heading(screen, "TAGS", left, tagsFieldTop-ui.LineHeight)
-	s.tags.Draw(screen)
-	for _, chip := range s.tagBns {
-		chip.Draw(screen, s.theme)
-	}
-	if !s.moveBn.Rect.Empty() {
-		s.theme.Heading(screen, "FOLDER", left, s.moveBn.Rect.Min.Y-ui.LineHeight)
-		where := showPath(formatSection(entry.Format), entry.Folder)
-		s.theme.DrawText(screen, s.theme.FitText(where, s.moveBn.Rect.Min.X-ui.Gap-left), left,
-			s.moveBn.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorInk())
-	}
-	for _, button := range s.inspectorButtons() {
-		if !button.Rect.Empty() {
-			button.Draw(screen, s.theme)
-		}
-	}
-	s.drawNPC(screen, docs, left)
-	s.drawZoneDetails(screen, docs, left)
-	s.drawArt(screen, left)
+	s.drawBody(s.bodyImage(screen), docs, entry, left)
+	s.drawThumb(screen)
+	s.remove.Draw(screen, s.theme)
 	s.save.Draw(screen, s.theme)
 	s.moveMenu.Draw(screen, s.theme)
 	s.zonePalettes.DrawMenu(screen)
+}
+
+// drawBody draws what scrolls in a document's inspector, onto the screen
+// clipped to its body: the name field and ID, the tags and folder, the
+// actions and the NPC's, the zone's or the sprite's parts.
+func (s *State) drawBody(body *ebiten.Image, docs frame.Docs, entry project.Entry, left int) {
+	shift := -s.scroll.offset
+	s.theme.Heading(body, "NAME", left, nameFieldTop+shift-ui.LineHeight)
+	if s.name.Rect.Empty() {
+		s.theme.DrawText(body, "Every project holds it, so it keeps its name.", left,
+			nameFieldTop+shift+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorMuted())
+	} else {
+		s.name.Draw(body)
+	}
+	s.theme.DrawText(body, "ID "+entry.ID.String(), left, nameFieldTop+shift+ui.ButtonH+ui.Gap, ui.ColorSubdued())
+	s.theme.Heading(body, "TAGS", left, tagsFieldTop+shift-ui.LineHeight)
+	s.tags.Draw(body)
+	for _, chip := range s.tagBns {
+		chip.Draw(body, s.theme)
+	}
+	if !s.moveBn.Rect.Empty() {
+		s.theme.Heading(body, "FOLDER", left, s.moveBn.Rect.Min.Y-ui.LineHeight)
+		where := showPath(formatSection(entry.Format), entry.Folder)
+		s.theme.DrawText(body, s.theme.FitText(where, s.moveBn.Rect.Min.X-ui.Gap-left), left,
+			s.moveBn.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorInk())
+	}
+	for _, button := range s.inspectorButtons() {
+		if button != s.remove && !button.Rect.Empty() {
+			button.Draw(body, s.theme)
+		}
+	}
+	s.drawNPC(body, docs, left)
+	s.drawZoneDetails(body, docs, left)
+	s.drawArt(body, left)
 }
 
 // drawHeader draws the inspector's header: an icon, a type and a name.

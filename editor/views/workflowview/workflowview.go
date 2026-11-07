@@ -174,6 +174,9 @@ type State struct {
 	lastGroup string
 	// signalPick is the signal picker while it is open.
 	signalPick *signalPick
+	// others is the list of other places typed the same, once a constant
+	// is made.
+	others *otherPlaces
 	// places is the list of places while it is open; lit is the place
 	// control whose box glows, its place just set, for litLeft frames more.
 	places  *placeList
@@ -227,6 +230,10 @@ type State struct {
 	dialogThen func(*frame.Context, string)
 	joining    string
 	tied       bool
+	// lineSheet is the writing sheet while it writes the selected node's
+	// line; scrolled is how far the node inspector is scrolled.
+	lineSheet *lineSheet
+	scrolled  inspectorScroll
 }
 
 // New returns the Workflow window for a workflow.
@@ -246,7 +253,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "", signalPick: nil,
-		form: nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
+		others: nil,
+		form:   nil, save: ui.NewSaveBar(), guard: frame.Guard{}, focus: ui.Focus{}, picker: picker.New(window), live: nil,
 		places: nil, lit: "", litLeft: 0, shown: true,
 		audio: nil, audioRevision: 0, audioAsking: false, sounds: nil, locals: newLocalsPanel(theme),
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
@@ -254,7 +262,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
-		tied: false,
+		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}
 	view.palette = paletteFor(flow.PurposeBehaviour)
 
@@ -441,14 +449,14 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.colours = s.layoutColours(s.colourRows(), left, width, top)
 	} else if s.form != nil {
 		s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
-		if limit := s.notesTop(panel, width); len(s.colours) > 0 && coloursBottom(s.colours) > limit {
-			s.colours = nil
+		if s.fitScroll(max(s.form.bottom, coloursBottom(s.colours))) {
+			s.layoutForm(docs)
+			s.colours = s.layoutColours(s.colourRows(), left, width, s.form.bottom)
 		}
 	}
 }
 
-// coloursBottom is where the last colour row ends; a form too tall for its
-// rows to sit above the inspector's notes shows none.
+// coloursBottom is where the last colour row ends, or nothing with none.
 func coloursBottom(rows []colourRow) int {
 	bottom := 0
 	for _, row := range rows {
@@ -496,6 +504,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.updateOverlay(input, ctx) {
 		return
 	}
+	s.scrollForm(input, ctx)
 	s.updateTyping(input, ctx)
 	frame.CommonKeys(input, ctx)
 	if s.workflow == nil {

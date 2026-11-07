@@ -63,7 +63,7 @@ func (s *State) refreshProblems(docs frame.Docs) {
 		if problem := s.problemOf(node, docs); problem != "" {
 			s.problems[node.ID] = problem
 		}
-		if warning := s.signalWarning(node, docs); warning != "" {
+		if warning := s.warningOf(node, docs); warning != "" {
 			s.warnings[node.ID] = warning
 		}
 	}
@@ -88,6 +88,9 @@ func (s *State) problemOf(node flow.Node, docs frame.Docs) string {
 // kindProblem says what is wrong with a node's own settings: a Go to with
 // no destination or a broken one, a container with no first step, and so on.
 func (s *State) kindProblem(node flow.Node, docs frame.Docs) string {
+	if problem := s.numberProblem(node, docs); problem != "" {
+		return problem
+	}
 	switch node.Kind {
 	case flow.KindGoTo:
 		if problem := s.goToProblem(node, docs); problem != "" {

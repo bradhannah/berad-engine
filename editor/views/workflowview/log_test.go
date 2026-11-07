@@ -33,18 +33,23 @@ func TestWritingALine(t *testing.T) {
 	f.typeInto("param-message", "Count is ")
 	f.click("ui:insert-value")
 	f.click("valuerow:local.count")
-	if !f.has("message=Count is {local.count}") || !f.has("reads=Count is 0") {
-		t.Fatal("a value inserted after the text reads as its text form")
+	if !f.has("line=Count is {local.count}") || !f.has("reads=Count is 0") || !f.has("unsaved=1") {
+		t.Fatal("a value inserted after the text reads as its text form, and waits for Save")
+	}
+	f.click("ui:save")
+	if !f.has("message=Count is {local.count}") {
+		t.Fatal("Save keeps it")
 	}
 	f.typeInto("param-message", "At {npc.zone} with {local.count}")
-	if !f.has("message=At {npc.zone} with {local.count}") || !f.has("reads=At Town with 0") {
+	if !f.has("message=At {var.npc.zone} with {local.count}") || !f.has("reads=At Town with 0") {
 		t.Fatal("a value typed by its path is kept, and reads as it would for Ada")
 	}
-	if !f.has("title:log:1=Log · At {npc.zone} with {local.count}") || f.has("problem:log:1") {
+	if !f.has("title:log:1=Log · At {var.npc.zone} with {local.count}") || f.has("problem:log:1") {
 		t.Fatal("the node shows its message")
 	}
 	f.typeInto("param-message", "{local.nope}")
-	if !strings.HasPrefix(f.status(), "No value is called local.nope.") || !f.has("message=At {npc.zone} with {local.count}") {
+	if !strings.HasPrefix(f.status(), "No value is called local.nope.") ||
+		!f.has("message=At {var.npc.zone} with {local.count}") {
 		t.Fatalf("a value there is none of is refused: %q", f.status())
 	}
 }

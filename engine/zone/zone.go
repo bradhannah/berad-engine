@@ -28,9 +28,10 @@ const FormatName = "zone"
 
 // FormatVersion is the zone format version this package writes. Version 2
 // added the palettes a zone uses, version 3 its sounds, version 4 a path
-// name and the zone's own values and templates, version 5 its notes and
-// version 6 its zone loop; each reads the version before it unchanged.
-const FormatVersion = 6
+// name and the zone's own values and templates, version 5 its notes,
+// version 6 its zone loop and version 7 its own values of its templates'
+// constants; each reads the version before it unchanged.
+const FormatVersion = 7
 
 // MaxNotes bounds a zone's notes, in characters.
 const MaxNotes = 20000
@@ -318,7 +319,7 @@ func Decode(data json.RawMessage) (*Zone, error) {
 // Format returns the zone format registration.
 func Format() content.Format {
 	return content.Format{Name: FormatName, Current: FormatVersion, Migrations: map[int]content.Migration{
-		1: unchanged, 2: unchanged, 3: unchanged, 4: unchanged, 5: unchanged,
+		1: unchanged, 2: unchanged, 3: unchanged, 4: unchanged, 5: unchanged, 6: unchanged,
 	}}
 }
 

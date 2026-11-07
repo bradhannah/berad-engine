@@ -100,6 +100,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	if s.dialog != nil {
 		s.dialog.Draw(screen, s.theme)
 	}
+	s.drawOthers(screen)
+	s.drawLineSheet(screen)
 }
 
 func (s *State) drawToolbar(screen *ebiten.Image, docs frame.Docs) {
@@ -428,21 +430,8 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 		}
 
 		return name
-	case flow.KindWait:
-		wait, err := node.Duration("duration")
-		if err != nil {
-			return "?"
-		}
-
-		return formatDuration(wait)
-	case flow.KindMove:
-		direction, directionErr := node.Choice("direction")
-		tiles, tilesErr := node.Number("tiles")
-		if directionErr != nil || tilesErr != nil {
-			return "?"
-		}
-
-		return direction + " " + strconv.Itoa(tiles) + " " + plural(tiles, "tile", "tiles")
+	case flow.KindWait, flow.KindMove:
+		return s.motionSummary(node, docs)
 	case flow.KindPlaySound:
 		return s.playSummary(node)
 	case flow.KindReturn:
@@ -455,6 +444,33 @@ func (s *State) summary(node flow.Node, docs frame.Docs) string {
 	default:
 		return ""
 	}
+}
+
+// motionSummary describes a Wait, how long, or a Move, which way and how
+// far, naming a constant standing in for its number.
+func (s *State) motionSummary(node flow.Node, docs frame.Docs) string {
+	if node.Kind == flow.KindWait {
+		wait, err := node.Duration("duration")
+		if err != nil {
+			return "?"
+		}
+		if !wait.Constant.IsZero() {
+			return strings.Replace(formatDuration(wait), strconv.Itoa(wait.Amount),
+				s.numberLabel(docs, wait.Amount, wait.Constant), 1)
+		}
+
+		return formatDuration(wait)
+	}
+	direction, directionErr := node.Choice("direction")
+	tiles, tilesErr := node.Amount("tiles")
+	if directionErr != nil || tilesErr != nil {
+		return "?"
+	}
+	if !tiles.Constant.IsZero() {
+		return direction + " " + s.numberLabel(docs, tiles.Number, tiles.Constant) + " tiles"
+	}
+
+	return direction + " " + strconv.Itoa(tiles.Number) + " " + plural(tiles.Number, "tile", "tiles")
 }
 
 // playSummary describes a Play sound: its cue, and how loud this time.
@@ -579,8 +595,7 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.DrawTitle(screen, s.form.kind.Label, left, top+ui.LineHeight, ui.ColorInk())
 	s.theme.DrawText(screen, "("+group+")", left+s.titleWidth(s.form.kind.Label)+ui.Gap*ui.Half,
 		top+ui.LineHeight+ui.Half, ui.ColorMuted())
-	s.drawControls(screen, docs, node, left)
-	s.drawColours(screen)
+	s.drawFormBody(screen, docs, node, left)
 	if s.form.remove != nil {
 		s.form.remove.Draw(screen, s.theme)
 	}
@@ -778,6 +793,7 @@ func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.No
 	for index := range s.form.controls {
 		s.drawControl(screen, docs, &s.form.controls[index], node, left)
 	}
+	s.drawSlots(screen, docs)
 	if s.form.call != nil {
 		s.drawCall(screen, docs, node, left)
 	}
@@ -996,7 +1012,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "palette", resultPart:
 		return s.locatePalette(value)
 	case "ui":
-		return s.locateWidget(value)
+		return s.locateScrolled(value, docs)
 	case locateMenu:
 		return s.locateMenuItem(value)
 	case localPrefix:
@@ -1116,6 +1132,9 @@ const locateState = "state"
 // input: the guard's dialog, the map picker's dialog or the value picker;
 // states are still the window's own. It reports whether one was open.
 func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Point, bool, bool) {
+	if point, found, over := s.locateOnTop(kind, value); over {
+		return point, found, true
+	}
 	switch {
 	case s.guard.Active():
 		point, found := s.guard.Locate(value, s.size)
@@ -1150,11 +1169,29 @@ func (s *State) locateInOverlay(docs frame.Docs, kind, value string) (image.Poin
 	}
 }
 
+// locateOnTop finds a part of what sits over everything else: the list of
+// other places typed the same, or the writing sheet. It reports whether
+// one was there to look in.
+func (s *State) locateOnTop(kind, value string) (image.Point, bool, bool) {
+	if point, found := s.locateOthers(value); found && kind == "ui" {
+		return point, true, true
+	}
+	if s.lineSheet != nil && kind != locateState {
+		point, found := s.lineSheet.sheet.Locate(kind + ":" + value)
+
+		return point, found, true
+	}
+
+	return image.Pt(0, 0), false, false
+}
+
 // hasAnyState answers every state the window has, those of where it runs,
 // its places and its values as well as the rest.
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
-		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState,
+		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState, s.hasUnsavedState,
+		s.hasSheetState, s.hasScrollState,
+		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {
 			return found
@@ -1162,6 +1199,14 @@ func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	}
 
 	return s.hasState(state)
+}
+
+// hasUnsavedState answers "unsaved=N", when the inspector holds N changes
+// waiting for Save, typed or chosen.
+func (s *State) hasUnsavedState(state string, docs frame.Docs) (bool, bool) {
+	count, asked := strings.CutPrefix(state, "unsaved=")
+
+	return asked && strconv.Itoa(s.Unsaved(docs)) == count, asked
 }
 
 func (s *State) locateWidget(widget string) (image.Point, bool) {
@@ -1201,7 +1246,15 @@ func (s *State) locateFormWidget(widget string) (image.Point, bool) {
 	if s.form.remove != nil && widget == s.form.remove.ID {
 		return ui.Center(s.form.remove.Rect), true
 	}
+	for _, button := range []*ui.Button{s.form.makeText, s.form.writeLine} {
+		if button != nil && widget == button.ID && !button.Rect.Empty() {
+			return ui.Center(button.Rect), true
+		}
+	}
 	if point, found := s.save.Locate(widget); found {
+		return point, true
+	}
+	if point, found := s.locateSlot(widget); found {
 		return point, true
 	}
 	for _, made := range s.form.controls {

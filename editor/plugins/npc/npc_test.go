@@ -35,6 +35,8 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	market[0], market[15] = 3, 1
 	routine[15], secret[0], secret[15], guards[0], guards[15], armed[0], armed[15] = 7, 1, 8, 1, 9, 1, 10
 	look[0], look[15] = 2, 8
+	var greeting ids.ULID
+	greeting[0], greeting[15] = 1, 11
 	edit := func(name string) model.EditKind {
 		kind, ok := registry.Edit(name)
 		if !ok {
@@ -60,6 +62,21 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		{edit(npcplugin.ApplyTemplateEdit), encode(t, stateplugin.TemplateArgs{Template: guards, Index: 9})},
 		{edit(npcplugin.ApplyTemplateEdit), encode(t, stateplugin.TemplateArgs{Template: armed, Index: 0})},
 		{edit(npcplugin.UnapplyTemplateEdit), encode(t, stateplugin.TemplateArgs{Template: guards, Index: 0})},
+		{edit(npcplugin.ChangeValuesEdit), encode(t, stateplugin.ChangeArgs{
+			Add: []worldstate.Declaration{worldstate.NewConstant(look, "backstory", worldstate.ScopeNPC,
+				worldstate.TypeText)},
+			Set: nil, Remove: nil,
+		})},
+		{edit(npcplugin.SetConstantEdit), encode(t, stateplugin.ConstantArgs{
+			Constant: greeting, Value: json.RawMessage(`"Fresh off the boat!"`),
+		})},
+		{edit(npcplugin.SetConstantEdit), encode(t, stateplugin.ConstantArgs{
+			Constant: greeting, Value: json.RawMessage(`"Mackerel today."`),
+		})},
+		{edit(npcplugin.SetConstantEdit), encode(t, stateplugin.ConstantArgs{Constant: greeting, Value: nil})},
+		{edit(npcplugin.SetConstantEdit), encode(t, stateplugin.ConstantArgs{
+			Constant: market, Value: json.RawMessage(`5`),
+		})},
 	} {
 		if err := model.VerifyUndo(document, check.kind, check.args, registry.Edit); err != nil {
 			t.Fatalf("%s: %v", check.kind.Name(), err)
@@ -74,8 +91,8 @@ func TestEditsMeetUndoContract(t *testing.T) {
 		references[3].Document != look {
 		t.Fatalf("an NPC refers to its templates, its zone, its behaviour and its sprite: %+v", references)
 	}
-	if document.NPC.Owned.Values.Len() != 1 {
-		t.Fatal("the NPC owns its secret")
+	if document.NPC.Owned.Values.Len() != 2 {
+		t.Fatal("the NPC owns its secret and its backstory")
 	}
 	npcScope := encode(t, stateplugin.ChangeArgs{
 		Add: []worldstate.Declaration{worldstate.New(guards, "mood", worldstate.ScopeWorld, worldstate.TypeBool)},
@@ -86,6 +103,18 @@ func TestEditsMeetUndoContract(t *testing.T) {
 	}
 	if document.NPC.Path != "george" {
 		t.Fatalf("path name set: %+v", document.NPC)
+	}
+	if own, has := document.NPC.Owned.ConstantValue(worldstate.NewConstant(market, "x",
+		worldstate.ScopeNPC, worldstate.TypeInteger)); !has || own.Integer != 5 {
+		t.Fatalf("the NPC keeps its own value of a constant: %+v", own)
+	}
+	for name, args := range map[string]json.RawMessage{
+		"no constant": encode(t, stateplugin.ConstantArgs{Constant: ids.ULID{}, Value: json.RawMessage(`1`)}),
+		"not JSON":    json.RawMessage(`{"constant":"` + greeting.String() + `","value":nope}`),
+	} {
+		if _, err := edit(npcplugin.SetConstantEdit).Apply(document, args); !errors.Is(err, model.ErrArgs) {
+			t.Fatalf("%s is refused: %v", name, err)
+		}
 	}
 	badPath := encode(t, npcplugin.SetPathArgs{Path: "george's"})
 	if _, err := (npcplugin.SetPath{}).Apply(document, badPath); !errors.Is(err, model.ErrArgs) {

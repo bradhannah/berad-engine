@@ -8,11 +8,12 @@ import (
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
-// Number returns a whole-number parameter, such as a Move's tiles.
+// Number returns a whole-number parameter as typed, such as a Move's tiles:
+// with a constant standing in for it, the number last typed.
 func (n Node) Number(name string) (int, error) {
-	var number int
+	amount, err := n.Amount(name)
 
-	return number, n.decode(name, &number)
+	return amount.Number, err
 }
 
 // Text returns a text parameter.

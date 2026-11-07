@@ -173,3 +173,7 @@ func noSignal() Signal {
 // upgradeFrom2 reads a version 2 world state unchanged: version 3 added
 // signals, of which it declares none.
 func upgradeFrom2(data json.RawMessage) (json.RawMessage, error) { return data, nil }
+
+// upgradeFrom3 reads a version 3 world state unchanged: version 4 added
+// constants, of which it declares none.
+func upgradeFrom3(data json.RawMessage) (json.RawMessage, error) { return data, nil }

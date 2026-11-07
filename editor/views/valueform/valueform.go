@@ -24,10 +24,13 @@ import (
 
 // Layout, in screen pixels.
 const (
-	fieldSpace     = 14
-	rowSpace       = 6
-	removeWidth    = 76
-	descHeight     = 72
+	fieldSpace  = 14
+	rowSpace    = 6
+	removeWidth = 76
+	descHeight  = 72
+	// longHeight is a text constant's default, three lines of it: Write…
+	// opens the sheet for more.
+	longHeight     = 72
 	choicesPerLine = 3
 	maxNumberText  = 20
 	// dottedLength bounds a dotted name: a name and its groups.
@@ -58,6 +61,7 @@ const (
 	pickPlaceID   = "value-pick-place"
 	placeBoxID    = "value-place"
 	clearPlaceID  = "value-clear-place"
+	writeID       = "write"
 )
 
 // What each role means, under its buttons.
@@ -90,16 +94,19 @@ type Form struct {
 	dotted string
 	Dotted bool
 	// name, number, text, low, high and description are typed; number
-	// shows only for an integer's default, low and high for its limits, and
-	// text for a text value's default.
-	name, number, text, low, high, description *ui.TextField
-	types                                      []*ui.Button
-	roles                                      []*ui.Button
-	defaults                                   []*ui.Button
-	choices                                    []choiceRow
-	addChoice                                  *ui.Button
-	// Delete removes the declaration; the window places it.
+	// shows only for an integer's default, low and high for a value's
+	// limits, text for a text value's default and long for a text
+	// constant's, which runs to a page.
+	name, number, text, long, low, high, description *ui.TextField
+	types                                            []*ui.Button
+	roles                                            []*ui.Button
+	defaults                                         []*ui.Button
+	choices                                          []choiceRow
+	addChoice                                        *ui.Button
+	// Delete removes the declaration; the window places it. Write opens a
+	// text constant's default in the writing sheet.
 	Delete *ui.Button
+	Write  *ui.Button
 	// heads are where each label goes, by label; hint is where the line
 	// under the name goes, when it has one.
 	heads map[string]image.Point
@@ -143,7 +150,8 @@ func New(theme *ui.Theme) *Form {
 	form := &Form{
 		theme: theme, shown: worldstate.New(ids.ULID{}, "", "", ""), dotted: "", Dotted: false,
 		name: field(nameID, false, dottedLength), number: field(defaultID, false, maxNumberText),
-		text: field(defaultID, false, worldstate.MaxText), low: field(minID, false, maxNumberText),
+		text: field(defaultID, false, worldstate.MaxText), long: field(defaultID, true, worldstate.MaxConstantText),
+		low:  field(minID, false, maxNumberText),
 		high: field(maxID, false, maxNumberText), description: field(descriptionID, true, worldstate.MaxDescription),
 		types: nil, defaults: nil, choices: nil, addChoice: ui.NewButton(addChoiceID, "Add choice"), Delete: remove,
 		heads: map[string]image.Point{}, hint: image.Pt(0, 0), Locked: "", lock: image.Pt(0, 0), lockLines: nil,
@@ -151,6 +159,7 @@ func New(theme *ui.Theme) *Form {
 		PickPlace: ui.NewButton(pickPlaceID, "Pick on map"), ClearPlace: ui.NewButton(clearPlaceID, "Clear"),
 		PlaceBox: ui.Zero(), PlaceName: "", PlaceWhere: "", PlaceWarn: false, PlaceLit: false, PlaceOpen: false,
 		means: image.Pt(0, 0), meansLines: nil, placeAt: image.Pt(0, 0), placeLines: nil,
+		Write: ui.NewButton(writeID, "Write…"),
 	}
 	form.PickPlace.Primary = true
 	form.description.Placeholder = "What it is for, for whoever reads it next"
@@ -187,29 +196,51 @@ func (f *Form) Show(declared worldstate.Declaration, dotted string) bool {
 			field.Field.Restore(draft)
 		}
 	}
-	f.Delete.Label = "Delete " + kindName(declared.Type)
+	f.Delete.Label = "Delete " + kindName(declared)
 
 	return rebuild
 }
 
-// kindName names what a declaration is: a value, a group or a template.
-func kindName(kind worldstate.Type) string {
-	if kind.IsValue() {
+// kindName names what a declaration is: a value, a constant, a group or a
+// template.
+func kindName(declared worldstate.Declaration) string {
+	switch {
+	case declared.IsConstant():
+		return "constant"
+	case declared.Type.IsValue():
 		return "value"
 	}
 
-	return kind.Label()
+	return declared.Type.Label()
 }
+
+// textField is the field a text default is typed in: a constant's of
+// several lines, or a value's one.
+func (f *Form) textField() *ui.TextField {
+	if f.shown.IsConstant() {
+		return f.long
+	}
+
+	return f.text
+}
+
+// TextDefault returns a text constant's default field, for the window to
+// put Write… beside; it is placed only while one is shown.
+func (f *Form) TextDefault() *ui.TextField { return f.long }
 
 func (f *Form) build(declared worldstate.Declaration) {
 	if declared.ID != f.shown.ID {
-		for _, field := range []*ui.TextField{f.name, f.number, f.text, f.low, f.high, f.description} {
+		for _, field := range []*ui.TextField{f.name, f.number, f.text, f.long, f.low, f.high, f.description} {
 			field.Field.Revert()
 		}
 	}
 	f.types, f.roles = nil, nil
 	if declared.Type.IsValue() {
-		for _, kind := range worldstate.Types(declared.Scope) {
+		kinds := worldstate.Types(declared.Scope)
+		if declared.Constant {
+			kinds = worldstate.ConstantTypes()
+		}
+		for _, kind := range kinds {
 			button := ui.NewButton(typePrefix+string(kind), kind.Label())
 			if kind == worldstate.TypePlace {
 				button.Icon = ui.IconPlace
@@ -260,7 +291,7 @@ func (f *Form) setSaved() {
 	case worldstate.TypeInteger:
 		f.number.Field.SetSaved(strconv.Itoa(current.Integer))
 	case worldstate.TypeText:
-		f.text.Field.SetSaved(current.Text)
+		f.textField().Field.SetSaved(current.Text)
 	case worldstate.TypeBool:
 		for _, truth := range []bool{false, true} {
 			button := ui.NewButton(defaultPrefix+strconv.FormatBool(truth), strconv.FormatBool(truth))
@@ -294,9 +325,12 @@ func (f *Form) Fields() []*ui.TextField {
 	}
 	switch f.shown.Type {
 	case worldstate.TypeInteger:
-		fields = append(fields, f.number, f.low, f.high)
+		fields = append(fields, f.number)
+		if !f.shown.Constant {
+			fields = append(fields, f.low, f.high)
+		}
 	case worldstate.TypeText:
-		fields = append(fields, f.text)
+		fields = append(fields, f.textField())
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
 		worldstate.TypeTemplate,
 		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
@@ -351,6 +385,7 @@ func (f *Form) Layout(left, top, width int) int {
 	for _, field := range f.Fields() {
 		field.Rect = ui.Zero()
 	}
+	f.long.Rect, f.text.Rect, f.Write.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	f.addChoice.Rect = ui.Zero()
 	for _, row := range f.choices {
 		row.remove.Rect = ui.Zero()
@@ -409,7 +444,7 @@ func (f *Form) layoutPlaceLine(left, top, width int) int {
 }
 
 // layoutLock greys the types a locked value cannot change to, and places
-// why under them, with Declare a new value….
+// why under them, with Declare a new value… or constant….
 func (f *Form) layoutLock(left, top, width int) int {
 	for _, button := range f.types {
 		button.Disabled = f.Locked != "" && !button.On
@@ -418,6 +453,7 @@ func (f *Form) layoutLock(left, top, width int) int {
 		return top
 	}
 	f.lock, f.lockLines = image.Pt(left, top-rowSpace), f.theme.Wrap(f.Locked, width)
+	f.DeclareNew.Label = "Declare a new " + kindName(f.shown) + "…"
 	top += len(f.lockLines)*ui.LineHeight - rowSpace
 	f.DeclareNew.Rect = image.Rect(left, top, left+min(width, f.theme.TextWidth(f.DeclareNew.Label)+ui.Inset*ui.Half),
 		top+ui.ButtonH)
@@ -443,6 +479,9 @@ func (f *Form) layoutValue(left, top, width int) int {
 		f.addChoice.Rect = image.Rect(left, top, left+width/ui.Half, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
 	case worldstate.TypeInteger:
+		if f.shown.Constant {
+			break
+		}
 		f.heads["MINIMUM"], f.heads["MAXIMUM"] = image.Pt(left, top), image.Pt(left+width/ui.Half+rowSpace/ui.Half, top)
 		top += ui.LineHeight
 		f.low.Rect = image.Rect(left, top, left+width/ui.Half-rowSpace/ui.Half, top+ui.ButtonH)
@@ -463,14 +502,29 @@ func (f *Form) layoutValue(left, top, width int) int {
 		f.number.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 		top += ui.ButtonH + fieldSpace
 	case worldstate.TypeText:
-		f.text.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-		top += ui.ButtonH + fieldSpace
+		top = f.layoutText(left, top, width)
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypeGroup, worldstate.TypeTemplate,
 		worldstate.TypeZone, worldstate.TypeWorkflow, worldstate.TypeSprite:
 		top = buttonRows(f.defaults, left, top, width, choicesPerLine)
 	}
 
 	return top
+}
+
+// layoutText places a text's default: a value's one line, or a constant's
+// few, with Write… under them.
+func (f *Form) layoutText(left, top, width int) int {
+	if !f.shown.Constant {
+		f.text.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
+
+		return top + ui.ButtonH + fieldSpace
+	}
+	f.long.Rect = image.Rect(left, top, left+width, top+longHeight)
+	top += longHeight + rowSpace
+	f.Write.Rect = image.Rect(left, top, left+min(width, f.theme.TextWidth(f.Write.Label)+ui.Half*ui.Inset),
+		top+ui.ButtonH)
+
+	return top + ui.ButtonH + fieldSpace
 }
 
 // buttonRows places buttons in rows of at most perRow, and returns where the
@@ -524,17 +578,17 @@ const (
 	// map, and ChangeChoosePlace to open its list of places.
 	ChangePickPlace
 	ChangeChoosePlace
+	// ChangeWrite asks the window to open a text constant's default in the
+	// writing sheet.
+	ChangeWrite
 )
 
 // Update handles the form's buttons. A changed declaration is returned for
 // the window to save; buttons never wait for Save.
 func (f *Form) Update(input *ui.Input) (worldstate.Declaration, Change) {
 	declared := f.shown.Clone()
-	if f.Delete.Update(input) {
-		return declared, ChangeDelete
-	}
-	if f.DeclareNew.Update(input) {
-		return declared, ChangeDeclareNew
+	if change := f.updateActions(input); change != ChangeNone {
+		return declared, change
 	}
 	if change := f.updatePlace(input); change != ChangeNone {
 		if change == ChangeValue {
@@ -564,6 +618,21 @@ func (f *Form) Update(input *ui.Input) (worldstate.Declaration, Change) {
 	}
 
 	return declared, ChangeNone
+}
+
+// updateActions handles the buttons that ask the window to act: Delete,
+// Write… and Declare a new value….
+func (f *Form) updateActions(input *ui.Input) Change {
+	switch {
+	case f.Delete.Update(input):
+		return ChangeDelete
+	case f.Write.Update(input):
+		return ChangeWrite
+	case f.DeclareNew.Update(input):
+		return ChangeDeclareNew
+	}
+
+	return ChangeNone
 }
 
 // updateDefaults handles a click on a value's default.
@@ -614,6 +683,7 @@ func (f *Form) updateChoices(input *ui.Input, declared worldstate.Declaration) (
 func retype(declared worldstate.Declaration, kind worldstate.Type) worldstate.Declaration {
 	made := worldstate.New(declared.ID, declared.Name, declared.Scope, kind)
 	made.Parent, made.Description, made.Role = declared.Parent, declared.Description, declared.Role
+	made.Constant = declared.Constant
 
 	return made
 }
@@ -657,7 +727,7 @@ func (f *Form) Typed() (worldstate.Declaration, string, *ui.TextField, string) {
 		}
 	case worldstate.TypeText:
 		text := worldstate.NoValue()
-		text.Type, text.Text = worldstate.TypeText, f.text.Field.Value()
+		text.Type, text.Text = worldstate.TypeText, f.textField().Field.Value()
 		declared.Default = text.Encode()
 	case worldstate.TypeBool, worldstate.TypeChoice, worldstate.TypeNPC, worldstate.TypePlace, worldstate.TypeGroup,
 		worldstate.TypeTemplate,
@@ -737,7 +807,7 @@ func (f *Form) Buttons() []*ui.Button {
 		buttons = append(buttons, row.remove)
 	}
 
-	return append(buttons, f.addChoice, f.DeclareNew, f.PickPlace, f.ClearPlace, f.Delete)
+	return append(buttons, f.addChoice, f.DeclareNew, f.PickPlace, f.ClearPlace, f.Write, f.Delete)
 }
 
 // Locate finds a field or button by its ID.

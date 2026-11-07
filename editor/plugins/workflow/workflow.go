@@ -129,6 +129,7 @@ func (d *Document) References() []model.Reference {
 		references = append(references, model.Reference{Document: zone, Item: "", Label: RunsHere})
 	}
 	for _, node := range d.Workflow.Nodes() {
+		references = append(references, numberReferences(node)...)
 		switch node.Kind {
 		case flow.KindGoTo:
 			destination, err := node.Anchor("destination")
@@ -151,7 +152,7 @@ func (d *Document) References() []model.Reference {
 		case flow.KindCall:
 			references = append(references, callReferences(node)...)
 		case flow.KindLog, flow.KindSay, flow.KindShowMessage:
-			references = append(references, logReferences(node)...)
+			references = append(references, messageReferences(node)...)
 		}
 	}
 
@@ -509,33 +510,55 @@ func change(
 	return model.Applied{Inverse: inverseArgs, InverseEdit: inverseEdit, Touched: items, Covers: nil}, nil
 }
 
-// valueReferences lists the values a value node uses, by ID under the world
-// state, wherever they are declared, and any NPC or zone it names. Local
-// values are the workflow's own.
+// valueReferences lists the values and constants a value node uses, by ID
+// under the world state, wherever they are declared, and any NPC or zone it
+// names: the value it sets, checks or looks for, and any its operands refer
+// to. Local values are the workflow's own.
 func valueReferences(node flow.Node) []model.Reference {
 	kind, _ := flow.KindOf(node.Kind)
-	label := "a " + kind.Label + " node"
-	var references []model.Reference
+	var refs []flow.ValueRef
 	for _, param := range kind.Params {
-		if param.Type != flow.TypeValue {
+		if param.Type == flow.TypeValue {
+			if ref, err := node.Ref(param.Name); err == nil {
+				refs = append(refs, ref)
+			}
+		}
+		if param.Type != flow.TypeOperand {
 			continue
 		}
-		ref, err := node.Ref(param.Name)
-		if err != nil || ref.IsZero() || ref.Scope == worldstate.ScopeLocal {
+		raw, err := node.Operand(param.Name)
+		if err != nil {
 			continue
 		}
-		references = append(references, model.Reference{Document: worldstate.ID(), Item: ref.Value.String(), Label: label})
-		if !ref.Owner.IsZero() {
-			references = append(references, model.Reference{Document: ref.Owner, Item: "", Label: label})
+		for _, item := range flow.Operands(raw) {
+			if ref, refers := flow.OperandRef(item); refers {
+				refs = append(refs, ref)
+			}
 		}
 	}
 
-	return references
+	return refReferences(refs, "a "+kind.Label+" node")
 }
 
 // CallItem is the item a Call's reference to the workflow it calls names,
 // so asking where a workflow is used for it finds only its callers.
 const CallItem = "call"
+
+// numberReferences lists the constants standing in for a node's typed-in
+// numbers.
+func numberReferences(node flow.Node) []model.Reference {
+	standing := node.NumberConstants()
+	if len(standing) == 0 {
+		return nil
+	}
+	kind, _ := flow.KindOf(node.Kind)
+	refs := make([]flow.ValueRef, 0, len(standing))
+	for _, each := range standing {
+		refs = append(refs, each.Constant)
+	}
+
+	return refReferences(refs, "a "+kind.Label+" node")
+}
 
 // callReferences lists the workflow a Call calls and the values outside the
 // workflow it gives its inputs or keeps its outputs in.
@@ -555,12 +578,15 @@ func callReferences(node flow.Node) []model.Reference {
 	return append(references, refReferences(refs, label)...)
 }
 
-// logReferences lists the values outside the workflow a Log writes.
-func logReferences(node flow.Node) []model.Reference {
+// messageReferences lists the values and constants outside the workflow
+// that a Log, a Say or a Show message puts in its line, each named by its
+// node's kind.
+func messageReferences(node flow.Node) []model.Reference {
 	segments, err := node.Message()
 	if err != nil {
 		return nil
 	}
+	kind, _ := flow.KindOf(node.Kind)
 	var refs []flow.ValueRef
 	for _, segment := range segments {
 		if segment.Ref != nil {
@@ -568,7 +594,7 @@ func logReferences(node flow.Node) []model.Reference {
 		}
 	}
 
-	return refReferences(refs, "a Log node")
+	return refReferences(refs, "a "+kind.Label+" node")
 }
 
 // refReferences lists values outside the workflow by ID under the world

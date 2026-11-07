@@ -89,7 +89,7 @@ func (s *State) intoItems(meaning item) []ui.MenuItem {
 func kindName(kind worldstate.Type) string {
 	switch {
 	case kind.IsValue():
-		return "value"
+		return wordValue
 	case kind == worldstate.TypeTemplate:
 		return "template"
 	}

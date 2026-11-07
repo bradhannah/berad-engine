@@ -113,6 +113,10 @@ func (t declareTarget) located() string {
 	return t.Path + " for " + t.For
 }
 
+// samePath reports whether a path shown is the one a script names, which
+// may leave a value's var. off, as paths were named before constants.
+func samePath(shown, want string) bool { return shown == want || shown == worldstate.ValuePrefix+want }
+
 // catalog is every value the project declares, as far as the window holds
 // it; empty before the world state arrives.
 func (s *State) catalog(docs frame.Docs) *worldstate.Catalog {
@@ -182,21 +186,22 @@ func (s *State) resolve(docs frame.Docs, ref flow.ValueRef) (worldstate.Declarat
 			return declared, "", problemFoundGone
 		}
 
-		return declared, localPath(holder) + strings.TrimPrefix(path, string(worldstate.ScopeNPC)), ""
+		return declared, worldstate.Prefixed(localPath(holder)+strings.TrimPrefix(path, string(worldstate.ScopeNPC)),
+			declared), ""
 	case !ref.Owner.IsZero():
 		owner, known := catalog.Owner(ref.Owner)
 		if !known {
 			return declared, "", problemOwnerGone
 		}
-		named := worldstate.NamedPath(path, ownerPath(owner, ref.Owner))
-		if _, has := catalog.Lookup(ref.Scope, ref.Owner, ref.Value); !has {
-			return declared, named, owner.Name + " has no " + path + "."
+		named := worldstate.Prefixed(worldstate.NamedPath(path, ownerPath(owner, ref.Owner)), declared)
+		if !holds(catalog, ref.Scope, ref.Owner, ref.Value) {
+			return declared, named, owner.Name + " has no " + worldstate.Prefixed(path, declared) + "."
 		}
 
 		return declared, named, ""
 	}
 
-	return declared, path, ""
+	return declared, worldstate.Prefixed(path, declared), ""
 }
 
 // missing says which NPC following this workflow lacks one of its own
@@ -207,7 +212,7 @@ func (s *State) missing(docs frame.Docs, ref flow.ValueRef, path string) string 
 	}
 	catalog := s.catalog(docs)
 	for _, follower := range s.followers(docs, catalog) {
-		if _, has := catalog.Lookup(worldstate.ScopeNPC, follower, ref.Value); !has {
+		if !holds(catalog, worldstate.ScopeNPC, follower, ref.Value) {
 			owner, _ := catalog.Owner(follower)
 
 			return owner.Name + " follows this workflow but has no " + path + "."
@@ -232,6 +237,11 @@ const (
 	roleKept
 	// rolePlace is a Go to's place value: a place local.
 	rolePlace
+	// roleNumber is the constant a typed-in number can be: a whole-number
+	// constant, never a value; and roleMakeText the text constant words
+	// typed in a message become.
+	roleNumber
+	roleMakeText
 )
 
 func roleOf(kind, param string) valueRole {
@@ -267,7 +277,10 @@ func (o *options) add(where place, ref flow.ValueRef, path string, declared worl
 		return
 	}
 	o.seen[key] = true
-	o.listed = append(o.listed, valueOption{ref: ref, path: path, declared: declared, place: where})
+	where.root = worldstate.Prefixed(where.root, declared)
+	o.listed = append(o.listed, valueOption{
+		ref: ref, path: worldstate.Prefixed(path, declared), declared: declared, place: where,
+	})
 }
 
 func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef {
@@ -281,6 +294,11 @@ func refTo(declared worldstate.Declaration, owner, found ids.ULID) flow.ValueRef
 func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	found := &options{listed: nil, seen: map[string]bool{}}
 	locals := s.workflow.Locals().Values()
+	if makesConstant(role) {
+		s.constantOptions(found, docs, s.catalog(docs), role, nil)
+
+		return found.listed
+	}
 	for _, local := range locals {
 		if offersLocal(role, local) {
 			found.add(scopePlace("LOCAL", worldstate.ScopeLocal), refTo(local, ids.ULID{}, ids.ULID{}), localPath(local),
@@ -300,6 +318,8 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 			held.Path, held.Declaration)
 	}
 	if role == roleWhere {
+		s.constantOptions(found, docs, catalog, role, locals)
+
 		return found.listed
 	}
 	zoneValues := catalog.Templates(worldstate.ScopeZone)
@@ -317,6 +337,7 @@ func (s *State) valueOptions(docs frame.Docs, role valueRole) []valueOption {
 	if role == roleCheck || role == roleGive {
 		s.othersOptions(found, catalog, locals)
 	}
+	s.constantOptions(found, docs, catalog, role, locals)
 
 	return found.listed
 }
@@ -332,7 +353,7 @@ func offersLocal(role valueRole, local worldstate.Declaration) bool {
 		return local.Type == worldstate.TypePlace
 	case roleGive, roleKept:
 		return true
-	case roleWhere:
+	case roleWhere, roleNumber, roleMakeText:
 		return false
 	case roleSet, roleCheck:
 	}
@@ -468,6 +489,7 @@ func (s *State) ownerName(docs frame.Docs, id ids.ULID) string {
 // following this workflow.
 func (s *State) declareTargets(docs frame.Docs, role valueRole, query string) []declareTarget {
 	var targets []declareTarget
+	query, _ = worldstate.Unprefixed(query)
 	for _, scope := range declareScopes(role) {
 		dotted := query
 		for _, other := range []worldstate.Scope{
@@ -485,7 +507,7 @@ func (s *State) declareTargets(docs frame.Docs, role valueRole, query string) []
 			continue
 		}
 		target := declareTarget{Scope: scope, Document: worldstate.ID(), Parent: ids.ULID{}, Name: dotted,
-			Path: string(scope) + "." + dotted, For: ""}
+			Path: worldstate.Prefixed(string(scope)+"."+dotted, worldstate.New(ids.ULID{}, "", scope, "")), For: ""}
 		switch scope {
 		case worldstate.ScopeLocal:
 			if len(names) == 1 {
@@ -538,7 +560,7 @@ func declareScopes(role valueRole) []worldstate.Scope {
 		return []worldstate.Scope{worldstate.ScopeLocal}
 	case roleWhere:
 		return []worldstate.Scope{worldstate.ScopeNPC}
-	case roleSet, roleCheck, roleGive, roleKept:
+	case roleSet, roleCheck, roleGive, roleKept, roleNumber, roleMakeText:
 	}
 
 	return []worldstate.Scope{worldstate.ScopeLocal, worldstate.ScopeNPC, worldstate.ScopeZone, worldstate.ScopeWorld}
@@ -561,7 +583,7 @@ func (s *State) openValueBox(node flow.Node, made *control) {
 		only = worldstate.TypeNPC
 	case rolePlace:
 		only = worldstate.TypePlace
-	case roleSet, roleCheck, roleWhere, roleGive, roleKept:
+	case roleSet, roleCheck, roleWhere, roleGive, roleKept, roleNumber, roleMakeText:
 	}
 	s.openValuePicker(node, made.param.Name, pickerTitle(made.param, only, false), only, false)
 }
@@ -620,12 +642,19 @@ func operandOfValue(kind, param string) string {
 
 // declaring is a value to declare from the picker: where, its type and what
 // it starts at, nil for its type's own; operand is set when it is then
-// chosen as an operand's reference rather than as a value parameter.
+// chosen as an operand's reference rather than as a value parameter. A
+// constant made from a typed-in value has constant set, the random
+// choice's option it stands in for or -1, the gesture its edits share, and
+// for words in a message, the words.
 type declaring struct {
-	target  declareTarget
-	kind    worldstate.Type
-	start   json.RawMessage
-	operand bool
+	target   declareTarget
+	kind     worldstate.Type
+	start    json.RawMessage
+	operand  bool
+	constant bool
+	option   int
+	gesture  string
+	text     *selectedWords
 }
 
 // declareValue declares a value where the picker says, with the groups its
@@ -639,7 +668,11 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 	if !listed {
 		return
 	}
-	change, err := valuetree.Declare(list.Values, target.Scope, target.Parent, target.Name, made.kind)
+	declare := valuetree.Declare
+	if made.constant {
+		declare = valuetree.DeclareConstant
+	}
+	change, err := declare(list.Values, target.Scope, target.Parent, target.Name, made.kind)
 	if err != nil {
 		ctx.Frame.Status(strings.TrimPrefix(err.Error(), valuetree.ErrName.Error()+": "))
 
@@ -654,7 +687,7 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 
 		return
 	}
-	command := protocol.Command{Document: list.Document, Edit: list.Edit, Gesture: "", Args: data}
+	command := protocol.Command{Document: list.Document, Edit: list.Edit, Gesture: made.gesture, Args: data}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)
@@ -667,13 +700,17 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 		current, found := s.currentNode(ctx.Docs, nodeID)
 		ref := flow.ValueRef{Scope: target.Scope, Value: result.Created, Owner: ids.ULID{}, Found: ids.ULID{}}
 		switch {
-		case !found, s.chooseForCall(ctx, current, param, ref), s.insertForLog(ctx, current, ref):
+		case !found:
+		case made.constant:
+			s.madeConstant(ctx, current, param, made, ref)
+		case s.chooseForCall(ctx, current, param, ref), s.insertForLog(ctx, current, ref):
 		case made.operand:
 			s.saveParam(ctx, current, param, flow.RefOperand(ref))
 		default:
 			s.chooseValue(ctx, ctx.Docs, current, param, ref)
 		}
-		ctx.Frame.Status("Declared " + target.Path + ". Change it in " + declaredWhere(target.Scope) + ".")
+		ctx.Frame.Status("Declared " + target.Path + ". Change it in " + declaredWhere(target.Scope, made.constant) +
+			".")
 	})
 }
 
@@ -692,9 +729,13 @@ func (s *State) declareList(docs frame.Docs, target declareTarget) (valuetree.Li
 	return valuetree.Owned(docs, target.Document)
 }
 
-func declaredWhere(scope worldstate.Scope) string {
-	if scope == worldstate.ScopeLocal {
+// declaredWhere names where a value or constant just declared is changed.
+func declaredWhere(scope worldstate.Scope, constant bool) string {
+	switch {
+	case scope == worldstate.ScopeLocal:
 		return "Local values, with no node selected"
+	case constant:
+		return "World state's Constants window"
 	}
 
 	return "World state's Values window"
@@ -1011,11 +1052,10 @@ func (s *State) valueProblem(node flow.Node, docs frame.Docs) string {
 // anything but an integer, or ask about a limit it lacks.
 func kindProblem(node flow.Node, ref flow.ValueRef, declared worldstate.Declaration) string {
 	compare := choiceOf(node, "compare")
+	if problem := setProblem(node, ref, declared); problem != "" {
+		return problem
+	}
 	switch {
-	case node.Kind == flow.KindSetValue && !ref.Writable():
-		return problemReadOnly
-	case node.Kind == flow.KindSetValue && worldstate.ReadOnly(ref.Value):
-		return problemBuiltInFixed
 	case declared.Type == worldstate.TypeNPC:
 		return problemNPCValue
 	case node.Kind == flow.KindSetValue && choiceOf(node, "how") == flow.HowAdd && declared.Type != worldstate.TypeInteger:
@@ -1246,7 +1286,7 @@ func (s *State) hasValueState(state string, docs frame.Docs) (bool, bool) {
 		}
 		_, path, problem := s.resolve(docs, ref)
 
-		return problem == "" && path == want, true
+		return problem == "" && samePath(path, want), true
 	case strings.HasPrefix(state, "operand:"):
 		param, want, _ := strings.Cut(strings.TrimPrefix(state, "operand:"), "=")
 		saved, err := node.Operand(param)

@@ -1,0 +1,187 @@
+package workflowview_test
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
+	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
+	"github.com/bradhannah/berad-engine/engine/worldstate"
+)
+
+var (
+	greetingID = frametest.ID(60)
+	restockID  = frametest.ID(61)
+	mottoID    = frametest.ID(62)
+)
+
+// withConstants gives the shop template a greeting, which Ada has her own
+// of, and the world a restock time and a motto as long as a page.
+func (f *fixture) withConstants() {
+	f.t.Helper()
+	f.withShop()
+	greeting := worldstate.NewConstant(greetingID, "greeting", worldstate.ScopeNPC, worldstate.TypeText)
+	greeting.Parent, greeting.Default = shopID, json.RawMessage(`"Welcome in!"`)
+	restock := worldstate.NewConstant(restockID, "restock_minutes", worldstate.ScopeWorld, worldstate.TypeInteger)
+	restock.Default = json.RawMessage(`30`)
+	motto := worldstate.NewConstant(mottoID, "motto_page", worldstate.ScopeWorld, worldstate.TypeText)
+	motto.Default = worldstate.Value{Type: worldstate.TypeText, Text: strings.Repeat("Fair winds. ", 60)}.Encode()
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{greeting, restock, motto}, Set: nil, Remove: nil,
+	})
+	f.carryOutOn(adaID, npcplugin.SetConstantEdit, stateplugin.ConstantArgs{
+		Constant: greetingID, Value: json.RawMessage(`"Fresh off the [b]boat[/b]!"`),
+	})
+}
+
+// TestASayReadsAConstant puts the shop's greeting in a Say's line from the
+// picker, as const.npc.shop.greeting, which reads as Ada's own greeting
+// and waits for Save, as typing does.
+func TestASayReadsAConstant(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "Hello! ")
+	f.click("ui:insert-value")
+	f.typeText("greeting")
+	f.click("valuerow:const.npc.shop.greeting")
+	if !f.has("line=Hello! {const.npc.shop.greeting}") || !f.has("reads=Hello! Fresh off the boat!") {
+		t.Fatal("a constant stands in a line by its path, and reads as Ada's own, without its markup")
+	}
+	if !f.has("unsaved=1") || !f.has("message=Hello! ") {
+		t.Fatal("what Insert value… puts in the line waits for Save")
+	}
+	f.click("ui:save")
+	if !f.has("message=Hello! {const.npc.shop.greeting}") || !f.has("unsaved=0") {
+		t.Fatal("Save keeps it")
+	}
+	f.typeInto("param-message", "Back in {const.world.restock_minutes} minutes.")
+	if !f.has("reads=Back in 30 minutes.") || f.has("problem:"+flow.KindSay+":1") {
+		t.Fatal("a world constant typed by its path reads as its number")
+	}
+}
+
+// TestCheckingAConstant checks the shop's greeting itself, compares a value
+// with the restock time, and finds Set value never offers a constant to
+// set.
+func TestCheckingAConstant(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindCheckValue)
+	f.withConstants()
+	f.click("ui:pick-value")
+	f.typeText("greeting")
+	f.click("valuerow:const.npc.shop.greeting")
+	if !f.has("value:value=const.npc.shop.greeting") || f.has("problem:"+flow.KindCheckValue+":1") {
+		t.Fatalf("a Check value checks a constant: %q", f.status())
+	}
+	set := withNode(t, flow.KindSetValue)
+	set.withConstants()
+	set.click("ui:pick-value")
+	set.typeText("restock")
+	if _, offered := set.state.Locate("valuerow:const.world.restock_minutes", set.docs); offered {
+		t.Fatal("Set value sets only values")
+	}
+}
+
+// TestSetValueFromALongConstant sets a text value from a page-long
+// constant, which is cut to a value's 200 characters, and warns so.
+func TestSetValueFromALongConstant(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSetValue)
+	f.withConstants()
+	note := worldstate.New(frametest.ID(63), "note", worldstate.ScopeWorld, worldstate.TypeText)
+	f.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{note}, Set: nil, Remove: nil,
+	})
+	f.click("ui:pick-value")
+	f.click("valuerow:world.note")
+	set := f.nth(flow.KindSetValue, 1)
+	set, err := set.WithParam("to", flow.RefOperand(flow.ValueRef{
+		Scope: worldstate.ScopeWorld, Value: mottoID, Owner: [16]byte{}, Found: [16]byte{},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.replaceNode(set)
+	if !f.has("warning:" + flow.KindSetValue + ":1") {
+		t.Fatal("a constant longer than a value holds is warned of")
+	}
+}
+
+// TestAWaitForAConstant has a Wait's amount stand for the restock time from
+// the picker, which waits for Save and the node then names, goes back to
+// the number typed, and flags a constant outside a number's limits.
+func TestAWaitForAConstant(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindWait)
+	f.withConstants()
+	f.click("ui:constant-duration")
+	f.typeText("restock")
+	f.click("valuerow:const.world.restock_minutes")
+	if !f.has("constant:duration=const.world.restock_minutes") || !f.has("unsaved=1") ||
+		!f.has("title:"+flow.KindWait+":1=Wait · 30 min") {
+		t.Fatalf("the constant chosen stands for the amount and waits for Save: %q", f.status())
+	}
+	f.click("ui:save")
+	if !f.has("title:"+flow.KindWait+":1=Wait · const.world.restock_minutes min") || !f.has("unsaved=0") {
+		t.Fatal("once saved, the Wait names it")
+	}
+	wait, err := f.nth(flow.KindWait, 1).Duration("duration")
+	if err != nil || wait.Constant.Value != restockID || wait.Amount != 30 {
+		t.Fatalf("saved with the number typed kept: %+v %v", wait, err)
+	}
+	f.click("ui:typed-duration")
+	if !f.has("constant:duration=") || !f.has("unsaved=1") {
+		t.Fatal("× goes back to the number typed, waiting for Save")
+	}
+	f.click("ui:save")
+	if !f.has("title:" + flow.KindWait + ":1=Wait · 30 min") {
+		t.Fatal("once saved, the Wait is typed again")
+	}
+	move := withNode(t, flow.KindMove)
+	move.withConstants()
+	far := worldstate.NewConstant(frametest.ID(64), "far_walk", worldstate.ScopeWorld, worldstate.TypeInteger)
+	far.Default = json.RawMessage(`80`)
+	move.carryOutOn(worldstate.ID(), stateplugin.ChangeEdit, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{far}, Set: nil, Remove: nil,
+	})
+	move.click("ui:constant-tiles")
+	move.typeText("far")
+	move.click("valuerow:const.world.far_walk")
+	move.click("ui:save")
+	if !move.has("problem:" + flow.KindMove + ":1") {
+		t.Fatal("a constant outside a Move's 64 tiles is a problem")
+	}
+}
+
+// TestLongTextWarnings warns of a Say's tag left open, of a Show message
+// that goes when read with a page-long constant, which would go before it
+// was read, and, going when closed, of one longer than a box holds.
+func TestLongTextWarnings(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.withConstants()
+	f.typeInto("param-message", "[b]Mackerel today")
+	if !f.has("warning:" + flow.KindSay + ":1=Its markup: [b] is never closed.") {
+		t.Fatal("a tag left open is warned of")
+	}
+	box := withNode(t, flow.KindShowMessage)
+	box.withConstants()
+	box.typeInto("param-message", "{const.world.motto_page}")
+	if !box.has("warning:" + flow.KindShowMessage + ":1") {
+		t.Fatal("a page-long constant that goes when read would go before it was read")
+	}
+	shown := box.nth(flow.KindShowMessage, 1)
+	shown, err := shown.WithParam(flow.ParamAway, flow.AwayClosed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box.replaceNode(shown)
+	if !box.has("warning:" + flow.KindShowMessage + ":1=Its line can be longer than one box holds. " +
+		"Paging is not built yet.") {
+		t.Fatal("a box closed by the player still warns of a text longer than one box holds")
+	}
+}

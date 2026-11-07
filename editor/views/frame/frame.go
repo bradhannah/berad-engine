@@ -261,7 +261,7 @@ func (f *Frame) Message() (string, bool) {
 		return "Notice: " + f.notice, true
 	}
 
-	return "Ready. Typing waits for Save; everything else saves as you go.", false
+	return "Ready. What goes in a field, typed or chosen, waits for Save; everything else saves as you go.", false
 }
 
 // Report shows the outcome of a request: its reason when refused.

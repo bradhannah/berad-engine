@@ -21,11 +21,19 @@ const (
 	readMost  = 10
 )
 
-// ReadingTicks is how many ticks a text takes to read.
+// ReadingTicks is how many ticks a text takes to read, counting only what
+// shows, not its markup.
 func ReadingTicks(text string) int {
-	seconds := min(readBase+utf8.RuneCountInString(text)/readChars, readMost)
+	seconds := min(readBase+utf8.RuneCountInString(Plain(text))/readChars, readMost)
 
 	return seconds * clock.TicksPerSecond
+}
+
+// TooLongToRead reports whether a text needs longer to read than a line or
+// a box shows for, readMost seconds, so one that goes when read would go
+// before it was read.
+func TooLongToRead(text string) bool {
+	return readBase+utf8.RuneCountInString(Plain(text))/readChars > readMost
 }
 
 // SecondsTicks is how many ticks a number of seconds lasts.
