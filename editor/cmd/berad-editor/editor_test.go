@@ -253,6 +253,7 @@ type step struct {
 	Secondary  bool            `json:"secondary,omitempty"`
 	Keys       []string        `json:"keys,omitempty"`
 	Hold       []string        `json:"hold,omitempty"`
+	Held       string          `json:"held,omitempty"`
 	Text       string          `json:"text,omitempty"`
 	Replace    *ui.Replacement `json:"replace,omitempty"`
 	Expect     *expectation    `json:"expect,omitempty"`

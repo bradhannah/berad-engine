@@ -198,13 +198,18 @@ func Prepare(data json.RawMessage, newID model.IDSource) (json.RawMessage, error
 	return prepared, nil
 }
 
-// AddArgs adds nodes, where they sit, and links to them from nodes already
-// there. A node with a zero ID is new: preparing the edit gives it a
-// permanent ID, and its box may be given under the zero ID.
+// AddArgs adds nodes, where they sit, their tints, and links to them from
+// nodes already there. A node with a zero ID is new: preparing the edit
+// gives it a permanent ID, and its box may be given under the zero ID.
+// Fresh adds a copy: preparing gives every node a new ID, and the parents,
+// lines, boxes and tints among them follow it; a line to a node not among
+// them is dropped.
 type AddArgs struct {
 	Nodes []flow.Node           `json:"nodes"`
 	Boxes map[ids.ULID]flow.Box `json:"boxes,omitempty"`
 	Links []flow.Link           `json:"links,omitempty"`
+	Tints map[ids.ULID]string   `json:"tints,omitempty"`
+	Fresh bool                  `json:"fresh,omitempty"`
 }
 
 // RemoveArgs removes nodes; a container takes its contents with it.
@@ -241,6 +246,9 @@ func (Add) Prepare(_ model.Document, args json.RawMessage, newID model.IDSource)
 	if err := json.Unmarshal(args, &add); err != nil {
 		return nil, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
+	if add.Fresh {
+		return prepareCopy(add, newID)
+	}
 	changed := false
 	for index := range add.Nodes {
 		if !add.Nodes[index].ID.IsZero() {
@@ -268,7 +276,55 @@ func (Add) Prepare(_ model.Document, args json.RawMessage, newID model.IDSource)
 	return prepared, nil
 }
 
-// Apply adds the nodes.
+// prepareCopy gives every node of a copy a new ID, which its parent, lines,
+// box and tint among the copy follow.
+func prepareCopy(add AddArgs, newID model.IDSource) (json.RawMessage, error) {
+	fresh := make(map[ids.ULID]ids.ULID, len(add.Nodes))
+	for _, node := range add.Nodes {
+		assigned, err := newID()
+		if err != nil {
+			return nil, err
+		}
+		fresh[node.ID] = assigned
+	}
+	copied := AddArgs{
+		Nodes: make([]flow.Node, 0, len(add.Nodes)), Boxes: map[ids.ULID]flow.Box{}, Links: nil,
+		Tints: map[ids.ULID]string{}, Fresh: false,
+	}
+	for _, node := range add.Nodes {
+		node = node.Clone()
+		node.ID = fresh[node.ID]
+		if parent, among := fresh[node.Parent]; among {
+			node.Parent = parent
+		}
+		for output, target := range node.Next {
+			if to, among := fresh[target]; among {
+				node.Next[output] = to
+			} else {
+				delete(node.Next, output)
+			}
+		}
+		copied.Nodes = append(copied.Nodes, node)
+	}
+	for old, box := range add.Boxes {
+		if id, among := fresh[old]; among {
+			copied.Boxes[id] = box
+		}
+	}
+	for old, tint := range add.Tints {
+		if id, among := fresh[old]; among {
+			copied.Tints[id] = tint
+		}
+	}
+	prepared, err := json.Marshal(copied)
+	if err != nil {
+		return nil, fmt.Errorf("encode copy: %w", err)
+	}
+
+	return prepared, nil
+}
+
+// Apply adds the nodes, with their tints.
 func (Add) Apply(document model.Document, args json.RawMessage) (model.Applied, error) {
 	var add AddArgs
 
@@ -280,6 +336,11 @@ func (Add) Apply(document model.Document, args json.RawMessage) (model.Applied, 
 		}
 		if err := workflow.Insert(add.Nodes, add.Boxes, add.Links); err != nil {
 			return "", nil, nil, fmt.Errorf("add nodes: %w", err)
+		}
+		if len(add.Tints) > 0 {
+			if _, err := workflow.SetTints(flow.Tints{Nodes: add.Tints, Outcomes: nil, Lines: nil}); err != nil {
+				return "", nil, nil, fmt.Errorf("tint nodes: %w", err)
+			}
 		}
 		added := make([]ids.ULID, 0, len(add.Nodes))
 		for _, node := range add.Nodes {
@@ -313,7 +374,9 @@ func (Remove) Apply(document model.Document, args json.RawMessage) (model.Applie
 			gone = append(gone, node.ID)
 		}
 
-		return AddEdit, AddArgs{Nodes: removed, Boxes: boxes, Links: links}, touched(gone, links), nil
+		restored := AddArgs{Nodes: removed, Boxes: boxes, Links: links, Tints: nil, Fresh: false}
+
+		return AddEdit, restored, touched(gone, links), nil
 	})
 }
 

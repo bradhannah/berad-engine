@@ -85,6 +85,7 @@ was named before these terms; it holds definitions and stand-ins, not art.
 | **Time-bound container** | A group of nodes that repeats while its time lasts, then leaves by its exit |
 | **Constant** | Words or a whole number its designer sets and the game never changes, declared in the world, a template, or an NPC's or zone's own; each NPC or zone a template is on can hold a value of its own. Where constants and values mix, paths read `const.` and `var.`, a constant's drawn amber and a value's slate |
 | **Markup** | Tags in a message's text that the game draws: `[b]` bold, `[i]` italic and `[color=gold]` a colour, each closed by its end tag, as `[/b]`; `[[` writes a `[` |
+| **Selection** | The nodes and containers selected on a workflow's canvas: one, whose inspector shows, or several, chosen with Cmd+click or a box dragged on empty canvas, which move, nudge, colour, delete, duplicate, copy and arrange together; lines are never part of it |
 | **Writing sheet** | The large sheet over a window that long text is written in: a constant's text, or a message's line from Write…, with bold, italic and colour buttons and a preview as the game shows it |
 
 ## Sound terms

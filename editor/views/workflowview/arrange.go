@@ -53,6 +53,15 @@ func Arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 // from. Each container's contents are laid out the same way inside it. Ties
 // are broken by node, so the same workflow always arranges the same way.
 func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[ids.ULID]flow.Box {
+	return arrangeFrom(workflow, noteHeight, nil)
+}
+
+// arrangeFrom lays a workflow out as arrange does, its top level from the
+// start and each receiver, or with firsts given, from each of them in turn,
+// each run in a row of its own.
+func arrangeFrom(
+	workflow *flow.Workflow, noteHeight func(flow.Node, int) int, firsts []ids.ULID,
+) map[ids.ULID]flow.Box {
 	boxes := map[ids.ULID]flow.Box{}
 	sizes := map[ids.ULID]image.Point{}
 	incoming := map[ids.ULID]int{}
@@ -69,7 +78,7 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 			sizes[node.ID] = arrangeTogether(workflow, node, boxes, sized, cycle)
 		}
 	}
-	placed := arrangeTop(workflow, sizes, sized, cycle, image.Pt(arrangeX, arrangeY))
+	placed := arrangeTop(workflow, sizes, sized, cycle, image.Pt(arrangeX, arrangeY), firsts)
 	for nodeID, at := range placed {
 		node, _ := workflow.Node(nodeID)
 		boxes[nodeID] = boxAt(node, at, sizeOf(node, sizes, sized))
@@ -84,17 +93,22 @@ func arrange(workflow *flow.Workflow, noteHeight func(flow.Node, int) int) map[i
 // arrangeTop lays out the top level: the flow from the start, then under
 // it each receiver's path in a row of its own, in the order they were made,
 // then any steps neither reaches, each run in a row of its own; notes go
-// under everything.
+// under everything. Firsts given take the place of the start and the
+// receivers.
 func arrangeTop(
 	workflow *flow.Workflow, sizes map[ids.ULID]image.Point, sized sizing, cycle map[routeKey]bool, origin image.Point,
+	given []ids.ULID,
 ) map[ids.ULID]image.Point {
-	firsts := []ids.ULID{workflow.Start()}
-	for _, node := range workflow.Nodes() {
-		if node.Kind == flow.KindOnSignal && node.Parent.IsZero() {
-			firsts = append(firsts, node.ID)
+	firsts := given
+	if firsts == nil {
+		firsts = []ids.ULID{workflow.Start()}
+		for _, node := range workflow.Nodes() {
+			if node.Kind == flow.KindOnSignal && node.Parent.IsZero() {
+				firsts = append(firsts, node.ID)
+			}
 		}
 	}
-	if len(firsts) == 1 {
+	if len(firsts) == 1 && given == nil {
 		return arrangeLevel(workflow, ids.ULID{}, workflow.Start(), sizes, sized, cycle, origin)
 	}
 	graph := levelOf(workflow, ids.ULID{}, cycle)

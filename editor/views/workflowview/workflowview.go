@@ -53,11 +53,15 @@ const (
 	newGap = 60
 )
 
+// nodeDrag is a node being dragged: where it was grabbed, and its gesture.
+// In a group, it moves the selection, and moved is set once it has.
 type nodeDrag struct {
 	id      ids.ULID
 	grab    image.Point
 	gesture string
 	last    image.Point
+	group   bool
+	moved   bool
 }
 
 type linkDrag struct {
@@ -126,6 +130,17 @@ type State struct {
 	watchFloors bool
 	offset      image.Point
 	selected    ids.ULID
+	// group is the selection while several nodes are selected; selected is
+	// then none. removeGroup is the inspector's Delete N nodes.
+	group       []ids.ULID
+	removeGroup *ui.Button
+	// box is the box being dragged on empty canvas to select what it holds;
+	// nudges the run of arrow-key nudges under way.
+	box    *selectBox
+	nudges nudging
+	// selectAdded is the nodes there before a copy was added, while the
+	// copies wait to be selected.
+	selectAdded map[ids.ULID]bool
 	// showing is a node asked for with NodeItem, to select once it arrives.
 	showing  ids.ULID
 	cursor   image.Point
@@ -244,7 +259,9 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		problems: map[ids.ULID]string{}, warnings: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{},
 		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
-		offset: image.Pt(0, 0), selected: ids.ULID{}, showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
+		offset: image.Pt(0, 0), selected: ids.ULID{}, group: nil, removeGroup: groupDeleteButton(), box: nil,
+		nudges: nudging{gesture: "", of: "", idle: 0}, selectAdded: nil,
+		showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
@@ -395,6 +412,8 @@ func (s *State) load(docs frame.Docs) {
 	if _, ok := s.targetOf(s.selectedLink); !ok {
 		s.selectedLink = noRoute()
 	}
+	s.selectAddedNodes()
+	s.settleSelection()
 }
 
 // Canvas returns the screen area that shows the workflow.
@@ -438,6 +457,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	s.colours = nil
+	s.layoutGroup(left, width, panel.Min.Y+ui.Inset+ui.LineHeight)
 	if s.lineSelected() {
 		bottom := panel.Max.Y - ui.Inset
 		s.deleteLine.Rect = image.Rect(left, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
@@ -485,10 +505,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	s.size = ctx.Size
-	s.cursor = input.Cursor
-	s.sounds = ctx.Sounds
-	s.fade()
+	s.startFrame(input, ctx)
 	s.load(ctx.Docs)
 	s.showNode()
 	s.ask(ctx)
@@ -518,6 +535,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	if !s.updateHelp(input, ctx) {
 		s.updateLineButtons(input, ctx)
+		s.updateGroup(input, ctx)
 		s.updateColours(input, ctx)
 		s.updateForm(input, ctx)
 		s.updateLocals(input, ctx)
@@ -526,8 +544,20 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateZoom(input)
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
+	s.settleSelection()
 	s.guardSelection(ctx)
 	s.openContextMenu()
+}
+
+// startFrame takes what a frame starts from: the window's size, the
+// pointer and the sounds; then fades what was lit, and counts a frame since
+// the last nudge.
+func (s *State) startFrame(input *ui.Input, ctx *frame.Context) {
+	s.size = ctx.Size
+	s.cursor = input.Cursor
+	s.sounds = ctx.Sounds
+	s.fade()
+	s.nudges.idle++
 }
 
 // updateTyping runs the palette's search, then the inspector's fields while
@@ -549,7 +579,11 @@ func (s *State) updateTyping(input *ui.Input, ctx *frame.Context) {
 // keeps a press on the legend's card from reaching the canvas under it.
 func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 	if s.arrange.Update(input) {
-		s.autoArrange(ctx)
+		if len(s.group) > 0 {
+			s.arrangeSelection(ctx)
+		} else {
+			s.autoArrange(ctx)
+		}
 	}
 	if s.recentre.Update(input) {
 		s.recentreView(ctx)
@@ -598,13 +632,16 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if s.selectionKeys(input, ctx) {
+		return
+	}
 	switch {
 	case s.picker.Picking() && input.Consume(ui.KeyEscape, plain):
 		s.picker.Cancel(ctx, cancelledHere)
 	case s.pal.help != "" && input.Consume(ui.KeyEscape, plain):
 		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
-		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
+		s.selected, s.selectedLink, s.link, s.adding, s.group, s.box = ids.ULID{}, noRoute(), nil, nil, nil, nil
 	case input.Consume(ui.KeyEqual, ui.Cmd()):
 		s.zoomTo(s.zoom+1, s.zoomFocus(input.Cursor))
 	case input.Consume(ui.KeyMinus, ui.Cmd()):
@@ -650,20 +687,39 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	point := s.toCanvas(input.Cursor)
 	onCanvas := input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor) && !input.Cursor.In(s.legendBox)
 	s.updateHover(ctx, onCanvas, point)
+	if s.updateGesture(input, ctx, point) {
+		return
+	}
+	switch {
+	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
+		s.rightClick(point, input.Cursor)
+	case input.Pressed && input.Cursor.In(canvas):
+		s.pressCanvas(input, ctx, point)
+	}
+}
+
+// updateGesture carries on a gesture begun by a press, and reports whether
+// one was under way: drawing a line, bending one, dragging a node, sizing a
+// container or dragging a box.
+func (s *State) updateGesture(input *ui.Input, ctx *frame.Context, point image.Point) bool {
 	switch {
 	case s.link != nil:
 		s.updateLink(input, ctx, point)
 	case s.bending != nil:
 		s.updateBend(input, ctx, point)
+	case s.drag != nil && s.drag.group:
+		s.updateGroupDrag(input, ctx, point)
 	case s.drag != nil:
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
 		s.updateResize(input, ctx, point)
-	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
-		s.rightClick(point, input.Cursor)
-	case input.Pressed && input.Cursor.In(canvas):
-		s.pressOrOpen(ctx, point, input.DoubleClick)
+	case s.box != nil:
+		s.updateBox(input, point)
+	default:
+		return false
 	}
+
+	return true
 }
 
 func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
@@ -686,6 +742,8 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 // a line picked up by its arrow end, resizing a container, or selecting and
 // moving a node.
 func (s *State) press(ctx *frame.Context, point image.Point) {
+	group := s.group
+	s.group = nil
 	if from, output, ok := s.portAt(point); ok {
 		s.selected = from
 		s.link = &linkDrag{from: from, output: output, to: point}
@@ -727,11 +785,19 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 	hit, ok := s.nodeAt(point)
 	if !ok {
 		s.selected, s.selectedLink = ids.ULID{}, noRoute()
+		s.startBox(point, false)
 
 		return
 	}
-	s.selected, s.selectedLink = hit, noRoute()
-	s.drag = &nodeDrag{id: hit, grab: point.Sub(s.shapes[hit].rect.Min), gesture: s.gesture(), last: point}
+	drag := &nodeDrag{
+		id: hit, grab: point.Sub(s.shapes[hit].rect.Min), gesture: s.gesture(), last: point, group: false, moved: false,
+	}
+	if slices.Contains(group, hit) {
+		s.group, drag.group = group, true
+	} else {
+		s.selected, s.selectedLink = hit, noRoute()
+	}
+	s.drag = drag
 }
 
 // updateDrag moves the dragged node, and a container's contents with it,
@@ -1109,7 +1175,9 @@ func (s *State) addNode(ctx *frame.Context, node flow.Node, place image.Point, l
 	}
 	box := newBox(node.Kind, place)
 	gesture := s.gesture()
-	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
+	args := workflowplugin.AddArgs{
+		Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil, Tints: nil, Fresh: false,
+	}
 	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {
 		s.selected, s.selectedLink = result.Created, noRoute()
 		if link == nil {
@@ -1124,6 +1192,11 @@ func (s *State) addNode(ctx *frame.Context, node flow.Node, place image.Point, l
 
 // removeSelected removes the selected node; the start node stays.
 func (s *State) removeSelected(ctx *frame.Context) {
+	if len(s.group) > 0 {
+		s.removeGroupNodes(ctx)
+
+		return
+	}
 	if s.selected.IsZero() || s.workflow == nil || s.selected == s.workflow.Start() {
 		return
 	}

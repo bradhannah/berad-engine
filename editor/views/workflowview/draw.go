@@ -161,10 +161,8 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 		s.drawLooseTag(area, s.shapes[nodeID])
 	}
 	s.drawCrossings(area)
-	if selected, ok := s.shapes[s.selected]; ok {
-		ui.StrokeRound(area, s.screenRect(selected.rect).Inset(-selectGap), ui.Radius+selectGap, selectWidth,
-			ui.ColorSelect())
-	}
+	s.drawSelection(area)
+	s.drawBox(area)
 	s.drawLiveNode(area)
 	if s.link != nil {
 		if from, ok := s.shapes[s.link.from].portOf(s.link.output); ok {
@@ -576,14 +574,8 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
-	if s.localsActive() {
-		s.drawLocals(screen, docs)
-
-		return
-	}
 	if !nodeSelected || s.form == nil {
-		s.theme.Heading(screen, "Inspector", left, top)
-		s.drawHowToSelect(screen, left, top+ui.LineHeight)
+		s.drawNoNodeInspector(screen, docs, left, top)
 
 		return
 	}
@@ -622,6 +614,20 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	}
 }
 
+// drawNoNodeInspector draws the inspector while no one node is selected:
+// for several nodes, the workflow's locals, or how to select.
+func (s *State) drawNoNodeInspector(screen *ebiten.Image, docs frame.Docs, left, top int) {
+	switch {
+	case len(s.group) > 0:
+		s.drawGroupInspector(screen, left, top)
+	case s.localsActive():
+		s.drawLocals(screen, docs)
+	default:
+		s.theme.Heading(screen, "Inspector", left, top)
+		s.drawHowToSelect(screen, left, top+ui.LineHeight)
+	}
+}
+
 // hasPartState answers the states about lines, problems, cues and local
 // values, and whether the state is one of them.
 func (s *State) hasPartState(state string) (bool, bool) {
@@ -650,6 +656,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 		return s.hasLocal(state), true
 	}
 	if found, handled := s.hasCallState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasSelectionState(state); handled {
 		return found, true
 	}
 	if line, asked := strings.CutPrefix(state, "calledby="); asked {
@@ -1220,7 +1229,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return ui.Center(s.pal.search.Rect), true
 	}
 	for _, button := range slices.Concat([]*ui.Button{
-		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add,
+		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add, s.removeGroup,
 	}, s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true
