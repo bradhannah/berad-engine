@@ -348,3 +348,26 @@ func TestCmdDDuplicatesAContainer(t *testing.T) {
 		t.Fatalf("the container's copy holds the Wait's: %+v %+v", container, wait)
 	}
 }
+
+// TestArrangeTheSelectionAlone moves a Say out of line, then arranges it
+// with the Wait before it: the Say lines up after the Wait, the Wait stays
+// where it was, and the Log is left alone.
+func TestArrangeTheSelectionAlone(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	from := f.at("node:" + flow.KindSay + ":1")
+	f.drag(from, from.Add(image.Pt(60, 260)))
+	wait, log := f.boxOf(flow.KindWait), f.boxOf(flow.KindLog)
+	f.click("node:" + flow.KindWait + ":1")
+	f.cmdClick("node:" + flow.KindSay + ":1")
+	before := len(f.requests.Of(workflowplugin.MoveEdit))
+	f.click("ui:arrange")
+	say := f.boxOf(flow.KindSay)
+	if f.boxOf(flow.KindWait) != wait || say.Y < wait.Y || say.Y > wait.Y+10 || say.X <= wait.X {
+		t.Fatalf("the Say lines up after the Wait, which stays: wait %v, say %v", f.boxOf(flow.KindWait), say)
+	}
+	if f.boxOf(flow.KindLog) != log || len(f.requests.Of(workflowplugin.MoveEdit)) != before+1 ||
+		!strings.Contains(f.status(), "Arranged 2 nodes") {
+		t.Fatalf("the Log stays, in one edit: %q", f.status())
+	}
+}

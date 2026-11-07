@@ -17,7 +17,8 @@ import (
 )
 
 // groupHint is what the inspector says while several nodes are selected.
-const groupHint = "Cmd+click adds or removes a node. Drag any of them to move them all."
+const groupHint = "Cmd+click adds or removes a node. Drag any of them to move them all; Auto-arrange " +
+	"lays out just these."
 
 // selection is what is selected on the canvas: the nodes of a group, the one
 // node selected, or none.

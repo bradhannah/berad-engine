@@ -579,7 +579,11 @@ func (s *State) updateTyping(input *ui.Input, ctx *frame.Context) {
 // keeps a press on the legend's card from reaching the canvas under it.
 func (s *State) updateToolbar(input *ui.Input, ctx *frame.Context) {
 	if s.arrange.Update(input) {
-		s.autoArrange(ctx)
+		if len(s.group) > 0 {
+			s.arrangeSelection(ctx)
+		} else {
+			s.autoArrange(ctx)
+		}
 	}
 	if s.recentre.Update(input) {
 		s.recentreView(ctx)
