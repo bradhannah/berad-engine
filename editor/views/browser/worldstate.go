@@ -35,7 +35,7 @@ const (
 func (s *State) worldStateRows(docs frame.Docs, match matcher) []ui.Row {
 	values := ui.NewRow(worldStateRow, "Values")
 	values.Icon = ui.IconSettings
-	constants := ui.NewRow(worldConstantsRow, "Constants")
+	constants := ui.NewRow(worldConstantsRow, constantsLabel)
 	constants.Icon = ui.IconSettings
 	if count, constant, ok := s.declared(docs); ok {
 		values.Detail = strconv.Itoa(count) + " " + plural(count, "value", "values")
@@ -112,7 +112,7 @@ func (s *State) drawWorldState(screen *ebiten.Image, left int) {
 			"hears a signal; tell another zone", "with a value.",
 		}
 	case worldConstantsRow:
-		title, about = "Constants", []string{
+		title, about = constantsLabel, []string{
 			"Words and numbers the game never", "changes, for the world, each zone and",
 			"each NPC. Templates give many the", "same constants, each its own value.",
 		}

@@ -200,7 +200,9 @@ type State struct {
 	checkAt   int
 	// How many things are kept of all there are, and the bar's Clear and a
 	// view being named, saved or deleted.
-	shown, total                                  int
+	shown, total int
+	// constantsFound and linesFound count what a search found by its words.
+	constantsFound, linesFound                    int
 	naming                                        bool
 	viewName                                      *ui.TextField
 	clearBn, saveViewBn, keepViewBn, deleteViewBn *ui.Button
@@ -241,7 +243,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		home:    newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
-		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0,
+		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0, constantsFound: 0, linesFound: 0,
 		naming:   false,
 		viewName: ui.NewTextField("view-name", textedit.NewField("", false, viewsplugin.MaxNameLength), false, theme),
 		clearBn:  button("clear", "Clear"), saveViewBn: button("save-view", "Save as a view…"),
@@ -1028,6 +1030,9 @@ func documentView(format string) (string, bool) {
 // openRow opens what the selected row shows: World state's Values or
 // Signals window for its rows, or what openSelected opens.
 func (s *State) openRow(ctx *frame.Context) {
+	if s.openFound(ctx) {
+		return
+	}
 	switch s.list.Selected {
 	case worldStateRow:
 		ctx.Requests.Open(worldStateView, worldstate.ID(), false)

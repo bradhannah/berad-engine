@@ -142,7 +142,11 @@ type State struct {
 	menuOf       string
 	revealPath   string
 	revealRename bool
-	nameAdded    bool
+	// showing is a constant asked for by a search, to show once the tree
+	// is loaded; revealID is a row to select once the tree shows it.
+	showing   string
+	revealID  string
+	nameAdded bool
 	// find is Find a value while it is open, with findButton opening it;
 	// findUses counts each value's uses, once answered; lastGroup is the
 	// group last opened in it.
@@ -201,7 +205,7 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
 		menu:   ui.Menu{Items: nil, Width: 0},
-		menuOf: "", revealPath: "", revealRename: false, nameAdded: false, find: nil,
+		menuOf: "", revealPath: "", revealRename: false, showing: "", revealID: "", nameAdded: false, find: nil,
 		findButton: ui.NewButton(findID, "Find a value"),
 		findUses:   nil, lastGroup: "", signal: newSignalFields(theme), held: newHeldConstant(theme), holders: nil,
 		sheet: nil, sheetOf: ids.ULID{}, sheetIn: valuetree.List{Document: ids.ULID{}, Edit: "", Values: nil},
@@ -277,7 +281,12 @@ func (s *State) Start(ctx *frame.Context) { s.subscribe(ctx, project.IndexID()) 
 
 // Changed asks again where the selected value is used, as workflows may
 // have changed.
-func (s *State) Changed(client.Update, *frame.Context) { s.usesOf = "" }
+func (s *State) Changed(update client.Update, _ *frame.Context) {
+	s.usesOf = ""
+	if update.Attention && s.part == PartConstants && strings.HasPrefix(update.Item, ConstantItem) {
+		s.showing = update.Item
+	}
+}
 
 func (s *State) subscribe(ctx *frame.Context, document ids.ULID) {
 	if s.subs[document] {
@@ -385,6 +394,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if !loaded {
 		return
 	}
+	s.showFound(ctx)
 	s.revealRow()
 	s.nameNewRow()
 	if selected, found := s.selected(); found && isSignal(selected.kind) {

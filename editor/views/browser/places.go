@@ -65,6 +65,10 @@ func (s *State) countPlaces(docs frame.Docs, things []thing) placeCounts {
 	units := map[string]*countUnit{}
 	for _, found := range things {
 		if found.extra {
+			if foundByWords(found) {
+				counted.kept[placeMatches]++
+			}
+
 			continue
 		}
 		kept := s.kept(found, "")
@@ -495,7 +499,7 @@ func (s *State) revealNamed(docs frame.Docs, label string) bool {
 			}
 		}
 	}
-	if (label == "Values" || label == "Signals" || label == "Constants") && s.place != sectionWorldState {
+	if (label == "Values" || label == "Signals" || label == constantsLabel) && s.place != sectionWorldState {
 		s.show(sectionWorldState)
 
 		return true
