@@ -75,10 +75,18 @@ func (s *State) layoutPanes(docs frame.Docs, content image.Rectangle) {
 	things, labels := s.things(docs)
 	index := s.index(docs)
 	counted := s.countPlaces(docs, things)
-	s.shown, s.total = counted.kept[placeMatches], 0
+	s.shown, s.total, s.constantsFound, s.linesFound = 0, 0, 0, 0
 	for _, found := range things {
-		if !found.extra {
+		switch {
+		case !found.extra:
 			s.total++
+			if s.kept(found, "") {
+				s.shown++
+			}
+		case strings.HasPrefix(found.row.ID, foundConstant):
+			s.constantsFound++
+		case strings.HasPrefix(found.row.ID, foundLine):
+			s.linesFound++
 		}
 	}
 	left := s.layoutPlaces(docs, index, counted, content)
@@ -209,9 +217,18 @@ func (s *State) layoutDropdown(things []thing, labels facetLabels) {
 	s.facets.Rect = image.Rect(left, button.Rect.Max.Y+ui.Gap, left+dropdownWidth, button.Rect.Max.Y+ui.Gap+height)
 }
 
-// showing says how many things are kept of all there are.
+// showing says how many things are kept of all there are, and how many
+// constants and lines the search found by their words.
 func (s *State) showing() string {
-	return strconv.Itoa(s.shown) + " of " + strconv.Itoa(s.total)
+	said := strconv.Itoa(s.shown) + " of " + strconv.Itoa(s.total)
+	if s.constantsFound > 0 {
+		said += " · " + strconv.Itoa(s.constantsFound) + " " + plural(s.constantsFound, "constant", "constants")
+	}
+	if s.linesFound > 0 {
+		said += " · " + strconv.Itoa(s.linesFound) + " " + plural(s.linesFound, "line", "lines")
+	}
+
+	return said
 }
 
 // updateBar handles the bar: a facet's button opens or closes its values,

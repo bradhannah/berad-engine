@@ -83,6 +83,9 @@ func TestSearchFindsConstants(t *testing.T) {
 	if _, found := f.foundRow("found-constant:constant:" + serveID.String()); found {
 		t.Fatal("serve_minutes says nothing of the tide")
 	}
+	if !strings.HasSuffix(f.state.Showing(), " · 2 constants") {
+		t.Fatalf("the bar counts the constants found: %q", f.state.Showing())
+	}
 	f.searchFor("welcome")
 	if _, found := f.foundRow("found-constant:constant:" + greetingID.String()); !found {
 		t.Fatal("welcome finds the greeting's default")

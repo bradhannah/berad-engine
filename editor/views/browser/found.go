@@ -163,3 +163,9 @@ func (s *State) drawFound(screen *ebiten.Image, docs frame.Docs, left int) bool 
 
 	return true
 }
+
+// foundByWords reports whether a thing is a constant or a line a search
+// found by its words.
+func foundByWords(found thing) bool {
+	return strings.HasPrefix(found.row.ID, foundConstant) || strings.HasPrefix(found.row.ID, foundLine)
+}

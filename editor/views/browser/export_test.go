@@ -69,3 +69,6 @@ func (s *State) LocateInPlace(name string, docs frame.Docs) (image.Point, bool) 
 
 	return s.locateWidget(strings.TrimPrefix(name, "ui:"))
 }
+
+// Showing is what the bar says it shows.
+func (s *State) Showing() string { return s.showing() }
