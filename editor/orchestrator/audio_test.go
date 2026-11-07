@@ -80,7 +80,7 @@ func askRecording(t *testing.T, c *client.Client, recording string, offset int64
 // from the descriptor or its routing, and each recording's status, and says
 // why when the project has no library.
 func TestAudioLibraryListsCuesWithCategories(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -128,7 +128,7 @@ func TestAudioLibraryListsCuesWithCategories(t *testing.T) {
 // refuses one that is not ready or an offset outside it, and changes its
 // version when the file changes.
 func TestRecordingIsSentInParts(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	writeAudio(t, dir, "library.json", testLibrary)
@@ -160,7 +160,7 @@ func TestRecordingIsSentInParts(t *testing.T) {
 // file, decoded, and one that cannot be decoded none; a cue lasts as long as
 // its longest recording.
 func TestRecordingLengths(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)

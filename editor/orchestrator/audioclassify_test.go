@@ -63,7 +63,7 @@ func withClassifiedAudio(t *testing.T) *client.Client {
 // changes how far away it is heard, its profile and its recording's family,
 // refuses what berad-audio would not keep, and undoes it all.
 func TestAmbientCuesProfilesAndFamilies(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	audio := withClassifiedAudio(t)
 	library := askAudio(t, audio)
 	if len(library.Profiles) != 2 || library.Profiles[0].Name != "bed" || library.Profiles[0].MixRole != "bed" ||
@@ -114,7 +114,7 @@ func TestAmbientCuesProfilesAndFamilies(t *testing.T) {
 // TestAmbientCuePlaysOneRecording refuses a distance for a cue that plays
 // several recordings in turn.
 func TestAmbientCuePlaysOneRecording(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	audio := withClassifiedAudio(t)
 	attribution := protocol.Attribution{Creator: "", Source: "", License: "", Commercial: false}
 	mustAudioEdit(t, audio, protocol.AudioAddSound, protocol.AddSound{Cue: "", NewCue: &protocol.NewCue{

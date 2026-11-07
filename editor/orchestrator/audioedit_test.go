@@ -48,6 +48,22 @@ func toneWAV(samples int) []byte {
 	return wav.Bytes()
 }
 
+// audioSlots lets one audio test run at a time. Decoding, resampling and
+// measuring sounds is heavy under the race detector, whose own runtime
+// spins when several such tests run together, until they wait past the
+// deadlines they set for one request. On their own each takes a second or
+// two, and two at a time still failed now and then in a full make test.
+var audioSlots = make(chan struct{}, 1)
+
+// parallelAudio runs an audio test in parallel with the tests that are not
+// about audio, once no other audio test runs.
+func parallelAudio(t *testing.T) {
+	t.Helper()
+	t.Parallel()
+	audioSlots <- struct{}{}
+	t.Cleanup(func() { <-audioSlots })
+}
+
 // soundFile writes a tone outside the project, where an author's sound
 // would come from.
 func soundFile(t *testing.T, name string) string {
@@ -97,7 +113,7 @@ func cueOf(t *testing.T, c *client.Client, id string) (protocol.AudioCue, bool) 
 // cue, copies a sound into it with its attribution, tells every window, and
 // undoes both steps.
 func TestAudioEditsStartTheLibraryAndUndo(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -172,7 +188,7 @@ func TestAudioEditsStartTheLibraryAndUndo(t *testing.T) {
 // TestAudioEditsChangeCuesAndRecordings changes a cue and its recordings, a
 // recording's note and attribution, and deletes them.
 func TestAudioEditsChangeCuesAndRecordings(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -232,7 +248,7 @@ func TestAudioEditsChangeCuesAndRecordings(t *testing.T) {
 // TestAudioEditsRefuseWhatCannotBe refuses bad input and leaves the library
 // as it was.
 func TestAudioEditsRefuseWhatCannotBe(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -279,7 +295,7 @@ func TestAudioEditsRefuseWhatCannotBe(t *testing.T) {
 // another window changed afterwards, or another program changed outside the
 // editor.
 func TestAudioUndoIsRefusedAfterAnotherChange(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -319,7 +335,7 @@ func TestAudioUndoIsRefusedAfterAnotherChange(t *testing.T) {
 // TestAudioChangesOutsideReachWindows tells windows when another program
 // changes the audio files.
 func TestAudioChangesOutsideReachWindows(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, func(cfg *orchestrator.Config) { cfg.FlushInterval = 20 * time.Millisecond })
@@ -331,7 +347,7 @@ func TestAudioChangesOutsideReachWindows(t *testing.T) {
 // TestCuesInWorkflowsAreWhereUsed lists the workflows whose Play sound nodes
 // play a cue.
 func TestCuesInWorkflowsAreWhereUsed(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -362,7 +378,7 @@ func TestCuesInWorkflowsAreWhereUsed(t *testing.T) {
 // TestOpenItemShowsItInTheOpenWindow names the item to show when a window
 // is opened again.
 func TestOpenItemShowsItInTheOpenWindow(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	h := start(t, dir, nil)
@@ -382,7 +398,7 @@ func TestOpenItemShowsItInTheOpenWindow(t *testing.T) {
 // the editor first changes it, with no recording cleared for commercial use,
 // and leaves it alone while it only reads it.
 func TestFirstEditUpgradesTheLibrary(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	writeAudio(t, dir, "library.json", testLibrary)
