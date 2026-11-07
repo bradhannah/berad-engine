@@ -453,6 +453,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	panel := frame.Inspector(s.size)
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	s.colours = nil
+	s.layoutGroup(left, width, panel.Min.Y+ui.Inset+ui.LineHeight)
 	if s.lineSelected() {
 		bottom := panel.Max.Y - ui.Inset
 		s.deleteLine.Rect = image.Rect(left, bottom-ui.ButtonH, panel.Max.X-ui.Inset, bottom)
@@ -530,6 +531,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	if !s.updateHelp(input, ctx) {
 		s.updateLineButtons(input, ctx)
+		s.updateGroup(input, ctx)
 		s.updateColours(input, ctx)
 		s.updateForm(input, ctx)
 		s.updateLocals(input, ctx)
@@ -1180,6 +1182,11 @@ func (s *State) addNode(ctx *frame.Context, node flow.Node, place image.Point, l
 
 // removeSelected removes the selected node; the start node stays.
 func (s *State) removeSelected(ctx *frame.Context) {
+	if len(s.group) > 0 {
+		s.removeGroupNodes(ctx)
+
+		return
+	}
 	if s.selected.IsZero() || s.workflow == nil || s.selected == s.workflow.Start() {
 		return
 	}

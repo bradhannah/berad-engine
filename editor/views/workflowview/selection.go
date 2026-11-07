@@ -8,9 +8,12 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
 
 // groupHint is what the inspector says while several nodes are selected.
@@ -111,15 +114,12 @@ func (s *State) drawSelection(area *ebiten.Image) {
 	}
 }
 
-// groupTitle says how many nodes are selected.
-func groupTitle(count int) string { return strconv.Itoa(count) + " nodes" }
-
 // drawGroupInspector shows what a selection of several nodes offers: how
 // many there are, and how to change it.
 func (s *State) drawGroupInspector(screen *ebiten.Image, left, top int) {
 	panel := frame.Inspector(s.size)
 	s.theme.Heading(screen, "Selected", left, top)
-	s.theme.DrawTitle(screen, groupTitle(len(s.group)), left, top+ui.LineHeight, ui.ColorInk())
+	s.theme.DrawTitle(screen, countNodes(len(s.group)), left, top+ui.LineHeight, ui.ColorInk())
 	s.drawColours(screen)
 	bottom := panel.Max.Y - ui.Inset
 	if s.removeGroup != nil && !s.removeGroup.Rect.Empty() {
@@ -154,4 +154,104 @@ func groupDeleteButton() *ui.Button {
 	button.Danger = true
 
 	return button
+}
+
+// removable are the selected nodes Delete removes: all but the start, and
+// none a selected container takes with it.
+func (s *State) removable() []ids.ULID {
+	var chosen []ids.ULID
+	for _, id := range s.movers() {
+		if id != s.workflow.Start() {
+			chosen = append(chosen, id)
+		}
+	}
+
+	return chosen
+}
+
+// countNodes says how many nodes: "1 node", "3 nodes".
+func countNodes(count int) string {
+	if count == 1 {
+		return "1 node"
+	}
+
+	return strconv.Itoa(count) + " nodes"
+}
+
+// groupColourRow is the colour row of several nodes: choosing a tint gives
+// it to each of them but notes, which take none. The tint they share is
+// ringed; none is when they differ.
+func (s *State) groupColourRow() []colourRow {
+	current, shared, found := "", true, false
+	for _, id := range s.group {
+		node, ok := s.workflow.Node(id)
+		if !ok || node.Kind == flow.KindNote {
+			continue
+		}
+		name := nameOrNone(s.tints.Nodes[id])
+		if found && name != current {
+			shared = false
+		}
+		current, found = name, true
+	}
+	if !found {
+		return nil
+	}
+	if !shared {
+		current = ""
+	}
+
+	return []colourRow{{
+		title: colourTitle, note: "", kind: rowGroup, node: ids.ULID{}, key: "", current: current,
+		swatches: plainSwatches(), left: 0, label: 0,
+	}}
+}
+
+// groupTints gives a tint to each selected node but notes.
+func (s *State) groupTints(value string) map[ids.ULID]string {
+	nodes := map[ids.ULID]string{}
+	for _, id := range s.group {
+		if node, ok := s.workflow.Node(id); ok && node.Kind != flow.KindNote {
+			nodes[id] = value
+		}
+	}
+
+	return nodes
+}
+
+// layoutGroup places the colour row and Delete N nodes while several nodes
+// are selected.
+func (s *State) layoutGroup(left, width, top int) {
+	s.removeGroup.Rect = ui.Zero()
+	if len(s.group) == 0 {
+		return
+	}
+	s.colours = s.layoutColours(s.groupColourRow(), left, width, top+ui.Half*ui.LineHeight+fieldSpace)
+	if count := len(s.removable()); count > 0 {
+		panel := frame.Inspector(s.size)
+		bottom := panel.Max.Y - ui.Inset
+		s.removeGroup.Label = "Delete " + countNodes(count)
+		s.removeGroup.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
+	}
+}
+
+// updateGroup handles Delete N nodes.
+func (s *State) updateGroup(input *ui.Input, ctx *frame.Context) {
+	if !s.removeGroup.Rect.Empty() && s.removeGroup.Update(input) {
+		s.removeSelected(ctx)
+	}
+}
+
+// removeGroupNodes removes the selected nodes but the start, with what
+// their containers hold, as one undo step.
+func (s *State) removeGroupNodes(ctx *frame.Context) {
+	removed := s.removable()
+	if len(removed) == 0 {
+		return
+	}
+	s.selectNodes(nil)
+	args := workflowplugin.RemoveArgs{Nodes: removed}
+	s.command(ctx, workflowplugin.RemoveEdit, "", args, func(protocol.Result) {
+		ctx.Frame.Status(countNodes(len(removed)) + " removed. Undo puts them back.")
+	})
 }

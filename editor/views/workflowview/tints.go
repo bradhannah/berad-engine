@@ -81,6 +81,8 @@ const (
 	rowNode       = "node"
 	rowOutcome    = "outcome"
 	rowLine       = "line"
+	rowGroup      = "group"
+	colourTitle   = "Colour"
 	swatchNone    = "none"
 	swatchInherit = "inherit"
 )
@@ -145,7 +147,7 @@ func (s *State) colourRows() []colourRow {
 		return nil
 	}
 	rows := []colourRow{{
-		title: "Colour", note: "", kind: rowNode, node: node.ID, key: "",
+		title: colourTitle, note: "", kind: rowNode, node: node.ID, key: "",
 		current: nameOrNone(s.tints.Nodes[node.ID]), swatches: plainSwatches(), left: 0, label: 0,
 	}}
 	var outcomes []flow.Output
@@ -184,7 +186,7 @@ func (s *State) lineColourRow() colourRow {
 	})
 
 	return colourRow{
-		title: "Colour", note: note, kind: rowLine, node: s.selectedLink.from, key: key, current: current,
+		title: colourTitle, note: note, kind: rowLine, node: s.selectedLink.from, key: key, current: current,
 		swatches: swatches, left: 0, label: 0,
 	}
 }
@@ -234,6 +236,8 @@ func (s *State) setTint(ctx *frame.Context, row colourRow, value string) {
 		args.Tints.Nodes = map[ids.ULID]string{row.node: value}
 	case rowOutcome:
 		args.Tints.Outcomes = map[string]string{row.key: value}
+	case rowGroup:
+		args.Tints.Nodes = s.groupTints(value)
 	default:
 		args.Tints.Lines = map[string]string{row.key: value}
 	}

@@ -1,9 +1,9 @@
 package workflowview
 
 import (
-	"strings"
-
 	"image"
+	"slices"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -14,6 +14,7 @@ import (
 const (
 	menuDeleteNode = "delete-node"
 	menuDeleteLine = "delete-line"
+	menuDeleteAll  = "delete-group"
 	locateMenu     = "menu"
 )
 
@@ -34,9 +35,11 @@ func (s *State) rightClick(point, pointer image.Point) {
 	if key, onLine := s.linkAt(point); onLine {
 		s.selected, s.selectedLink = ids.ULID{}, key
 	} else if hit, onNode := s.nodeAt(point); onNode {
-		s.selected, s.selectedLink = hit, noRoute()
+		if !slices.Contains(s.group, hit) {
+			s.selected, s.selectedLink = hit, noRoute()
+		}
 	} else {
-		s.selected, s.selectedLink = ids.ULID{}, noRoute()
+		s.selected, s.selectedLink, s.group = ids.ULID{}, noRoute(), nil
 
 		return
 	}
@@ -59,6 +62,9 @@ func (s *State) openContextMenu() {
 	switch {
 	case s.lineSelected():
 		item.ID, item.Label = menuDeleteLine, "Delete line"
+	case len(s.group) > 0:
+		count := len(s.removable())
+		item.ID, item.Label, item.Disabled = menuDeleteAll, "Delete "+countNodes(count), count == 0
 	case s.selected.IsZero():
 		return
 	case s.selected == s.workflow.Start():
@@ -107,7 +113,7 @@ func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
 		return
 	}
 	switch chosen {
-	case menuDeleteNode:
+	case menuDeleteNode, menuDeleteAll:
 		s.removeSelected(ctx)
 	case menuDeleteLine:
 		if s.lineSelected() {

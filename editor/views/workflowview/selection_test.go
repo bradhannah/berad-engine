@@ -3,6 +3,7 @@ package workflowview_test
 import (
 	"fmt"
 	"image"
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -257,5 +258,50 @@ func TestASelectionStopsAtAContainersWall(t *testing.T) {
 	}
 	if moved, _ := f.workflow().Box(container); moved.X != box.X {
 		t.Fatal("the container stays")
+	}
+}
+
+// TestTheSelectionIsColouredAndDeleted colours a Wait and a Say at once,
+// then deletes them with the start, which stays, each as one command.
+func TestTheSelectionIsColouredAndDeleted(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	f.drag(f.at("canvas:200,170"), f.at("canvas:660,30"))
+	f.click("ui:swatch:group:green")
+	if !f.has("tint:"+flow.KindWait+":1=green") || !f.has("tint:"+flow.KindSay+":1=green") ||
+		f.has("tint:"+flow.KindLog+":1=green") || len(f.requests.Of(workflowplugin.TintEdit)) != 1 {
+		t.Fatal("one swatch colours both, in one edit")
+	}
+	f.cmdClick("node:start:1")
+	if !f.has("selection=3") {
+		t.Fatal("the start joins the selection")
+	}
+	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
+	f.click("ui:delete-group")
+	if !f.has("nodes:2") || !f.has("selection=0") || len(f.requests.Of(workflowplugin.RemoveEdit)) != 1 ||
+		!strings.Contains(f.status(), "2 nodes removed") {
+		t.Fatalf("Delete 2 nodes removes the Wait and the Say, not the start: %q", f.status())
+	}
+}
+
+// TestDeleteKeyAndMenuRemoveTheSelection removes a selection with the
+// Delete key, and another from the right-click menu on one of its nodes.
+func TestDeleteKeyAndMenuRemoveTheSelection(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	f.drag(f.at("canvas:200,170"), f.at("canvas:660,30"))
+	f.keys("Delete")
+	if !f.has("nodes:2") {
+		t.Fatal("the Delete key removes both")
+	}
+	f.add(flow.KindWait)
+	f.cmdClick("node:" + flow.KindLog + ":1")
+	f.rightClick("node:" + flow.KindLog + ":1")
+	if !f.menuOffers("delete-group") || !f.has("selection=2") {
+		t.Fatal("a right-click on a selected node keeps the selection and offers to delete it")
+	}
+	f.click("menu:delete-group")
+	if !f.has("nodes:1") {
+		t.Fatal("Delete 2 nodes removes them")
 	}
 }
