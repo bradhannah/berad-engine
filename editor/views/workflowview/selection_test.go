@@ -305,3 +305,46 @@ func TestDeleteKeyAndMenuRemoveTheSelection(t *testing.T) {
 		t.Fatal("Delete 2 nodes removes them")
 	}
 }
+
+// TestCmdDDuplicates duplicates a green Wait leading to a Say: the copies
+// sit a little below and right, keep the line between them and the tint,
+// lose the line out to the Log, and are selected.
+func TestCmdDDuplicates(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	f.drag(f.at("canvas:200,170"), f.at("canvas:660,30"))
+	f.click("ui:swatch:group:green")
+	wait := f.boxOf(flow.KindWait)
+	f.keys("Cmd+D")
+	if !f.has("nodes:6") || len(f.requests.Of(workflowplugin.AddEdit)) != 4 {
+		t.Fatal("Cmd+D adds two nodes in one edit")
+	}
+	waitCopy, sayCopy := f.nth(flow.KindWait, 2), f.nth(flow.KindSay, 2)
+	if waitCopy.Next[flow.OutputNext] != sayCopy.ID || len(sayCopy.Next) != 0 {
+		t.Fatalf("the copies keep the line between them, not the one out: %v %v", waitCopy.Next, sayCopy.Next)
+	}
+	if box, _ := f.workflow().Box(waitCopy.ID); image.Pt(box.X, box.Y) != wait.Add(image.Pt(24, 24)) {
+		t.Fatalf("the copy sits below and right: %+v", box)
+	}
+	if !f.has("tint:"+flow.KindWait+":2=green") || !f.has("entries:"+flow.KindWait+":2=0") {
+		t.Fatal("the copy keeps its tint, and nothing leads into it")
+	}
+	if !f.has("selection=2") || !f.has("in-selection:"+flow.KindWait+":2") ||
+		!f.has("in-selection:"+flow.KindSay+":2") || !strings.Contains(f.status(), "Duplicated 2 nodes") {
+		t.Fatalf("the copies are selected: %q", f.status())
+	}
+}
+
+// TestCmdDDuplicatesAContainer duplicates a container with a Wait in it:
+// the copy holds a copy of the Wait.
+func TestCmdDDuplicatesAContainer(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindContainer)
+	f.add(flow.KindWait)
+	f.click("node:" + flow.KindContainer + ":1")
+	f.keys("Cmd+D")
+	container, wait := f.nth(flow.KindContainer, 2), f.nth(flow.KindWait, 2)
+	if container.ID.IsZero() || wait.Parent != container.ID || !f.has("selected:"+flow.KindContainer) {
+		t.Fatalf("the container's copy holds the Wait's: %+v %+v", container, wait)
+	}
+}

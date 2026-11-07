@@ -38,6 +38,7 @@ const (
 	KeySlash     Key = "Slash"
 	KeyA         Key = "A"
 	KeyC         Key = "C"
+	KeyD         Key = "D"
 	KeyF         Key = "F"
 	KeyJ         Key = "J"
 	KeyK         Key = "K"

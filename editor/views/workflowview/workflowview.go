@@ -138,6 +138,9 @@ type State struct {
 	// nudges the run of arrow-key nudges under way.
 	box    *selectBox
 	nudges nudging
+	// selectAdded is the nodes there before a copy was added, while the
+	// copies wait to be selected.
+	selectAdded map[ids.ULID]bool
 	// showing is a node asked for with NodeItem, to select once it arrives.
 	showing  ids.ULID
 	cursor   image.Point
@@ -257,7 +260,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, group: nil, removeGroup: groupDeleteButton(), box: nil,
-		nudges:  nudging{gesture: "", of: "", idle: 0},
+		nudges: nudging{gesture: "", of: "", idle: 0}, selectAdded: nil,
 		showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
@@ -409,6 +412,7 @@ func (s *State) load(docs frame.Docs) {
 	if _, ok := s.targetOf(s.selectedLink); !ok {
 		s.selectedLink = noRoute()
 	}
+	s.selectAddedNodes()
 	s.settleSelection()
 }
 
@@ -624,7 +628,7 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	if s.nudge(input, ctx) {
+	if s.selectionKeys(input, ctx) {
 		return
 	}
 	switch {
@@ -1167,7 +1171,9 @@ func (s *State) addNode(ctx *frame.Context, node flow.Node, place image.Point, l
 	}
 	box := newBox(node.Kind, place)
 	gesture := s.gesture()
-	args := workflowplugin.AddArgs{Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil}
+	args := workflowplugin.AddArgs{
+		Nodes: []flow.Node{node}, Boxes: map[ids.ULID]flow.Box{{}: box}, Links: nil, Tints: nil, Fresh: false,
+	}
 	s.command(ctx, workflowplugin.AddEdit, gesture, args, func(result protocol.Result) {
 		s.selected, s.selectedLink = result.Created, noRoute()
 		if link == nil {

@@ -458,3 +458,48 @@ func TestAZoneLoopAndWhereItRuns(t *testing.T) {
 		t.Fatalf("a workflow refers to the zone it runs in: %+v", references)
 	}
 }
+
+// TestAddCopiesWithFreshIDs copies a Wait leading to a Say, the Wait green:
+// the copies get new IDs, the line between them and the tint follow, and
+// the line out to a node not copied is dropped.
+func TestAddCopiesWithFreshIDs(t *testing.T) {
+	t.Parallel()
+	document := newDocument(t)
+	wait, say := newNode(t, flow.KindWait, 2, ids.ULID{}), newNode(t, flow.KindSay, 3, ids.ULID{})
+	wait = wait.WithLink(flow.OutputNext, id(3))
+	say = say.WithLink(flow.OutputNext, id(1))
+	args := encode(t, workflow.AddArgs{
+		Nodes: []flow.Node{wait, say},
+		Boxes: map[ids.ULID]flow.Box{id(2): {X: 40, Y: 60, W: 0, H: 0}, id(3): {X: 240, Y: 60, W: 0, H: 0}},
+		Links: nil, Tints: map[ids.ULID]string{id(2): "green"}, Fresh: true,
+	})
+	prepared, err := (workflow.Add{}).Prepare(document, args, counter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := (workflow.Add{}).Prepare(document, prepared, counter())
+	if err != nil || string(again) != string(prepared) {
+		t.Fatal("preparing a prepared copy leaves it unchanged")
+	}
+	registry, err := plugin.NewRegistry(workflow.Plugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.VerifyUndo(document, workflow.Add{}, prepared, registry.Edit); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, document, workflow.Add{}, prepared)
+	copied, ok := document.Workflow.Node(id(10))
+	if !ok || copied.Kind != flow.KindWait || copied.Next[flow.OutputNext] != id(11) {
+		t.Fatalf("the Wait's copy leads to the Say's: %+v", copied)
+	}
+	if said, _ := document.Workflow.Node(id(11)); len(said.Next) != 0 {
+		t.Fatalf("the Say's line to a node not copied is dropped: %+v", said.Next)
+	}
+	if box, _ := document.Workflow.Box(id(11)); box.X != 240 {
+		t.Fatalf("the boxes follow: %+v", box)
+	}
+	if document.Workflow.Tints().Nodes[id(10)] != "green" {
+		t.Fatal("the tint follows")
+	}
+}
