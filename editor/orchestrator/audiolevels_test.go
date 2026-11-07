@@ -84,7 +84,7 @@ func toneRecording(t *testing.T, c *client.Client) protocol.AudioRecording {
 // TestAnalysisDrawsAndSuggests sends a recording's waveform, the region its
 // sound fills and a calibration suggestion, for all of it or a part.
 func TestAnalysisDrawsAndSuggests(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	_, audio := withPaddedSound(t)
 	answer := analyse(t, audio, protocol.AudioAnalysis{Recording: "tone", Columns: 40})
 	if answer.Problem != "" || answer.DurationMs < 990 || len(answer.Peaks) != 40 || answer.Version == "" {
@@ -115,7 +115,7 @@ func TestAnalysisDrawsAndSuggests(t *testing.T) {
 // TestTrimDuplicateAndLevel trims a recording, duplicates part of it into
 // its cue, measures its gain, sets one by hand and aims at another target.
 func TestTrimDuplicateAndLevel(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	_, audio := withPaddedSound(t)
 	region := &protocol.AudioWindow{StartMs: 240, EndMs: 760}
 	mustAudioEdit(t, audio, protocol.AudioSetRegion, protocol.RegionChange{Recording: "tone", Region: region})
@@ -166,7 +166,7 @@ func TestTrimDuplicateAndLevel(t *testing.T) {
 // TestCheckFindsFilesThatCannotPlay decodes every recording and lists those
 // that cannot play.
 func TestCheckFindsFilesThatCannotPlay(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	h, audio := withPaddedSound(t)
 	recording := toneRecording(t, audio)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

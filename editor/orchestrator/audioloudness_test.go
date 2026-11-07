@@ -33,7 +33,7 @@ func toneCue(t *testing.T, c *client.Client) protocol.AudioCue {
 // TestNewSoundsAreEvenedOut measures a sound as it comes in, and starts its
 // cue at Normal, the reference loudness.
 func TestNewSoundsAreEvenedOut(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	_, audio := withPaddedSound(t)
 	if tone := toneRecording(t, audio); tone.CalibrationMode != protocol.CalibrationAuto || tone.CalibrationDB == 0 {
 		t.Fatalf("a new sound is measured: %+v", tone)
@@ -51,7 +51,7 @@ func TestNewSoundsAreEvenedOut(t *testing.T) {
 // its category's adjustment, which moves every cue of the category and is
 // kept in the descriptor; a cue changing category keeps its step.
 func TestStepsAndCategoryAdjustments(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	h, audio := withPaddedSound(t)
 	mustAudioEdit(t, audio, protocol.AudioSetLoudness, protocol.LoudnessChange{Cue: "sfx/tone", Step: loudness.Louder})
 	if cue := toneCue(t, audio); !near(cue.Gain, loudness.Gain(4)) {
@@ -104,7 +104,7 @@ func TestStepsAndCategoryAdjustments(t *testing.T) {
 // TestReferenceMeasuresAgain moves every measured recording when the
 // reference loudness moves, and undo takes both back.
 func TestReferenceMeasuresAgain(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	_, audio := withPaddedSound(t)
 	measured := toneRecording(t, audio).CalibrationDB
 	mustAudioEdit(t, audio, protocol.AudioSetReference, protocol.ReferenceChange{TargetDB: -26})
@@ -125,7 +125,7 @@ func TestReferenceMeasuresAgain(t *testing.T) {
 // TestMeasureAllAndUseReference measures recordings no level was set for,
 // and measures one set by hand again on request.
 func TestMeasureAllAndUseReference(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	dir := t.TempDir()
 	createProject(t, dir)
 	writeAudio(t, dir, "library.json", strings.Replace(strings.Replace(testLibrary,
@@ -155,7 +155,7 @@ func TestMeasureAllAndUseReference(t *testing.T) {
 // TestLoudnessAnswersForEveryRecording measures every recording with a file,
 // and says why one cannot be measured.
 func TestLoudnessAnswersForEveryRecording(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	h, audio := withPaddedSound(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -180,7 +180,7 @@ func TestLoudnessAnswersForEveryRecording(t *testing.T) {
 // TestPiecesShareTheirFile finds the sound in a file, makes recordings of
 // parts of it into its cue, and changes the attribution of all of them.
 func TestPiecesShareTheirFile(t *testing.T) {
-	t.Parallel()
+	parallelAudio(t)
 	_, audio := withPaddedSound(t)
 	analysed := analyse(t, audio, protocol.AudioAnalysis{Recording: "tone", Columns: 10})
 	if len(analysed.Sounds) != 1 || analysed.Sounds[0].StartMs < 230 || analysed.Sounds[0].EndMs > 770 {
