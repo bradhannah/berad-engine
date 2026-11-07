@@ -1,6 +1,6 @@
 # Increment 35: Finding by words
 
-**Status:** Planned
+**Status:** Built
 
 The thirty-fifth increment lets the Project window's search find what a
 game says. Today it matches documents' names, folders and tags. A line of
@@ -56,29 +56,68 @@ Agreed by its author on 2026-11-06, before building:
   holder's row in the Constants window, the text that matched. Otherwise
   the constant is selected.
 
-To choose while building, for its author to check:
+Chosen while building, for its author to check:
 
 - **What a line matches:** its typed text with markup's tags left out, so
-  "good morning" finds `[b]Good morning[/b]`; not the paths of the values
-  in it, which their constants' rows find.
-- **How a match's text is cut** to fit its row, around the words found.
-- **What the inspector shows** for a constant or a line selected in
-  Matches.
-- **What a search starting with `#`** finds: tags only, as now, so no
+  "good morning" finds `[b]Good morning[/b]`, and a word only in a tag
+  finds nothing. A value's place parts the words either side of it, and
+  its path isn't searched: its constant's row finds it.
+- **A constant's text is matched without its tags too,** in its default
+  and in each holder's own.
+- **A row per text that matched:** a template's constant found in its
+  default and in Marta's own text is listed twice, each opening at that
+  text. One found by its path is listed once, with its value.
+- **How a match's text is cut:** about 44 characters around the words
+  found, on one line, in quotes, with an ellipsis where it is cut.
+- **What the inspector shows:** what it is (a constant, whose own, or a
+  line and its kind), its path or workflow, Open in Constants or Open in
+  its workflow, and the whole text, a value's place in a line shown as
+  ‹value›.
+- **Counting:** Matches' number counts the constants and lines found, and
+  the bar adds them after its count of documents, as "0 of 19 · 1
+  constant".
+- **A search starting with `#`** finds tags only, as before, so no
   constants or lines.
 
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Constants found | Find a constant's matching shared with the Project window; a row per constant found, under a Constants group in Matches, with its value or the text that matched and whose it is | Unit tests find a constant by its path, its default and an NPC's own text, and none for a search of tags | Planned |
-| 2. Opened at a constant | The Constants window opening with a constant, or a holder's own value, selected and in view, as a Workflow window opens at a node | Unit tests open a constant and an NPC's own value from Matches and find them selected | Planned |
-| 3. Lines found | The typed text of every workflow's Says, Show messages and Logs searched, markup's tags left out; a row per node, under a Lines group, naming its workflow and kind; opening it opens the workflow at the node | Unit tests find a Say in a workflow not open, skip a match only in a tag, and open the workflow at the node | Planned |
-| 4. Tests and checks | A real-window test that searches the sample for a constant's words and a line's, opens each and finds it selected; EDITOR_FEATURES updated | `make check` passes, and so does the real-window suite | Planned |
+| 1. Constants found | Find a constant's matching shared with the Project window; a row per constant found, under a Constants group in Matches, with its value or the text that matched and whose it is | Unit tests find a constant by its path, its default and an NPC's own text, and none for a search of tags | Built |
+| 2. Opened at a constant | The Constants window opening with a constant, or a holder's own value, selected and in view, as a Workflow window opens at a node | Unit tests open a constant and an NPC's own value from Matches and find them selected | Built |
+| 3. Lines found | The typed text of every workflow's Says, Show messages and Logs searched, markup's tags left out; a row per node, under a Lines group, naming its workflow and kind; opening it opens the workflow at the node | Unit tests find a Say in a workflow not open, skip a match only in a tag, and open the workflow at the node | Built |
+| 4. Tests and checks | A real-window test that searches the sample for a constant's words and a line's, opens each and finds it selected; EDITOR_FEATURES updated | `make check` passes, and so does the real-window suite | Built |
 
 ## Step results
 
-None yet.
+- **Constants found:** the Constants window's Find and the Project's
+  search share their matching, now exported from the World state window
+  as `FindConstants`. A constant's row in Matches sits under Constants,
+  after Settings and World state. Unit tests find constants by a path, a
+  default, a holder's own text and a second line, show tide_minutes with
+  its value and Ada's greeting without its tags, count them in the bar,
+  and find none for a search of tags. Commit 8a8f36f.
+- **Opened at a constant:** the Constants window takes a constant as an
+  item to open at, as a Workflow window takes a node. It opens what holds
+  the constant and selects it; for a holder's own value, it opens that
+  NPC's or zone's template and selects its row. Unit tests open the
+  window at the letter and at Guard 1's own greeting. Commit b49312c.
+- **Lines found:** the Project window reads the workflows it already
+  keeps loaded. A line's row, named by its workflow and kind, sits under
+  Lines, and opens the workflow at its node. A unit test finds a Say by
+  its words in a workflow not open, not by a word only in a tag nor across
+  a value's place, and opens the workflow at it. Commit f9eeb21.
+- **Tests and checks:** see below. Commit 39acab2.
+
+Tests and checks:
+
+- The real-window test searches the sample for "open", finds the shop's
+  greeting, "Shop's open!", and opens the Constants window with it
+  selected; then searches for "no stock", finds the customer's Say, and
+  opens Customer shops with it selected. Its screenshots show Matches, the
+  inspector, and each window opened at what was found.
+- All 61 tests of the full real-window run passed, and `make check`
+  passed from a clean test cache.
 
 ## Not in this increment
 
