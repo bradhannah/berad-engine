@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -169,5 +170,92 @@ func TestABoxIsDrawn(t *testing.T) {
 	f.release(to)
 	if !f.has("selection=2") {
 		t.Fatal("the box selected as it was drawn")
+	}
+}
+
+// boxOf is where a node sits on the canvas.
+func (f *fixture) boxOf(kind string) image.Point {
+	f.t.Helper()
+	box, _ := f.workflow().Box(f.nth(kind, 1).ID)
+
+	return image.Pt(box.X, box.Y)
+}
+
+// gesturesOf counts the gestures of an edit's commands from the nth on.
+func (f *fixture) gesturesOf(edit string, from int) int {
+	gestures := map[string]bool{}
+	for _, command := range f.requests.Of(edit)[from:] {
+		gestures[command.Command.Gesture] = true
+	}
+
+	return len(gestures)
+}
+
+// TestTheSelectionMovesTogether drags a Wait with the Say selected beside
+// it: both move the same way, as one undo step, and the Log stays. A click
+// on one of them without moving selects it alone.
+func TestTheSelectionMovesTogether(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	f.drag(f.at("canvas:200,170"), f.at("canvas:660,30"))
+	wait, say, log := f.boxOf(flow.KindWait), f.boxOf(flow.KindSay), f.boxOf(flow.KindLog)
+	before := len(f.requests.Of(workflowplugin.MoveEdit))
+	from := f.at("node:" + flow.KindWait + ":1")
+	f.drag(from, from.Add(image.Pt(40, 120)))
+	moved := f.boxOf(flow.KindWait).Sub(wait)
+	if moved == image.Pt(0, 0) || f.boxOf(flow.KindSay).Sub(say) != moved || f.boxOf(flow.KindLog) != log {
+		t.Fatalf("the Wait and the Say move together, and the Log stays: %v", moved)
+	}
+	if f.gesturesOf(workflowplugin.MoveEdit, before) != 1 || !f.has("selection=2") {
+		t.Fatal("a drag is one undo step, and keeps the selection")
+	}
+	f.click("node:" + flow.KindSay + ":1")
+	if !f.has("selection=1") || !f.has("selected:"+flow.KindSay) {
+		t.Fatal("a click without moving selects that node alone")
+	}
+}
+
+// TestArrowKeysNudge nudges two nodes three times right and once down with
+// Shift: one undo step for the run.
+func TestArrowKeysNudge(t *testing.T) {
+	t.Parallel()
+	f := withThree(t)
+	f.drag(f.at("canvas:200,170"), f.at("canvas:660,30"))
+	wait, say := f.boxOf(flow.KindWait), f.boxOf(flow.KindSay)
+	before := len(f.requests.Of(workflowplugin.MoveEdit))
+	f.keys("Right")
+	f.keys("Right")
+	f.keys("Right")
+	f.keys("Shift+Down")
+	want := image.Pt(24, 40)
+	if f.boxOf(flow.KindWait).Sub(wait) != want || f.boxOf(flow.KindSay).Sub(say) != want {
+		t.Fatalf("nudged by %v, wanted %v", f.boxOf(flow.KindWait).Sub(wait), want)
+	}
+	if f.gesturesOf(workflowplugin.MoveEdit, before) != 1 {
+		t.Fatal("a run of nudges is one undo step")
+	}
+}
+
+// TestASelectionStopsAtAContainersWall drags two nodes in a container far
+// to the left: they stop at its wall.
+func TestASelectionStopsAtAContainersWall(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindContainer)
+	f.add(flow.KindWait)
+	f.add(flow.KindSay)
+	container := f.nth(flow.KindContainer, 1).ID
+	if f.nth(flow.KindWait, 1).Parent != container || f.nth(flow.KindSay, 1).Parent != container {
+		t.Fatal("the Wait and the Say are in the container")
+	}
+	f.cmdClick("node:" + flow.KindWait + ":1")
+	box, _ := f.workflow().Box(container)
+	from := f.at("node:" + flow.KindWait + ":1")
+	f.drag(from, from.Add(image.Pt(-600, 0)))
+	if f.boxOf(flow.KindWait).X < box.X || f.boxOf(flow.KindSay).X < box.X {
+		t.Fatalf("the nodes stop at the container's wall: %v %v, wall %d", f.boxOf(flow.KindWait),
+			f.boxOf(flow.KindSay), box.X)
+	}
+	if moved, _ := f.workflow().Box(container); moved.X != box.X {
+		t.Fatal("the container stays")
 	}
 }

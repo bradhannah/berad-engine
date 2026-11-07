@@ -53,11 +53,15 @@ const (
 	newGap = 60
 )
 
+// nodeDrag is a node being dragged: where it was grabbed, and its gesture.
+// In a group, it moves the selection, and moved is set once it has.
 type nodeDrag struct {
 	id      ids.ULID
 	grab    image.Point
 	gesture string
 	last    image.Point
+	group   bool
+	moved   bool
 }
 
 type linkDrag struct {
@@ -130,8 +134,10 @@ type State struct {
 	// then none. removeGroup is the inspector's Delete N nodes.
 	group       []ids.ULID
 	removeGroup *ui.Button
-	// box is the box being dragged on empty canvas to select what it holds.
-	box *selectBox
+	// box is the box being dragged on empty canvas to select what it holds;
+	// nudges the run of arrow-key nudges under way.
+	box    *selectBox
+	nudges nudging
 	// showing is a node asked for with NodeItem, to select once it arrives.
 	showing  ids.ULID
 	cursor   image.Point
@@ -251,6 +257,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
 		offset: image.Pt(0, 0), selected: ids.ULID{}, group: nil, removeGroup: groupDeleteButton(), box: nil,
+		nudges:  nudging{gesture: "", of: "", idle: 0},
 		showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
@@ -493,10 +500,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
-	s.size = ctx.Size
-	s.cursor = input.Cursor
-	s.sounds = ctx.Sounds
-	s.fade()
+	s.startFrame(input, ctx)
 	s.load(ctx.Docs)
 	s.showNode()
 	s.ask(ctx)
@@ -537,6 +541,17 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.settleSelection()
 	s.guardSelection(ctx)
 	s.openContextMenu()
+}
+
+// startFrame takes what a frame starts from: the window's size, the
+// pointer and the sounds; then fades what was lit, and counts a frame since
+// the last nudge.
+func (s *State) startFrame(input *ui.Input, ctx *frame.Context) {
+	s.size = ctx.Size
+	s.cursor = input.Cursor
+	s.sounds = ctx.Sounds
+	s.fade()
+	s.nudges.idle++
 }
 
 // updateTyping runs the palette's search, then the inspector's fields while
@@ -605,6 +620,9 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	if made, open := s.openChooser(); open && input.Consume(ui.KeyEscape, plain) {
 		s.closeChooser(made)
 
+		return
+	}
+	if s.nudge(input, ctx) {
 		return
 	}
 	switch {
@@ -679,6 +697,8 @@ func (s *State) updateGesture(input *ui.Input, ctx *frame.Context, point image.P
 		s.updateLink(input, ctx, point)
 	case s.bending != nil:
 		s.updateBend(input, ctx, point)
+	case s.drag != nil && s.drag.group:
+		s.updateGroupDrag(input, ctx, point)
 	case s.drag != nil:
 		s.updateDrag(input, ctx, point)
 	case s.resize != nil:
@@ -712,6 +732,7 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 // a line picked up by its arrow end, resizing a container, or selecting and
 // moving a node.
 func (s *State) press(ctx *frame.Context, point image.Point) {
+	group := s.group
 	s.group = nil
 	if from, output, ok := s.portAt(point); ok {
 		s.selected = from
@@ -758,8 +779,15 @@ func (s *State) press(ctx *frame.Context, point image.Point) {
 
 		return
 	}
-	s.selected, s.selectedLink = hit, noRoute()
-	s.drag = &nodeDrag{id: hit, grab: point.Sub(s.shapes[hit].rect.Min), gesture: s.gesture(), last: point}
+	drag := &nodeDrag{
+		id: hit, grab: point.Sub(s.shapes[hit].rect.Min), gesture: s.gesture(), last: point, group: false, moved: false,
+	}
+	if slices.Contains(group, hit) {
+		s.group, drag.group = group, true
+	} else {
+		s.selected, s.selectedLink = hit, noRoute()
+	}
+	s.drag = drag
 }
 
 // updateDrag moves the dragged node, and a container's contents with it,
