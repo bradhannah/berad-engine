@@ -271,6 +271,9 @@ func (s *State) matchRow(docs frame.Docs, index *project.Index, found thing, use
 // top; its heading, as "Workflows / Harbour / Shops"; and its rank, the
 // kind's place in the column.
 func groupOf(found thing) (string, string, int) {
+	if strings.HasPrefix(found.row.ID, foundConstant) {
+		return foundConstants, constantsLabel, len(placeKinds()) + 1
+	}
 	kinds := found.values[facetKind]
 	if len(kinds) == 0 {
 		return "other", "Settings and World state", len(placeKinds())

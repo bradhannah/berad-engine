@@ -140,6 +140,9 @@ func (s *State) layoutRow(docs frame.Docs, left, width int) bool {
 	case worldStateRow, worldSignalsRow, worldConstantsRow:
 		s.layoutWorldState(left, width)
 	default:
+		if s.layoutFound(left, width) {
+			return true
+		}
 		if _, isCue := s.selectedCue(); !isCue {
 			return false
 		}
@@ -376,7 +379,7 @@ func (s *State) drawRow(screen *ebiten.Image, docs frame.Docs, left int) bool {
 	case worldStateRow, worldSignalsRow, worldConstantsRow:
 		s.drawWorldState(screen, left)
 	default:
-		return false
+		return s.drawFound(screen, docs, left)
 	}
 
 	return true

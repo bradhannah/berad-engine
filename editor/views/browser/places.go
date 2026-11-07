@@ -495,7 +495,7 @@ func (s *State) revealNamed(docs frame.Docs, label string) bool {
 			}
 		}
 	}
-	if (label == "Values" || label == "Signals" || label == "Constants") && s.place != sectionWorldState {
+	if (label == "Values" || label == "Signals" || label == constantsLabel) && s.place != sectionWorldState {
 		s.show(sectionWorldState)
 
 		return true

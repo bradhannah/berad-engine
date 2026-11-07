@@ -1028,6 +1028,9 @@ func documentView(format string) (string, bool) {
 // openRow opens what the selected row shows: World state's Values or
 // Signals window for its rows, or what openSelected opens.
 func (s *State) openRow(ctx *frame.Context) {
+	if s.openFound(ctx) {
+		return
+	}
 	switch s.list.Selected {
 	case worldStateRow:
 		ctx.Requests.Open(worldStateView, worldstate.ID(), false)
