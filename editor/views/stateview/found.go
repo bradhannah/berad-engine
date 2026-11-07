@@ -153,3 +153,95 @@ func valueText(declared worldstate.Declaration) string {
 
 	return strconv.Itoa(declared.Zero().Integer)
 }
+
+// showFound shows a constant a search asked for: selected in the tree, or
+// for an NPC's or zone's own value, that holder's row of it.
+func (s *State) showFound(ctx *frame.Context) {
+	if s.showing == "" {
+		return
+	}
+	idText, holderText, _ := strings.Cut(strings.TrimPrefix(s.showing, ConstantItem), ":")
+	s.showing = ""
+	constant, err := ids.Parse(idText)
+	if err != nil {
+		return
+	}
+	shown, found := placeOfConstant(ctx.Docs, constant)
+	if !found {
+		return
+	}
+	holder, err := ids.Parse(holderText)
+	if err != nil || shown.template.IsZero() {
+		s.showPlace(ctx, shown)
+
+		return
+	}
+	s.whenLeft(ctx, func() {
+		s.toggled[sectionPrefix+string(shown.scope)] = false
+		s.toggled[ownerPrefix+holder.String()] = true
+		s.toggled[appliedPrefix+holder.String()+":"+shown.template.String()] = false
+		s.revealID = heldPrefix + holder.String() + ":" + constant.String()
+	})
+}
+
+// revealHeld selects the row showFound waits for, once the tree has it,
+// scrolled into view.
+func (s *State) revealHeld() {
+	meaning, found := s.shown.items[s.revealID]
+	if !found {
+		return
+	}
+	s.list.Selected = s.revealID
+	s.list.Reveal(s.revealID)
+	s.inspect(meaning)
+	s.revealID = ""
+}
+
+// placeOfConstant is where a constant sits in the tree: the world's or a
+// template's, or an NPC's or zone's own.
+func placeOfConstant(docs frame.Docs, constant ids.ULID) (place, bool) {
+	world, loaded := valuetree.World(docs)
+	catalog, ready := valuetree.Catalog(docs)
+	if !loaded || !ready {
+		return noPlace(), false
+	}
+	if declared, found := world.Values.Value(constant); found {
+		template, _ := world.Values.Template(constant)
+
+		return place{
+			scope: declared.Scope, owner: ids.ULID{}, template: template, groups: groupsOf(world.Values, declared),
+			path: world.Values.Path(constant),
+		}, true
+	}
+	for _, scope := range []worldstate.Scope{worldstate.ScopeZone, worldstate.ScopeNPC} {
+		for _, ownerID := range catalog.Owners(scope) {
+			owner, _ := catalog.Owner(ownerID)
+			own, held := valuetree.Owned(docs, ownerID)
+			if declared, found := own.Values.Value(constant); held && found {
+				return place{
+					scope: scope, owner: ownerID, template: ids.ULID{}, groups: groupsOf(own.Values, declared),
+					path: worldstate.NamedPath(own.Values.Path(constant), ownerName(owner, ownerID)),
+				}, true
+			}
+		}
+	}
+
+	return noPlace(), false
+}
+
+// groupsOf lists the groups holding a declaration, outermost first.
+func groupsOf(list *worldstate.Declarations, declared worldstate.Declaration) []ids.ULID {
+	var groups []ids.ULID
+	parent, ok := list.Value(declared.Parent)
+	for ok && parent.Type == worldstate.TypeGroup {
+		groups = append([]ids.ULID{parent.ID}, groups...)
+		parent, ok = list.Value(parent.Parent)
+	}
+
+	return groups
+}
+
+// noPlace is no place in the tree.
+func noPlace() place {
+	return place{scope: "", owner: ids.ULID{}, template: ids.ULID{}, groups: nil, path: ""}
+}

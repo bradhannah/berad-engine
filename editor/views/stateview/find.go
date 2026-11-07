@@ -344,19 +344,28 @@ func (s *State) showPlace(ctx *frame.Context, shown place) {
 		}
 		s.revealPath, s.revealRename = shown.path, false
 	}
+	s.whenLeft(ctx, reveal)
+}
+
+// whenLeft does something that leaves the row selected, asking first about
+// typed changes to it.
+func (s *State) whenLeft(ctx *frame.Context, leave func()) {
 	if unsaved := s.Unsaved(ctx.Docs); unsaved > 0 {
 		s.focus.Set(nil)
-		s.guard.Ask(unsaved, s.UnsavedName(ctx.Docs), reveal)
+		s.guard.Ask(unsaved, s.UnsavedName(ctx.Docs), leave)
 
 		return
 	}
-	reveal()
+	leave()
 }
 
 // revealRow selects the row a move or Find is waiting to show, once the
 // tree has it, scrolled into view, and for a group a move just made, with
 // its name ready to type.
 func (s *State) revealRow() {
+	if s.revealID != "" {
+		s.revealHeld()
+	}
 	if s.revealPath == "" {
 		return
 	}
