@@ -126,6 +126,10 @@ type State struct {
 	watchFloors bool
 	offset      image.Point
 	selected    ids.ULID
+	// group is the selection while several nodes are selected; selected is
+	// then none. removeGroup is the inspector's Delete N nodes.
+	group       []ids.ULID
+	removeGroup *ui.Button
 	// showing is a node asked for with NodeItem, to select once it arrives.
 	showing  ids.ULID
 	cursor   image.Point
@@ -244,7 +248,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		problems: map[ids.ULID]string{}, warnings: map[ids.ULID]string{}, localProblems: map[ids.ULID]string{},
 		laidOut: 0, hasLayout: false,
 		layouts: 0, problemKey: "", watchFloors: false,
-		offset: image.Pt(0, 0), selected: ids.ULID{}, showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
+		offset: image.Pt(0, 0), selected: ids.ULID{}, group: nil, removeGroup: groupDeleteButton(), showing: ids.ULID{},
+		cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
@@ -395,6 +400,7 @@ func (s *State) load(docs frame.Docs) {
 	if _, ok := s.targetOf(s.selectedLink); !ok {
 		s.selectedLink = noRoute()
 	}
+	s.settleSelection()
 }
 
 // Canvas returns the screen area that shows the workflow.
@@ -526,6 +532,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateZoom(input)
 	s.updatePalette(input, ctx)
 	s.updateCanvas(input, ctx)
+	s.settleSelection()
 	s.guardSelection(ctx)
 	s.openContextMenu()
 }
@@ -604,7 +611,7 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case s.pal.help != "" && input.Consume(ui.KeyEscape, plain):
 		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
-		s.selected, s.selectedLink, s.link, s.adding = ids.ULID{}, noRoute(), nil, nil
+		s.selected, s.selectedLink, s.link, s.adding, s.group = ids.ULID{}, noRoute(), nil, nil, nil
 	case input.Consume(ui.KeyEqual, ui.Cmd()):
 		s.zoomTo(s.zoom+1, s.zoomFocus(input.Cursor))
 	case input.Consume(ui.KeyMinus, ui.Cmd()):
@@ -662,7 +669,7 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	case input.Secondary && input.Cursor.In(canvas) && !s.zoomCard.contains(input.Cursor):
 		s.rightClick(point, input.Cursor)
 	case input.Pressed && input.Cursor.In(canvas):
-		s.pressOrOpen(ctx, point, input.DoubleClick)
+		s.pressCanvas(input, ctx, point)
 	}
 }
 
@@ -686,6 +693,7 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 // a line picked up by its arrow end, resizing a container, or selecting and
 // moving a node.
 func (s *State) press(ctx *frame.Context, point image.Point) {
+	s.group = nil
 	if from, output, ok := s.portAt(point); ok {
 		s.selected = from
 		s.link = &linkDrag{from: from, output: output, to: point}

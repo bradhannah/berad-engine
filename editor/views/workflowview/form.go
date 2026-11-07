@@ -1046,11 +1046,11 @@ func (s *State) guardSelection(ctx *frame.Context) {
 	if _, exists := s.workflow.Node(s.form.node); unsaved == 0 || !exists {
 		return
 	}
-	wanted, wantedLink := s.selected, s.selectedLink
-	s.selected, s.selectedLink = s.form.node, noRoute()
+	wanted, wantedLink, wantedGroup := s.selected, s.selectedLink, s.group
+	s.selected, s.selectedLink, s.group = s.form.node, noRoute(), nil
 	s.drag, s.link, s.adding, s.resize, s.bending = nil, nil, nil, nil, nil
 	s.focus.Set(nil)
-	s.guard.Ask(unsaved, s.formName(), func() { s.selected, s.selectedLink = wanted, wantedLink })
+	s.guard.Ask(unsaved, s.formName(), func() { s.selected, s.selectedLink, s.group = wanted, wantedLink, wantedGroup })
 }
 
 // parseFor reads a typed value from a field of a control: the new parameter

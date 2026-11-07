@@ -55,7 +55,7 @@ func newLocalsPanel(theme *ui.Theme) *localsPanel {
 
 // localsActive reports whether the inspector shows the local values.
 func (s *State) localsActive() bool {
-	return s.workflow != nil && s.form == nil && !s.lineSelected()
+	return s.workflow != nil && s.form == nil && !s.lineSelected() && len(s.group) == 0
 }
 
 // selectedLocal returns the selected local value.
@@ -373,10 +373,10 @@ func (s *State) drawLocals(screen *ebiten.Image, docs frame.Docs) {
 
 // drawHowToSelect says how to select or add a node, from top down.
 func (s *State) drawHowToSelect(screen *ebiten.Image, left, top int) {
-	for index, line := range []string{
-		"Select a node to change it. To add one,", "drag it from the palette onto the", "canvas; click it there to read what",
-		"it does first.",
-	} {
+	width := frame.Inspector(s.size).Dx() - ui.Half*ui.Inset
+	for index, line := range s.wrap("Select a node to change it, or several with Cmd+click or a box dragged on empty "+
+		"canvas. To add one, drag it from the palette onto the canvas; click it there to read what it does first.",
+		width) {
 		s.theme.DrawText(screen, line, left, top+index*ui.LineHeight, ui.ColorMuted())
 	}
 }
