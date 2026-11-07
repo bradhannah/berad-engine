@@ -172,8 +172,8 @@ func TestWritingALine(t *testing.T) {
 		return strings.ReplaceAll(text, "{const.npc.shop.greeting}", "Shop's open!"), ""
 	}
 	f := &fixture{t: t, window: image.Rect(0, 0, 1200, 800), clip: &clipboard{text: ""}, saved: nil, open: true,
-		sheet: writesheet.NewLine(theme, "Say · Line", "Hi! {const.npc.shop.greeting}", writesheet.Line{
-			Bytes: 4096, Limit: 200, Look: writesheet.LookBubble, Reads: reads,
+		sheet: writesheet.NewLine(theme, "Log · Message", "Hi! {const.npc.shop.greeting}", writesheet.Line{
+			Bytes: 4096, Limit: 200, Look: writesheet.LookLog, Breaks: false, Reads: reads,
 		})}
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	f.typed("\nCome in.")
@@ -185,12 +185,43 @@ func TestWritingALine(t *testing.T) {
 		t.Fatalf("Enter hands the line back and closes: %+v", f.saved)
 	}
 	about, warnings := writesheet.LineNotes("Hi! {const.npc.shop.greeting} [b]Come in.", "Hi! Shop's open! Come in.",
-		"", 200)
-	if !strings.Contains(about[0], "16 of 200 characters besides values") || len(warnings) != 1 {
+		"", 200, false)
+	if !strings.Contains(about[0], "16 of 200 characters besides values · one line") || len(warnings) != 1 {
 		t.Fatalf("a line's notes count its own characters and flag its open tag: %v %v", about, warnings)
 	}
-	_, warnings = writesheet.LineNotes("{const.npc.nope}", "{const.npc.nope}", "No value is called const.npc.nope.", 200)
+	_, warnings = writesheet.LineNotes("{const.npc.nope}", "{const.npc.nope}", "No value is called const.npc.nope.", 200,
+		false)
 	if len(warnings) != 1 || warnings[0] != "No value is called const.npc.nope." {
 		t.Fatalf("what keeps a line from being read is a note: %v", warnings)
+	}
+}
+
+// TestASayBreaksItsLine checks a line that may break, as a Say's: Shift+Enter
+// starts a new line, Enter is still Done, and the notes say so.
+func TestASayBreaksItsLine(t *testing.T) {
+	t.Parallel()
+	theme, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(theme.Close)
+	reads := func(text string) (string, string) { return text, "" }
+	f := &fixture{t: t, window: image.Rect(0, 0, 1200, 800), clip: &clipboard{text: ""}, saved: nil, open: true,
+		sheet: writesheet.NewLine(theme, "Say · Line", "Good morning.", writesheet.Line{
+			Bytes: 4096, Limit: 200, Look: writesheet.LookBubble, Breaks: true, Reads: reads,
+		})}
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.keys("Shift+Enter")
+	f.typed("Come in.")
+	if f.sheet.Text() != "Good morning.\nCome in." || !f.open {
+		t.Fatalf("Shift+Enter starts a new line: %q", f.sheet.Text())
+	}
+	f.keys("Enter")
+	if f.open || len(f.saved) != 1 || f.saved[0].Text != "Good morning.\nCome in." {
+		t.Fatalf("Enter hands the line back, its break kept: %+v", f.saved)
+	}
+	about, _ := writesheet.LineNotes("Good morning.\nCome in.", "Good morning.\nCome in.", "", 200, true)
+	if !strings.Contains(about[0], "Shift+Enter starts a new line") {
+		t.Fatalf("the notes say how to break the line: %v", about)
 	}
 }

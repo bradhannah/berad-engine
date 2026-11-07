@@ -85,6 +85,7 @@ type Field struct {
 	draft     *Buffer
 	pending   *string
 	multiline bool
+	breaks    bool
 	maxBytes  int
 	conflict  bool
 	column    *float64
@@ -95,9 +96,14 @@ type Field struct {
 // saves.
 func NewField(saved string, multiline bool, maxBytes int) *Field {
 	return &Field{
-		saved: saved, draft: nil, pending: nil, multiline: multiline, maxBytes: maxBytes, conflict: false, column: nil,
+		saved: saved, draft: nil, pending: nil, multiline: multiline, breaks: false, maxBytes: maxBytes, conflict: false,
+		column: nil,
 	}
 }
+
+// KeepBreaks lets a one-line field hold line breaks: Enter still saves it,
+// Shift+Enter starts a new line, and line breaks typed or pasted stay.
+func (f *Field) KeepBreaks() { f.breaks = true }
 
 // Value returns what the field shows: the draft, or the saved value.
 func (f *Field) Value() string {
@@ -218,12 +224,16 @@ func (f *Field) Commit() (string, bool) {
 // Failed reports that a save was refused, so the draft stays editable.
 func (f *Field) Failed() { f.pending = nil }
 
-// Type inserts typed text. Single-line fields drop line breaks.
+// Type inserts typed text. A one-line field drops line breaks, unless it
+// keeps them.
 func (f *Field) Type(value string) {
 	if f.draft == nil || value == "" {
 		return
 	}
-	if !f.multiline {
+	switch {
+	case f.breaks:
+		value = strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(value)
+	case !f.multiline:
 		value = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(value)
 	}
 	f.insert(value)
@@ -253,22 +263,9 @@ func (f *Field) Key(press Press, lines Lines, clipboard Clipboard) Outcome {
 	if f.draft == nil {
 		f.Focus()
 	}
-	mods := press.Mods
 	switch press.Key {
-	case KeyEnter:
-		if f.multiline {
-			f.insert("\n")
-
-			return OutcomeNone
-		}
-
-		return OutcomeCommit
-	case KeyJ:
-		if mods.Control && !mods.Shortcut && f.multiline {
-			f.insert("\n")
-		}
-
-		return OutcomeNone
+	case KeyEnter, KeyJ:
+		return f.newLine(press)
 	case KeyEscape:
 		if f.Dirty() {
 			f.Revert()
@@ -286,6 +283,28 @@ func (f *Field) Key(press Press, lines Lines, clipboard Clipboard) Outcome {
 	default:
 		return OutcomePass
 	}
+}
+
+// newLine handles Enter and Ctrl+J. Enter starts a new line in a field of
+// several lines, as Shift+Enter does in a one-line field that keeps line
+// breaks, and otherwise saves; Ctrl+J starts one in a field of several
+// lines.
+func (f *Field) newLine(press Press) Outcome {
+	mods := press.Mods
+	if press.Key == KeyJ {
+		if mods.Control && !mods.Shortcut && f.multiline {
+			f.insert("\n")
+		}
+
+		return OutcomeNone
+	}
+	if f.multiline || f.breaks && mods.Shift {
+		f.insert("\n")
+
+		return OutcomeNone
+	}
+
+	return OutcomeCommit
 }
 
 // edit handles deleting and moving the caret.

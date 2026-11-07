@@ -78,7 +78,8 @@ func (s *State) updateWriteLine(input *ui.Input, ctx *frame.Context, node flow.N
 	s.focus.Set(nil)
 	s.lineSheet = &lineSheet{
 		sheet: writesheet.NewLine(s.theme, kind.Label+" · "+made.param.Label, made.field.Field.Value(), writesheet.Line{
-			Bytes: messageBytes, Limit: flow.MaxMessageText, Look: look, Reads: s.lineReads(ctx.Docs, node.ID),
+			Bytes: messageBytes, Limit: flow.MaxMessageText, Look: look, Breaks: keepsBreaks(node.Kind),
+			Reads: s.lineReads(ctx.Docs, node.ID),
 		}),
 		node: node.ID,
 	}

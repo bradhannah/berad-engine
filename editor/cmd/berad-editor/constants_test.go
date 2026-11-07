@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
@@ -68,7 +69,8 @@ func TestConstants(t *testing.T) {
 		shoot(waitShot), addNode(flow.KindSay), must("state:selected:"+flow.KindSay, 300), wait(5),
 		click("ui:param-message"), wait(5), typed("[b]Good morning[/b], "), click("ui:insert-value"),
 		must("valuerow:var.npc.name", 300), click("valuerow:var.npc.name"), wait(5),
-		typed("! The tide turns soon, so we close early today. "), click("ui:insert-value"), wait(5),
+		typed("! The tide turns soon,"), keys("Shift+Enter"), typed("so we close early today. "),
+		click("ui:insert-value"), wait(5),
 		typed("greeting"), must("valuerow:const.npc.shop.greeting", 300), click("valuerow:const.npc.shop.greeting"),
 		wait(10), must("state:unsaved=1", 60), shoot(lineShot), click("ui:write-line"), must("state:sheet", 300),
 		wait(10), shoot(lineSheetShot), click("ui:sheet-done"), wait(5), click("ui:save"),
@@ -127,12 +129,13 @@ func checkConstantsSaved(t *testing.T, project string) {
 			using++
 		}
 		if segments, err := node.Message(); err == nil && node.Kind == flow.KindSay && len(segments) == 4 &&
-			segments[1].Ref != nil && segments[3].Ref != nil && segments[3].Ref.Value == greeting.ID {
+			segments[1].Ref != nil && strings.Contains(segments[2].Text, "soon,\nso") && segments[3].Ref != nil &&
+			segments[3].Ref.Value == greeting.ID {
 			says++
 		}
 	}
 	if logic.Version != flow.FormatVersion || using != 2 || says != 1 {
 		t.Fatalf("both Waits of the workflow, version %d, use world.tide_minutes, %d of 2, and the Say its line "+
-			"with a value and the greeting, %d of 1", logic.Version, using, says)
+			"with a value, a line break and the greeting, %d of 1", logic.Version, using, says)
 	}
 }

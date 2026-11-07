@@ -421,7 +421,7 @@ func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 		case flow.TypeText:
 			made.field = text("param-"+param.Name, node.Kind == flow.KindNote)
 		case flow.TypeMessage:
-			made.field, made.pick = s.messageField("param-"+param.Name), insertButton(param.Type)
+			made.field, made.pick = s.messageField("param-"+param.Name, node.Kind), insertButton(param.Type)
 		case flow.TypeTimeRange:
 			made.from, made.to = text(param.Name+"-from", false), text(param.Name+"-to", false)
 		case flow.TypeTimeRanges:

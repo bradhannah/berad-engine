@@ -421,8 +421,9 @@ func (s *State) drawMessage(screen *ebiten.Image, docs frame.Docs, made *control
 	}
 }
 
-// drawLogNode writes LOG and a Log's message on its node: its text, and
-// each value as a chip holding its path, cut short at the node's edge.
+// drawLogNode writes LOG and a Log's message on its node: its text, its
+// line breaks as spaces, and each value as a chip holding its path, cut
+// short at the node's edge.
 func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 	rect := s.screenRect(drawn.rect)
 	s.theme.DrawLabel(area, labelOf(drawn.node.Kind), rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
@@ -439,7 +440,7 @@ func (s *State) drawLogNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 			return
 		}
 		if segment.Ref == nil {
-			text := s.clip(segment.Text, room)
+			text := s.clip(strings.ReplaceAll(segment.Text, "\n", " "), room)
 			s.theme.DrawText(area, text, along, baseline, ui.ColorInk())
 			along += s.theme.TextWidth(text)
 
@@ -466,16 +467,24 @@ func hasMessage(kind string) bool {
 	})
 }
 
-// messageField makes a message's field: one line, as Enter saves it, that
-// holds the paths of the values in it as well as its text, wrapping so all
-// of it shows.
-func (s *State) messageField(id string) *ui.TextField {
+// messageField makes a message's field that holds the paths of the values
+// in it as well as its text, wrapping so all of it shows. Enter saves it. A
+// Say's and a Show message's line break where Shift+Enter starts a new
+// line; a Log's stays one line, as the log writes it.
+func (s *State) messageField(id, kind string) *ui.TextField {
 	field := ui.NewTextField(id, textedit.NewField("", false, messageBytes), true, s.theme)
+	if keepsBreaks(kind) {
+		field.Field.KeepBreaks()
+	}
 	field.Paints = writesheet.Paints
 	s.focus.Register(field)
 
 	return field
 }
+
+// keepsBreaks reports whether a kind of node's line may break: a Say's and
+// a Show message's, not a Log's.
+func keepsBreaks(kind string) bool { return kind != flow.KindLog }
 
 // refColours are a value's chip's wash and ink, by its path: a constant's
 // amber, a value's slate, and one deleted plain.

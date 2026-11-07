@@ -75,13 +75,15 @@ const (
 
 // Line is what the sheet needs to write a node's line rather than a
 // constant: how many bytes its field holds; how many characters its text
-// may have besides the values in it; how it shows; and how it reads, each
-// value as it starts, or what keeps it from being read.
+// may have besides the values in it; how it shows; whether it may break,
+// where Shift+Enter starts a new line; and how it reads, each value as it
+// starts, or what keeps it from being read.
 type Line struct {
-	Bytes int
-	Limit int
-	Look  Look
-	Reads func(text string) (string, string)
+	Bytes  int
+	Limit  int
+	Look   Look
+	Breaks bool
+	Reads  func(text string) (string, string)
 }
 
 // Saving is what the window saves: whose value, and its text.
@@ -123,9 +125,13 @@ func New(theme *ui.Theme, path string, holders []Holder, chosen int, said string
 }
 
 // NewLine opens a sheet on a node's line, as its field holds it now, named
-// by where it is, such as "Say · Line". It is one line, so Enter is Done.
+// by where it is, such as "Say · Line". Enter is Done; in a line that may
+// break, Shift+Enter starts a new line.
 func NewLine(theme *ui.Theme, path, text string, line Line) *Sheet {
 	field := ui.NewTextField(textID, textedit.NewField("", false, line.Bytes), true, theme)
+	if line.Breaks {
+		field.Field.KeepBreaks()
+	}
 
 	return open(theme, path, []Holder{{Key: "", Label: "Line", Text: text}}, 0, "", field, &line)
 }
@@ -456,7 +462,7 @@ func (s *Sheet) drawPreview(screen *ebiten.Image) ([]string, []string) {
 			&protocol.PreviewBox{Text: reads, Name: "", Left: 1, Queued: 0, Closing: true})
 	}
 
-	return LineNotes(s.Text(), reads, problem, s.line.Limit)
+	return LineNotes(s.Text(), reads, problem, s.line.Limit, s.line.Breaks)
 }
 
 // LineNotes says what is worth knowing about a node's line: how many
@@ -464,7 +470,7 @@ func (s *Sheet) drawPreview(screen *ebiten.Image) ([]string, []string) {
 // long it takes to read; then what keeps it from being read, anything
 // wrong with its markup, and when it is too long to keep or to read in the
 // time a line shows for.
-func LineNotes(text, reads, problem string, limit int) ([]string, []string) {
+func LineNotes(text, reads, problem string, limit int, breaks bool) ([]string, []string) {
 	count := utf8.RuneCountInString(text)
 	for _, paint := range Paints(text) {
 		if paint.Paint != ui.PaintTag {
@@ -472,8 +478,12 @@ func LineNotes(text, reads, problem string, limit int) ([]string, []string) {
 		}
 	}
 	seconds := show.ReadingTicks(reads) / clock.TicksPerSecond
-	about := thousands(count) + " of " + thousands(limit) + " characters besides values · one line · reads in about " +
-		strconv.Itoa(seconds) + " seconds"
+	shape := "one line"
+	if breaks {
+		shape = "Shift+Enter starts a new line"
+	}
+	about := thousands(count) + " of " + thousands(limit) + " characters besides values · " + shape +
+		" · reads in about " + strconv.Itoa(seconds) + " seconds"
 	var warnings []string
 	if problem != "" {
 		warnings = append(warnings, problem)

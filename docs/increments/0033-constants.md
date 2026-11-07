@@ -406,7 +406,18 @@ once, while typing waited for Save. Its author chose, on 2026-11-06:
   grey. A message's chips on a node and a number's constant chip take the
   same colours.
 - **The line wraps,** growing a row for each line it wraps to, up to six,
-  then scrolling. It stays one line, so Enter saves.
+  then scrolling. Enter saves it.
+- **Shift+Enter starts a new line** in a Say's and a Show message's line,
+  in the field and in the writing sheet, so a line can end where its
+  author chooses. Its author asked how, and chose this on 2026-11-06,
+  when only a constant's text could hold a break.
+  - Enter still saves the line, or is Done in the sheet.
+  - A line break typed or pasted stays. Each counts as one of the line's
+    200 characters.
+  - The bubble and the box show the break; the node on the canvas shows
+    it as a space.
+  - A Log's message stays one line, as the log writes it: Shift+Enter
+    saves it, and a pasted break is a space.
 - **Write… opens the line in the writing sheet.**
   - Its preview is as the node shows it: a Say's in a bubble, a Show
     message's in a box, a Log's as the log writes it, each value read as
@@ -414,7 +425,8 @@ once, while typing waited for Save. Its author chose, on 2026-11-06:
   - Its notes count the characters besides values, of the 200 a line
     keeps, and say what keeps the line from being read.
   - Enter, Done or Escape puts the line back in its field, waiting for
-    Save.
+    Save. The notes say whether Shift+Enter starts a new line, or the
+    line is one line.
 
 Chosen while building these, for its author to check:
 
@@ -445,7 +457,9 @@ Tests and checks:
   in the sheet and save it. The tests of Insert value…, ◆, × and Make a
   constant now save, and find the change waiting until they do. Another
   scrolls a Say's inspector filled by a long line, and finds its colours
-  by scrolling to them.
+  by scrolling to them. Others break a Say's line with Shift+Enter, in
+  the field and the sheet, and save it with its break, while a Log's
+  stays one line.
 - Unit tests find markup's tags, colour a line's constant, value and tags,
   draw a field's stretches in their paints, and fit a field's height to
   its rows.

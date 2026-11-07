@@ -209,6 +209,29 @@ func TestWriteOpensTheLineInTheSheet(t *testing.T) {
 	}
 }
 
+// TestASayBreaksItsLine breaks a Say's line with Shift+Enter, and Save
+// keeps the break; Enter in a Log's message still saves it as one line.
+func TestASayBreaksItsLine(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindSay)
+	f.typeOnly("param-message", "Good morning.")
+	f.keys("Shift+Enter")
+	f.typeText("Come in.")
+	if !f.has("line=Good morning.\nCome in.") || !f.has("unsaved=1") {
+		t.Fatal("Shift+Enter starts a new line in a Say's line, waiting for Save")
+	}
+	f.keys("Enter")
+	if !f.has("message=Good morning.\nCome in.") {
+		t.Fatal("Enter saves the line, its break kept")
+	}
+	log := withNode(t, flow.KindLog)
+	log.typeOnly("param-message", "Opened the shop.")
+	log.keys("Shift+Enter")
+	if !log.has("message=Opened the shop.") {
+		t.Fatal("a Log's message stays one line: Shift+Enter saves it")
+	}
+}
+
 // TestTheInspectorScrolls fills a Say's inspector past its notes with a long
 // line in a short window: the wheel scrolls it, a script finds the colours
 // below by scrolling to them, and another node starts at the top.
