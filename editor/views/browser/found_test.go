@@ -11,9 +11,12 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
+	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/engine/ids"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
@@ -106,5 +109,69 @@ func TestOpeningAFoundConstant(t *testing.T) {
 	opened := f.requests.Opened
 	if len(opened) == 0 || opened[len(opened)-1].View != "world-constants" || opened[len(opened)-1].Item != item {
 		t.Fatalf("Open opens the Constants window at Ada's greeting: %+v", opened)
+	}
+}
+
+// withLine puts a Say into Clerk day, a workflow not open anywhere, its line
+// "[b]Good morning[/b], " then a value then " [color=gold]Gold[/color]
+// coins before the tide!".
+func (f *fixture) withLine() ids.ULID {
+	f.t.Helper()
+	made := f.withKinds()
+	say, err := flow.NewNode(flow.KindSay)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	say.ID = frametest.ID(70)
+	ref := flow.ValueRef{Scope: worldstate.ScopeWorld, Value: tideID, Owner: ids.ULID{}, Found: ids.ULID{}}
+	say, err = say.WithParam(flow.ParamMessage, []flow.Segment{
+		{Text: "[b]Good morning[/b], ", Ref: nil}, {Text: "", Ref: &ref},
+		{Text: " [color=gold]Gold[/color] coins before the tide!", Ref: nil},
+	})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.docs().View(made["Clerk day"], func(document client.Document) {
+		if err := document.Model.(*workflowplugin.Document).Workflow.Insert([]flow.Node{say}, nil, nil); err != nil {
+			f.t.Fatal(err)
+		}
+	})
+	f.docs().Touch(made["Clerk day"])
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+
+	return made["Clerk day"]
+}
+
+// TestSearchFindsLines finds the Say in Clerk day by its words, markup's
+// tags left out, and not by words only in a tag; its row opens the workflow
+// at the Say.
+func TestSearchFindsLines(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	day := f.withLine()
+	rowID := "found-line:" + day.String() + ":" + frametest.ID(70).String()
+	f.searchFor("good morning, gold coins")
+	if _, found := f.foundRow(rowID); found {
+		t.Fatal("a value's place parts the line's words")
+	}
+	f.searchFor("gold coins")
+	row, found := f.foundRow(rowID)
+	if !found || row.Label != "Clerk day · Say" || !strings.Contains(row.Detail, "Gold coins") ||
+		strings.Contains(row.Detail, "[color") {
+		t.Fatalf("gold coins finds the Say, its tags left out: %+v", row)
+	}
+	f.searchFor("color")
+	if _, found := f.foundRow(rowID); found {
+		t.Fatal("a word only in a tag finds nothing")
+	}
+	f.searchFor("good morning")
+	row, _ = f.foundRow(rowID)
+	f.click("row:"+row.Label, false)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	f.click("ui:open", false)
+	opened := f.requests.Opened
+	if len(opened) == 0 || opened[len(opened)-1].Target != day ||
+		opened[len(opened)-1].Item != "node:"+frametest.ID(70).String() {
+		t.Fatalf("Open opens Clerk day at the Say: %+v", opened)
 	}
 }

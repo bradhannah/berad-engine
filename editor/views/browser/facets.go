@@ -180,6 +180,7 @@ func (s *State) things(docs frame.Docs) ([]thing, facetLabels) {
 	found = append(found, s.soundThings(match, labels)...)
 	found = append(found, s.searchedThings(docs, match)...)
 	found = append(found, s.constantThings(docs, match)...)
+	found = append(found, s.lineThings(docs, match)...)
 	slices.SortStableFunc(found, func(a, b thing) int {
 		return strings.Compare(strings.ToLower(a.row.Label), strings.ToLower(b.row.Label))
 	})

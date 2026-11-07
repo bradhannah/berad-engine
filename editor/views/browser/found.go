@@ -106,7 +106,8 @@ func (s *State) selectedConstant(docs frame.Docs) (stateview.Found, bool) {
 }
 
 // openFound opens what a found row stands for, and reports whether the
-// selected row was one: a constant in the Constants window.
+// selected row was one: a constant in the Constants window, or a line in
+// its workflow.
 func (s *State) openFound(ctx *frame.Context) bool {
 	if item, isConstant := strings.CutPrefix(s.list.Selected, foundConstant); isConstant {
 		ctx.Requests.OpenItem(worldConstantsView, worldstate.ID(), item)
@@ -114,16 +115,21 @@ func (s *State) openFound(ctx *frame.Context) bool {
 		return true
 	}
 
-	return false
+	return s.openLine(ctx)
 }
 
 // layoutFound places Open for a found row, and reports whether one is
 // selected.
 func (s *State) layoutFound(left, width int) bool {
-	if !strings.HasPrefix(s.list.Selected, foundConstant) {
+	switch {
+	case strings.HasPrefix(s.list.Selected, foundConstant):
+		s.open.Label = "Open in Constants"
+	case strings.HasPrefix(s.list.Selected, foundLine):
+		s.open.Label = "Open in its workflow"
+	default:
 		return false
 	}
-	s.open.Label, s.open.Disabled = "Open in Constants", false
+	s.open.Disabled = false
 	s.open.Rect = image.Rect(left, nameFieldTop, left+width, nameFieldTop+ui.ButtonH)
 
 	return true
@@ -132,18 +138,25 @@ func (s *State) layoutFound(left, width int) bool {
 // drawFound draws a found row's inspector: what it is, Open, and the whole
 // text that has the words; and reports whether one is selected.
 func (s *State) drawFound(screen *ebiten.Image, docs frame.Docs, left int) bool {
-	if !strings.HasPrefix(s.list.Selected, foundConstant) {
+	icon, label := ui.IconSettings, "Constant"
+	var title, said string
+	switch {
+	case strings.HasPrefix(s.list.Selected, foundConstant):
+		each, _ := s.selectedConstant(docs)
+		title, said = each.Path, each.Said
+		if each.Holder != "" {
+			label = "Constant · " + each.Holder + "'s own"
+		}
+	case strings.HasPrefix(s.list.Selected, foundLine):
+		each, _ := s.selectedLine(docs)
+		icon, label, title, said = ui.IconWorkflow, "Line · "+each.kind, each.name, each.text
+	default:
 		return false
 	}
-	each, _ := s.selectedConstant(docs)
-	label := "Constant"
-	if each.Holder != "" {
-		label = "Constant · " + each.Holder + "'s own"
-	}
-	s.drawHeader(screen, ui.IconSettings, label, each.Path, left)
+	s.drawHeader(screen, icon, label, title, left)
 	s.open.Draw(screen, s.theme)
 	top := s.open.Rect.Max.Y + ui.Gap
-	for _, line := range s.theme.Wrap(each.Said, frame.Inspector(s.size).Dx()-ui.Half*ui.Inset) {
+	for _, line := range s.theme.Wrap(said, frame.Inspector(s.size).Dx()-ui.Half*ui.Inset) {
 		s.theme.DrawText(screen, line, left, top, ui.ColorInk())
 		top += ui.LineHeight
 	}

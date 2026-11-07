@@ -274,6 +274,9 @@ func groupOf(found thing) (string, string, int) {
 	if strings.HasPrefix(found.row.ID, foundConstant) {
 		return foundConstants, constantsLabel, len(placeKinds()) + 1
 	}
+	if strings.HasPrefix(found.row.ID, foundLine) {
+		return foundLines, linesLabel, len(placeKinds()) + ui.Half
+	}
 	kinds := found.values[facetKind]
 	if len(kinds) == 0 {
 		return "other", "Settings and World state", len(placeKinds())
