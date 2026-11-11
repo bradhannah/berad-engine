@@ -108,6 +108,9 @@ type stroke struct {
 	active bool
 	count  int
 	last   Cell
+	// left is set while the pointer is off the floor with the button
+	// held: where it comes back in is painted alone, not joined to last.
+	left bool
 }
 
 type rectDrag struct {
@@ -242,7 +245,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
-		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0)},
+		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
 		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
@@ -943,12 +946,21 @@ func (s *State) paintValue() (string, string) {
 	return tilefloor.LayerTop, ""
 }
 
+// updatePaint paints a stroke: the cell pressed, then the cells between
+// each frame's cell and the last, so a fast drag leaves no gaps. A stroke
+// that leaves the floor and comes back paints the cell it comes back in at,
+// and none between, which the pointer never touched.
 func (s *State) updatePaint(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
 	switch {
 	case input.Pressed && onFloor:
-		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: cell}
+		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: cell, left: false}
 		s.paint(ctx, floorData, []Cell{cell})
-	case s.stroke.active && input.Down && onFloor && cell != s.stroke.last:
+	case s.stroke.active && input.Down && !onFloor:
+		s.stroke.left = true
+	case s.stroke.active && input.Down && s.stroke.left:
+		s.paint(ctx, floorData, []Cell{cell})
+		s.stroke.last, s.stroke.left = cell, false
+	case s.stroke.active && input.Down && cell != s.stroke.last:
 		s.paint(ctx, floorData, LineCells(s.stroke.last, cell)[1:])
 		s.stroke.last = cell
 	}

@@ -1,7 +1,9 @@
 package mapview_test
 
 import (
+	"fmt"
 	"image"
+	"slices"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/client"
@@ -430,5 +432,32 @@ func TestPickingMode(t *testing.T) {
 		if len(f.requests.PickCancels) != index+1 || f.requests.PickCancels[index].Pick != start.Pick || f.state.Picking() {
 			t.Fatalf("%s cancels: %+v", cancel, f.requests.PickCancels)
 		}
+	}
+}
+
+// TestAStrokeThatLeavesTheFloorDoesNotCutAcrossIt paints a cell, slips off
+// the floor's edge with the button held and comes back in somewhere else:
+// the cell it comes back in at is painted, and none of the cells between,
+// which the pointer never touched. Dragging on from there fills in as before.
+func TestAStrokeThatLeavesTheFloorDoesNotCutAcrossIt(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.keys("3")
+	f.press("cell:8,8", false)
+	edge := f.at("cell:11,8")
+	f.frame(pointer(edge.Add(image.Pt(2*f.cellSize(), 0)), false, true, false))
+	f.hold("cell:11,2")
+	f.hold("cell:9,2")
+	f.release("cell:9,2")
+	var got []string
+	for _, cell := range paints(t, f.requests) {
+		got = append(got, fmt.Sprintf("%d,%d", cell.Col, cell.Row))
+	}
+	if want := []string{"8,8", "11,2", "10,2", "9,2"}; !slices.Equal(got, want) {
+		t.Fatalf("painted %v, want %v", got, want)
+	}
+	commands := f.requests.Of(tilefloor.PaintEdit)
+	if commands[0].Command.Gesture != commands[len(commands)-1].Command.Gesture {
+		t.Fatal("it is still one stroke, so one undo step")
 	}
 }
