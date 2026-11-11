@@ -58,29 +58,29 @@ func (o *Orchestrator) previewControl(from *window, message protocol.Message) {
 func (o *Orchestrator) previewStart(from *window, message protocol.Message) {
 	start, err := protocol.DecodePayload[protocol.PreviewStart](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	if from.hello.View != MapView || from.hello.Target != start.Zone {
-		o.reply(from, message.Request, reasonPreviewMap, 0)
+		o.reply(from, message.Request, reasonPreviewMap)
 
 		return
 	}
 	if o.preview != nil {
-		o.reply(from, message.Request, reasonPreviewRunning, 0)
+		o.reply(from, message.Request, reasonPreviewRunning)
 
 		return
 	}
 	run, err := o.ids.New()
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	o.preview = &preview{run: run, owner: from.id, zone: start.Zone, latest: nil}
 	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
-		OK: true, Reason: "", Revision: 0, Created: run, Item: "",
+		OK: true, Reason: "", Revision: 0, Created: run, Item: "", Said: "",
 	}))
 	start.Run, start.Window = run, from.id
 	o.toZoneViews(mustMessage(protocol.KindPreviewStart, 0, start), false)

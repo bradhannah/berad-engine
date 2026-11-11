@@ -79,7 +79,7 @@ func newAudioAnalyses() *audioAnalyses {
 func (o *Orchestrator) handleAnalysis(ctx context.Context, from *window, message protocol.Message) {
 	files, problem := o.audio.files()
 	if problem != "" {
-		o.reply(from, message.Request, problem, 0)
+		o.reply(from, message.Request, problem)
 
 		return
 	}
@@ -99,7 +99,7 @@ func (o *Orchestrator) handleAnalysis(ctx context.Context, from *window, message
 // analysisFinished sends an answer from the loop.
 func (o *Orchestrator) analysisFinished(answer analysisDone) {
 	if answer.reason != "" {
-		o.reply(answer.to, answer.request, answer.reason, 0)
+		o.reply(answer.to, answer.request, answer.reason)
 
 		return
 	}

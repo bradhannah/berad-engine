@@ -141,6 +141,13 @@ type Command struct {
 	Args    json.RawMessage `json:"args"`
 }
 
+// The reasons an Undo or Redo gives when there is no step to take back or
+// put back. Windows say them as plain messages, not refusals (increment 39).
+const (
+	NothingToUndo = "nothing to undo"
+	NothingToRedo = "nothing to redo"
+)
+
 // Result answers a Command, Undo, Redo, Subscribe, Open, PickStart or
 // PreviewStart request.
 type Result struct {
@@ -152,6 +159,9 @@ type Result struct {
 	// created that has no ID of its own, such as a cue.
 	Created ids.ULID `json:"created,omitzero"`
 	Item    string   `json:"item,omitempty"`
+	// Said is the sentence the change an Undo or Redo took back or put back
+	// was said with, such as "Painted Ground floor" (increment 39).
+	Said string `json:"said,omitempty"`
 }
 
 // Event reports an applied edit. Windows apply the same edit with the same

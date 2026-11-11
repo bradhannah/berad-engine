@@ -79,7 +79,7 @@ func (c Command) Decode(target any) error {
 // Succeed delivers a successful reply.
 func (c Command) Succeed(created ids.ULID) {
 	if c.Done != nil {
-		c.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: created, Item: ""}, nil)
+		c.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: created, Item: "", Said: ""}, nil)
 	}
 }
 
@@ -157,7 +157,7 @@ func (e AudioEdit) Decode(target any) error {
 // Succeed delivers a successful reply naming what the edit made.
 func (e AudioEdit) Succeed(item string) {
 	if e.Done != nil {
-		e.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: ids.ULID{}, Item: item}, nil)
+		e.Done(protocol.Result{OK: true, Reason: "", Revision: 1, Created: ids.ULID{}, Item: item, Said: ""}, nil)
 	}
 }
 
@@ -348,7 +348,7 @@ func (r *Requests) PickAsk(_ string, done func([]protocol.PickMap, error)) {
 func (r *Requests) PickStart(start protocol.PickStart, done func(protocol.Result, error)) {
 	r.PickStarts = append(r.PickStarts, start)
 	if done != nil {
-		done(protocol.Result{OK: true, Reason: "", Revision: 0, Created: ids.ULID{}, Item: ""}, nil)
+		done(protocol.Result{OK: true, Reason: "", Revision: 0, Created: ids.ULID{}, Item: "", Said: ""}, nil)
 	}
 }
 

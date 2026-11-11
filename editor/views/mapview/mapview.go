@@ -627,6 +627,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.layoutWidgets(ctx.Docs)
+	// The status bar names what is in hand once the frame has moved it.
+	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
 	if s.updateOver(input, ctx) {
 		return
 	}

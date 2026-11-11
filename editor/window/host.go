@@ -147,7 +147,9 @@ func (h *host) Update() error {
 	}
 	if quick, ok := h.view.(quickOpener); !ok || !quick.QuickOpen() {
 		// Quick open's sheet takes every press while it shows, so none
-		// reaches the status bar, the folded strip or the window's keys.
+		// reaches the status bar, the folded strip or the window's keys; the
+		// History list takes them while it is open.
+		h.frame.UpdateHistory(&input, h.visible)
 		h.frame.UpdateStatus(&input, h.visible)
 		h.updateFolded(&input)
 		h.windowKeys(&input)
@@ -351,15 +353,29 @@ type outgoing struct {
 // Command queues a command. Views make requests while reading documents,
 // which holds the connection's lock, so commands go out after the view's
 // Update, in order; each result comes back as an update.
+//
+// Every change it makes is said in the status bar and kept in History, in
+// the sentence the orchestrator said it with (increment 39); the view's own
+// answer, if it gives one, is said after it.
 func (h *host) Command(command protocol.Command, done func(protocol.Result, error)) {
-	h.outbox = append(h.outbox, outgoing{command: command, done: done})
+	said := func(result protocol.Result, err error) {
+		if err == nil && result.Said != "" {
+			h.frame.Status(result.Said)
+		}
+		if done != nil {
+			done(result, err)
+		}
+	}
+	h.outbox = append(h.outbox, outgoing{command: command, done: said})
 }
 
 func (h *host) flush() {
 	for _, item := range h.outbox {
 		request, err := h.conn.Send(item.command)
 		if err != nil {
-			reply(item.done, protocol.Result{OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: ""}, err)
+			reply(item.done, protocol.Result{
+				OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: "", Said: "",
+			}, err)
 
 			continue
 		}
@@ -586,6 +602,7 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 func (h *host) Draw(screen *ebiten.Image) {
 	h.drawView(screen)
 	h.frame.DrawStatus(screen, h.theme)
+	h.frame.DrawHistory(screen, h.theme)
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
 	}

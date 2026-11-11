@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	reasonNothingToUndo = "nothing to undo"
-	reasonNothingToRedo = "nothing to redo"
+	reasonNothingToUndo = protocol.NothingToUndo
+	reasonNothingToRedo = protocol.NothingToRedo
 	reasonClash         = "something in this step was changed in another window afterwards"
 	reasonUnexpected    = "unexpected message"
 )
@@ -92,34 +92,34 @@ func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSnapshot, protocol.KindResult,
 		protocol.KindEvent, protocol.KindShutdown, protocol.KindAnswer, protocol.KindAttention,
 		protocol.KindAudioChanged, protocol.KindHost:
-		o.reply(message.from, request, reasonUnexpected, 0)
+		o.reply(message.from, request, reasonUnexpected)
 	default:
-		o.reply(message.from, request, reasonUnexpected, 0)
+		o.reply(message.from, request, reasonUnexpected)
 	}
 }
 
 func (o *Orchestrator) subscribe(from *window, message protocol.Message) {
 	request, err := protocol.DecodePayload[protocol.Subscribe](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	entry, found := o.docs[request.Document]
 	if !found {
-		o.reply(from, message.Request, ErrUnknownDocument.Error(), 0)
+		o.reply(from, message.Request, ErrUnknownDocument.Error())
 
 		return
 	}
 	data, err := entry.document.Encode()
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	layout, err := model.LayoutOf(entry.document)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
@@ -142,19 +142,20 @@ func (o *Orchestrator) subscribe(from *window, message protocol.Message) {
 func (o *Orchestrator) command(from *window, message protocol.Message) {
 	command, err := protocol.DecodePayload[protocol.Command](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
+	says := o.sentence(command.Document, command.Edit, command.Args)
 	applied, err := o.applyEdit(from, command.Document, command.Edit, command.Args, message.Request)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
-	o.history.record(from.group, command.Gesture, applied.action)
+	o.history.record(from.group, command.Gesture, applied.action, says)
 	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
-		OK: true, Reason: "", Revision: applied.revision, Created: applied.created, Item: "",
+		OK: true, Reason: "", Revision: applied.revision, Created: applied.created, Item: "", Said: says,
 	}))
 }
 
@@ -275,25 +276,25 @@ func (o *Orchestrator) revert(entry *documentEntry, kind model.EditKind, applied
 // of its items since.
 func (o *Orchestrator) undo(from *window, request uint64) {
 	if o.audioPending(from.group) {
-		o.reply(from, request, reasonAudioSaving, 0)
+		o.reply(from, request, reasonAudioSaving)
 
 		return
 	}
 	candidate, ok := o.history.popUndo(from.group)
 	if !ok {
-		o.reply(from, request, reasonNothingToUndo, 0)
+		o.reply(from, request, reasonNothingToUndo)
 
 		return
 	}
 	if o.history.clash(from.group, candidate) {
 		o.history.pushUndo(from.group, candidate)
-		o.reply(from, request, reasonClash, 0)
+		o.reply(from, request, reasonClash)
 
 		return
 	}
 	if err := o.refusedRemoval(candidate.actions, true); err != nil {
 		o.history.pushUndo(from.group, candidate)
-		o.reply(from, request, err.Error(), 0)
+		o.reply(from, request, err.Error())
 
 		return
 	}
@@ -304,37 +305,37 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 	}
 	applied, revision, err := o.applyStep(from, inverted(candidate.actions))
 	left := candidate.actions[:len(candidate.actions)-len(applied)]
-	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: left})
-	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: inverted(applied)})
+	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: left, says: candidate.says})
+	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: inverted(applied), says: candidate.says})
 	if err != nil {
-		o.reply(from, request, err.Error(), 0)
+		o.reply(from, request, err.Error())
 
 		return
 	}
-	o.reply(from, request, "", revision)
+	o.replySaid(from, request, revision, candidate.says)
 }
 
 func (o *Orchestrator) redo(from *window, request uint64) {
 	if o.audioPending(from.group) {
-		o.reply(from, request, reasonAudioSaving, 0)
+		o.reply(from, request, reasonAudioSaving)
 
 		return
 	}
 	candidate, ok := o.history.popRedo(from.group)
 	if !ok {
-		o.reply(from, request, reasonNothingToRedo, 0)
+		o.reply(from, request, reasonNothingToRedo)
 
 		return
 	}
 	if o.history.clash(from.group, candidate) {
 		o.history.pushRedo(from.group, candidate)
-		o.reply(from, request, reasonClash, 0)
+		o.reply(from, request, reasonClash)
 
 		return
 	}
 	if err := o.refusedRemoval(candidate.actions, false); err != nil {
 		o.history.pushRedo(from.group, candidate)
-		o.reply(from, request, err.Error(), 0)
+		o.reply(from, request, err.Error())
 
 		return
 	}
@@ -344,14 +345,16 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 		return
 	}
 	applied, revision, err := o.applyStep(from, candidate.actions)
-	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: applied})
-	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: candidate.actions[len(applied):]})
+	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: applied, says: candidate.says})
+	o.history.pushRedo(from.group, step{
+		gesture: candidate.gesture, actions: candidate.actions[len(applied):], says: candidate.says,
+	})
 	if err != nil {
-		o.reply(from, request, err.Error(), 0)
+		o.reply(from, request, err.Error())
 
 		return
 	}
-	o.reply(from, request, "", revision)
+	o.replySaid(from, request, revision, candidate.says)
 }
 
 // applyStep applies a step's actions in order, as one change: if one is
@@ -423,7 +426,7 @@ func (a action) inverseEdit() string {
 func (o *Orchestrator) sessionUpdate(from *window, message protocol.Message) {
 	update, err := protocol.DecodePayload[protocol.Session](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
@@ -432,7 +435,7 @@ func (o *Orchestrator) sessionUpdate(from *window, message protocol.Message) {
 		return
 	case protocol.TopicHomeKept:
 		if err := o.keepHome(update.Value); err != nil {
-			o.reply(from, message.Request, err.Error(), 0)
+			o.reply(from, message.Request, err.Error())
 
 			return
 		}
@@ -524,7 +527,7 @@ func (o *Orchestrator) tellSaving(failure error) {
 func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 	request, err := protocol.DecodePayload[protocol.Open](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
@@ -532,7 +535,7 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 		for _, open := range o.windows {
 			if open.hello.View == request.View && open.hello.Target == request.Target {
 				o.send(open, mustMessage(protocol.KindAttention, 0, protocol.Attention{Item: request.Item}))
-				o.reply(from, message.Request, "", 0)
+				o.reply(from, message.Request, "")
 				o.noteOpened(request.Target)
 
 				return
@@ -541,20 +544,27 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 	}
 	launched, err := o.launch(request.View, request.Target)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	if request.Item != "" {
 		o.attentions[launched] = request.Item
 	}
-	o.reply(from, message.Request, "", 0)
+	o.reply(from, message.Request, "")
 	o.noteOpened(request.Target)
 }
 
 // reply answers a request; an empty reason means success.
-func (o *Orchestrator) reply(target *window, request uint64, reason string, revision uint64) {
-	result := protocol.Result{OK: reason == "", Reason: reason, Revision: revision, Created: ids.ULID{}, Item: ""}
+func (o *Orchestrator) reply(target *window, request uint64, reason string) {
+	result := protocol.Result{OK: reason == "", Reason: reason, Revision: 0, Created: ids.ULID{}, Item: "", Said: ""}
+	o.send(target, mustMessage(protocol.KindResult, request, result))
+}
+
+// replySaid answers an undo or redo that was carried out with the sentence
+// of the step it took back or put back.
+func (o *Orchestrator) replySaid(target *window, request, revision uint64, said string) {
+	result := protocol.Result{OK: true, Reason: "", Revision: revision, Created: ids.ULID{}, Item: "", Said: said}
 	o.send(target, mustMessage(protocol.KindResult, request, result))
 }
 
