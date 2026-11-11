@@ -538,10 +538,14 @@ func (o *Orchestrator) retireRemoved(live map[string]bool) []error {
 	return errs
 }
 
+// flushLogged saves on the timer. A save that fails is logged and told to
+// every window, which go on saying so until a save succeeds.
 func (o *Orchestrator) flushLogged() {
-	if err := o.flush(); err != nil {
+	err := o.flush()
+	if err != nil {
 		o.cfg.Logger.Error("saving documents failed; edits remain in the journal", "error", err)
 	}
+	o.tellSaving(err)
 }
 
 func (o *Orchestrator) save(entry *documentEntry) error {

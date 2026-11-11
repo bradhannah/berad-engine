@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -456,6 +457,47 @@ func (o *Orchestrator) publishNotice(notice protocol.Notice) {
 	for _, other := range o.windows {
 		o.send(other, mustMessage(protocol.KindSession, 0, update))
 	}
+}
+
+// shownNotice returns the notice windows show now, of no kind when none.
+func (o *Orchestrator) shownNotice() protocol.Notice {
+	var shown protocol.Notice
+	if value, kept := o.session[protocol.TopicNotice]; kept {
+		if err := json.Unmarshal(value, &shown); err != nil {
+			o.cfg.Logger.Error("decode notice", "error", err)
+		}
+	}
+
+	return shown
+}
+
+// tellSaving tells every window that a save failed, with the first reason
+// why, and keeps that the notice they show, over any other, while saves go
+// on failing: a window opened meanwhile shows it too. The first save that
+// succeeds tells the windows so, which ends the notice; windows opened
+// later hear nothing of it.
+func (o *Orchestrator) tellSaving(failure error) {
+	shown := o.shownNotice()
+	if failure != nil {
+		reason, more, _ := strings.Cut(failure.Error(), "\n")
+		if more != "" {
+			reason += ", and more"
+		}
+		text := "Changes are not reaching the project's files: " + reason +
+			". They are kept in the journal, and the editor keeps trying."
+		if shown.Kind != protocol.NoticeSaveFailed || shown.Text != text {
+			o.publishNotice(protocol.Notice{Kind: protocol.NoticeSaveFailed, Text: text, Window: ids.ULID{}, Report: ""})
+		}
+
+		return
+	}
+	if shown.Kind != protocol.NoticeSaveFailed {
+		return
+	}
+	o.publishNotice(protocol.Notice{
+		Kind: protocol.NoticeSaved, Text: "Saved: the project's files are up to date again.", Window: ids.ULID{}, Report: "",
+	})
+	delete(o.session, protocol.TopicNotice)
 }
 
 func (o *Orchestrator) openWindow(from *window, message protocol.Message) {

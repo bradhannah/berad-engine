@@ -254,12 +254,25 @@ func (h *host) onUpdate(update client.Update) {
 	if update.Session != nil && update.Session.Topic == protocol.TopicNotice {
 		var notice protocol.Notice
 		if err := json.Unmarshal(update.Session.Value, &notice); err == nil {
-			h.frame.Notice(notice.Text)
+			h.showNotice(notice)
 		}
 
 		return
 	}
 	h.view.Changed(update, &h.ctx)
+}
+
+// showNotice shows a notice in the status bar until another replaces it. A
+// save that succeeds after saves failed ends that notice instead, and says
+// so for a few seconds.
+func (h *host) showNotice(notice protocol.Notice) {
+	if notice.Kind == protocol.NoticeSaved {
+		h.frame.Notice("")
+		h.frame.Status(notice.Text)
+
+		return
+	}
+	h.frame.Notice(notice.Text)
 }
 
 func (h *host) answer(done func(protocol.Result, error), result protocol.Result) {
