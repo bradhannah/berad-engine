@@ -1539,7 +1539,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
 // is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
-	simple := map[string]bool{"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen()}
+	_, offView := s.floorOffView(docs)
+	simple := map[string]bool{
+		"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen(), "floor-off-view": offView,
+	}
 	if s.pick != nil {
 		simple["pick-now="+s.pick.Now.Name] = true
 	}
