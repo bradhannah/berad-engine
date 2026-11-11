@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -300,20 +301,15 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 
 		return
 	}
-	redone := step{gesture: candidate.gesture, actions: make([]action, len(candidate.actions))}
-	var revision uint64
-	for index := len(candidate.actions) - 1; index >= 0; index-- {
-		reverted := candidate.actions[index]
-		applied, err := o.applyEdit(from, reverted.document, reverted.inverseEdit(), reverted.back, 0)
-		if err != nil {
-			o.reply(from, request, err.Error(), 0)
+	applied, revision, err := o.applyStep(from, inverted(candidate.actions))
+	left := candidate.actions[:len(candidate.actions)-len(applied)]
+	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: left})
+	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: inverted(applied)})
+	if err != nil {
+		o.reply(from, request, err.Error(), 0)
 
-			return
-		}
-		revision = applied.revision
-		redone.actions[index] = invert(applied.action)
+		return
 	}
-	o.history.pushRedo(from.group, redone)
 	o.reply(from, request, "", revision)
 }
 
@@ -346,20 +342,64 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 
 		return
 	}
-	again := step{gesture: candidate.gesture, actions: make([]action, 0, len(candidate.actions))}
-	var revision uint64
-	for _, reapplied := range candidate.actions {
-		applied, err := o.applyEdit(from, reapplied.document, reapplied.edit, reapplied.forward, 0)
-		if err != nil {
-			o.reply(from, request, err.Error(), 0)
+	applied, revision, err := o.applyStep(from, candidate.actions)
+	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: applied})
+	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: candidate.actions[len(applied):]})
+	if err != nil {
+		o.reply(from, request, err.Error(), 0)
 
-			return
-		}
-		revision = applied.revision
-		again.actions = append(again.actions, applied.action)
+		return
 	}
-	o.history.pushUndo(from.group, again)
 	o.reply(from, request, "", revision)
+}
+
+// applyStep applies a step's actions in order, as one change: if one is
+// refused, those already applied are reverted, last first, so the documents
+// are left as they were. It returns the applied actions still in effect:
+// all of them, or none after a refusal. Should a revert be refused too, the
+// actions it could not revert are returned with the refusal, so the caller
+// keeps them where they can be undone.
+func (o *Orchestrator) applyStep(from *window, actions []action) ([]action, uint64, error) {
+	applied := make([]action, 0, len(actions))
+	var revision uint64
+	for _, next := range actions {
+		done, err := o.applyEdit(from, next.document, next.edit, next.forward, 0)
+		if err != nil {
+			return o.revertStep(from, applied), 0, err
+		}
+		revision = done.revision
+		applied = append(applied, done.action)
+	}
+
+	return applied, revision, nil
+}
+
+// revertStep reverts applied actions, last first, and returns those it
+// could not revert: none, unless a revert is refused.
+func (o *Orchestrator) revertStep(from *window, applied []action) []action {
+	for len(applied) > 0 {
+		last := applied[len(applied)-1]
+		if _, err := o.applyEdit(from, last.document, last.inverseEdit(), last.back, 0); err != nil {
+			o.cfg.Logger.Error("could not put back part of a refused step", "document", last.document, "error", err)
+
+			return applied
+		}
+		applied = applied[:len(applied)-1]
+	}
+
+	return nil
+}
+
+// inverted turns a step's actions into the actions that take it back, last
+// first: applying them undoes the step, and inverting what was applied gives
+// the step that redoes it.
+func inverted(actions []action) []action {
+	back := make([]action, 0, len(actions))
+	for _, applied := range slices.Backward(actions) {
+		back = append(back, invert(applied))
+	}
+
+	return back
 }
 
 // invert turns the result of applying an undo into the action that redoes it.
