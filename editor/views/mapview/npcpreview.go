@@ -680,27 +680,42 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 			if !set || !declared.Fits(value) {
 				value = declared.Zero()
 			}
-			label := declared.Label(value)
-			if declared.Type == worldstate.TypeNPC && !value.NPC.IsZero() {
-				label = s.names.Name(value.NPC, label)
-			}
-			if name, named := s.preview.anchors[value.Place.Anchor]; declared.Type == worldstate.TypePlace && named {
-				label = name
-			}
-			shown = append(shown, protocol.PreviewValue{Path: string(worldstate.ScopeLocal) + "." + declared.Name, Value: label})
+			shown = append(shown, protocol.PreviewValue{
+				Path: string(worldstate.ScopeLocal) + "." + declared.Name, Value: s.valueLabel(declared, value),
+			})
 		}
 	}
 	values := s.preview.values
-	for _, part := range [][]worldstate.Shown{
-		values.Show(worldstate.ScopeNPC, run.npc.NPC), values.Show(worldstate.ScopeZone, s.zone),
-		values.Show(worldstate.ScopeWorld, ids.ULID{}),
-	} {
-		for _, each := range part {
-			shown = append(shown, protocol.PreviewValue{Path: each.Path, Value: each.Value})
+	for _, part := range []struct {
+		scope worldstate.Scope
+		owner ids.ULID
+	}{{worldstate.ScopeNPC, run.npc.NPC}, {worldstate.ScopeZone, s.zone}, {worldstate.ScopeWorld, ids.ULID{}}} {
+		for _, held := range values.Catalog().Held(part.scope, part.owner) {
+			label := s.valueLabel(held.Declaration, values.Get(held.Declaration, part.owner))
+			shown = append(shown, protocol.PreviewValue{Path: held.Path, Value: label})
 		}
 	}
 
 	return shown
+}
+
+// valueLabel is a value as Watch shows it: what it refers to by its name,
+// an NPC, a place, a zone, a workflow or a sprite, where it has one, and
+// otherwise as its type writes it.
+func (s *State) valueLabel(declared worldstate.Declaration, value worldstate.Value) string {
+	label := declared.Label(value)
+	switch {
+	case declared.Type == worldstate.TypeNPC && !value.NPC.IsZero():
+		return s.names.Name(value.NPC, label)
+	case declared.Type == worldstate.TypePlace:
+		if name, named := s.preview.anchors[value.Place.Anchor]; named {
+			return name
+		}
+	case declared.Type.IsRef() && !value.Ref.IsZero():
+		return s.names.Name(value.Ref, label)
+	}
+
+	return label
 }
 
 // liveNPCs lists the NPCs of the preview this window shows, its own or

@@ -37,9 +37,13 @@ const (
 	headerHeight = 44
 	footerHeight = 92 + ui.LineHeight
 	valuesWidth  = 260
-	buttonWidth  = 170
-	buttonGap    = 8
-	shortID      = 6
+	// valueShare of wholeShare is the most of a row what a value is takes,
+	// leaving the rest for its path.
+	valueShare  = 3
+	wholeShare  = 5
+	buttonWidth = 170
+	buttonGap   = 8
+	shortID     = 6
 )
 
 // Footer labels and the step button's labels.
@@ -220,16 +224,58 @@ func (s *State) drawValues(screen *ebiten.Image) {
 	left := column.Min.X + ui.Inset
 	s.theme.DrawLabel(screen, "VALUES", left, column.Min.Y+ui.Inset, ui.ColorMuted())
 	top := column.Min.Y + ui.Inset + ui.LineHeight
-	for _, value := range s.state.Values {
+	for _, row := range s.valueRows() {
 		if top+ui.LineHeight > column.Max.Y {
 			break
 		}
-		width := s.theme.TextWidth(value.Value)
-		room := column.Max.X - ui.Inset - left - width - ui.Inset
-		s.theme.DrawMono(screen, s.fit([]string{value.Path}, room), left, top, ui.ColorInk())
-		s.theme.DrawText(screen, value.Value, column.Max.X-ui.Inset-width, top, ui.ColorLive())
+		s.theme.DrawMono(screen, row.path, left, top, ui.ColorInk())
+		s.theme.DrawText(screen, row.value, column.Max.X-ui.Inset-s.theme.TextWidth(row.value), top, ui.ColorLive())
 		top += ui.LineHeight
 	}
+}
+
+// valueRow is one value as written: its path at the left and what it is at
+// the right, each cut to fit.
+type valueRow struct {
+	path, value string
+}
+
+// valuesRoom is the width a value's path and what it is share.
+func (s *State) valuesRoom() int { return valuesWidth - ui.Half*ui.Inset }
+
+// valueRows writes each value to fit its row. What a value is takes at
+// most valueShare of the row, cut with an ellipsis when it is longer, and
+// its path the rest, cut the same way: neither is written over the other.
+func (s *State) valueRows() []valueRow {
+	if s.state == nil {
+		return nil
+	}
+	room := s.valuesRoom()
+	rows := make([]valueRow, 0, len(s.state.Values))
+	for _, each := range s.state.Values {
+		value := s.theme.FitText(each.Value, room*valueShare/wholeShare)
+		rows = append(rows, valueRow{
+			path: s.fitMono(each.Path, room-s.theme.TextWidth(value)-ui.Inset), value: value,
+		})
+	}
+
+	return rows
+}
+
+// fitMono cuts text written in the monospaced face to a width, with an
+// ellipsis.
+func (s *State) fitMono(text string, width int) string {
+	if s.theme.MonoWidth(text) <= width {
+		return text
+	}
+	runes := []rune(text)
+	for cut := len(runes) - 1; cut > 0; cut-- {
+		if shortened := string(runes[:cut]) + "…"; s.theme.MonoWidth(shortened) <= width {
+			return shortened
+		}
+	}
+
+	return ""
 }
 
 // layout places the buttons in the footer, each as wide as its label

@@ -3,6 +3,7 @@ package watchview_test
 import (
 	"image"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -196,5 +197,41 @@ func TestStepShowsTheWayItWent(t *testing.T) {
 	f.send(12, false)
 	if label, way := f.state.Way(f.docs, 1000); f.has("stepped") || label != "LAST" || way != "Start → Wait · 30 min" {
 		t.Fatalf("running, the latest change: %s %q", label, way)
+	}
+}
+
+// TestALongValueIsCutNotWrittenOverItsName shows a short value whole, and
+// cuts a long one with an ellipsis so that it and its name fit the row side
+// by side, the name still there to read.
+func TestALongValueIsCutNotWrittenOverItsName(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	theme, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(theme.Close)
+	long := "Good morning, and welcome to the shop on the corner of the market square"
+	state := protocol.PreviewState{
+		Run: runID, Tick: 1, Entities: nil, Clock: 9 * 3600, Rate: 60, Watched: placementID,
+		Values: []protocol.PreviewValue{
+			{Path: "npc.mood", Value: "calm"}, {Path: "npc.shop.greeting", Value: long},
+		},
+	}
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: ids.ULID{}}}, f.ctx)
+	f.state.Changed(client.Update{PreviewState: &state}, f.ctx)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.state.Draw(ebiten.NewImage(1000, 700), f.docs)
+	rows, room := f.state.ValueRows()
+	if len(rows) != 2 || rows[0] != [2]string{"npc.mood", "calm"} {
+		t.Fatalf("a short value is shown whole: %q", rows)
+	}
+	path, value := rows[1][0], rows[1][1]
+	if !strings.HasSuffix(value, "…") || !strings.HasPrefix(long, strings.TrimSuffix(value, "…")) {
+		t.Fatalf("a long value is cut with an ellipsis: %q", value)
+	}
+	if !strings.HasPrefix(path, "npc.shop") || theme.MonoWidth(path)+theme.TextWidth(value) >= room {
+		t.Fatalf("the name and the value fit side by side in %d: %q is %d wide and %q is %d", room,
+			path, theme.MonoWidth(path), value, theme.TextWidth(value))
 	}
 }
