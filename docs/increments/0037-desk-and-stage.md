@@ -51,6 +51,11 @@ Chosen while building, for its author to check:
   typed in.
 - **Every document's tab carries its tint, not only those on the second
   row.** A kind with one document open showed it on the top row untinted.
+- **Open documents share one set of tints across the window.** Each kind
+  used to count its own, so a single map and a single workflow were both
+  green; now no two open documents share a tint while seven or fewer are
+  open. The project browser's tab and Play's have none, since neither is a
+  document.
 - **The tab in front takes a stronger wash** (`#b5d9bd` for green, and so on
   for each tint) and a thicker band; tabs behind take a lighter wash, one
   step deeper than before so it holds against the desk.
@@ -65,19 +70,50 @@ Chosen while building, for its author to check:
   stay white, since an author chooses from them as from a field.
 - **Watch's canvas is the page,** like a workflow's, since it shows a
   workflow; only the game is on the stage.
+- **The stage is behind the Map, the Pixel editor, Play, the Template
+  editor's preview and the writing sheet's "In the game".** A Log's line is
+  read in Watch, so its preview stays on the page. The Project window's
+  pictures stay on the page too: they show workflows and waveforms as well
+  as art, and those read dark on light.
+- **An empty cell of a floor is the page tone,** with its dot, so a floor
+  stands out from the stage around it.
+- **The save bar's quiet state is the page with a hairline,** and its
+  waiting state solid ink with white text, a white dot and the Cmd+S hint
+  in the stage's quieter ink.
+- **A tab holding changes that wait for Save shows an ink dot,** read from
+  what each pane last told the orchestrator; input scripts read it as
+  `state:tab-unsaved:<title>`.
+- **The clock's panel floats on a hard shadow,** as menus and dialogs do.
 
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Tones and colours | The four tones, the hairline, the text colours and washes, the tints' two washes; every use of white named as a field, the page or reverse text | The contrast test passes; `make check` passes | Planned |
-| 2. The stage | The Map's canvas and what lies beyond a floor, the Pixel editor's canvas and Play on the stage; what is written over it in the stage's ink | Screenshots of a Map, a sprite and Play | Planned |
-| 3. Tabs and chips | The desk bar; every document tab tinted, the front one stronger; a dot on a tab with unsaved changes; document icons on filled chips | A real-window test reads a tab's tint and its dot | Planned |
-| 4. Waiting for Save | The field's ink dot and heavier outline; the save bar in ink | Screenshots of a draft and of a saved field | Planned |
-| 5. Hard shadows | Menus, dialogs, sheets and pickers float on a hard two-point shadow | Screenshots of a menu and a picker | Planned |
+| 1. Tones and colours | The four tones, the hairline, the text colours and washes, the tints' two washes; every use of white named as a field, the page or reverse text | The contrast test passes; `make check` passes | Built |
+| 2. The stage | The Map's canvas and what lies beyond a floor, the Pixel editor's canvas and Play on the stage; what is written over it in the stage's ink | Screenshots of a Map, a sprite and Play | Built |
+| 3. Tabs and chips | The desk bar; every document tab tinted, the front one stronger; a dot on a tab with unsaved changes; document icons on filled chips | A script reads a tab's dot; screenshots of the bar | Built |
+| 4. Waiting for Save | The field's ink dot and heavier outline; the save bar in ink | Screenshots of a draft and of a saved field | Built |
+| 5. Hard shadows | Menus, dialogs, sheets and pickers float on a hard two-point shadow | Screenshots of a menu and a picker | Built |
 | 6. Checks | `make check` and the real-window walks; screenshots of every view at 1512 × 916 and 2560 × 1380 | All pass | Planned |
 
 ## Step results
+
+- **Tones and colours, the stage, waiting for Save and hard shadows:** built
+  together in one commit, since every use of the old white had to be named
+  at once. Each of the 90 places that drew white now says which job it
+  does: a field, the page, or text on a filled colour. `ColorBackground`,
+  `ColorPanel`, `ColorCanvas` and `ColorOutside` are gone, replaced by
+  `ColorField`, `ColorPage`, `ColorDesk`, `ColorStage` and the stage's ink.
+  `TestTextReadsOnEveryGround` measures 99 pairings of text and ground and
+  `TestTonesStepApart` the four tones; both pass, and `make check` passes.
+  Screenshots at 1512 × 916 of Home, the Project's lists and cards, a Map
+  at rest and previewing, a sprite, Values, a workflow with a Say selected,
+  a field with a draft, a menu and Play were looked at one by one.
+- **Tabs and chips:** every document's tab tinted, the front one stronger,
+  an ink dot on a tab with unsaved changes, and document icons on chips.
+  `TestOpenDocumentsAreToldApart` replaces the test of tints by kind; the
+  dot was read by an input script after typing a name in the Project's
+  inspector, and seen to go when Esc reverted it.
 
 ## Not in this increment
 
