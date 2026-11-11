@@ -82,7 +82,7 @@ func (z *zoomControl) contains(point image.Point) bool { return point.In(z.card.
 // draw renders the control as a card floating over the canvas.
 func (z *zoomControl) draw(screen *ebiten.Image, theme *ui.Theme) {
 	ui.FillRound(screen, z.card.Rect.Add(image.Pt(0, zoomShadow)), ui.Radius, ui.HexAlpha(0, zoomShade))
-	ui.Box(screen, z.card.Rect, ui.ColorBackground())
+	ui.FloatBox(screen, z.card.Rect, ui.ColorField())
 	for _, button := range z.buttons() {
 		button.Draw(screen, theme)
 	}

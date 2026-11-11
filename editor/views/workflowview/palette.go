@@ -290,7 +290,7 @@ func (s *State) drawPaletteEntries(area *ebiten.Image) {
 // drawEntryBox draws an entry's box: hovered, marked by the arrow keys or
 // showing its help, and a Note's dashed.
 func (s *State) drawEntryBox(area *ebiten.Image, entry paletteEntry) {
-	fill := ui.ColorBackground()
+	fill := ui.ColorField()
 	if s.cursor.In(entry.rect) {
 		fill = ui.ColorHover()
 	}
@@ -391,9 +391,9 @@ func (s *State) drawTooltip(screen *ebiten.Image) {
 	box := image.Rect(PaletteWidth+ui.Gap, entry.rect.Min.Y, PaletteWidth+ui.Gap+tooltipWidth, entry.rect.Min.Y+height)
 	ui.FillRound(screen, box, ui.Radius, ui.ColorInk())
 	left, top := box.Min.X+ui.Inset, box.Min.Y+ui.Gap
-	s.theme.DrawStrong(screen, labelOf(kind), left, top, ui.ColorBackground())
+	s.theme.DrawStrong(screen, labelOf(kind), left, top, ui.ColorReverse())
 	for index, line := range lines {
-		s.theme.DrawText(screen, line, left, top+(1+index)*ui.LineHeight, ui.ColorBackground())
+		s.theme.DrawText(screen, line, left, top+(1+index)*ui.LineHeight, ui.ColorReverse())
 	}
 	s.theme.DrawText(screen, "Click for more · drag to place", left, top+(1+len(lines))*ui.LineHeight, ui.ColorRule())
 }

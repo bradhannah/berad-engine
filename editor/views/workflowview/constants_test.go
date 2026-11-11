@@ -2,11 +2,13 @@ package workflowview_test
 
 import (
 	"encoding/json"
+	"image"
 	"strings"
 	"testing"
 
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -183,5 +185,19 @@ func TestLongTextWarnings(t *testing.T) {
 	if !box.has("warning:" + flow.KindShowMessage + ":1=Its line can be longer than one box holds. " +
 		"Paging is not built yet.") {
 		t.Fatal("a box closed by the player still warns of a text longer than one box holds")
+	}
+}
+
+// TestTheButtonBesideANumberShowsAConstantsMark selects a Wait: the button
+// beside How long, which offers a constant in the number's place, shows a
+// constant's mark as an icon the editor draws, not a character its font
+// lacks, which showed as an empty box.
+func TestTheButtonBesideANumberShowsAConstantsMark(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindWait)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	button, found := f.state.NumberButton("duration")
+	if !found || button.Icon != ui.IconConstant || button.Label != "" {
+		t.Fatalf("the button beside How long: %+v, found %v", button, found)
 	}
 }

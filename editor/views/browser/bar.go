@@ -501,6 +501,6 @@ func (s *State) drawDropdown(screen *ebiten.Image) {
 	if s.facets.Rect.Empty() {
 		return
 	}
-	ui.Box(screen, s.facets.Rect, ui.ColorBackground())
+	ui.FloatBox(screen, s.facets.Rect, ui.ColorField())
 	s.facets.Draw(screen, s.theme)
 }

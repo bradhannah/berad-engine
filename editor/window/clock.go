@@ -81,6 +81,7 @@ func (s *shell) drawClock(screen *ebiten.Image) {
 	if !s.clockOpen || s.clock == nil {
 		return
 	}
+	ui.Float(screen, s.clock.rect, 0)
 	drawPane(screen, s.clock)
 	ui.StrokeRect(screen, s.clock.rect, ui.Outline, ui.ColorInk())
 }

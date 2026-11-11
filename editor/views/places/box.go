@@ -35,7 +35,7 @@ const (
 // DrawBox draws a place box: the ring, the label and a caret for its list,
 // outlined blue while the list is open and glowing while lit, just picked.
 func DrawBox(screen *ebiten.Image, theme *ui.Theme, box image.Rectangle, label string, look Look, lit, open bool) {
-	fill, edge := ui.ColorBackground(), ui.ColorInk()
+	fill, edge := ui.ColorField(), ui.ColorInk()
 	switch {
 	case lit:
 		fill, edge = ui.Hex(litFill), ui.Hex(litEdge)

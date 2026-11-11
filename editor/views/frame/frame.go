@@ -223,8 +223,12 @@ type Frame struct {
 	// button. A Saver is asked about unsaved changes first; any other view
 	// closes.
 	Closing bool
-	// Crash asks the window to crash on purpose, to show failure handling.
-	Crash bool
+	// Crash asks the window to crash on purpose, to test failure handling.
+	// Only the crash key sets it, and the key works only while CrashKey is
+	// set, which the window does for tests alone: an author's stray
+	// Cmd+Shift+K must never close a tab.
+	Crash    bool
+	CrashKey bool
 	// OnTop is the status bar's toggle that keeps the window above every
 	// other window, session state for each window.
 	OnTop *ui.Toggle
@@ -238,7 +242,8 @@ type Frame struct {
 func NewFrame(now func() time.Time) *Frame {
 	return &Frame{
 		status: "", statusUntil: time.Time{}, notice: "", latencies: nil, now: now, Quit: false, Closing: false,
-		Crash: false, OnTop: &ui.Toggle{ID: "on-top", Label: "On top", Rect: ui.Zero(), On: false},
+		Crash: false, CrashKey: false,
+		OnTop:         &ui.Toggle{ID: "on-top", Label: "On top", Rect: ui.Zero(), On: false},
 		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
 	}
 }
@@ -350,7 +355,7 @@ func Folded(size image.Point) image.Rectangle {
 // name down the strip.
 func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
 	strip := Folded(screen.Bounds().Size())
-	fill := ui.ColorPanel()
+	fill := ui.ColorDesk()
 	if hover {
 		fill = ui.ColorSelectWash()
 	}
@@ -374,7 +379,7 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	bounds := screen.Bounds()
 	f.layoutStatus(bounds.Size())
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
-	ui.FillRect(screen, bar, ui.ColorPanel())
+	ui.FillRect(screen, bar, ui.ColorDesk())
 	ui.Divider(screen, image.Pt(0, bar.Min.Y), image.Pt(bar.Max.X, bar.Min.Y))
 	message, notice := f.Message()
 	ink := ui.ColorInk()
@@ -425,8 +430,8 @@ func DrawInspector(screen *ebiten.Image) {
 	ui.Divider(screen, panel.Min, image.Pt(panel.Min.X, panel.Max.Y))
 }
 
-// CommonKeys handles the shortcuts every window shares: undo, redo, close and
-// the test crash. It returns true if it used a key.
+// CommonKeys handles the shortcuts every window shares: undo, redo and
+// close, and for tests the crash key. It returns true if it used a key.
 func CommonKeys(input *ui.Input, ctx *Context) bool {
 	switch {
 	case input.Consume(ui.KeyZ, ui.Cmd()):
@@ -435,7 +440,7 @@ func CommonKeys(input *ui.Input, ctx *Context) bool {
 		ctx.Requests.Redo(ctx.Frame.Report("Redone"))
 	case input.Consume(ui.KeyW, ui.Cmd()):
 		ctx.Frame.Closing = true
-	case input.Consume(ui.KeyK, ui.CmdShift()):
+	case ctx.Frame.CrashKey && input.Consume(ui.KeyK, ui.CmdShift()):
 		ctx.Frame.Crash = true
 	default:
 		return false

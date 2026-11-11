@@ -29,6 +29,10 @@ const (
 	screenshotFrame  = 90
 )
 
+// crashKeyEnv, when set, lets Cmd+Shift+K crash a pane on purpose. Only the
+// tests of failure handling set it: the key does nothing for an author.
+const crashKeyEnv = "BERAD_TEST_CRASH_KEY"
+
 // starter is implemented by views that subscribe to more documents once the
 // window is running.
 type starter interface {
@@ -75,6 +79,9 @@ type host struct {
 	// the tab with a title, for input scripts.
 	tabs    func() int
 	tabTint func(title string) string
+	// tabUnsaved reports whether the tab with a title holds changes that
+	// wait for Save.
+	tabUnsaved func(title string) bool
 	// visible is the host's part of the window. While the inspector is
 	// folded the view lays out and draws on wide, wider than visible by
 	// all but the folded strip, so its inspector falls past the edge;
@@ -97,8 +104,9 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil,
+		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 	}
+	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
 	created.sounds = sound.New(created, created.frame.Status)
@@ -138,6 +146,7 @@ func (h *host) Update() error {
 	h.windowKeys(&input)
 	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
+	h.tellRefusal(h.view.Focused())
 	h.close()
 	h.reportUnsaved()
 	h.flush()
@@ -159,6 +168,17 @@ func (h *host) Update() error {
 	}
 
 	return nil
+}
+
+// tellRefusal says in the status bar why the field with the keyboard refused
+// what was just typed or pasted into it, such as text too long for it.
+func (h *host) tellRefusal(field *ui.TextField) {
+	if field == nil {
+		return
+	}
+	if why := field.Field.TakeRefusal(); why != "" {
+		h.frame.Status(why)
+	}
 }
 
 // save saves a Saver's typed changes for Cmd+S, or says there is nothing
@@ -249,12 +269,25 @@ func (h *host) onUpdate(update client.Update) {
 	if update.Session != nil && update.Session.Topic == protocol.TopicNotice {
 		var notice protocol.Notice
 		if err := json.Unmarshal(update.Session.Value, &notice); err == nil {
-			h.frame.Notice(notice.Text)
+			h.showNotice(notice)
 		}
 
 		return
 	}
 	h.view.Changed(update, &h.ctx)
+}
+
+// showNotice shows a notice in the status bar until another replaces it. A
+// save that succeeds after saves failed ends that notice instead, and says
+// so for a few seconds.
+func (h *host) showNotice(notice protocol.Notice) {
+	if notice.Kind == protocol.NoticeSaved {
+		h.frame.Notice("")
+		h.frame.Status(notice.Text)
+
+		return
+	}
+	h.frame.Notice(notice.Text)
 }
 
 func (h *host) answer(done func(protocol.Result, error), result protocol.Result) {

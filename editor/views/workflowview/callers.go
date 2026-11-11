@@ -95,7 +95,7 @@ func (s *State) drawStrip(screen *ebiten.Image, docs frame.Docs) {
 	}
 	canvas := s.Canvas()
 	strip := image.Rect(canvas.Min.X, canvas.Min.Y, canvas.Max.X, canvas.Min.Y+stripHeight)
-	ui.FillRect(screen, strip, ui.ColorBackground())
+	ui.FillRect(screen, strip, ui.ColorPage())
 	ui.FillRect(screen, image.Rect(strip.Min.X, strip.Max.Y-ui.Hairline, strip.Max.X, strip.Max.Y), ui.ColorRule())
 	s.theme.DrawText(screen, s.clip(line, strip.Dx()-ui.Half*ui.Inset), strip.Min.X+ui.Inset,
 		strip.Min.Y+(stripHeight-ui.TextSize)/ui.Half-1, ui.ColorMuted())

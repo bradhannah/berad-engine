@@ -2,9 +2,12 @@ package mapview_test
 
 import (
 	"image"
+	"strings"
 	"testing"
 
+	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 func TestWallAlgorithms(t *testing.T) {
@@ -35,5 +38,56 @@ func TestWallAlgorithms(t *testing.T) {
 		if step.X < -1 || step.X > 1 || step.Y < -1 || step.Y > 1 {
 			t.Fatalf("line skips a cell: %v", line)
 		}
+	}
+}
+
+// TestFamilyOfManyWalls changes the family of more walls than one paint
+// command may hold: they go in several commands, none over the limit, that
+// share a gesture, so every wall changes and one undo takes them all back.
+func TestFamilyOfManyWalls(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	const side = 70
+	walled, err := tilefloor.NewDocument(side, side, "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for col := range side {
+		for row := range side {
+			if _, err := walled.Floor.SetTop(col, row, "wall.a"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	f.docs.Put(groundID, "Ground", walled)
+	f.keys("S")
+	f.click("cell:2,3")
+	if got := len(f.state.Selected()); got != side*side {
+		t.Fatalf("selected %d walls, want every one of %d", got, side*side)
+	}
+	f.keys("4")
+	commands := f.requests.Of(tilefloor.PaintEdit)
+	changed := 0
+	for _, command := range commands {
+		var args tilefloor.PaintArgs
+		if err := command.Decode(&args); err != nil {
+			t.Fatal(err)
+		}
+		if len(args.Cells) == 0 || len(args.Cells) > tilefloor.MaxCells {
+			t.Fatalf("a command of %d cells, of at most %d", len(args.Cells), tilefloor.MaxCells)
+		}
+		if command.Command.Gesture == "" || command.Command.Gesture != commands[0].Command.Gesture {
+			t.Fatalf("the commands share a gesture, to undo as one step: %q", command.Command.Gesture)
+		}
+		changed += len(args.Cells)
+	}
+	if changed != side*side {
+		t.Fatalf("changed %d walls of %d", changed, side*side)
+	}
+	for _, command := range commands {
+		command.Succeed(ids.ULID{})
+	}
+	if !strings.Contains(f.status(), "Changed 4900 walls") {
+		t.Fatalf("the status counts every wall once all are changed: %q", f.status())
 	}
 }

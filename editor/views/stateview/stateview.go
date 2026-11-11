@@ -709,7 +709,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	loaded := s.refresh(docs)
 	s.layout()
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	s.theme.DrawTitle(screen, "World state › "+s.heading(), ui.Inset, ui.Inset, ui.ColorInk())
 	s.theme.DrawText(screen, s.theme.FitText(s.about(), s.listRight()-ui.Inset), ui.Inset, ui.Inset+ui.LineHeight,
 		ui.ColorMuted())

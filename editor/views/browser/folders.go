@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -226,9 +227,46 @@ func (s *State) moveDocument(ctx *frame.Context, documentID ids.ULID, path strin
 	}, nil)
 }
 
+// settlePlace keeps the main pane on a folder that is still there. A folder
+// shown that was just renamed or moved, or one inside it, is followed to
+// its new path; one that is gone, deleted or changed from elsewhere, gives
+// way to the nearest folder that held it, or its kind.
+func (s *State) settlePlace(docs frame.Docs) {
+	shown, isFolder := parseFolderRow(s.place)
+	if !isFolder {
+		return
+	}
+	docs.View(project.IndexID(), func(document client.Document) {
+		if index, loaded := document.Model.(*project.Index); loaded {
+			s.settleFolder(index, shown)
+		}
+	})
+}
+
+// settleFolder is settlePlace for a folder shown, once the project's
+// folders are known.
+func (s *State) settleFolder(index *project.Index, shown project.Folder) {
+	if index.HasFolder(shown.Format, shown.Path) {
+		return
+	}
+	if moved := s.moving; moved != nil && moved.Format == shown.Format && project.Within(shown.Path, moved.From) {
+		if now := moved.To + shown.Path[len(moved.From):]; index.HasFolder(shown.Format, now) {
+			s.place = folderRowID(shown.Format, now)
+
+			return
+		}
+	}
+	held := shown.Path
+	for !index.HasFolder(shown.Format, held) {
+		held = project.FolderParent(held)
+	}
+	s.show(folderPlace(shown.Format, held))
+}
+
 func (s *State) moveFolder(ctx *frame.Context, folder project.Folder, parent string) {
 	target := project.JoinFolder(parent, project.FolderName(folder.Path))
 	change := project.FolderArgs{Format: folder.Format, From: folder.Path, To: target}
+	s.moving = &change
 	s.command(ctx, project.IndexID(), project.FolderEdit, s.gesture(), change, func(protocol.Result, error) {
 		if s.list.Selected == folderRowID(folder.Format, folder.Path) {
 			s.list.Selected = folderRowID(folder.Format, target)
@@ -294,10 +332,18 @@ func (s *State) drop(ctx *frame.Context, dragged, target string) {
 	}
 }
 
-// renameFolder saves a folder's new name.
+// renameFolder saves a folder's new name. A cleared name is refused here: a
+// folder change with nowhere to go deletes the folder.
 func (s *State) renameFolder(ctx *frame.Context, folder project.Folder, name string) {
+	if name == "" {
+		s.name.Field.Failed()
+		ctx.Frame.Status("A folder needs a name")
+
+		return
+	}
 	target := project.JoinFolder(project.FolderParent(folder.Path), name)
 	change := project.FolderArgs{Format: folder.Format, From: folder.Path, To: target}
+	s.moving = &change
 	s.command(ctx, project.IndexID(), project.FolderEdit, "", change,
 		func(protocol.Result, error) {
 			s.focus.Set(nil)

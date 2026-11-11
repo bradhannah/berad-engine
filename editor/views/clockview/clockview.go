@@ -281,7 +281,7 @@ func (s *State) stateLine() string {
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout()
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	left, top := ui.Inset, ui.Inset
 	label, ink := "NEXT PREVIEW STARTS", ui.ColorMuted()
 	if s.running() {

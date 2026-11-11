@@ -30,3 +30,14 @@ func (s *State) LiveLanes() []ids.ULID {
 
 	return s.flow.LiveLanes()
 }
+
+// ValueRows returns each value's path and value as the window writes them,
+// cut to fit, and the width they share, for tests.
+func (s *State) ValueRows() ([][2]string, int) {
+	var rows [][2]string
+	for _, row := range s.valueRows() {
+		rows = append(rows, [2]string{row.path, row.value})
+	}
+
+	return rows, s.valuesRoom()
+}

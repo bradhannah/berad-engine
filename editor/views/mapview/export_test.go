@@ -1,5 +1,7 @@
 package mapview
 
+import "image"
+
 // Initials exposes the NPC token's initials to tests.
 var Initials = initials
 
@@ -23,3 +25,7 @@ func (s *State) MenuItems() []string {
 
 	return items
 }
+
+// NPCHint returns where the hint for a project with no NPCs is drawn, and
+// where the heading of the floor list below it starts, for tests.
+func (s *State) NPCHint() (image.Rectangle, int) { return s.npcHint(), s.floorsHeadingTop() }

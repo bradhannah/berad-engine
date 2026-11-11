@@ -70,10 +70,12 @@ func (s *State) slotOf(param string, option int, lasting string, field *ui.TextF
 		return made
 	}
 	made := &numberSlot{
-		param: param, option: option, lasting: lasting, field: field, use: ui.NewButton(slotUsePre+key, "◆"),
+		param: param, option: option, lasting: lasting, field: field, use: ui.NewButton(slotUsePre+key, ""),
 		clear: ui.NewButton(slotClearOn+key, "×"), chip: ui.Zero(), constant: flow.NoConstant(), draft: nil,
 		saving: false,
 	}
+	// A constant's mark, drawn: the font has no diamond to write one with.
+	made.use.Icon = ui.IconConstant
 	if kept, found := s.form.keptSlots[lasting]; found {
 		made.draft = &kept
 	}

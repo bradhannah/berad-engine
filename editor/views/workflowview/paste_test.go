@@ -1,6 +1,7 @@
 package workflowview_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -181,5 +182,35 @@ func TestRightClickDuplicatesAndCopies(t *testing.T) {
 	f.rightClick("node:start:1")
 	if !f.menuOffers("duplicate") {
 		t.Fatal("the start's menu shows Duplicate, greyed")
+	}
+}
+
+// TestAPastedReturnKeepsItsOwnWayOut copies a Return named sold out from
+// one workflow into another whose only way out, found it, happens to have
+// the same port. The pasted Return is a way out of its own, sold out, not
+// another Return of found it, which callers would follow in its place.
+// Pasted again, it joins the sold out now there.
+func TestAPastedReturnKeepsItsOwnWayOut(t *testing.T) {
+	t.Parallel()
+	source := withNode(t, flow.KindReturn)
+	source.typeInto("param-name", "sold out")
+	clipboard := &memoryClipboard{text: ""}
+	source.ctx.Clipboard = clipboard
+	source.click("node:return:1")
+	source.keys("Cmd+C")
+
+	f := withNode(t, flow.KindReturn)
+	f.typeInto("param-name", "found it")
+	if source.wayOf(1).Port != f.wayOf(1).Port {
+		t.Fatalf("the two workflows' Returns share a port: %v %v", source.wayOf(1), f.wayOf(1))
+	}
+	f.pasteInto(clipboard)
+	want := []flow.WayOut{{Port: "w1", Label: "found it"}, {Port: "w2", Label: "sold out"}}
+	if got := f.workflow().WaysOut(); !slices.Equal(got, want) || !strings.Contains(f.status(), "way out sold out") {
+		t.Fatalf("the pasted Return is a way out of its own, and the status says so: %v, %q", got, f.status())
+	}
+	f.pasteInto(clipboard)
+	if got := f.workflow().WaysOut(); !slices.Equal(got, want) || f.wayOf(3) != want[1] {
+		t.Fatalf("pasted again, it joins the way out of its name: %v, the third Return %v", got, f.wayOf(3))
 	}
 }

@@ -133,14 +133,17 @@ func (h *history) popRedo(group string) (step, bool) {
 	return pop(h.groups[group], func(list *undoList) *[]step { return &list.redo })
 }
 
+// pushUndo puts a step back on a group's undo list. A step with no actions
+// is nothing to undo, and is not kept.
 func (h *history) pushUndo(group string, item step) {
-	if list, ok := h.groups[group]; ok {
+	if list, ok := h.groups[group]; ok && len(item.actions) > 0 {
 		list.undo = append(list.undo, item)
 	}
 }
 
+// pushRedo puts a step on a group's redo list, unless it has no actions.
 func (h *history) pushRedo(group string, item step) {
-	if list, ok := h.groups[group]; ok {
+	if list, ok := h.groups[group]; ok && len(item.actions) > 0 {
 		list.redo = append(list.redo, item)
 	}
 }

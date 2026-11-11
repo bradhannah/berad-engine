@@ -62,7 +62,9 @@ type previewRun struct {
 	watched  ids.ULID
 	paused   bool
 	stepping bool
-	step     []protocol.PreviewChange
+	// stepTicks counts the ticks the step under way has run.
+	stepTicks int
+	step      []protocol.PreviewChange
 	// heard counts the times each cue has played in this preview.
 	heard map[string]int
 	// values are the world's, the zones' and the NPCs' values while the
@@ -177,7 +179,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		}
 		s.preview = &previewRun{
 			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
-			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, step: nil,
+			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, stepTicks: 0, step: nil,
 			loop: &npcRun{
 				npc: npcrun.StartLoop(s.zone, seed(result.Created, s.zone)), workflow: nil, source: ids.ULID{}, revision: 0,
 			},

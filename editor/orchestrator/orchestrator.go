@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"net"
 	"os"
@@ -213,6 +214,7 @@ func (o *Orchestrator) load() error {
 		return err
 	}
 	o.folders = o.foldersOnDisk(dirs)
+	o.tellUnread(o.project.unread)
 	beforeZones := map[ids.ULID]bool{}
 	for _, document := range stored {
 		documentType, ok := o.cfg.Registry.Document(document.envelope.Format)
@@ -498,16 +500,7 @@ func (o *Orchestrator) flush() error {
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
-	for _, path := range slices.Sorted(maps.Keys(o.removed)) {
-		if !live[path] {
-			if err := o.project.retire(path, o.cfg.Clock()); err != nil {
-				errs = append(errs, err)
-
-				continue
-			}
-		}
-		delete(o.removed, path)
-	}
+	errs = o.retireRemoved(live)
 	if err := o.flushFolders(); err != nil {
 		errs = append(errs, err)
 	}
@@ -518,10 +511,42 @@ func (o *Orchestrator) flush() error {
 	return o.journal.reset()
 }
 
+// retireRemoved moves the files of deleted, renamed and moved documents to
+// the backups, once the live documents are saved. A path that names a live
+// document's file under another spelling is left alone: where the file
+// system ignores case, a folder renamed only in its capitals leaves each
+// document's old and new paths naming one file, the one just saved.
+func (o *Orchestrator) retireRemoved(live map[string]bool) []error {
+	var errs []error
+	var saved []fs.FileInfo
+	read := false
+	for _, path := range slices.Sorted(maps.Keys(o.removed)) {
+		if !live[path] {
+			if !read {
+				saved, read = o.project.filesAt(maps.Keys(live)), true
+			}
+			if !o.project.isOneOf(path, saved) {
+				if err := o.project.retire(path, o.cfg.Clock()); err != nil {
+					errs = append(errs, err)
+
+					continue
+				}
+			}
+		}
+		delete(o.removed, path)
+	}
+
+	return errs
+}
+
+// flushLogged saves on the timer. A save that fails is logged and told to
+// every window, which go on saying so until a save succeeds.
 func (o *Orchestrator) flushLogged() {
-	if err := o.flush(); err != nil {
+	err := o.flush()
+	if err != nil {
 		o.cfg.Logger.Error("saving documents failed; edits remain in the journal", "error", err)
 	}
+	o.tellSaving(err)
 }
 
 func (o *Orchestrator) save(entry *documentEntry) error {

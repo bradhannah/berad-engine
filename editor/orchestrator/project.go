@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"log/slog"
 	"maps"
 	"os"
@@ -37,6 +38,15 @@ const (
 type project struct {
 	root   *os.Root
 	logger *slog.Logger
+	// unread are the files left out when the project was loaded because
+	// they could not be read as documents.
+	unread []unreadFile
+}
+
+// unreadFile is a file left out of the project, and why.
+type unreadFile struct {
+	path   string
+	reason string
 }
 
 // storedDocument is a document read from disk, already upgraded if needed,
@@ -74,7 +84,7 @@ func openProject(dir string, logger *slog.Logger) (*project, error) {
 		}
 	}
 
-	opened := &project{root: root, logger: logger}
+	opened := &project{root: root, logger: logger, unread: nil}
 	if err := opened.ignoreState(); err != nil {
 		return nil, err
 	}
@@ -173,6 +183,8 @@ func (p *project) loadOne(formats *content.Registry, path string, now time.Time)
 	envelope, err := content.Decode(raw)
 	if err != nil {
 		p.logger.Warn("skipping file that is not a document", "path", path, "error", err)
+		reason := strings.TrimPrefix(err.Error(), content.ErrMalformed.Error()+": ")
+		p.unread = append(p.unread, unreadFile{path: path, reason: reason})
 
 		return noDocument(), false, nil
 	}
@@ -211,6 +223,28 @@ func (p *project) newer(first, second storedDocument) (storedDocument, storedDoc
 	}
 
 	return first, second
+}
+
+// filesAt returns what is on disk at each path that is there, for telling
+// files apart by what they are, not by how their paths are spelled.
+func (p *project) filesAt(paths iter.Seq[string]) []fs.FileInfo {
+	var found []fs.FileInfo
+	for path := range paths {
+		if info, err := p.root.Lstat(path); err == nil {
+			found = append(found, info)
+		}
+	}
+
+	return found
+}
+
+// isOneOf reports whether a path names one of the files, however it is
+// spelled: where the file system ignores case, "Town/plan.json" and
+// "town/plan.json" are one file. A path with nothing at it names none.
+func (p *project) isOneOf(path string, files []fs.FileInfo) bool {
+	info, err := p.root.Lstat(path)
+
+	return err == nil && slices.ContainsFunc(files, func(other fs.FileInfo) bool { return os.SameFile(info, other) })
 }
 
 // retire moves a file that no longer holds a live document into the backups,

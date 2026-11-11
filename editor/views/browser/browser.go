@@ -186,6 +186,9 @@ type State struct {
 	barBottom   int
 	place       string
 	placeBefore string
+	// moving is the folder change last sent that renames or moves a
+	// folder, so the place shown can follow the folder to its new path.
+	moving      *project.FolderArgs
 	wasNarrowed bool
 	// facets is an open facet's dropdown, facetOpen that facet, and
 	// facetBns the bar's button for each; ticks are the values ticked in
@@ -240,7 +243,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
 		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{}, sounds: newSoundState(),
 		preview: newPreviewState(),
-		home:    newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", wasNarrowed: false,
+		home:    newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", moving: nil, wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
 		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0, constantsFound: 0, linesFound: 0,
@@ -393,6 +396,7 @@ func (s *State) layout(docs frame.Docs) {
 	content := frame.Content(s.size)
 	top := (toolbarHeight - ui.ButtonH) / ui.Half
 	s.newMenu.Rect = image.Rect(content.Max.X-ui.Inset-newWidth, top, content.Max.X-ui.Inset, top+ui.ButtonH)
+	s.settlePlace(docs)
 	s.layoutPanes(docs, content)
 	if s.showSelected(docs) {
 		s.layoutPanes(docs, content)
@@ -1477,7 +1481,7 @@ func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout(docs)
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	width := frame.Content(s.size).Max.X
 	s.theme.DrawTitle(screen, "Project", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))

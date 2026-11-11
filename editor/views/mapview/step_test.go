@@ -1,6 +1,7 @@
 package mapview_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/client"
@@ -9,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
 // control sends the preview a control, as a Watch window does.
@@ -79,5 +81,46 @@ func TestStepGoesStraightToTheNextNode(t *testing.T) {
 	f.idle(2)
 	if state := f.lastState(); state.Stepping || !state.NPCsPaused {
 		t.Fatalf("with nothing watched, Step does nothing: %+v", state)
+	}
+}
+
+// TestAStepThatCannotEndGivesUp steps an NPC that never changes node. One
+// with no behaviour is not stepped at all, and the status says why. One
+// waiting on a clock that is stopped is stepped for a bounded time, then the
+// NPCs pause and the status says the clock is stopped.
+func TestAStepThatCannotEndGivesUp(t *testing.T) {
+	t.Parallel()
+	idle := newFixture(t)
+	withClerk(idle)
+	ground := groundFloor(t)
+	if err := ground.Floor.InsertPlacement(0, floor.Placement{ID: clerkPlacement, NPC: clerkID, Col: 9, Row: 8}); err != nil {
+		t.Fatal(err)
+	}
+	idle.docs.Put(groundID, "Ground", ground)
+	idle.startPreview("cell:3,3")
+	idle.idle(2)
+	idle.control(protocol.ControlWatch, clerkPlacement)
+	idle.control(protocol.ControlPause, clerkPlacement)
+	idle.control(protocol.ControlStep, clerkPlacement)
+	idle.idle(2)
+	if state := idle.lastState(); state.Stepping || !state.NPCsPaused || !strings.Contains(idle.status(), "no behaviour") {
+		t.Fatalf("an NPC with no behaviour is not stepped: %+v, status %q", state, idle.status())
+	}
+
+	f := newFixture(t)
+	withWorkingClerk(t, f)
+	f.startPreview("cell:3,3")
+	f.idle(play.StepTicks + 2)
+	f.control(protocol.ControlWatch, clerkPlacement)
+	f.clockControl(protocol.ControlStopClock, 0, 0)
+	f.control(protocol.ControlPause, clerkPlacement)
+	f.control(protocol.ControlStep, clerkPlacement)
+	f.idle(2)
+	if state := f.lastState(); !state.Stepping {
+		t.Fatalf("a step with the clock stopped is tried: %+v", state)
+	}
+	f.idle(30)
+	if state := f.lastState(); state.Stepping || !state.NPCsPaused || !strings.Contains(f.status(), "clock is stopped") {
+		t.Fatalf("the step gives up and says the clock is stopped: %+v, status %q", state, f.status())
 	}
 }

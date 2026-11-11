@@ -44,6 +44,8 @@ const (
 	IconSignal
 	// IconHome is the Project window's Home: a house.
 	IconHome
+	// IconConstant is a constant: a diamond.
+	IconConstant
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -101,16 +103,48 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorArt()
 	case IconPlace, IconHome:
 		return ColorSelect()
+	case IconConstant:
+		return ColorConstant()
 	case IconNone, IconProject, IconClock, IconSettings:
 	}
 
 	return ColorInk()
 }
 
-// DrawIcon draws an icon in its type's colour with its top-left corner at a
-// point.
+// ChipPad is how far a document's chip reaches beyond its icon on each
+// side.
+const ChipPad = 2
+
+// chipRadius rounds a chip's corners.
+const chipRadius = 4
+
+// Chipped reports whether an icon is a document's, drawn white on a filled
+// chip of its type's muted colour, so its type is found at a glance: zones
+// and floors, workflows and zone loops, NPCs, sounds, sprites, palettes and
+// templates. Folders, places, Home, the clock, Watch, Play, settings and the
+// project keep a plain mark.
+func Chipped(icon Icon) bool {
+	switch icon {
+	case IconZone, IconFloor, IconWorkflow, IconZoneLoop, IconNPC, IconSound, IconSprite, IconPalette, IconTemplate:
+		return true
+	case IconNone, IconFolder, IconProject, IconClock, IconWatch, IconSettings, IconPlay, IconPlace, IconSignal,
+		IconHome, IconConstant:
+	}
+
+	return false
+}
+
+// DrawIcon draws an icon with its top-left corner at a point: a document's
+// white on a chip of its type's colour, any other in its own colour.
 func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
-	DrawIconInk(screen, icon, corner, IconColor(icon))
+	if !Chipped(icon) {
+		DrawIconInk(screen, icon, corner, IconColor(icon))
+
+		return
+	}
+	chip := image.Rect(corner.X-ChipPad, corner.Y-ChipPad, corner.X+IconSize+ChipPad, corner.Y+IconSize+ChipPad)
+	FillRound(screen, chip, chipRadius, IconColor(icon))
+	DrawIconInk(screen, icon, corner, ColorReverse())
 }
 
 // DrawIconInk draws an icon in an ink of its own, as on a filled button.
@@ -157,8 +191,21 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 		drawArtIcon(screen, icon, left, top, ink)
 	case IconPlay, IconPlace, IconZoneLoop, IconSignal:
 		drawMark(screen, icon, corner, ink)
+	case IconConstant:
+		drawDiamond(screen, left, top, ink)
 	case IconNone:
 	}
+}
+
+// drawDiamond draws a constant's mark: a square on its corner, filled.
+func drawDiamond(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	var diamond vector.Path
+	diamond.MoveTo(left+IconSize/Half, top+1)
+	diamond.LineTo(left+IconSize-1, top+IconSize/Half)
+	diamond.LineTo(left+IconSize/Half, top+IconSize-1)
+	diamond.LineTo(left+1, top+IconSize/Half)
+	diamond.Close()
+	fillPath(screen, &diamond, ink)
 }
 
 // drawMark draws Play's triangle, a place's ring, a zone loop's arrow or
@@ -232,7 +279,7 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 	case IconHome:
 		drawHouse(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal:
+		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal, IconConstant:
 	}
 }
 
@@ -257,7 +304,7 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 	case IconTemplate:
 		drawFrame(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome:
+		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome, IconConstant:
 	}
 }
 

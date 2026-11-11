@@ -218,7 +218,7 @@ func (s *State) outlineLive(area *ebiten.Image, node ids.ULID, label string) {
 	bar := image.Rect(rect.Min.X, rect.Min.Y-selectGap-liveBar, rect.Min.X+s.theme.LabelWidth(label)+ui.Half*liveBarPad,
 		rect.Min.Y-selectGap)
 	ui.FillRound(area, bar, ui.Radius, ui.ColorLive())
-	s.theme.DrawLabel(area, label, bar.Min.X+liveBarPad, bar.Min.Y+(liveBar-ui.LabelSize)/ui.Half-1, ui.ColorBackground())
+	s.theme.DrawLabel(area, label, bar.Min.X+liveBarPad, bar.Min.Y+(liveBar-ui.LabelSize)/ui.Half-1, ui.ColorReverse())
 }
 
 // LiveLanes returns the nodes a live view marks for a Together's lanes, for

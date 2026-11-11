@@ -174,3 +174,69 @@ func TestFoldersSurviveACrash(t *testing.T) {
 	}
 	readOne(t, crashed, "notes/Village/plan--*.json")
 }
+
+// names lists what a directory holds, by name as spelled on disk.
+func names(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []string
+	for _, entry := range entries {
+		found = append(found, entry.Name())
+	}
+	return found
+}
+
+// A folder renamed only in its capitals keeps what it holds. Where the file
+// system ignores case, "Town" and "town" are one directory, so the documents'
+// old and new paths name the same files: they are saved, not moved to the
+// backups, an empty folder stays, and the directories take the new spelling.
+func TestRenamingAFoldersCapitalsKeepsWhatItHolds(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	createProject(t, dir)
+	h := start(t, dir, nil)
+	browser := h.dialView(t, "browser", project.IndexID(), "", project.IndexID())
+	makeFolder(t, browser, noteFormat, "Town")
+	makeFolder(t, browser, noteFormat, "Town/Notes")
+	makeFolder(t, browser, noteFormat, "Empty")
+	plan := createText(t, browser, "Plan", "Town")
+	diary := createText(t, browser, "Diary", "Town/Notes")
+	if err := h.stop(); err != nil {
+		t.Fatal(err)
+	}
+	readOne(t, dir, "notes/Town/plan--*.json")
+
+	renamed := start(t, dir, nil)
+	view := renamed.dialView(t, "browser", project.IndexID(), "", project.IndexID())
+	mustCommand(t, view, project.IndexID(), project.FolderEdit, "",
+		project.FolderArgs{Format: noteFormat, From: "Town", To: "town"})
+	mustCommand(t, view, project.IndexID(), project.FolderEdit, "",
+		project.FolderArgs{Format: noteFormat, From: "Empty", To: "empty"})
+	if err := renamed.stop(); err != nil {
+		t.Fatal(err)
+	}
+	if saved := readOne(t, dir, "notes/*/plan--*.json"); saved.ID != plan {
+		t.Fatalf("the plan is still in its folder: %v", saved.ID)
+	}
+	if saved := readOne(t, dir, "notes/*/*/diary--*.json"); saved.ID != diary {
+		t.Fatalf("the diary is still in its folder: %v", saved.ID)
+	}
+	if got := names(t, filepath.Join(dir, "notes")); !slices.Equal(got, []string{"empty", "town"}) {
+		t.Fatalf("the folders on disk, as respelled: %v", got)
+	}
+
+	reopened := start(t, dir, nil)
+	again := reopened.dialView(t, "browser", project.IndexID(), "", project.IndexID())
+	if got := folders(again, noteFormat); !slices.Equal(got, []string{"empty", "town", "town/Notes"}) {
+		t.Fatalf("folders read back: %v", got)
+	}
+	if entry, found := indexEntry(again, plan); !found || entry.Folder != "town" {
+		t.Fatalf("the plan read back: %+v %v", entry, found)
+	}
+	if entry, found := indexEntry(again, diary); !found || entry.Folder != "town/Notes" {
+		t.Fatalf("the diary read back: %+v %v", entry, found)
+	}
+}

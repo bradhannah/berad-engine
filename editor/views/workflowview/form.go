@@ -1039,7 +1039,12 @@ func (s *State) discardForm() {
 // to another node, a line or nothing: the selection goes back until the
 // author decides, and moves on after Save or Don't save.
 func (s *State) guardSelection(ctx *frame.Context) {
-	if s.form == nil || s.workflow == nil || s.selected == s.form.node {
+	if s.form == nil {
+		s.guardLocal()
+
+		return
+	}
+	if s.workflow == nil || s.selected == s.form.node {
 		return
 	}
 	unsaved := s.Unsaved(ctx.Docs)
@@ -1051,6 +1056,29 @@ func (s *State) guardSelection(ctx *frame.Context) {
 	s.drag, s.link, s.adding, s.resize, s.bending, s.box = nil, nil, nil, nil, nil, nil
 	s.focus.Set(nil)
 	s.guard.Ask(unsaved, s.formName(), func() { s.selected, s.selectedLink, s.group = wanted, wantedLink, wantedGroup })
+}
+
+// guardLocal asks about a local value's unsaved typed changes before the
+// inspector leaves the local values for a node, a line or several nodes:
+// nothing is selected until the author decides, and the selection moves on
+// after Save or Don't save.
+func (s *State) guardLocal() {
+	leaving := !s.selected.IsZero() || s.lineSelected() || len(s.group) > 0
+	local, chosen := s.selectedLocal()
+	if s.workflow == nil || !leaving || !chosen {
+		return
+	}
+	unsaved := s.locals.form.Unsaved()
+	if unsaved == 0 {
+		return
+	}
+	wanted, wantedLink, wantedGroup := s.selected, s.selectedLink, s.group
+	s.selected, s.selectedLink, s.group = ids.ULID{}, noRoute(), nil
+	s.drag, s.link, s.adding, s.resize, s.bending, s.box = nil, nil, nil, nil, nil, nil
+	s.focus.Set(nil)
+	s.guard.Ask(unsaved, localPath(local), func() {
+		s.selected, s.selectedLink, s.group = wanted, wantedLink, wantedGroup
+	})
 }
 
 // parseFor reads a typed value from a field of a control: the new parameter
@@ -1107,12 +1135,22 @@ func parseRangeField(made *control, field *ui.TextField, value string, node flow
 	if err != nil {
 		return nil, true, err.Error()
 	}
-	changed, problem := timeInto(span, value, field == made.from)
+	changed, problem := timeInto(span, value, field == made.from, otherEnd(field, made.from, made.to))
 	if problem != "" {
 		return nil, true, problem
 	}
 
 	return changed, true, ""
+}
+
+// otherEnd returns the field for the other end of a time than the one a
+// field is for.
+func otherEnd(field, from, to *ui.TextField) *ui.TextField {
+	if field == from {
+		return to
+	}
+
+	return from
 }
 
 // parseRangesField reads the start or end of one time of a time switch.
@@ -1125,7 +1163,7 @@ func parseRangesField(made *control, field *ui.TextField, value string, node flo
 		if (field != row.from && field != row.to) || index >= len(spans) {
 			continue
 		}
-		changed, problem := timeInto(spans[index], value, field == row.from)
+		changed, problem := timeInto(spans[index], value, field == row.from, otherEnd(field, row.from, row.to))
 		if problem != "" {
 			return nil, true, problem
 		}
@@ -1148,18 +1186,28 @@ func parseWhole(value string, low, high int) (any, bool, string) {
 }
 
 // timeInto sets the start or end of a range from typed text, or says what
-// is wrong with it.
-func timeInto(span flow.TimeRange, value string, start bool) (flow.TimeRange, string) {
+// is wrong with it. A time is judged as it will be saved: when its other
+// end has been typed too and waits for the same Save, that is the end it is
+// compared with, so 17:00–18:00 can become 18:00–20:00 in one Save.
+func timeInto(span flow.TimeRange, value string, start bool, other *ui.TextField) (flow.TimeRange, string) {
 	minute, ok := parseTime(value)
 	if !ok {
 		return span, "Enter a time of day such as 09:30"
 	}
+	saved := span
 	if start {
-		span.From = minute
+		span.From, saved.From = minute, minute
 	} else {
-		span.To = minute
+		span.To, saved.To = minute, minute
 	}
-	if span.From == span.To {
+	if typed, read := parseTime(other.Field.Value()); read && other.Field.Unsaved() {
+		if start {
+			saved.To = typed
+		} else {
+			saved.From = typed
+		}
+	}
+	if saved.From == saved.To {
 		return span, "A time needs to end after it starts"
 	}
 

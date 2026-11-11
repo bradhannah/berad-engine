@@ -351,7 +351,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout(docs)
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	palette, loaded := s.palette(docs)
 	if !loaded {
 		s.theme.DrawText(screen, "Loading the palette…", ui.Inset, ui.Inset, ui.ColorMuted())

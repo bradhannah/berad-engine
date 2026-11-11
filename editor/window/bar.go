@@ -20,6 +20,9 @@ const (
 	documentWidth = 340
 	tabPad        = 10
 	closeSize     = 14
+	// unsavedDot is the radius of the ink dot on a tab that holds changes
+	// waiting for Save.
+	unsavedDot = 4
 )
 
 // barTab is one tab drawn on the bar: a kind on the top row, or a document of
@@ -36,6 +39,9 @@ type barTab struct {
 	front  bool
 	tint   ui.Tint
 	tinted bool
+	// unsaved is set when what the tab stands for holds changes that wait
+	// for Save.
+	unsaved bool
 }
 
 // barHeight is how tall the bar is: one row, or two while the kind in front
@@ -60,10 +66,12 @@ func (s *shell) barTabs() []barTab {
 		shown := barTab{
 			rect: image.Rect(at*width, 0, (at+1)*width, rowHeight), tab: index, icons: s.icons(index, true),
 			label: kindName(group.view), count: len(group.tabs), boxes: false, front: false,
-			tint: ui.Tint{Name: "", Wash: ui.ColorPanel(), Ink: ui.ColorInk()}, tinted: false,
+			tint: ui.Tint{Name: "", Wash: ui.ColorDesk(), Strong: ui.ColorPage(), Ink: ui.ColorInk()}, tinted: false,
+			unsaved: slices.ContainsFunc(group.tabs, s.unsaved),
 		}
 		if len(group.tabs) == 1 {
 			shown.label, shown.count, shown.boxes = shortTitle(s.tabTitle(index), false), 0, s.closable(index)
+			shown.tint, shown.tinted = s.tintOf(index)
 		}
 		shown.front = slices.Contains(group.tabs, s.active)
 		tabs = append(tabs, shown)
@@ -86,7 +94,7 @@ func (s *shell) documentTabs(group kindGroup) []barTab {
 		tabs = append(tabs, barTab{
 			rect: image.Rect(at*width, rowHeight, (at+1)*width, rowHeight*ui.Half), tab: index,
 			icons: s.icons(index, false), label: labels[at], count: 0, boxes: s.closable(index), front: index == s.active,
-			tint: tint, tinted: tinted,
+			tint: tint, tinted: tinted, unsaved: s.unsaved(index),
 		})
 	}
 
@@ -167,9 +175,9 @@ func quietMouse(input *ui.Input) {
 // when it has several, Launch and the clock's readout.
 func (s *shell) drawBar(screen *ebiten.Image) {
 	height := s.barHeight()
-	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorPanel())
+	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorDesk())
 	if height > rowHeight {
-		ui.FillRect(screen, image.Rect(0, rowHeight, s.size.X, height), ui.ColorBackground())
+		ui.FillRect(screen, image.Rect(0, rowHeight, s.size.X, height), ui.ColorDesk())
 		ui.Divider(screen, image.Pt(0, rowHeight-ui.Hairline), image.Pt(s.size.X, rowHeight-ui.Hairline))
 	}
 	for _, shown := range s.barTabs() {
@@ -184,9 +192,9 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	rect := shown.rect
 	switch {
 	case shown.tinted:
-		drawTint(screen, rect, shown.tint)
+		drawTint(screen, rect, shown.tint, shown.front)
 	case shown.front:
-		ui.FillRect(screen, rect, ui.ColorBackground())
+		ui.FillRect(screen, rect, ui.ColorPage())
 	}
 	if shown.front {
 		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ui.ColorSelect())
@@ -201,6 +209,13 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	if shown.boxes {
 		right -= closeSize + ui.Gap
 		drawClose(screen, closeBox(rect))
+	}
+	if shown.unsaved {
+		middle := rect.Min.Y + rowHeight/ui.Half
+		right -= unsavedDot * ui.Half
+		ui.FillRound(screen, image.Rect(right, middle-unsavedDot, right+unsavedDot*ui.Half, middle+unsavedDot),
+			unsavedDot, ui.ColorInk())
+		right -= ui.Gap
 	}
 	textY := rect.Min.Y + (rowHeight-ui.TextSize)/ui.Half - 1
 	if shown.count > 1 {

@@ -193,7 +193,7 @@ func (s *State) drawZoneLoop(screen *ebiten.Image, docs frame.Docs, left int) {
 		return
 	}
 	s.theme.Heading(screen, "ZONE LOOP", left, panel.top)
-	ui.Box(screen, panel.box, ui.ColorBackground())
+	ui.Box(screen, panel.box, ui.ColorField())
 	label, ink := "No zone loop", ui.ColorMuted()
 	if entry, ok := s.selected(docs); ok {
 		if loop := s.loopOf(docs, entry.ID); !loop.IsZero() {

@@ -1,6 +1,10 @@
 package textedit
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+)
 
 // Key is a key the field responds to.
 type Key int
@@ -86,19 +90,34 @@ type Field struct {
 	pending   *string
 	multiline bool
 	breaks    bool
-	maxBytes  int
-	conflict  bool
-	column    *float64
+	// limit is how many characters the field holds, or 0 for no limit, and
+	// refusal says why the last typing or paste was refused for it, until
+	// taken.
+	limit    int
+	refusal  string
+	conflict bool
+	column   *float64
 }
 
-// NewField returns a field showing a saved value. In a multi-line field Enter
+// NewField returns a field showing a saved value, holding at most limit
+// characters, or any number when limit is 0. In a multi-line field Enter
 // starts a new line (as do Cmd+Enter and Ctrl+J); in a one-line field Enter
 // saves.
-func NewField(saved string, multiline bool, maxBytes int) *Field {
+func NewField(saved string, multiline bool, limit int) *Field {
 	return &Field{
-		saved: saved, draft: nil, pending: nil, multiline: multiline, breaks: false, maxBytes: maxBytes, conflict: false,
-		column: nil,
+		saved: saved, draft: nil, pending: nil, multiline: multiline, breaks: false, limit: limit, refusal: "",
+		conflict: false, column: nil,
 	}
+}
+
+// TakeRefusal returns why the field refused what was last typed or pasted
+// into it, once: the window says it in its status bar. It is "" when
+// nothing was refused.
+func (f *Field) TakeRefusal() string {
+	why := f.refusal
+	f.refusal = ""
+
+	return why
 }
 
 // KeepBreaks lets a one-line field hold line breaks: Enter still saves it,
@@ -239,9 +258,16 @@ func (f *Field) Type(value string) {
 	f.insert(value)
 }
 
+// insert puts text in place of the selection. Text that would take the
+// field past the characters it holds is refused whole, not cut to fit, and
+// the field keeps why for the window to say.
 func (f *Field) insert(value string) {
+	text := f.draft.Text()
 	start, end := f.draft.Selection()
-	if room := f.maxBytes - (len(f.draft.Text()) - (end - start)); f.maxBytes > 0 && len(value) > room {
+	total := utf8.RuneCountInString(text) - utf8.RuneCountInString(text[start:end]) + utf8.RuneCountInString(value)
+	if f.limit > 0 && total > f.limit {
+		f.refusal = fmt.Sprintf("Too long: this field holds %d characters, and that would make %d", f.limit, total)
+
 		return
 	}
 	f.draft.Insert(value)

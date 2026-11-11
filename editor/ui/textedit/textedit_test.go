@@ -2,6 +2,7 @@ package textedit_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
@@ -298,7 +299,7 @@ func TestCaretMovementKeys(t *testing.T) {
 	}
 }
 
-func TestMaxBytes(t *testing.T) {
+func TestALimitRefusesWhatDoesNotFit(t *testing.T) {
 	t.Parallel()
 	field := textedit.NewField("", false, 5)
 	field.Focus()
@@ -321,5 +322,37 @@ func TestRestoreKeepsADraftAcrossARebuild(t *testing.T) {
 	field.Restore("5")
 	if !field.Unsaved() || field.Value() != "5" {
 		t.Fatalf("restored draft: %q", field.Value())
+	}
+}
+
+// TestALimitCountsCharacters fills a field that holds five characters with
+// five of them, one accented and so two bytes long. One more is refused, and
+// so is a paste that would not fit, whole: neither is cut short, and each
+// time the field says why, once.
+func TestALimitCountsCharacters(t *testing.T) {
+	t.Parallel()
+	field := textedit.NewField("", false, 5)
+	field.Focus()
+	field.Type("héllo")
+	if field.Value() != "héllo" || field.TakeRefusal() != "" {
+		t.Fatalf("five characters fit a field that holds five: %q", field.Value())
+	}
+	field.Type("!")
+	if why := field.TakeRefusal(); field.Value() != "héllo" || !strings.Contains(why, "5 characters") {
+		t.Fatalf("a sixth character is refused, and the field says why: %q %q", field.Value(), why)
+	}
+	if again := field.TakeRefusal(); again != "" {
+		t.Fatalf("a refusal is told once: %q", again)
+	}
+	field.Buffer().Select(1, len("hé"))
+	clipboard := &memoryClipboard{value: "éé"}
+	press(field, textedit.KeyV, textedit.Mods{Shortcut: true}, clipboard)
+	if why := field.TakeRefusal(); field.Value() != "héllo" || !strings.Contains(why, "would make 6") {
+		t.Fatalf("a paste that would not fit is refused whole, with why: %q %q", field.Value(), why)
+	}
+	clipboard.value = "a"
+	press(field, textedit.KeyV, textedit.Mods{Shortcut: true}, clipboard)
+	if field.Value() != "hallo" || field.TakeRefusal() != "" {
+		t.Fatalf("a paste that fits over the selection goes in: %q", field.Value())
 	}
 }

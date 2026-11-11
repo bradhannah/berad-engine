@@ -239,7 +239,7 @@ func meterX(rect image.Rectangle, db float64) int {
 
 // drawMeter draws a meter: its track, the reference, and the marks.
 func drawMeter(screen *ebiten.Image, rect image.Rectangle, marks meterMarks) {
-	ui.FillRound(screen, rect, ui.Radius, ui.ColorPanel())
+	ui.FillRound(screen, rect, ui.Radius, ui.ColorDesk())
 	ui.StrokeRound(screen, rect, ui.Radius, ui.Hairline, ui.ColorRuleSoft())
 	middle := rect.Min.Y + rect.Dy()/ui.Half
 	reference := meterX(rect, 0)
@@ -251,7 +251,7 @@ func drawMeter(screen *ebiten.Image, rect image.Rectangle, marks meterMarks) {
 	}
 	if marks.recorded {
 		dot := meterDotAt(rect, marks.recordedDB, meterDot)
-		ui.FillRound(screen, dot, meterDot/ui.Half, ui.ColorBackground())
+		ui.FillRound(screen, dot, meterDot/ui.Half, ui.ColorField())
 		ui.StrokeRound(screen, dot, meterDot/ui.Half, ui.Border, ui.ColorMuted())
 	}
 	if marks.plays {
@@ -367,7 +367,7 @@ func (s *State) drawChain(screen *ebiten.Image, cue protocol.AudioCue, left, top
 			left, top = start, top+ui.ButtonH+ui.Gap
 		}
 		rect := image.Rect(left, top, left+width, top+ui.ButtonH)
-		fill, ink := ui.ColorPanel(), ui.ColorInk()
+		fill, ink := ui.ColorDesk(), ui.ColorInk()
 		if box.ours {
 			fill, ink = ui.ColorSelectWash(), ui.ColorSelect()
 		}

@@ -351,7 +351,7 @@ func (s *State) drawCue(screen *ebiten.Image, made *control, node flow.Node) {
 	case !s.isListed(chosen):
 		ink = ui.ColorMuted()
 	}
-	ui.Box(screen, made.cueBox, ui.ColorBackground())
+	ui.Box(screen, made.cueBox, ui.ColorField())
 	if made.open {
 		ui.StrokeRound(screen, made.cueBox, ui.Radius, ui.Border, ui.ColorSelect())
 	}
@@ -406,7 +406,7 @@ func (s *State) drawRowPlays(screen *ebiten.Image, list *ui.List) {
 			continue
 		}
 		button := rowPlayRect(rect)
-		ui.Box(screen, button, ui.ColorBackground())
+		ui.Box(screen, button, ui.ColorField())
 		if s.playing(row.ID) {
 			centre := ui.Center(button)
 			ui.FillRect(screen, image.Rect(centre.X-glyphSize/ui.Half, centre.Y-glyphSize/ui.Half,

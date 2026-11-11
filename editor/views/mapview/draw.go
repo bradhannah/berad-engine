@@ -20,18 +20,15 @@ import (
 )
 
 const (
-	belowAlpha = 0x40
-	gridAlpha  = 0x22
-	// outsideGridAlpha keeps the grid beyond the floor bounds quieter than
-	// the floor's own.
-	outsideGridAlpha = 0x12
-	minGridSize      = 12
-	minLabel         = 18
-	wallShare        = 2 // a wall's core is half a cell wide
-	minCore          = 2
-	dotSize          = 2
-	fullAlpha        = 0xff
-	hexWhite         = 0xffffff
+	belowAlpha  = 0x40
+	gridAlpha   = 0x22
+	minGridSize = 12
+	minLabel    = 18
+	wallShare   = 2 // a wall's core is half a cell wide
+	minCore     = 2
+	dotSize     = 2
+	fullAlpha   = 0xff
+	hexWhite    = 0xffffff
 	// Insets, in eighths of a cell: pickups and anchors are drawn smaller
 	// than a cell so the ground shows around them.
 	eighths      = 8
@@ -62,11 +59,11 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layoutWidgets(docs)
 	s.sprites.refresh(docs, s.camera.tile, s.shownSprites(docs))
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	grid := s.Grid()
 	area, ok := screen.SubImage(grid).(*ebiten.Image)
 	if ok {
-		area.Fill(ui.ColorCanvas())
+		area.Fill(ui.ColorStage())
 		s.drawFloors(area, docs, grid)
 		if !s.floor.IsZero() {
 			s.zoom.layout(grid, s.camera)
@@ -93,7 +90,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
 	if s.floor.IsZero() {
 		s.theme.DrawText(area, "This zone has no floors yet. Add one in the project browser.",
-			grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())
+			grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
 
 		return
 	}
@@ -141,7 +138,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawBox(area, grid, shown.Box)
 	}
 	if !loaded {
-		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorMuted())
+		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
 	}
 }
 
@@ -149,9 +146,9 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 // grid over it, so the space around the floor can be pictured, then clears
 // the floor's own rectangle for the floors drawn over it.
 func (s *State) drawOutside(area *ebiten.Image, bounds, grid image.Rectangle) {
-	ui.FillRect(area, grid, ui.ColorOutside())
+	ui.FillRect(area, grid, ui.ColorStage())
 	if s.camera.cellSize() >= minGridSize {
-		ink := ui.HexAlpha(0, outsideGridAlpha)
+		ink := ui.ColorStageGrid()
 		cells := s.camera.inView(grid)
 		for col := cells.Min.X; col <= cells.Max.X; col++ {
 			left := s.camera.cellRect(Cell{X: col, Y: 0}, grid).Min.X
@@ -162,9 +159,9 @@ func (s *State) drawOutside(area *ebiten.Image, bounds, grid image.Rectangle) {
 			ui.FillRect(area, image.Rect(grid.Min.X, top, grid.Max.X, top+ui.Hairline), ink)
 		}
 	}
-	ui.FillRect(area, s.camera.rectOf(bounds, grid), ui.ColorBackground())
+	ui.FillRect(area, s.camera.rectOf(bounds, grid), ui.ColorPage())
 	if s.outside {
-		ui.StrokeRect(area, s.camera.cellRect(s.hover, grid), ui.Hairline, ui.ColorSubdued())
+		ui.StrokeRect(area, s.camera.cellRect(s.hover, grid), ui.Hairline, ui.ColorStageMuted())
 	}
 }
 
@@ -222,7 +219,7 @@ func (s *State) drawCell(area *ebiten.Image, floorData *floor.Floor, cell Cell, 
 	case ground != "":
 		s.drawGround(area, rect, ground, fullAlpha)
 	case !s.below.On:
-		ui.FillRect(area, rect, ui.ColorBackground())
+		ui.FillRect(area, rect, ui.ColorPage())
 	}
 	if ground == "" && size >= minGridSize {
 		center := ui.Center(rect)
@@ -349,7 +346,7 @@ func (s *State) drawAnchors(area *ebiten.Image, floorData *floor.Floor, grid ima
 		}
 		centreX, centreY := float32(rect.Min.X)+float32(size)/ui.Half, float32(rect.Min.Y)+float32(size)/ui.Half
 		radius := max(float32(size)*anchorRadius, minAnchorRadius)
-		fill := ui.ColorBackground()
+		fill := ui.ColorField()
 		if anchor.ID == s.anchor || s.isNow(anchor.ID) {
 			fill = blue
 		}
@@ -389,7 +386,7 @@ func (s *State) drawAnchorName(area *ebiten.Image, rect image.Rectangle, anchor 
 	tagX := backing.Max.X + ui.Gap
 	tag := image.Rect(tagX, backing.Min.Y, tagX+s.theme.SmallWidth(nowTag)+ui.Half*pickTagPad, backing.Max.Y)
 	ui.FillRound(area, tag, float32(tag.Dy())/ui.Half, blue)
-	s.theme.DrawSmall(area, nowTag, tag.Min.X+pickTagPad, labelY, ui.ColorBackground())
+	s.theme.DrawSmall(area, nowTag, tag.Min.X+pickTagPad, labelY, ui.ColorReverse())
 }
 
 func (s *State) drawSelection(area *ebiten.Image, grid image.Rectangle) {
@@ -403,10 +400,31 @@ func (s *State) drawSelection(area *ebiten.Image, grid image.Rectangle) {
 	}
 }
 
+// npcHintLines is what the list of NPCs to place says while the project has
+// none: nothing once it has one, or with another tool.
+func (s *State) npcHintLines() []string {
+	if s.tool != ToolNPC || len(s.tileList.Rows) > 0 {
+		return nil
+	}
+
+	return []string{"No NPCs yet. Use New NPC", "in the project browser."}
+}
+
+// npcHint is where the hint's lines are drawn, at the top of the list's
+// place.
+func (s *State) npcHint() image.Rectangle {
+	top := s.tileList.Rect.Min.Y + ui.Gap
+
+	return image.Rect(ui.Inset, top, PanelWidth, top+len(s.npcHintLines())*ui.LineHeight)
+}
+
+// floorsHeadingTop is where the heading of the floor list starts.
+func (s *State) floorsHeadingTop() int { return s.floorList.Rect.Min.Y - headingSpace + ui.Gap }
+
 // drawPanel draws the tools, tiles and floors on the left.
 func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	height := s.size.Y - frame.StatusHeight
-	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorBackground())
+	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorPage())
 	ui.Divider(screen, image.Pt(PanelWidth-ui.Outline, 0), image.Pt(PanelWidth-ui.Outline, height))
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
@@ -421,10 +439,8 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 		tileHeading = "CHANGE SELECTED WALLS TO"
 	case ToolNPC:
 		tileHeading = "NPC TO PLACE"
-		if len(s.tileList.Rows) == 0 {
-			s.theme.DrawText(screen, "No NPCs yet. Use New NPC", ui.Inset, s.tileList.Rect.Min.Y+ui.Gap, ui.ColorMuted())
-			s.theme.DrawText(screen, "in the project browser.", ui.Inset, s.tileList.Rect.Min.Y+ui.Gap+ui.LineHeight,
-				ui.ColorMuted())
+		for index, line := range s.npcHintLines() {
+			s.theme.DrawText(screen, line, ui.Inset, s.npcHint().Min.Y+index*ui.LineHeight, ui.ColorMuted())
 		}
 	case ToolErase, ToolAnchor, ToolResize:
 		tileHeading = ""
@@ -432,7 +448,7 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	}
 	heading(tileHeading, s.tileList)
 	s.tileList.Draw(screen, s.theme)
-	heading("FLOORS (TOP FIRST)", s.floorList)
+	heading(floorsHeading, s.floorList)
 	s.floorList.Draw(screen, s.theme)
 	s.below.Draw(screen, s.theme)
 	s.previewBn.Draw(screen, s.theme)

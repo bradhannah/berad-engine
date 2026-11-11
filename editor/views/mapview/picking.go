@@ -107,10 +107,12 @@ func (s *State) pickListTop() int {
 
 // updatePicking takes the window's input while it picks: Cancel or Escape
 // cancels, a name in the list or a ring on the map answers, and the map
-// still pans and zooms.
+// still pans and zooms. The place may be on another floor, so the floor
+// list and PageUp and PageDown still change the floor shown.
 func (s *State) updatePicking(input *ui.Input, ctx *frame.Context) {
 	s.updateZoom(input, ctx)
 	frame.CommonKeys(input, ctx)
+	s.pickFloor(input, ctx)
 	ctx.Docs.View(s.floor, func(document client.Document) {
 		floorDoc, ok := document.Model.(*tilefloor.Document)
 		if !ok {
@@ -135,6 +137,21 @@ func (s *State) updatePicking(input *ui.Input, ctx *frame.Context) {
 			s.updatePickGrid(input, ctx, floorDoc.Floor)
 		}
 	})
+}
+
+// pickFloor changes the floor shown while picking, from the floor list or
+// with PageUp and PageDown.
+func (s *State) pickFloor(input *ui.Input, ctx *frame.Context) {
+	switch {
+	case input.Consume(ui.KeyPageUp, ui.Plain()):
+		s.stepFloor(1, ctx)
+	case input.Consume(ui.KeyPageDown, ui.Plain()):
+		s.stepFloor(-1, ctx)
+	case s.floorList.Update(input).Changed:
+		if id, err := ids.Parse(s.floorList.Selected); err == nil {
+			s.switchFloor(id, ctx)
+		}
+	}
 }
 
 // updatePickGrid pans and zooms the map and answers a click on an anchor.
@@ -197,7 +214,7 @@ func (s *State) drawPickWash(area *ebiten.Image, floorData *floor.Floor, grid im
 	box := image.Rect(rect.Min.X, rect.Max.Y+ui.Gap, rect.Min.X+s.theme.TextWidth(tip)+ui.Half*pickTipPad,
 		rect.Max.Y+ui.Gap+ui.LineHeight+pickTipPad)
 	ui.FillRound(area, box, ui.Radius, ui.ColorInk())
-	s.theme.DrawText(area, tip, box.Min.X+pickTipPad, box.Min.Y+pickTipPad/ui.Half+ui.Half, ui.ColorBackground())
+	s.theme.DrawText(area, tip, box.Min.X+pickTipPad, box.Min.Y+pickTipPad/ui.Half+ui.Half, ui.ColorReverse())
 }
 
 // drawPickBanner draws the banner over the map: what the place is for,
@@ -207,7 +224,7 @@ func (s *State) drawPickBanner(screen *ebiten.Image) {
 	ui.FillRound(screen, parts.banner, ui.Radius, ui.ColorSelect())
 	left := parts.banner.Min.X + ui.Inset
 	middle := parts.banner.Min.Y + pickBannerH/ui.Half
-	ui.DrawRing(screen, image.Pt(left+ui.IconSize/ui.Half, middle), ui.ColorBackground(), false)
+	ui.DrawRing(screen, image.Pt(left+ui.IconSize/ui.Half, middle), ui.ColorReverse(), false)
 	text := "Choose a place for " + labelOr(s.pick.Label, "the other tab")
 	if s.pick.Now.Name != "" {
 		text += "  ·  Now: " + s.pick.Now.Name
@@ -217,17 +234,20 @@ func (s *State) drawPickBanner(screen *ebiten.Image) {
 	for len(text) > 0 && s.theme.TextWidth(text) > room {
 		text = text[:len(text)-1]
 	}
-	s.theme.DrawText(screen, text, textLeft, middle-ui.TextSize/ui.Half-1, ui.ColorBackground())
-	ui.StrokeRound(screen, parts.bannerCancel.Rect, ui.Radius, ui.Border, ui.ColorBackground())
+	s.theme.DrawText(screen, text, textLeft, middle-ui.TextSize/ui.Half-1, ui.ColorReverse())
+	ui.StrokeRound(screen, parts.bannerCancel.Rect, ui.Radius, ui.Border, ui.ColorReverse())
 	label := parts.bannerCancel.Label
 	s.theme.DrawText(screen, label, parts.bannerCancel.Rect.Min.X+(pickCancelWidth-s.theme.TextWidth(label))/ui.Half,
-		parts.bannerCancel.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorBackground())
+		parts.bannerCancel.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorReverse())
 }
 
-// drawPickPanel fades the tools, which rest while picking.
+// drawPickPanel fades the tools, which rest while picking, and draws the
+// floor list over the fade: it still changes the floor shown.
 func (s *State) drawPickPanel(screen *ebiten.Image) {
 	height := s.size.Y - frame.StatusHeight
 	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.HexAlpha(hexWhite, pickWash))
+	s.theme.Heading(screen, floorsHeading, ui.Inset, s.floorsHeadingTop())
+	s.floorList.Draw(screen, s.theme)
 	s.theme.DrawText(screen, "Tools rest while you pick.", ui.Inset, height-ui.Inset-ui.LineHeight, ui.ColorMuted())
 }
 

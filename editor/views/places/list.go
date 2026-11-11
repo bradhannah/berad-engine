@@ -224,8 +224,7 @@ func rowAt(list *ui.List, point image.Point) string {
 
 // Draw draws the list over the window.
 func (l *List) Draw(screen *ebiten.Image) {
-	ui.FillRound(screen, l.rect.Add(image.Pt(0, ui.Gap)), ui.Radius, ui.ColorShade())
-	ui.Box(screen, l.rect, ui.ColorBackground())
+	ui.FloatBox(screen, l.rect, ui.ColorField())
 	l.search.Draw(screen)
 	l.list.Draw(screen, l.theme)
 }

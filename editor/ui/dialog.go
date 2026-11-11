@@ -126,7 +126,8 @@ func (d *Dialog) Draw(screen *ebiten.Image, theme *Theme) {
 	d.layout(screen.Bounds())
 	FillRect(screen, screen.Bounds(), ColorShade())
 	FillRound(screen, d.rect.Add(image.Pt(0, shadowDrop)), dialogRadius, HexAlpha(hexInk, shadowAlpha))
-	FillRound(screen, d.rect, dialogRadius, ColorBackground())
+	Float(screen, d.rect, dialogRadius)
+	FillRound(screen, d.rect, dialogRadius, ColorPage())
 	StrokeRound(screen, d.rect, dialogRadius, Border, ColorInk())
 	x, y := d.rect.Min.X+Inset, d.rect.Min.Y+Inset
 	theme.DrawStrong(screen, d.Title, x, y, ColorInk())

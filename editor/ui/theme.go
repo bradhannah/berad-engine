@@ -34,6 +34,8 @@ const (
 	// and Radius the rounding of their corners.
 	Border float32 = 1.5
 	Radius float32 = 6
+	// Waiting is the heavier outline of a field whose draft waits for Save.
+	Waiting float32 = 2.5
 	// Half and Gap are for centring and small spacing.
 	Half        = 2
 	Gap         = 4
@@ -50,27 +52,44 @@ const (
 	letterSpacing = 0.7
 )
 
-// The plain white look of the editor wireframes: dark ink outlines, blue for
-// selection and orange for anything live.
+// The desk and the stage: four tones, each with one job. White is a field,
+// where the author types or chooses; the page is what is read; the desk is
+// the window's own frame; the stage is behind the game. Regions meet at a
+// hairline, and the dark outline is kept for what is pressed or typed in.
 const (
-	hexBackground = 0xffffff
+	hexField = 0xffffff
+	hexPage  = 0xf4f2ec
+	hexDesk  = 0xe7e4da
+	hexStage = 0x35373b
+	// The stage's own ink and quieter ink, and the alpha of white for the
+	// grid drawn over it.
+	hexStageInk    = 0xeceae3
+	hexStageMuted  = 0xb4b6ba
+	stageGridAlpha = 0x18
+)
+
+// One job for each colour: blue is where the author is, orange is running
+// now, red is stop. Text is at least 4.5 to 1 against every ground it sits
+// on; see TestTextReadsOnEveryGround.
+const (
 	hexInk        = 0x1f2328
-	hexMuted      = 0x5a6270
-	hexSubdued    = 0x8a919c
+	hexMuted      = 0x4f555e
+	hexSubdued    = 0x5f646d
 	hexSelect     = 0x1f5fbf
-	hexSelectWash = 0xe8eef8
-	hexPanel      = 0xf7f7f5
-	hexCanvas     = 0xfafaf8
-	hexOutside    = 0xebece8
-	hexRule       = 0xc9cbc5
-	hexRuleSoft   = 0xe4e5e1
+	hexSelectWash = 0xdbe6f8
+	hexEdge       = 0xb7b3a6
+	hexRule       = 0xc7c3b7
+	hexRuleSoft   = 0xdedbd0
 	hexWarn       = 0xb3261e
-	hexCaution    = 0x9a6400
-	hexHover      = 0xf0f0ec
-	hexLive       = 0xb4540a
-	hexLiveWash   = 0xfbf1e8
-	hexGroup      = 0xe3f0ec
+	hexWarnWash   = 0xfbe9e7
+	hexCaution    = 0x8a5a00
+	hexHover      = 0xe9e6dc
+	hexLive       = 0xa54c07
+	hexLiveWash   = 0xf8e6d5
+	hexGroup      = 0xdcebe0
 	shadeAlpha    = 0x66
+	// floatAlpha is the strength of the hard shadow under what floats.
+	floatAlpha = 0x59
 )
 
 // Muted colours that tell document types apart, always beside an icon, never
@@ -87,9 +106,9 @@ const (
 // slate, each with a wash to sit on.
 const (
 	hexConstant     = 0x8a5a1c
-	hexConstantWash = 0xf7efe2
+	hexConstantWash = 0xf5e6cc
 	hexValue        = 0x3d5f8a
-	hexValueWash    = 0xe8eef6
+	hexValueWash    = 0xdfe7f2
 )
 
 // Embedded IBM Plex fonts (SIL Open Font License; see fonts/OFL.txt).
@@ -123,8 +142,35 @@ func HexAlpha(rgb uint32, alpha uint8) color.RGBA {
 	return color.RGBA{R: scale(rgb >> redShift), G: scale(rgb >> greenShift), B: scale(rgb), A: alpha}
 }
 
-// ColorBackground is the background of windows and fields.
-func ColorBackground() color.RGBA { return Hex(hexBackground) }
+// ColorField is white: the ground of what the author types in or chooses
+// from, such as a field, a button, a workflow's node or a menu. It is the
+// only white on screen.
+func ColorField() color.RGBA { return Hex(hexField) }
+
+// ColorPage is the ground of what is read: a view's panels and lists, a
+// dialog, and a workflow's canvas.
+func ColorPage() color.RGBA { return Hex(hexPage) }
+
+// ColorDesk is the window's own frame: the window bar, the status bar and a
+// split's divider.
+func ColorDesk() color.RGBA { return Hex(hexDesk) }
+
+// ColorStage is the dark, neutral ground behind the game: a Map's canvas,
+// the Pixel editor's and Play's.
+func ColorStage() color.RGBA { return Hex(hexStage) }
+
+// ColorStageInk is text and marks written straight on the stage.
+func ColorStageInk() color.RGBA { return Hex(hexStageInk) }
+
+// ColorStageMuted is quieter text and marks on the stage.
+func ColorStageMuted() color.RGBA { return Hex(hexStageMuted) }
+
+// ColorStageGrid is the faint grid drawn over the stage.
+func ColorStageGrid() color.RGBA { return HexAlpha(hexField, stageGridAlpha) }
+
+// ColorReverse is text and marks drawn on a filled colour, such as the
+// label of a primary button: white.
+func ColorReverse() color.RGBA { return Hex(hexField) }
 
 // ColorInk is the colour of text and of outlines.
 func ColorInk() color.RGBA { return Hex(hexInk) }
@@ -132,24 +178,20 @@ func ColorInk() color.RGBA { return Hex(hexInk) }
 // ColorMuted is the colour of labels and secondary text.
 func ColorMuted() color.RGBA { return Hex(hexMuted) }
 
-// ColorSubdued is the colour of IDs and placeholders (D4: read-only and
-// subdued).
+// ColorSubdued is the colour of IDs, hints and placeholders (D4: read-only
+// and subdued). It still reads at 4.5 to 1 on the desk.
 func ColorSubdued() color.RGBA { return Hex(hexSubdued) }
 
-// ColorSelect is the colour of selection, focus and links.
+// ColorSelect is the colour of where the author is: the selection, the field
+// with the keyboard, the tool in hand and a panel's main button.
 func ColorSelect() color.RGBA { return Hex(hexSelect) }
 
 // ColorSelectWash is the background of selected text and rows.
 func ColorSelectWash() color.RGBA { return Hex(hexSelectWash) }
 
-// ColorPanel is the background of the status bar and quiet panels.
-func ColorPanel() color.RGBA { return Hex(hexPanel) }
-
-// ColorCanvas is the background of a map or workflow canvas.
-func ColorCanvas() color.RGBA { return Hex(hexCanvas) }
-
-// ColorOutside is the shade of a map beyond the floor bounds.
-func ColorOutside() color.RGBA { return Hex(hexOutside) }
+// ColorEdge is the hairline where two regions meet, a step darker than the
+// desk.
+func ColorEdge() color.RGBA { return Hex(hexEdge) }
 
 // ColorRule is the colour of light dividing lines and canvas dots.
 func ColorRule() color.RGBA { return Hex(hexRule) }
@@ -157,8 +199,11 @@ func ColorRule() color.RGBA { return Hex(hexRule) }
 // ColorRuleSoft is the colour of the faintest lines, such as a canvas grid.
 func ColorRuleSoft() color.RGBA { return Hex(hexRuleSoft) }
 
-// ColorWarn is the colour of warnings and unsaved marks.
+// ColorWarn is the colour of stop: refused, never runs, will delete.
 func ColorWarn() color.RGBA { return Hex(hexWarn) }
+
+// ColorWarnWash is the background of a refusal's message.
+func ColorWarnWash() color.RGBA { return Hex(hexWarnWash) }
 
 // ColorCaution is the colour of what deserves a look but is not wrong, such
 // as a receiver nothing sends to: amber, beside problems' red.
@@ -205,6 +250,9 @@ func ColorGroup() color.RGBA { return Hex(hexGroup) }
 
 // ColorShade dims a window behind a dialog.
 func ColorShade() color.RGBA { return HexAlpha(0, shadeAlpha) }
+
+// ColorFloat is the hard shadow under what floats.
+func ColorFloat() color.RGBA { return HexAlpha(0, floatAlpha) }
 
 // Theme holds the fonts every widget draws with.
 type Theme struct {
@@ -472,6 +520,23 @@ func Box(screen *ebiten.Image, rect image.Rectangle, fill color.Color) {
 	StrokeRound(screen, rect, Radius, Border, ColorInk())
 }
 
+// FloatDrop is how far the hard shadow under something that floats falls,
+// straight down.
+const FloatDrop = 2
+
+// Float draws the hard shadow under a box that floats over the window, such
+// as a menu, a dialog or a picker: its own shape, FloatDrop lower, never
+// blurred. Draw it before the box.
+func Float(screen *ebiten.Image, rect image.Rectangle, radius float32) {
+	FillRound(screen, rect.Add(image.Pt(0, FloatDrop)), radius, ColorFloat())
+}
+
+// FloatBox draws a box that floats: its hard shadow, then the box.
+func FloatBox(screen *ebiten.Image, rect image.Rectangle, fill color.Color) {
+	Float(screen, rect, Radius)
+	Box(screen, rect, fill)
+}
+
 // rounded returns the path of a rounded rectangle, inset by inset pixels.
 func rounded(rect image.Rectangle, radius, inset float32) *vector.Path {
 	left, top := float32(rect.Min.X)+inset, float32(rect.Min.Y)+inset
@@ -492,10 +557,12 @@ func rounded(rect image.Rectangle, radius, inset float32) *vector.Path {
 	return &path
 }
 
-// Divider draws the ink line between a window's panes.
+// Divider draws the hairline where two regions meet, such as a window's
+// panes or a panel and a canvas.
 func Divider(screen *ebiten.Image, from, to image.Point) {
-	vector.StrokeLine(screen, float32(from.X)+Border/Half, float32(from.Y)+Border/Half, float32(to.X)+Border/Half,
-		float32(to.Y)+Border/Half, Border, ColorInk(), true)
+	const middle = float32(Hairline) / Half
+	vector.StrokeLine(screen, float32(from.X)+middle, float32(from.Y)+middle, float32(to.X)+middle,
+		float32(to.Y)+middle, Hairline, ColorEdge(), false)
 }
 
 // Line draws a straight line.

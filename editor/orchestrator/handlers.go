@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -300,20 +302,15 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 
 		return
 	}
-	redone := step{gesture: candidate.gesture, actions: make([]action, len(candidate.actions))}
-	var revision uint64
-	for index := len(candidate.actions) - 1; index >= 0; index-- {
-		reverted := candidate.actions[index]
-		applied, err := o.applyEdit(from, reverted.document, reverted.inverseEdit(), reverted.back, 0)
-		if err != nil {
-			o.reply(from, request, err.Error(), 0)
+	applied, revision, err := o.applyStep(from, inverted(candidate.actions))
+	left := candidate.actions[:len(candidate.actions)-len(applied)]
+	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: left})
+	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: inverted(applied)})
+	if err != nil {
+		o.reply(from, request, err.Error(), 0)
 
-			return
-		}
-		revision = applied.revision
-		redone.actions[index] = invert(applied.action)
+		return
 	}
-	o.history.pushRedo(from.group, redone)
 	o.reply(from, request, "", revision)
 }
 
@@ -346,20 +343,64 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 
 		return
 	}
-	again := step{gesture: candidate.gesture, actions: make([]action, 0, len(candidate.actions))}
-	var revision uint64
-	for _, reapplied := range candidate.actions {
-		applied, err := o.applyEdit(from, reapplied.document, reapplied.edit, reapplied.forward, 0)
-		if err != nil {
-			o.reply(from, request, err.Error(), 0)
+	applied, revision, err := o.applyStep(from, candidate.actions)
+	o.history.pushUndo(from.group, step{gesture: candidate.gesture, actions: applied})
+	o.history.pushRedo(from.group, step{gesture: candidate.gesture, actions: candidate.actions[len(applied):]})
+	if err != nil {
+		o.reply(from, request, err.Error(), 0)
 
-			return
-		}
-		revision = applied.revision
-		again.actions = append(again.actions, applied.action)
+		return
 	}
-	o.history.pushUndo(from.group, again)
 	o.reply(from, request, "", revision)
+}
+
+// applyStep applies a step's actions in order, as one change: if one is
+// refused, those already applied are reverted, last first, so the documents
+// are left as they were. It returns the applied actions still in effect:
+// all of them, or none after a refusal. Should a revert be refused too, the
+// actions it could not revert are returned with the refusal, so the caller
+// keeps them where they can be undone.
+func (o *Orchestrator) applyStep(from *window, actions []action) ([]action, uint64, error) {
+	applied := make([]action, 0, len(actions))
+	var revision uint64
+	for _, next := range actions {
+		done, err := o.applyEdit(from, next.document, next.edit, next.forward, 0)
+		if err != nil {
+			return o.revertStep(from, applied), 0, err
+		}
+		revision = done.revision
+		applied = append(applied, done.action)
+	}
+
+	return applied, revision, nil
+}
+
+// revertStep reverts applied actions, last first, and returns those it
+// could not revert: none, unless a revert is refused.
+func (o *Orchestrator) revertStep(from *window, applied []action) []action {
+	for len(applied) > 0 {
+		last := applied[len(applied)-1]
+		if _, err := o.applyEdit(from, last.document, last.inverseEdit(), last.back, 0); err != nil {
+			o.cfg.Logger.Error("could not put back part of a refused step", "document", last.document, "error", err)
+
+			return applied
+		}
+		applied = applied[:len(applied)-1]
+	}
+
+	return nil
+}
+
+// inverted turns a step's actions into the actions that take it back, last
+// first: applying them undoes the step, and inverting what was applied gives
+// the step that redoes it.
+func inverted(actions []action) []action {
+	back := make([]action, 0, len(actions))
+	for _, applied := range slices.Backward(actions) {
+		back = append(back, invert(applied))
+	}
+
+	return back
 }
 
 // invert turns the result of applying an undo into the action that redoes it.
@@ -416,6 +457,68 @@ func (o *Orchestrator) publishNotice(notice protocol.Notice) {
 	for _, other := range o.windows {
 		o.send(other, mustMessage(protocol.KindSession, 0, update))
 	}
+}
+
+// tellUnread leaves a notice, for every window that opens, of the files
+// left out of the project because they could not be read as documents:
+// which files, and why each. The files stay where they are, to be fixed.
+func (o *Orchestrator) tellUnread(unread []unreadFile) {
+	if len(unread) == 0 {
+		return
+	}
+	named := make([]string, 0, len(unread))
+	for _, file := range unread {
+		named = append(named, file.path+" ("+file.reason+")")
+	}
+	text := "Left out of the project, as it could not be read: "
+	if len(unread) > 1 {
+		text = "Left out of the project, as they could not be read: "
+	}
+	o.publishNotice(protocol.Notice{
+		Kind: protocol.NoticeFilesLeftOut, Window: ids.ULID{}, Report: "",
+		Text: text + strings.Join(named, "; ") + ". Fix what is wrong in the file, then open the project again.",
+	})
+}
+
+// shownNotice returns the notice windows show now, of no kind when none.
+func (o *Orchestrator) shownNotice() protocol.Notice {
+	var shown protocol.Notice
+	if value, kept := o.session[protocol.TopicNotice]; kept {
+		if err := json.Unmarshal(value, &shown); err != nil {
+			o.cfg.Logger.Error("decode notice", "error", err)
+		}
+	}
+
+	return shown
+}
+
+// tellSaving tells every window that a save failed, with the first reason
+// why, and keeps that the notice they show, over any other, while saves go
+// on failing: a window opened meanwhile shows it too. The first save that
+// succeeds tells the windows so, which ends the notice; windows opened
+// later hear nothing of it.
+func (o *Orchestrator) tellSaving(failure error) {
+	shown := o.shownNotice()
+	if failure != nil {
+		reason, more, _ := strings.Cut(failure.Error(), "\n")
+		if more != "" {
+			reason += ", and more"
+		}
+		text := "Changes are not reaching the project's files: " + reason +
+			". They are kept in the journal, and the editor keeps trying."
+		if shown.Kind != protocol.NoticeSaveFailed || shown.Text != text {
+			o.publishNotice(protocol.Notice{Kind: protocol.NoticeSaveFailed, Text: text, Window: ids.ULID{}, Report: ""})
+		}
+
+		return
+	}
+	if shown.Kind != protocol.NoticeSaveFailed {
+		return
+	}
+	o.publishNotice(protocol.Notice{
+		Kind: protocol.NoticeSaved, Text: "Saved: the project's files are up to date again.", Window: ids.ULID{}, Report: "",
+	})
+	delete(o.session, protocol.TopicNotice)
 }
 
 func (o *Orchestrator) openWindow(from *window, message protocol.Message) {

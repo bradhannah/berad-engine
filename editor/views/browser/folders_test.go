@@ -235,6 +235,33 @@ func TestFolderInspector(t *testing.T) {
 	}
 }
 
+// TestAFolderKeepsItsNameWhenItIsCleared clears a folder's name and saves:
+// nothing is sent, least of all the folder change with no name to go to,
+// which deletes the folder; the status bar says why, and the cleared name
+// stays unsaved in its field, to type a name into or revert.
+func TestAFolderKeepsItsNameWhenItIsCleared(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withFolders(f)
+	f.click("row:Wilds", false)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	f.click("ui:name", false)
+	f.press("Cmd+A")
+	f.typeText("  ")
+	f.click("ui:save", false)
+	if folders := f.requests.Of(project.FolderEdit); len(folders) != 0 {
+		var change project.FolderArgs
+		_ = folders[0].Decode(&change)
+		t.Fatalf("a cleared name changed the folder: %+v", change)
+	}
+	if message, _ := f.ctx.Frame.Message(); !strings.Contains(message, "needs a name") {
+		t.Fatalf("status %q", message)
+	}
+	if row, ok := f.state.SelectedRow(f.ctx.Docs); !ok || row.ID != "folder:workflow:Wilds" || f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatalf("Wilds stays selected with its name unsaved: %+v, %d unsaved", row, f.state.Unsaved(f.ctx.Docs))
+	}
+}
+
 // TestTagsSaveAndSearch saves typed tags, and a tag's button searches for
 // it.
 func TestTagsSaveAndSearch(t *testing.T) {
@@ -255,5 +282,84 @@ func TestTagsSaveAndSearch(t *testing.T) {
 	if tags := f.requests.Of(project.TagsEdit); len(tags) != 1 || tags[0].Decode(&retag) != nil ||
 		retag.ID != watchID || strings.Join(retag.Tags, ",") != "night,patrol" {
 		t.Fatalf("tags: %+v", retag)
+	}
+}
+
+// putFolders gives the project the workflow folders of withFolders with
+// Market/Guards at another path, or gone when the path is "", as the
+// project is after a folder change is carried out.
+func (f *fixture) putFolders(guards string) {
+	entries := []project.Entry{
+		{ID: zoneID, Name: "Town", Format: "zone"},
+		{ID: floorID, Name: "Ground", Format: "tilefloor"}, {ID: clerkID, Name: "Ada Clerk", Format: "npc"},
+		{ID: dayID, Name: "Clerk day", Format: flow.FormatName, Folder: "Market"},
+	}
+	folders := []project.Folder{{Format: flow.FormatName, Path: "Market"}, {Format: flow.FormatName, Path: "Wilds"}}
+	if guards != "" {
+		entries = append(entries, project.Entry{ID: watchID, Name: "Night watch", Format: flow.FormatName, Folder: guards})
+		folders = append(folders, project.Folder{Format: flow.FormatName, Path: guards})
+	}
+	f.ctx.Docs.(*frametest.Docs).Put(project.IndexID(), "Project", project.NewIndexWithFolders(entries, folders))
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+}
+
+// shownRows lists the main pane's rows as it stands, by label.
+func (f *fixture) shownRows() []string {
+	var shown []string
+	for _, row := range f.state.Rows(f.ctx.Docs) {
+		if !row.Heading {
+			shown = append(shown, row.Label)
+		}
+	}
+
+	return shown
+}
+
+// TestTheFolderShownIsFollowed shows a folder, then renames it, moves it
+// and deletes it from its own inspector: the main pane goes on showing what
+// the folder holds under its new name and in its new place, and its parent
+// once it is gone, never an empty list under a name no longer there.
+func TestTheFolderShownIsFollowed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withFolders(f)
+	f.state.Show("folder:workflow:Market/Guards")
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	f.click("ui:name", false)
+	f.press("Cmd+A")
+	f.typeText("Watch")
+	f.click("ui:save", false)
+	f.requests.Of(project.FolderEdit)[0].Succeed(frametest.ID(0))
+	f.putFolders("Market/Watch")
+	if got := f.shownRows(); !slices.Equal(got, []string{"Night watch"}) {
+		t.Fatalf("renamed, the folder shown still shows what it holds: %v", got)
+	}
+
+	f.click("ui:move-to", false)
+	f.click("menu:", false)
+	var change project.FolderArgs
+	folders := f.requests.Of(project.FolderEdit)
+	if len(folders) != 2 || folders[1].Decode(&change) != nil || change.From != "Market/Watch" || change.To != "Watch" {
+		t.Fatalf("moved to the top: %+v", change)
+	}
+	folders[1].Succeed(frametest.ID(0))
+	f.putFolders("Watch")
+	if got := f.shownRows(); !slices.Equal(got, []string{"Night watch"}) {
+		t.Fatalf("moved, the folder shown still shows what it holds: %v", got)
+	}
+
+	f.state.Show("folder:workflow:Wilds")
+	f.click("ui:delete", false)
+	folders = f.requests.Of(project.FolderEdit)
+	if len(folders) != 3 {
+		t.Fatalf("Wilds, empty, is deleted: %d folder changes", len(folders))
+	}
+	folders[2].Succeed(frametest.ID(0))
+	entries := []project.Entry{{ID: watchID, Name: "Night watch", Format: flow.FormatName, Folder: "Watch"}}
+	f.ctx.Docs.(*frametest.Docs).Put(project.IndexID(), "Project", project.NewIndexWithFolders(entries,
+		[]project.Folder{{Format: flow.FormatName, Path: "Market"}, {Format: flow.FormatName, Path: "Watch"}}))
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if got := f.shownRows(); !slices.Equal(got, []string{"Market", "Watch"}) {
+		t.Fatalf("deleted, the folder shown gives way to what held it: %v", got)
 	}
 }

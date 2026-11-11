@@ -102,6 +102,9 @@ func (w *TextField) Center() image.Point {
 // it does not use stay in the input for the window.
 func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit.Outcome, bool) {
 	clicked := input.Pressed && input.Cursor.In(w.Rect)
+	// Whether the button is held is read before the field takes the press,
+	// which clears it from the input.
+	down := input.Down
 	if clicked {
 		w.SetFocus(true)
 		// Escape can drop the draft while the field keeps focus.
@@ -109,12 +112,7 @@ func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit
 		w.placeCaret(input)
 		input.ClearPointer()
 	}
-	if w.dragging && input.Down {
-		w.Field.Buffer().SetCaret(w.hit(input.Cursor), true)
-	}
-	if !input.Down {
-		w.dragging = false
-	}
+	w.drag(input, down)
 	if !w.focused {
 		return textedit.OutcomeNone, clicked
 	}
@@ -149,6 +147,23 @@ func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit
 	w.keepCaretVisible()
 
 	return outcome, clicked
+}
+
+// drag selects from where the button was pressed in the field to the
+// pointer, for as long as the button is held, wherever the pointer goes. The
+// field keeps the held button to itself meanwhile, so nothing the pointer
+// passes over takes it for its own.
+func (w *TextField) drag(input *Input, down bool) {
+	if !down {
+		w.dragging = false
+	}
+	if !w.dragging {
+		return
+	}
+	if buffer := w.Field.Buffer(); buffer != nil {
+		buffer.SetCaret(w.hit(input.Cursor), true)
+	}
+	input.ClearPointer()
 }
 
 func (w *TextField) placeCaret(input *Input) {
@@ -471,10 +486,13 @@ func (l fieldLines) Vertical(offset, delta int, column *float64) int {
 // Draw renders the field: its box, selection, text, unfinished input method
 // text, caret and an unsaved mark.
 func (w *TextField) Draw(screen *ebiten.Image) {
-	FillRound(screen, w.Rect, Radius, ColorBackground())
+	FillRound(screen, w.Rect, Radius, ColorField())
 	edge, width := ColorInk(), Border
-	if w.focused {
+	switch {
+	case w.focused:
 		edge, width = ColorSelect(), Outline
+	case w.Field.Dirty() && !w.Unmarked:
+		width = Waiting
 	}
 	StrokeRound(screen, w.Rect, Radius, width, edge)
 	area, ok := screen.SubImage(w.Rect.Inset(Hairline)).(*ebiten.Image)
@@ -492,12 +510,12 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 	}
 }
 
-// DrawUnsavedMark draws the small red square at the top right of a box that
-// says what it holds is not saved yet: a field's draft, or a choice that
-// waits for Save as typing does.
+// DrawUnsavedMark draws the ink dot at the top right of a box that says what
+// it holds waits for Save: a field's draft, or a choice that waits for Save as
+// typing does. It is ink, not red: red means stop, and a draft is not wrong.
 func DrawUnsavedMark(screen *ebiten.Image, box image.Rectangle) {
 	mark := image.Rect(box.Max.X-unsavedMark-Gap, box.Min.Y+Gap, box.Max.X-Gap, box.Min.Y+Gap+unsavedMark)
-	FillRect(screen, mark, ColorWarn())
+	FillRound(screen, mark, float32(unsavedMark)/Half, ColorInk())
 }
 
 // drawText draws the text with the selection under it and the caret, or the

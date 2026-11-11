@@ -58,7 +58,7 @@ func (s *State) drawLegend(screen *ebiten.Image) {
 		return
 	}
 	ui.FillRound(screen, box.Add(image.Pt(0, zoomShadow)), ui.Radius, ui.HexAlpha(0, zoomShade))
-	ui.Box(screen, box, ui.ColorBackground())
+	ui.FloatBox(screen, box, ui.ColorPage())
 	top := box.Min.Y + legendPad
 	for _, row := range legendRows() {
 		middle := top + ui.LineHeight/ui.Half

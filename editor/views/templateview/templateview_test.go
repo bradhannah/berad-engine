@@ -258,3 +258,34 @@ func TestPreviewShowsASprite(t *testing.T) {
 		t.Fatal("the preview shows nothing again")
 	}
 }
+
+// TestAnUnsavedGuideNameStaysWithItsGuide types a name for the second of
+// three guides, then removes the first: the typed name moves up with its
+// guide, and Save names that guide, not the one now in the second row.
+func TestAnUnsavedGuideNameStaysWithItsGuide(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	for _, step := range []string{"ui:add-guide", "ui:add-guide"} {
+		f.click(step)
+		f.applyAll()
+	}
+	f.click("ui:guide-2-name")
+	typing := ui.NewInput(f.at("ui:guide-2-name"))
+	typing.Presses = append(typing.Presses, ui.ParsePress("Cmd+A"))
+	f.frame(typing)
+	typing = ui.NewInput(f.at("ui:guide-2-name"))
+	typing.Text = "feet"
+	f.frame(typing)
+	f.click("ui:guide-1-remove")
+	f.applyAll()
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if !f.has("guides:2") || f.state.Unsaved(f.docs) != 1 {
+		t.Fatalf("the first guide is gone and the typed name still waits: %d unsaved", f.state.Unsaved(f.docs))
+	}
+	f.click("ui:save")
+	f.applyAll()
+	guides := f.template().Guides
+	if len(guides) != 2 || guides[0].Name != "feet" || guides[1].Name != "Guide 3" {
+		t.Fatalf("the typed name went to the guide it was typed for: %+v", guides)
+	}
+}

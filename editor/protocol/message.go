@@ -234,6 +234,18 @@ type HomeKept struct {
 // NoticeWindowCrashed is the notice kind for a window that closed unexpectedly.
 const NoticeWindowCrashed = "window-crashed"
 
+// NoticeSaveFailed is the notice kind for changes that could not be saved to
+// the project's files, and NoticeSaved the kind for a save that then
+// succeeded, which ends it.
+const (
+	NoticeSaveFailed = "save-failed"
+	NoticeSaved      = "saved"
+)
+
+// NoticeFilesLeftOut is the notice kind for files left out of the project
+// when it opened, because they could not be read as documents.
+const NoticeFilesLeftOut = "files-left-out"
+
 // Notice is a user-facing message, published on TopicNotice.
 type Notice struct {
 	Kind   string   `json:"kind"`

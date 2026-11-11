@@ -108,7 +108,7 @@ func (s *State) drawRunsIn(screen *ebiten.Image, docs frame.Docs) {
 	}
 	s.theme.Heading(screen, "Runs in", box.Min.X, box.Min.Y-ui.LineHeight)
 	zoneID := s.runsIn(docs)
-	ui.FillRound(screen, box, ui.Radius, ui.ColorBackground())
+	ui.FillRound(screen, box, ui.Radius, ui.ColorField())
 	ink, note := ui.ColorInk(), "Its places come from inputs and values, so NPCs in any zone can run it."
 	if zoneID.IsZero() {
 		ink = ui.ColorMuted()

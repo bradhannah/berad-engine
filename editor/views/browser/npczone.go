@@ -120,7 +120,7 @@ func (s *State) drawZone(screen *ebiten.Image, docs frame.Docs, npcID ids.ULID, 
 	if entry, exists := s.index(docs).Entry(zoneID); exists && !zoneID.IsZero() {
 		name, known = entry.Name, true
 	}
-	ui.FillRound(screen, panel.zone, ui.Radius, ui.ColorBackground())
+	ui.FillRound(screen, panel.zone, ui.Radius, ui.ColorField())
 	ink := ui.ColorInk()
 	if known {
 		ui.StrokeRound(screen, panel.zone, ui.Radius, ui.Border, ui.ColorInk())

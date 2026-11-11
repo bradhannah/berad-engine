@@ -112,16 +112,18 @@ func (b *SaveBar) Message() string {
 	}
 }
 
-// Draw renders the bar: a quiet panel, or a red outline and dot when
-// something is unsaved; the message with the Cmd+S hint; and the buttons.
+// Draw renders the bar: quiet, on the page, when everything is saved, and
+// solid ink with a white dot while something waits for Save, so it is the
+// strongest thing in its panel without borrowing red, which means stop; the
+// message with the Cmd+S hint; and the buttons.
 func (b *SaveBar) Draw(screen *ebiten.Image, theme *Theme) {
 	if b.Rect.Empty() {
 		return
 	}
 	b.layout()
-	fill, edge, ink := ColorPanel(), ColorRuleSoft(), ColorSubdued()
+	fill, edge, ink, hintInk := ColorPage(), ColorRule(), ColorSubdued(), ColorSubdued()
 	if b.Unsaved > 0 {
-		fill, edge, ink = ColorBackground(), ColorWarn(), ColorInk()
+		fill, edge, ink, hintInk = ColorInk(), ColorInk(), ColorReverse(), ColorStageMuted()
 	}
 	FillRound(screen, b.Rect, Radius, fill)
 	StrokeRound(screen, b.Rect, Radius, Border, edge)
@@ -133,10 +135,10 @@ func (b *SaveBar) Draw(screen *ebiten.Image, theme *Theme) {
 	if b.Unsaved > 0 {
 		centre := image.Pt(left+saveDot, row.Min.Y+row.Dy()/Half)
 		FillRound(screen, image.Rect(centre.X-saveDot, centre.Y-saveDot, centre.X+saveDot, centre.Y+saveDot), saveDot,
-			ColorWarn())
+			ColorReverse())
 		left += saveDot*Half + Gap*Half
 		hint := "Cmd+S"
-		theme.DrawText(screen, hint, row.Max.X-Gap-theme.TextWidth(hint), textTop, ColorSubdued())
+		theme.DrawText(screen, hint, row.Max.X-Gap-theme.TextWidth(hint), textTop, hintInk)
 	}
 	theme.DrawText(screen, b.Message(), left, textTop, ink)
 	b.revert.Draw(screen, theme)

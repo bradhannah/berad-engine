@@ -236,7 +236,7 @@ func (s *State) drawSounds(area *ebiten.Image, floorData *floor.Floor, grid imag
 		}
 		radius := max(size*soundRadius, minAnchorRadius)
 		vector.FillCircle(area, centreX, centreY, radius, purple, true)
-		vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorBackground(), true)
+		vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorReverse(), true)
 		if rect.Dx() < minLabel {
 			continue
 		}

@@ -69,7 +69,7 @@ func (s *State) drawRef(screen *ebiten.Image, docs frame.Docs, made *control, no
 	if !held.IsZero() {
 		label, ink = s.names(docs).Name(held, "a deleted "+string(made.operandType)), ui.ColorInk()
 	}
-	ui.Box(screen, made.cueBox, ui.ColorBackground())
+	ui.Box(screen, made.cueBox, ui.ColorField())
 	if made.operandType == worldstate.TypeZone {
 		corner := image.Pt(made.cueBox.Min.X+boxPad, made.cueBox.Min.Y+(ui.ButtonH-ui.IconSize)/ui.Half)
 		ui.DrawIcon(screen, ui.IconZone, corner)

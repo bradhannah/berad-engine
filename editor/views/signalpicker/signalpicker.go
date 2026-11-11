@@ -358,7 +358,8 @@ func (p *Picker) Draw(screen *ebiten.Image, window image.Rectangle) {
 	p.layout(window)
 	ui.FillRect(screen, window, ui.ColorShade())
 	ui.FillRound(screen, p.box.Add(image.Pt(0, shadow)), radius, ui.HexAlpha(0, shade))
-	ui.FillRound(screen, p.box, radius, ui.ColorBackground())
+	ui.Float(screen, p.box, radius)
+	ui.FillRound(screen, p.box, radius, ui.ColorPage())
 	ui.StrokeRound(screen, p.box, radius, ui.Border, ui.ColorInk())
 	left, top := p.box.Min.X+ui.Inset, p.box.Min.Y+ui.Inset
 	p.theme.DrawStrong(screen, p.config.Title, left, top, ui.ColorInk())

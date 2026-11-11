@@ -1,6 +1,9 @@
 package workflowview
 
-import flow "github.com/bradhannah/berad-engine/engine/workflow"
+import (
+	"github.com/bradhannah/berad-engine/editor/ui"
+	flow "github.com/bradhannah/berad-engine/engine/workflow"
+)
 
 // LayoutCount is how many times the window has laid the workflow out.
 func (s *State) LayoutCount() int { return s.layouts }
@@ -22,4 +25,18 @@ func MissingHelp() []string {
 	}
 
 	return missing
+}
+
+// NumberButton returns the button beside a number field of the selected
+// node that offers a constant in its place, by the field's parameter.
+func (s *State) NumberButton(param string) (*ui.Button, bool) {
+	if s.form == nil {
+		return nil, false
+	}
+	slot, found := s.form.slots[slotKey(param, -1)]
+	if !found {
+		return nil, false
+	}
+
+	return slot.use, true
 }

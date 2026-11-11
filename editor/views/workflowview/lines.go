@@ -134,7 +134,7 @@ func (s *State) drawGrip(area *ebiten.Image, corners []image.Point) {
 			half = image.Pt(gripWidth, gripLength)
 		}
 		grip := image.Rectangle{Min: centre.Sub(half), Max: centre.Add(half)}
-		ui.FillRound(area, grip, gripWidth, ui.ColorBackground())
+		ui.FillRound(area, grip, gripWidth, ui.ColorField())
 		ui.StrokeRound(area, grip, gripWidth, ui.Border, ui.ColorSelect())
 	}
 }
@@ -241,7 +241,7 @@ func (s *State) drawMark(area *ebiten.Image, drawn shape) {
 	centre := s.toScreen(markCentre(drawn))
 	vector.FillCircle(area, float32(centre.X), float32(centre.Y), markRadius, ui.ColorWarn(), true)
 	width := s.theme.SmallWidth("!")
-	s.theme.DrawSmall(area, "!", centre.X-width/ui.Half, centre.Y-ui.LabelSize/ui.Half-ui.Half, ui.ColorBackground())
+	s.theme.DrawSmall(area, "!", centre.X-width/ui.Half, centre.Y-ui.LabelSize/ui.Half-ui.Half, ui.ColorReverse())
 }
 
 func sign(value int) int {

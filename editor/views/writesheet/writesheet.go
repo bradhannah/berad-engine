@@ -404,7 +404,8 @@ func Notes(text, said string, lines int) ([]string, []string) {
 func (s *Sheet) Draw(screen *ebiten.Image, window image.Rectangle) {
 	s.layout(window)
 	ui.FillRect(screen, window, ui.ColorShade())
-	ui.FillRound(screen, s.rect, ui.Radius, ui.ColorBackground())
+	ui.Float(screen, s.rect, ui.Radius)
+	ui.FillRound(screen, s.rect, ui.Radius, ui.ColorPage())
 	ui.StrokeRound(screen, s.rect, ui.Radius, ui.Border, ui.ColorRule())
 	inner := s.rect.Inset(ui.Inset)
 	s.theme.DrawTitle(screen, "Write", inner.Min.X, inner.Min.Y, ui.ColorInk())
@@ -438,7 +439,13 @@ func (s *Sheet) drawPreview(screen *ebiten.Image) ([]string, []string) {
 		heading = "IN THE LOG"
 	}
 	s.theme.Heading(screen, heading, s.preview.Min.X, s.preview.Min.Y-previewHead)
-	ui.FillRect(screen, s.preview, ui.ColorCanvas())
+	// What the game shows stands on the stage; a Log's line is read in Watch,
+	// on the page.
+	ground := ui.ColorStage()
+	if s.line != nil && s.line.Look == LookLog {
+		ground = ui.ColorPage()
+	}
+	ui.FillRect(screen, s.preview, ground)
 	if s.line == nil {
 		box := &protocol.PreviewBox{Text: s.Text(), Name: "", Left: 1, Queued: 0, Closing: true}
 		showdraw.DrawBox(screen, s.theme, s.preview, box)

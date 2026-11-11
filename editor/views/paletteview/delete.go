@@ -262,7 +262,7 @@ func (s *State) drawDeleting(screen *ebiten.Image, docs frame.Docs) {
 		return
 	}
 	ui.FillRect(screen, image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, ui.ColorShade())
-	ui.Box(screen, panel.rect, ui.ColorBackground())
+	ui.FloatBox(screen, panel.rect, ui.ColorPage())
 	left, top := panel.rect.Min.X+ui.Inset, panel.rect.Min.Y+ui.Inset
 	s.theme.DrawTitle(screen, "Delete "+s.paletteName(docs)+"?", left, top, ui.ColorInk())
 	lead := "Each zone and tile that refers to it is removed first, and every removal undoes."

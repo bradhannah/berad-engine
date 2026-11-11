@@ -94,14 +94,65 @@ func (s *State) paste(ctx *frame.Context) {
 		node.Params = remapLocals(node.Params, same)
 		taken.Nodes = append(taken.Nodes, node)
 	}
+	pasted, ways := s.settleWays(taken.Nodes)
+	taken.Nodes = pasted
 	gesture := s.gesture()
 	said := "Pasted " + countNodes(len(taken.Nodes)) + "."
+	if len(ways) > 0 {
+		said += " New here: the way out " + strings.Join(ways, ", ") + "."
+	}
 	if len(declare) > 0 {
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, gesture,
 			stateplugin.ChangeArgs{Add: declare, Set: nil, Remove: nil}, nil)
 		said += " Declared " + localNames(declare) + " here. Undo removes them with the nodes."
 	}
 	s.addCopy(ctx, taken.shifted(s.pasteAt().Sub(topLeft(taken))), gesture, said)
+}
+
+// settleWays gives pasted Returns the ways out their names say. A way out
+// is known to its author by its name, and to Calls by its port, which means
+// nothing outside its own workflow: a Return copied from another workflow
+// can carry a port that here belongs to a way out of another name, and
+// would silently become one more Return of that. So a pasted Return joins
+// the way out of its name here, if there is one; otherwise it keeps its
+// port when that is free, and takes a new one when it is not. Returns
+// pasted together under one name stay one way out. It returns the nodes and
+// the names of the ways out that are new here.
+func (s *State) settleWays(nodes []flow.Node) ([]flow.Node, []string) {
+	var added []string
+	ports, taken := map[string]string{}, map[string]bool{}
+	for _, node := range s.workflow.Nodes() {
+		way, err := node.WayOut()
+		if node.Kind != flow.KindReturn || err != nil {
+			continue
+		}
+		taken[way.Port] = true
+		if _, named := ports[way.Label]; !named && node.Parent.IsZero() {
+			ports[way.Label] = way.Port
+		}
+	}
+	for index, node := range nodes {
+		way, err := node.WayOut()
+		if node.Kind != flow.KindReturn || err != nil {
+			continue
+		}
+		port, named := ports[way.Label]
+		if !named {
+			port = way.Port
+			for number := 1; taken[port]; number++ {
+				port = "w" + strconv.Itoa(number)
+			}
+			ports[way.Label], taken[port] = port, true
+			if node.Parent.IsZero() {
+				added = append(added, way.Label)
+			}
+		}
+		if moved, problem := withPort(node, way.Label, port); problem == "" {
+			nodes[index] = moved
+		}
+	}
+
+	return nodes, added
 }
 
 // notOffered names the first kind of node among some that this workflow's

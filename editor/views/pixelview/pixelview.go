@@ -416,7 +416,7 @@ func (s *State) setTool(tool Tool) {
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout(docs)
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	s.drawCanvas(screen, docs)
 	s.drawToolbar(screen)
 	s.drawReadout(screen, docs)
