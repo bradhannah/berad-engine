@@ -9,6 +9,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 )
 
 // TestOnTopToggle flips the status bar's On top toggle with a click, and
@@ -37,4 +38,26 @@ func TestOnTopToggle(t *testing.T) {
 	t.Cleanup(theme.Close)
 	status.DrawStatus(ebiten.NewImage(1200, 800), theme)
 	status.DrawStatus(ebiten.NewImage(320, 300), theme)
+}
+
+// TestCrashKeyNeedsItsSwitch presses Cmd+Shift+K, which crashes a window on
+// purpose to test failure handling. Without the frame's switch, which only
+// tests turn on, it does nothing and is left for the view; with it, the
+// frame asks to crash.
+func TestCrashKeyNeedsItsSwitch(t *testing.T) {
+	t.Parallel()
+	ctx := frametest.Context(frametest.NewDocs(), &frametest.Requests{}, image.Pt(1200, 800))
+	press := func() (*ui.Input, bool) {
+		input := ui.NewInput(image.Pt(0, 0))
+		input.Presses = []ui.Press{ui.ParsePress("Cmd+Shift+K")}
+
+		return &input, frame.CommonKeys(&input, ctx)
+	}
+	if input, used := press(); used || ctx.Frame.Crash || len(input.Presses) != 1 {
+		t.Fatalf("the crash key without its switch: used %v, crash %v", used, ctx.Frame.Crash)
+	}
+	ctx.Frame.CrashKey = true
+	if input, used := press(); !used || !ctx.Frame.Crash || len(input.Presses) != 0 {
+		t.Fatalf("the crash key with its switch: used %v, crash %v", used, ctx.Frame.Crash)
+	}
 }

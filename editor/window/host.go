@@ -29,6 +29,10 @@ const (
 	screenshotFrame  = 90
 )
 
+// crashKeyEnv, when set, lets Cmd+Shift+K crash a pane on purpose. Only the
+// tests of failure handling set it: the key does nothing for an author.
+const crashKeyEnv = "BERAD_TEST_CRASH_KEY"
+
 // starter is implemented by views that subscribe to more documents once the
 // window is running.
 type starter interface {
@@ -99,6 +103,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
 		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil,
 	}
+	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
 	created.ctx.Docs = conn
 	created.ctx.Requests = created
 	created.sounds = sound.New(created, created.frame.Status)

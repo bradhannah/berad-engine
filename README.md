@@ -105,9 +105,10 @@ opens another view of the same zone, and the views update live and share undo;
 window, quits the editor after asking. Every change is saved automatically;
 the files are in the project folder.
 
-`Cmd+Shift+K` crashes the current tab on purpose, to show the failure
-handling: that tab closes, the others show a notice, and a crash report
-appears in the project's `.berad/logs`.
+A tab that crashes closes alone: the others show a notice, and a crash
+report appears in the project's `.berad/logs`. To test that, start the editor
+with `BERAD_TEST_CRASH_KEY=1` set; `Cmd+Shift+K` then crashes the current tab
+on purpose. Without it the key does nothing.
 
 ## How it fits together
 

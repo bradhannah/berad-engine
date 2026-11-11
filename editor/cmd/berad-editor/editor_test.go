@@ -1232,15 +1232,17 @@ func TestSoundsInWorkflows(t *testing.T) {
 }
 
 // TestCrashedTabLeavesAReport crashes a second view of the Map with the debug
-// key: its tab closes alone, the orchestrator saves a crash report with the
-// failure, and the other tabs carry on until the editor quits.
+// key, which only BERAD_TEST_CRASH_KEY turns on: its tab closes alone, the
+// orchestrator saves a crash report with the failure, and the other tabs
+// carry on until the editor quits.
 func TestCrashedTabLeavesAReport(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	first := script(expect("state:loaded", 600), keys("Cmd+N"), wait(240), quit())
 	second := script(wait(30), keys("Cmd+Shift+K"))
-	runEditor(t, binary, project, scripts{"map": {first, second}, "browser": {browseZone()}})
+	runEditorWith(t, binary, project, scripts{"map": {first, second}, "browser": {browseZone()}},
+		"BERAD_TEST_CRASH_KEY=1")
 
 	reports, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*-crash.json"))
 	if err != nil || len(reports) != 1 {
