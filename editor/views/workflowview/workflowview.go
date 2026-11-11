@@ -168,8 +168,11 @@ type State struct {
 	zoom     int
 	zoomCard *zoomControl
 	panRest  [2]float64
-	wheel    float64
-	drawn    *ebiten.Image
+	// handPanned is set when the author pans the canvas by hand, for
+	// Watch's Follow (increment 41).
+	handPanned bool
+	wheel      float64
+	drawn      *ebiten.Image
 
 	palette []paletteEntry
 	// pal is the palette's search, its tooltip and the help it shows.
@@ -267,7 +270,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
-		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
+		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, handPanned: false, wheel: 0, drawn: nil,
 		palette: nil, pal: newPalettePanel(theme), arrange: ui.NewButton("arrange", "Auto-arrange"),
 		recentre:   ui.NewButton("recentre", "Recentre"),
 		deleteLine: ui.NewButton("delete-line", "Unlink"), resetLine: ui.NewButton("reset-line", "Reset line"),
@@ -733,11 +736,13 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 			s.wheelZoom(input)
 		} else {
 			s.panBy(input.WheelPan())
+			s.handPanned = true
 		}
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
 	if dragPan && s.panning {
 		s.panBy(input.Cursor.Sub(s.lastPan))
+		s.handPanned = true
 	}
 	s.panning = dragPan && (s.panning || input.Cursor.In(canvas))
 	s.lastPan = input.Cursor

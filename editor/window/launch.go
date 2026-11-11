@@ -27,7 +27,7 @@ type shower interface {
 
 // launchRect is Launch's place on the bar, left of the clock's readout.
 func (s *shell) launchRect() image.Rectangle {
-	right := s.size.X - readoutWidth
+	right := s.size.X - readoutWidth - controlsWidth
 
 	return image.Rect(right-launchWidth, 0, right, rowHeight)
 }

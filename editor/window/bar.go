@@ -56,7 +56,7 @@ type barTab struct {
 func (s *shell) barHeight() int { return rowHeight }
 
 // tabRoom is the width the bar's tabs share, left of Launch and the clock.
-func (s *shell) tabRoom() int { return max(s.size.X-readoutWidth-launchWidth, 0) }
+func (s *shell) tabRoom() int { return max(s.size.X-readoutWidth-controlsWidth-launchWidth, 0) }
 
 // fitting reports how many tabs the bar shows, and how wide each is: every
 // tab while all fit at leastTab or more, and otherwise as many as fit beside
@@ -260,6 +260,7 @@ func (s *shell) drawBar(screen *ebiten.Image) {
 		s.drawBarTab(screen, shown)
 	}
 	s.drawLaunch(screen)
+	s.drawClockButtons(screen)
 	s.drawReadout(screen)
 	ui.Divider(screen, image.Pt(0, rowHeight-ui.Hairline), image.Pt(s.size.X, rowHeight-ui.Hairline))
 }

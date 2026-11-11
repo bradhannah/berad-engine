@@ -45,9 +45,9 @@ func TestViewsOpenAsTabs(t *testing.T) {
 }
 
 // TestClockIsPinned previews the sample zone in a Map tab, then brings a
-// workflow's tab to the front (increment 10). The pinned clock reads
-// the preview out on the bar, its panel opens by itself, and its +1h moves
-// the hidden Map's preview on an hour.
+// workflow's tab to the front (increment 10). The pinned clock reads the
+// preview out on the bar, and its +1h moves the hidden Map's preview on an
+// hour. Since increment 41 its panel no longer opens by itself.
 func TestClockIsPinned(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)

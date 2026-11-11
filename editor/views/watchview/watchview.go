@@ -90,6 +90,10 @@ type State struct {
 	parts      []image.Rectangle
 	// log is what the Logs wrote in this preview.
 	log *logPanel
+	// follow keeps the node being run in view while on, and followed is
+	// the node it last brought into view (increment 41).
+	follow   *ui.Toggle
+	followed ids.ULID
 }
 
 // New returns the Watch window for a zone.
@@ -100,6 +104,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep),
 		watchLoop: ui.NewButton("watch-loop", textWatchLoop), chosen: -1,
 		chosenFlow: ids.ULID{}, parts: nil, log: newLogPanel(),
+		follow: &ui.Toggle{ID: "follow", Label: "Follow", Rect: ui.Zero(), On: false}, followed: ids.ULID{},
 	}
 }
 
@@ -304,6 +309,8 @@ func (s *State) layout() {
 		place(s.watchLoop)
 		s.watchLoop.Disabled = s.state.Watched.String() == loop.ID
 	}
+	width := s.theme.TextWidth(s.follow.Label) + ui.Half*ui.Inset + ui.ButtonH
+	s.follow.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 }
 
 // Update follows the watched NPC's workflow and sends the buttons' controls.
@@ -334,7 +341,11 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			s.flow.SetStep(nil)
 			s.flow.SetLanes(nil)
 		}
+		if s.follow.Update(input) {
+			s.followed = ids.ULID{}
+		}
 		s.flow.Update(input, ctx)
+		s.keepInView(ctx, entity.Node, following)
 	}
 	frame.CommonKeys(input, ctx)
 	if s.state == nil {
@@ -458,6 +469,7 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 	}
 	s.pause.Draw(screen, s.theme)
 	s.step.Draw(screen, s.theme)
+	s.drawFollow(screen)
 	if !s.watchLoop.Rect.Empty() {
 		s.watchLoop.Draw(screen, s.theme)
 	}
@@ -513,6 +525,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case strings.TrimSuffix(linePart, ":"):
 		return s.locateLine(value)
 	case "ui":
+		if value == s.follow.ID {
+			return ui.Center(s.follow.Rect), !s.follow.Rect.Empty()
+		}
 		for _, button := range []*ui.Button{s.pause, s.step, s.watchLoop, s.log.watched, s.log.all, s.log.clear} {
 			if button.ID == value {
 				return ui.Center(button.Rect), true
@@ -521,6 +536,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return s.locatePart(value)
 	case "state":
+		if value == "following" {
+			return image.Pt(0, 0), s.follow.On
+		}
+
 		return image.Pt(0, 0), s.hasState(value, docs)
 	}
 
@@ -700,4 +719,29 @@ func hasSignalState(entity protocol.PreviewEntity, state string) (bool, bool) {
 	}
 
 	return false, false
+}
+
+// keepInView brings the node being run into view while Follow is on, each
+// time it moves to another node. Panning by hand turns Follow off, and the
+// status bar says so (increment 41).
+func (s *State) keepInView(ctx *frame.Context, node ids.ULID, following bool) {
+	if s.flow.TakePanned() && s.follow.On {
+		s.follow.On = false
+		ctx.Frame.Status("Follow is off: you moved the view. Turn it on to follow the NPC again.")
+
+		return
+	}
+	if !s.follow.On || !following || node.IsZero() || node == s.followed {
+		return
+	}
+	s.flow.ShowNode(node)
+	s.followed = node
+}
+
+// drawFollow draws the Follow switch, on an orange wash while it is on.
+func (s *State) drawFollow(screen *ebiten.Image) {
+	if s.follow.On {
+		ui.FillRound(screen, s.follow.Rect, ui.Radius, ui.ColorLiveWash())
+	}
+	s.follow.Draw(screen, s.theme)
 }

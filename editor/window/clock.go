@@ -2,6 +2,7 @@ package window
 
 import (
 	"image"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -14,8 +15,21 @@ import (
 // of its own: the window bar reads it out at its right end, on every tab, and
 // its controls open in a panel under the readout.
 
-// readoutWidth is the width of the clock's readout on the bar.
-const readoutWidth = 210
+// readoutWidth is the width of the clock's readout on the bar; its
+// controls, an hour back and on and stopping its clock, sit left of it,
+// controlWidth each (increment 41).
+const (
+	readoutWidth  = 210
+	controlWidth  = 52
+	clockControls = 3
+	controlsWidth = controlWidth*clockControls + ui.Gap
+)
+
+// clockAsker is the Clock view's side of the bar's controls.
+type clockAsker interface {
+	Ask(action string)
+	Controls() (bool, bool)
+}
 
 // readout is a view that sums itself up for the window bar.
 type readout interface {
@@ -58,20 +72,71 @@ func (s *shell) clockReadout() (string, bool) {
 	return "", false
 }
 
-// followClock opens the clock's panel when a preview starts, as the Clock
-// window opened by itself.
+// followClock keeps whether a preview runs. Starting one opens nothing
+// (increment 41): the clock's panel opens only when its readout is pressed.
 func (s *shell) followClock() {
 	_, live := s.clockReadout()
-	if live && !s.clockLive {
-		s.clockOpen = true
-	}
 	s.clockLive = live
 }
 
-// pressReadout opens or closes the clock's panel.
+// pressReadout opens or closes the clock's panel, or carries out one of the
+// clock's controls on the bar.
 func (s *shell) pressReadout(point image.Point) {
-	if s.clock != nil && point.In(s.readoutRect()) {
+	if s.clock == nil {
+		return
+	}
+	if point.In(s.readoutRect()) {
 		s.clockOpen = !s.clockOpen
+
+		return
+	}
+	asker, ok := s.clock.host.view.(clockAsker)
+	if !ok {
+		return
+	}
+	running, _ := asker.Controls()
+	for _, control := range s.clockButtons() {
+		if point.In(control.Rect) && (running || control.ID != clockview.AskStopStart) {
+			asker.Ask(control.ID)
+		}
+	}
+}
+
+// clockButtons are the clock's controls on the bar: an hour back, an hour
+// on, and Stop or Start for the preview's clock, which is pale while no
+// preview runs.
+func (s *shell) clockButtons() []*ui.Button {
+	right := s.size.X - readoutWidth - ui.Gap
+	labels := [][2]string{{clockview.AskHourBack, "−1h"}, {clockview.AskHourOn, "+1h"}, {clockview.AskStopStart, "Stop"}}
+	buttons := make([]*ui.Button, 0, len(labels))
+	top := (rowHeight - ui.ButtonH) / ui.Half
+	for index, label := range labels {
+		left := right - (len(labels)-index)*controlWidth
+		button := ui.NewButton("clock-"+label[0], label[1])
+		button.Rect = image.Rect(left+ui.Gap/ui.Half, top, left+controlWidth-ui.Gap/ui.Half, top+ui.ButtonH)
+		buttons = append(buttons, button)
+	}
+	if asker, ok := s.clock.host.view.(clockAsker); ok {
+		running, stopped := asker.Controls()
+		buttons[len(buttons)-1].Disabled = !running
+		if stopped {
+			buttons[len(buttons)-1].Label = "Start"
+		}
+	}
+	for _, button := range buttons {
+		button.ID = strings.TrimPrefix(button.ID, "clock-")
+	}
+
+	return buttons
+}
+
+// drawClockButtons draws the clock's controls on the bar.
+func (s *shell) drawClockButtons(screen *ebiten.Image) {
+	if s.clock == nil {
+		return
+	}
+	for _, button := range s.clockButtons() {
+		button.Draw(screen, s.theme)
 	}
 }
 

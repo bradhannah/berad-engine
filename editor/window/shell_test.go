@@ -131,7 +131,7 @@ func TestOneRowOfTabs(t *testing.T) {
 	if len(tabs) != len(want) {
 		t.Fatalf("one tab each: %+v", tabs)
 	}
-	room := 1200 - readoutWidth - launchWidth
+	room := 1200 - readoutWidth - controlsWidth - launchWidth
 	for index, label := range want {
 		if tabs[index].label != label || tabs[index].tab != index || tabs[index].front != (index == 2) {
 			t.Fatalf("tab %d: %+v", index, tabs[index])
@@ -159,7 +159,7 @@ func TestTabsThatDoNotFitGoUnderMore(t *testing.T) {
 	for index := range 10 {
 		shown.tabs = append(shown.tabs, &tab{panes: []*pane{titled("workflow", "Workflow: W"+strconv.Itoa(index))}})
 	}
-	room := 1200 - readoutWidth - launchWidth
+	room := 1200 - readoutWidth - controlsWidth - launchWidth
 	tabs := shown.barTabs()
 	more := tabs[len(tabs)-1]
 	fit := (room - moreWidth) / leastTab
