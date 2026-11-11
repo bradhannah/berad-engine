@@ -1,6 +1,6 @@
 # Increment 37: A desk and a stage
 
-**Status:** Planned
+**Status:** Built
 
 The editor's look changes from plain white to the desk and the stage agreed
 on 2026-11-11 in [the editor features](../EDITOR_FEATURES.md#principles):
@@ -94,7 +94,7 @@ Chosen while building, for its author to check:
 | 3. Tabs and chips | The desk bar; every document tab tinted, the front one stronger; a dot on a tab with unsaved changes; document icons on filled chips | A script reads a tab's dot; screenshots of the bar | Built |
 | 4. Waiting for Save | The field's ink dot and heavier outline; the save bar in ink | Screenshots of a draft and of a saved field | Built |
 | 5. Hard shadows | Menus, dialogs, sheets and pickers float on a hard two-point shadow | Screenshots of a menu and a picker | Built |
-| 6. Checks | `make check` and the real-window walks; screenshots of every view at 1512 × 916 and 2560 × 1380 | All pass | Planned |
+| 6. Checks | `make check` and the real-window walks; screenshots of the main views at 1512 × 916 and 2560 × 1380 | All pass | Built |
 
 ## Step results
 
@@ -114,6 +114,16 @@ Chosen while building, for its author to check:
   `TestOpenDocumentsAreToldApart` replaces the test of tints by kind; the
   dot was read by an input script after typing a name in the Project's
   inspector, and seen to go when Esc reverted it.
+- **Play and the clock's panel:** Play's tab is left untinted, since a run
+  of the game is not a document, and the clock's panel floats on a hard
+  shadow.
+- **Checks:** `make check` passes. The 61 real-window walks pass unchanged
+  on the branch's last commit, run as `GOFLAGS=-timeout=30m make gui-test`
+  from a frozen copy; none needed changing, since they find parts by name.
+  Screenshots at 2560 × 1380 of Home, a workflow with a Say selected and a
+  Map were also looked at. Not checked: a Retina panel by eye, the audio
+  windows, the Template editor and the palette editor beyond what the walks
+  draw, and dialogs other than the menu and the clock's panel by eye.
 
 ## Not in this increment
 
