@@ -191,11 +191,18 @@ func (s *State) updateLocals(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	if panel.add.Update(input) {
-		s.addLocal(ctx)
+		s.addLocalAsking(ctx)
 
 		return
 	}
 	s.updateLocalForm(input, ctx)
+}
+
+// addLocalAsking adds a local, which the form then shows, once the author
+// has decided about the selected local's unsaved typed changes.
+func (s *State) addLocalAsking(ctx *frame.Context) {
+	s.focus.Set(nil)
+	s.guard.Ask(s.locals.form.Unsaved(), s.formName(), func() { s.addLocal(ctx) })
 }
 
 // updateLocalForm handles the selected local's form.
@@ -221,7 +228,7 @@ func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
 	case valueform.ChangeChoosePlace:
 		s.openPlaces(ctx.Docs, panel.form.PlaceBox, s.localTarget(ctx, changed))
 	case valueform.ChangeDeclareNew:
-		s.addLocal(ctx)
+		s.addLocalAsking(ctx)
 	case valueform.ChangeNone, valueform.ChangeWrite:
 	}
 }

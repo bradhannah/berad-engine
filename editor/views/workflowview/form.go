@@ -1039,7 +1039,12 @@ func (s *State) discardForm() {
 // to another node, a line or nothing: the selection goes back until the
 // author decides, and moves on after Save or Don't save.
 func (s *State) guardSelection(ctx *frame.Context) {
-	if s.form == nil || s.workflow == nil || s.selected == s.form.node {
+	if s.form == nil {
+		s.guardLocal()
+
+		return
+	}
+	if s.workflow == nil || s.selected == s.form.node {
 		return
 	}
 	unsaved := s.Unsaved(ctx.Docs)
@@ -1051,6 +1056,29 @@ func (s *State) guardSelection(ctx *frame.Context) {
 	s.drag, s.link, s.adding, s.resize, s.bending, s.box = nil, nil, nil, nil, nil, nil
 	s.focus.Set(nil)
 	s.guard.Ask(unsaved, s.formName(), func() { s.selected, s.selectedLink, s.group = wanted, wantedLink, wantedGroup })
+}
+
+// guardLocal asks about a local value's unsaved typed changes before the
+// inspector leaves the local values for a node, a line or several nodes:
+// nothing is selected until the author decides, and the selection moves on
+// after Save or Don't save.
+func (s *State) guardLocal() {
+	leaving := !s.selected.IsZero() || s.lineSelected() || len(s.group) > 0
+	local, chosen := s.selectedLocal()
+	if s.workflow == nil || !leaving || !chosen {
+		return
+	}
+	unsaved := s.locals.form.Unsaved()
+	if unsaved == 0 {
+		return
+	}
+	wanted, wantedLink, wantedGroup := s.selected, s.selectedLink, s.group
+	s.selected, s.selectedLink, s.group = ids.ULID{}, noRoute(), nil
+	s.drag, s.link, s.adding, s.resize, s.bending, s.box = nil, nil, nil, nil, nil, nil
+	s.focus.Set(nil)
+	s.guard.Ask(unsaved, localPath(local), func() {
+		s.selected, s.selectedLink, s.group = wanted, wantedLink, wantedGroup
+	})
 }
 
 // parseFor reads a typed value from a field of a control: the new parameter
