@@ -1,6 +1,7 @@
 package workflowview_test
 
 import (
+	"fmt"
 	"image"
 	"strings"
 	"testing"
@@ -258,5 +259,33 @@ func TestTheInspectorScrolls(t *testing.T) {
 	f.click("node:start:1")
 	if f.has("inspector-scrolls") {
 		t.Fatal("the start's inspector starts at the top, and has no need to scroll")
+	}
+}
+
+// TestATimeMovesLaterInOneSave moves a time switch's first time later, from
+// 09:00–17:00 to 17:00–20:00: its new start is its old end. Both ends are
+// typed and saved together, so the time is read as a whole, not refused for
+// the moment its start meets the end it is leaving. A start typed to meet
+// its end, alone, is still refused.
+func TestATimeMovesLaterInOneSave(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.click("node:start:1")
+	f.add("" + flow.KindTimeSwitch)
+	before, _ := f.nth(flow.KindTimeSwitch, 1).TimeRanges("ranges")
+	end := fmt.Sprintf("%02d:%02d", before[0].To/60, before[0].To%60)
+	f.typeOnly("ranges-1-from", end)
+	f.typeOnly("ranges-1-to", "23:30")
+	f.click("ui:save")
+	spans, _ := f.nth(flow.KindTimeSwitch, 1).TimeRanges("ranges")
+	if spans[0].From != before[0].To || spans[0].To != 23*60+30 {
+		message, _ := f.ctx.Frame.Message()
+		t.Fatalf("the time moved later in one save: %+v, status %q", spans[0], message)
+	}
+	f.typeOnly("ranges-1-from", "23:30")
+	f.click("ui:save")
+	spans, _ = f.nth(flow.KindTimeSwitch, 1).TimeRanges("ranges")
+	if message, _ := f.ctx.Frame.Message(); spans[0].From != before[0].To || !strings.Contains(message, "end after it starts") {
+		t.Fatalf("a start typed to meet its end is refused: %+v, status %q", spans[0], message)
 	}
 }
