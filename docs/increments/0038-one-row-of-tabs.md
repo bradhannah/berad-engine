@@ -1,6 +1,6 @@
 # Increment 38: One row of tabs
 
-**Status:** Planned
+**Status:** Built
 
 Going from a map to a workflow becomes one click or one key. Every open
 document gets a tab of its own on one row, as agreed on 2026-11-11 in
@@ -51,15 +51,88 @@ clever" and "one row of tabs"):
 - **Explicit over clever:** nothing opens, closes or switches except by a
   key or button the author pressed.
 
+Chosen while building, for its author to check:
+
+- **Tabs stay in the order they opened,** the Project's first. A tab is at
+  most 220 points wide and at least 120. Past that the last tabs go under a
+  "3 more" tab, which lists them and stands in front while one of them is.
+- **"live" is written in orange** on a tab whose Map previews.
+- **Launch shows `Cmd+R`** in the subdued grey, in the type for keys.
+- **`Cmd+1` to `Cmd+9` count from the Project's tab;** `Cmd+9` is the ninth
+  tab, not the last.
+- **Neighbours stop at the first and last tab** and do not wrap round; the
+  status bar says "This is the last tab".
+- **`Ctrl+Tab` goes to the tab in front before this one;** pressed again it
+  comes back.
+- **The window's tab keys match every modifier,** so `Ctrl+Tab` is never
+  read as Tab, and `Cmd+Alt+1` is left to the view.
+- **A place on the trail is a tab and what its focused pane has selected.**
+  - Selecting nothing makes no place of its own.
+  - A place with nothing selected takes the first selection made in it.
+  - Closed tabs leave the trail, which keeps at most 100 places.
+  - So far only a Workflow says what is selected, its node. Other views
+    come back as tabs.
+- **Back puts a selection back only where nothing waits for Save.**
+  Otherwise the tab comes forward as it is and its status bar says the
+  selection was kept.
+- **Quick open's search lists nothing until something is typed,** and at
+  most 200 rows.
+  - Settings and folders are not listed, since they open no tab.
+  - Enter with nothing selected opens the first row.
+  - An NPC with no behaviour is refused, with the reason in the sheet.
+- **Quick open leaves the Project's own search and selection as they
+  were.** While the sheet shows, the window's keys (`Cmd+S`, `Cmd+Q`,
+  `Cmd+R` and the tab keys) do nothing.
+- **`Cmd+Enter` is refused in the sheet** when the tab in front already
+  shows two windows. A window already open in a tab of its own moves beside
+  the tab in front, and its old tab goes.
+- **A document that opens in no tab now says so** in the Project's status
+  bar, where before nothing happened.
+- **The Map's key sheet lists the new keys.** No other view has a key sheet
+  yet.
+
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. One row | The bar as one row of tabs in the order they opened: icon, tint, name, unsaved dot, live mark and close box; tabs that shrink to a least width; a "more" tab and its list; Launch's key | Unit tests of the layout at several widths and counts; screenshots | Planned |
-| 2. Tab keys | `Cmd+1`–`9`, `Ctrl+Tab` and `Cmd+Shift+[`/`]` from any tab, refused with a reason where there is nowhere to go | Unit tests; an input script that moves between tabs by key | Planned |
-| 3. Back and Forward | A trail of where the author has been: the tab, and the selection where a view can say it; `Cmd+[` and `Cmd+]` | Unit tests; an input script that steps back to a workflow's node | Planned |
-| 4. Quick open | The Project window's search in a sheet over any tab; Enter opens, `Cmd+Enter` opens beside the tab in front, Esc closes | Unit tests; an input script that opens a workflow from a Map's tab | Planned |
-| 5. Checks | `make check` and the real-window walks; screenshots at 1512 × 916 | All pass | Planned |
+| 1. One row | The bar as one row of tabs in the order they opened: icon, tint, name, unsaved dot, live mark and close box; tabs that shrink to a least width; a "more" tab and its list; Launch's key | Unit tests of the layout at several widths and counts; screenshots | Built |
+| 2. Tab keys | `Cmd+1`–`9`, `Ctrl+Tab` and `Cmd+Shift+[`/`]` from any tab, refused with a reason where there is nowhere to go | Unit tests; an input script that moves between tabs by key | Built |
+| 3. Back and Forward | A trail of where the author has been: the tab, and the selection where a view can say it; `Cmd+[` and `Cmd+]` | Unit tests; an input script that steps back to a workflow's node | Built |
+| 4. Quick open | The Project window's search in a sheet over any tab; Enter opens, `Cmd+Enter` opens beside the tab in front, Esc closes | Unit tests; an input script that opens a workflow from a Map's tab | Built |
+| 5. Checks | `make check` and the real-window walks; screenshots at 1512 × 916 | All pass | Built |
+
+## Step results
+
+- **One row:**
+  - `TestOneRowOfTabs` and `TestTabsThatDoNotFitGoUnderMore` replace the
+    tests of tabs grouped by kind.
+  - Screenshots at 1512 × 916 and 900 × 700 show five tabs on one row and,
+    at 900, two under "2 more", with "live" on a previewing Map.
+  - The real-window test once named for grouping is now
+    `TestEveryDocumentHasATab`.
+- **Tab keys:** `TestKeysMoveBetweenTabs` covers the keys in a unit test.
+  A real-window test of the same name moves between a workflow, a Map and
+  the Project by key from the workflow's tab.
+- **Back and Forward:**
+  - `TestBackAndForwardStepThroughWhereTheAuthorHasBeen` steps along a
+    trail of tabs and nodes. It keeps a selection that waits for Save and
+    forgets a closed tab.
+  - In the real window, `TestBackReturnsToANode` selects two nodes of
+    Clerk's day, goes to the Project, and steps back to each and forward
+    again.
+- **Quick open:**
+  - `TestQuickOpenFindsAndOpens` covers the sheet in the Project.
+  - `TestQuickOpenShowsOverTheTabInFront` covers the window's part: where
+    the sheet shows, who takes the input, and a window put beside the Map,
+    new or already open.
+  - In the real window, `TestQuickOpenFromAMap` opens Clerk's day from a
+    Map's tab with Enter and Fetch stock beside the Map with `Cmd+Enter`.
+    Its screenshot shows the sheet over the Map.
+- **Checks:** `make check` passes on every step. All 64 real-window walks
+  pass on the last step's commit (the 61 there were and the three above),
+  run as `GOFLAGS=-timeout=30m make gui-test` from a frozen copy, in 13½
+  minutes. Not checked: a Retina panel by eye, and the "more" tab's list
+  with a mouse rather than a test.
 
 ## Not in this increment
 
