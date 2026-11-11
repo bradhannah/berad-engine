@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"log/slog"
 	"maps"
 	"os"
@@ -211,6 +212,28 @@ func (p *project) newer(first, second storedDocument) (storedDocument, storedDoc
 	}
 
 	return first, second
+}
+
+// filesAt returns what is on disk at each path that is there, for telling
+// files apart by what they are, not by how their paths are spelled.
+func (p *project) filesAt(paths iter.Seq[string]) []fs.FileInfo {
+	var found []fs.FileInfo
+	for path := range paths {
+		if info, err := p.root.Lstat(path); err == nil {
+			found = append(found, info)
+		}
+	}
+
+	return found
+}
+
+// isOneOf reports whether a path names one of the files, however it is
+// spelled: where the file system ignores case, "Town/plan.json" and
+// "town/plan.json" are one file. A path with nothing at it names none.
+func (p *project) isOneOf(path string, files []fs.FileInfo) bool {
+	info, err := p.root.Lstat(path)
+
+	return err == nil && slices.ContainsFunc(files, func(other fs.FileInfo) bool { return os.SameFile(info, other) })
 }
 
 // retire moves a file that no longer holds a live document into the backups,

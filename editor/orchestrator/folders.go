@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -176,7 +177,8 @@ func (o *Orchestrator) replayFolders(entry journalEntry) error {
 
 // flushFolders makes every folder's directory, and removes the directories
 // of folders that went, deepest first, when nothing but Finder's file is
-// left in them. A directory still holding other files is left alone.
+// left in them. A directory still holding other files is left alone, and
+// one that is a live folder's under another spelling takes that spelling.
 func (o *Orchestrator) flushFolders() error {
 	var errs []error
 	live := map[string]bool{}
@@ -190,7 +192,7 @@ func (o *Orchestrator) flushFolders() error {
 	gone := slices.SortedFunc(maps.Keys(o.removedDirs), func(a, b string) int { return cmp.Compare(len(b), len(a)) })
 	for _, dir := range gone {
 		delete(o.removedDirs, dir)
-		if live[dir] {
+		if live[dir] || o.respell(dir, live) {
 			continue
 		}
 		if err := o.removeEmptyDir(dir); err != nil {
@@ -199,6 +201,34 @@ func (o *Orchestrator) flushFolders() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// respell reports whether a directory of a folder that went is a live
+// folder's directory under another spelling, as "Town" is "town" where the
+// file system ignores case, and gives it the live spelling. Such a directory
+// holds the live folder's files, so it is never removed.
+func (o *Orchestrator) respell(dir string, live map[string]bool) bool {
+	former, err := o.project.root.Lstat(dir)
+	if err != nil {
+		return false
+	}
+	for spelled := range live {
+		current, err := o.project.root.Lstat(spelled)
+		if err != nil || !os.SameFile(former, current) {
+			continue
+		}
+		// A folder inside a respelled one keeps its own name: only the
+		// directory whose own name changed is renamed.
+		if filepath.Base(dir) != filepath.Base(spelled) {
+			if err := o.project.root.Rename(dir, spelled); err != nil {
+				o.cfg.Logger.Warn("could not respell a folder on disk", "folder", dir, "as", spelled, "error", err)
+			}
+		}
+
+		return true
+	}
+
+	return false
 }
 
 // removeEmptyDir removes a directory holding nothing, or nothing but
