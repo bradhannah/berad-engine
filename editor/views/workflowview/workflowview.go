@@ -151,9 +151,12 @@ type State struct {
 	selectedLink routeKey
 	hoverMark    ids.ULID
 
-	drag    *nodeDrag
-	link    *linkDrag
-	adding  *paletteDrag
+	drag   *nodeDrag
+	link   *linkDrag
+	adding *paletteDrag
+	// nodeAdd is where the node menu adds a node, and the line that joins
+	// it (increment 40).
+	nodeAdd *nodeMenu
 	resize  *containerResize
 	bending *lineDrag
 	panning bool
@@ -267,7 +270,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
 		palette: nil, pal: newPalettePanel(theme), arrange: ui.NewButton("arrange", "Auto-arrange"),
 		recentre:   ui.NewButton("recentre", "Recentre"),
-		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
+		deleteLine: ui.NewButton("delete-line", "Unlink"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "", signalPick: nil,
 		others: nil,
@@ -277,7 +280,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
-		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
+		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(), nodeAdd: nil,
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}
@@ -642,14 +645,11 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding, s.group, s.box = ids.ULID{}, noRoute(), nil, nil, nil, nil
-	case input.Consume(ui.KeyEqual, ui.Cmd()):
-		s.zoomTo(s.zoom+1, s.zoomFocus(input.Cursor))
-	case input.Consume(ui.KeyMinus, ui.Cmd()):
-		s.zoomTo(s.zoom-1, s.zoomFocus(input.Cursor))
-	case input.Consume(ui.Key0, ui.Cmd()):
-		s.zoomTo(defaultZoom, s.zoomFocus(input.Cursor))
+	case s.zoomKeys(input):
 	case input.Consume(ui.KeyEnter, plain):
 		s.openFirstBox()
+	case input.ConsumeExact(ui.KeyTab, plain):
+		s.openNodeMenuAt(input.Cursor)
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		if s.lineSelected() {
 			s.removeLine(ctx)
@@ -666,15 +666,20 @@ func (s *State) lineSelected() bool {
 	return ok
 }
 
-// removeLine takes the selected line away; undo puts it back.
+// removeLine unlinks the selected line, saying what from what; undo joins
+// it again.
 func (s *State) removeLine(ctx *frame.Context) {
 	from, ok := s.workflow.Node(s.selectedLink.from)
 	if !ok {
 		return
 	}
 	output := s.selectedLink.output
+	said := "Unlinked " + labelOf(from.Kind) + " · " + output
+	if target, found := s.workflow.Node(from.Next[output]); found {
+		said += " from " + labelOf(target.Kind)
+	}
 	s.selectedLink = noRoute()
-	s.replace(ctx, from.WithLink(output, ids.ULID{}), "Line removed. Undo puts it back.")
+	s.replace(ctx, from.WithLink(output, ids.ULID{}), said+". Undo joins it again.")
 }
 
 // updateCanvas handles panning and the gestures on nodes and ports.
@@ -940,8 +945,8 @@ func sameBend(a, b flow.Bend) bool {
 
 // updateLink follows a connection being drawn from a port, or a line picked
 // up by its arrow end, then connects it to the node it is dropped on, or
-// clears it when dropped on empty canvas. Dropped back on the node it
-// already leads to, it changes nothing.
+// offers a node to join it to when dropped on empty canvas. Dropped back on
+// the node it already leads to, it changes nothing.
 func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Point) {
 	s.link.to = point
 	if input.Down {
@@ -955,9 +960,9 @@ func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Poin
 	}
 	target, dropped := s.dropTarget(point)
 	if !dropped {
-		if _, linked := from.Next[link.output]; linked {
-			s.replace(ctx, from.WithLink(link.output, ids.ULID{}), "Disconnected")
-		}
+		// A line dropped on empty canvas offers a node to join it to; the
+		// line stays as it was unless one is chosen (increment 40).
+		s.openNodeMenu(input.Cursor, point, &flow.Link{From: from.ID, Output: link.output, To: ids.ULID{}})
 
 		return
 	}

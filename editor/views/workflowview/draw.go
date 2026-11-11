@@ -168,6 +168,7 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 		if from, ok := s.shapes[s.link.from].portOf(s.link.output); ok {
 			ui.Line(area, s.toScreen(from.at), s.toScreen(s.link.to), lineWidth, ui.ColorSelect())
 		}
+		s.drawReplacing(area)
 	}
 }
 
@@ -1199,7 +1200,7 @@ func (s *State) locateOnTop(kind, value string) (image.Point, bool, bool) {
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
 		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState, s.hasUnsavedState,
-		s.hasSheetState, s.hasScrollState,
+		s.hasSheetState, s.hasScrollState, s.hasReplacingState,
 		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {
