@@ -41,6 +41,12 @@ const (
 	// stepBudget is how many ticks a step runs in one frame: a minute of
 	// real time, so most steps end in the frame they start.
 	stepBudget = 60 * clock.TicksPerSecond
+	// stepLimit is how many ticks a step runs before it gives up on the
+	// watched NPC changing node: a day of them. With the clock stopped,
+	// nothing that waits on it can end, and a step gives up after
+	// stoppedStepLimit, ten minutes of them, room for a walk to finish.
+	stepLimit        = 24 * 60 * stepBudget
+	stoppedStepLimit = 10 * stepBudget
 )
 
 // npcRun is one NPC in this window's preview: its runner, and a copy of its
@@ -267,7 +273,27 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	}
 	if !s.preview.stepping {
 		s.hear(ctx, asked)
+
+		return
 	}
+	s.preview.stepTicks += ticks
+	s.giveUpStep(ctx)
+}
+
+// giveUpStep ends a step that has run its limit of ticks without the
+// watched NPC changing node, pauses the NPCs, and says why it gave up.
+func (s *State) giveUpStep(ctx *frame.Context) {
+	stopped := s.preview.clock.Stopped()
+	if s.preview.stepTicks < stepLimit && (!stopped || s.preview.stepTicks < stoppedStepLimit) {
+		return
+	}
+	s.preview.paused, s.preview.stepping = true, false
+	if stopped {
+		ctx.Frame.Status("Step gave up: the clock is stopped, so what waits on it never ends. Start the clock, then step.")
+
+		return
+	}
+	ctx.Frame.Status("Step gave up: the watched NPC stayed on the same node for a day of ticks.")
 }
 
 // hear plays the cues NPCs asked for in one tick, each once however many
@@ -329,10 +355,24 @@ func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 		s.preview.paused, s.preview.stepping, s.preview.step = false, false, nil
 		ctx.Frame.Status("NPCs running")
 	case protocol.ControlStep:
-		if _, ok := s.watchedRun(); ok {
-			s.preview.paused, s.preview.stepping, s.preview.step = false, true, nil
-		}
+		s.startStep(ctx)
 	}
+}
+
+// startStep steps the watched NPC to its next change of node. One with no
+// behaviour has no node to change, so it is not stepped, and the status says
+// why.
+func (s *State) startStep(ctx *frame.Context) {
+	watched, ok := s.watchedRun()
+	if !ok {
+		return
+	}
+	if watched.workflow == nil {
+		ctx.Frame.Status("Cannot step: the watched NPC has no behaviour to follow.")
+
+		return
+	}
+	s.preview.paused, s.preview.stepping, s.preview.step, s.preview.stepTicks = false, true, nil, 0
 }
 
 // watch watches the NPC at a placement: this window's own preview at once,
