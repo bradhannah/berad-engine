@@ -143,6 +143,7 @@ func (h *host) Update() error {
 	h.windowKeys(&input)
 	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
+	h.tellRefusal(h.view.Focused())
 	h.close()
 	h.reportUnsaved()
 	h.flush()
@@ -164,6 +165,17 @@ func (h *host) Update() error {
 	}
 
 	return nil
+}
+
+// tellRefusal says in the status bar why the field with the keyboard refused
+// what was just typed or pasted into it, such as text too long for it.
+func (h *host) tellRefusal(field *ui.TextField) {
+	if field == nil {
+		return
+	}
+	if why := field.Field.TakeRefusal(); why != "" {
+		h.frame.Status(why)
+	}
 }
 
 // save saves a Saver's typed changes for Cmd+S, or says there is nothing

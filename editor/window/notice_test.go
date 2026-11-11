@@ -8,6 +8,8 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -37,5 +39,20 @@ func TestAFailedSaveStaysInTheStatusBar(t *testing.T) {
 	now = now.Add(time.Hour)
 	if message, lasting := h.frame.Message(); lasting || strings.Contains(message, "not reaching") {
 		t.Fatalf("the notice is over: %q", message)
+	}
+}
+
+// TestARefusedPasteSaysWhy pastes more than a field holds: the field takes
+// none of it, and the status bar says why.
+func TestARefusedPasteSaysWhy(t *testing.T) {
+	t.Parallel()
+	h := &host{frame: frame.NewFrame(time.Now)}
+	field := ui.NewTextField("name", textedit.NewField("", false, 3), false, nil)
+	field.Field.Focus()
+	h.tellRefusal(nil)
+	field.Field.Type("abcd")
+	h.tellRefusal(field)
+	if message, _ := h.frame.Message(); field.Field.Value() != "" || !strings.Contains(message, "holds 3 characters") {
+		t.Fatalf("the field holds %q and the status bar says %q", field.Field.Value(), message)
 	}
 }
