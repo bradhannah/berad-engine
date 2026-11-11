@@ -221,3 +221,16 @@ func TestPlacingAnNPCWhoseZoneWasDeleted(t *testing.T) {
 		t.Fatalf("an NPC whose zone was deleted takes the map's zone: %+v %q", homed, f.status())
 	}
 }
+
+// TestNoNPCsHintClearsTheFloors chooses Place NPC in a project with no
+// NPCs: the hint's two lines end above the heading of the floor list.
+func TestNoNPCsHintClearsTheFloors(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.keys("N")
+	f.keys()
+	hint, heading := f.state.NPCHint()
+	if hint.Empty() || hint.Max.Y > heading {
+		t.Fatalf("the hint ends at %d and the floors' heading starts at %d", hint.Max.Y, heading)
+	}
+}

@@ -519,6 +519,8 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	if s.tool == ToolNPC {
 		tilesHeight = min(max(len(s.tileList.Rows), 1), npcRows) * ui.RowHeight
 	}
+	// With no NPCs to list, the list's place holds the hint's lines.
+	tilesHeight = max(tilesHeight, ui.Gap+len(s.npcHintLines())*ui.LineHeight)
 	s.tileList.Rect = image.Rect(0, rowY, PanelWidth, rowY+tilesHeight)
 	rowY = s.tileList.Rect.Max.Y + panelGap + headingSpace
 	s.floorList.Rows = s.floorRows(docs)

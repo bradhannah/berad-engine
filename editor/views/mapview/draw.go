@@ -403,6 +403,27 @@ func (s *State) drawSelection(area *ebiten.Image, grid image.Rectangle) {
 	}
 }
 
+// npcHintLines is what the list of NPCs to place says while the project has
+// none: nothing once it has one, or with another tool.
+func (s *State) npcHintLines() []string {
+	if s.tool != ToolNPC || len(s.tileList.Rows) > 0 {
+		return nil
+	}
+
+	return []string{"No NPCs yet. Use New NPC", "in the project browser."}
+}
+
+// npcHint is where the hint's lines are drawn, at the top of the list's
+// place.
+func (s *State) npcHint() image.Rectangle {
+	top := s.tileList.Rect.Min.Y + ui.Gap
+
+	return image.Rect(ui.Inset, top, PanelWidth, top+len(s.npcHintLines())*ui.LineHeight)
+}
+
+// floorsHeadingTop is where the heading of the floor list starts.
+func (s *State) floorsHeadingTop() int { return s.floorList.Rect.Min.Y - headingSpace + ui.Gap }
+
 // drawPanel draws the tools, tiles and floors on the left.
 func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	height := s.size.Y - frame.StatusHeight
@@ -421,10 +442,8 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 		tileHeading = "CHANGE SELECTED WALLS TO"
 	case ToolNPC:
 		tileHeading = "NPC TO PLACE"
-		if len(s.tileList.Rows) == 0 {
-			s.theme.DrawText(screen, "No NPCs yet. Use New NPC", ui.Inset, s.tileList.Rect.Min.Y+ui.Gap, ui.ColorMuted())
-			s.theme.DrawText(screen, "in the project browser.", ui.Inset, s.tileList.Rect.Min.Y+ui.Gap+ui.LineHeight,
-				ui.ColorMuted())
+		for index, line := range s.npcHintLines() {
+			s.theme.DrawText(screen, line, ui.Inset, s.npcHint().Min.Y+index*ui.LineHeight, ui.ColorMuted())
 		}
 	case ToolErase, ToolAnchor, ToolResize:
 		tileHeading = ""
