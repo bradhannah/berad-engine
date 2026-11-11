@@ -323,6 +323,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		s.updatePath(input, entity)
 	}
 	shown, following := s.shownLevel(entity)
+	if s.follow.Update(input) {
+		s.followed = ids.ULID{}
+	}
 	switch {
 	case !watching || shown.workflow.IsZero():
 		s.flow, s.shown = nil, ids.ULID{}
@@ -340,9 +343,6 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			s.flow.SetLive(shown.node, ids.ULID{}, "", entity.Changes)
 			s.flow.SetStep(nil)
 			s.flow.SetLanes(nil)
-		}
-		if s.follow.Update(input) {
-			s.followed = ids.ULID{}
 		}
 		s.flow.Update(input, ctx)
 		s.keepInView(ctx, entity.Node, following)

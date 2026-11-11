@@ -18,12 +18,18 @@ import (
 func TestFollowIsTheAuthorsToTurnOn(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: ids.ULID{}}}, f.ctx)
-	f.send(5, false)
 	f.state.Draw(ebiten.NewImage(1000, 700), f.docs)
 	if f.has("following") {
 		t.Fatal("Follow starts off")
 	}
+	f.click("ui:follow")
+	if !f.has("following") {
+		t.Fatal("Follow turns on before any NPC is watched")
+	}
+	f.click("ui:follow")
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: ids.ULID{}}}, f.ctx)
+	f.send(5, false)
+	f.state.Draw(ebiten.NewImage(1000, 700), f.docs)
 	f.click("ui:follow")
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if !f.has("following") {
