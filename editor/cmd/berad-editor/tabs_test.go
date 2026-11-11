@@ -194,6 +194,30 @@ func TestKeysMoveBetweenTabs(t *testing.T) {
 	noCrashes(t, project)
 }
 
+// TestBackReturnsToANode selects two nodes of Clerk's day in turn, goes to
+// the Project's tab, then steps back with Cmd+[ to the workflow with the
+// second selected, back again to the first, and forward with Cmd+]
+// (increment 38).
+func TestBackReturnsToANode(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Workflows"), wait(20), doubleClick("row:Clerk's day"),
+		must("state:tabs:2", 600), must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5),
+		click("ui:quit"), wait(60),
+	)
+	workflowScript := script(
+		must("state:loaded", 600), wait(30), click("node:start:1"), must("state:selected:start", 60),
+		click("node:time-switch:1"), must("state:selected:time-switch", 60), wait(5), keys("Cmd+1"),
+		must("state:front:Project", 60), wait(5), keys("Cmd+["), must("state:front:Clerk's day", 60),
+		must("state:selected:time-switch", 60), wait(5), keys("Cmd+["), must("state:selected:start", 60), wait(5),
+		keys("Cmd+]"), must("state:selected:time-switch", 60), wait(5), keys("Cmd+W"), wait(30),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
+	noCrashes(t, project)
+}
+
 // TestSpriteOpensAsATab makes a sprite in the project browser and opens it
 // as a tab under Sprites, after Audio on the bar (increment 11). The Pixel
 // editor paints a stroke there.

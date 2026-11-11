@@ -53,6 +53,8 @@ type shell struct {
 	// holds the tabs in the order they were last in front.
 	more ui.Menu
 	used []*tab
+	// trail is where the author has been, for Back and Forward.
+	trail trail
 	// onTop is whether the window is kept above other applications' windows,
 	// and folded whether every tab's inspector is folded to its strip.
 	onTop  bool
@@ -94,7 +96,8 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
-		more: ui.Menu{Items: nil, Width: 0}, used: nil, onTop: false, folded: false,
+		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
+		onTop: false, folded: false,
 	}
 }
 
@@ -192,6 +195,7 @@ func (s *shell) Update() error {
 	}
 	s.attend()
 	s.noteUsed()
+	s.noteTrail()
 	s.followOnTop()
 	s.followInspector()
 	s.followClock()

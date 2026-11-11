@@ -624,6 +624,7 @@ func keyRows() []ui.KeyRow {
 		{Label: "Close tab", Keys: []string{"Cmd+W"}},
 		{Label: "Tab by place, last used", Keys: []string{"Cmd+1\u20139", "Ctrl+Tab"}},
 		{Label: "Tab before, after", Keys: []string{"Cmd+Shift+[", "Cmd+Shift+]"}},
+		{Label: "Back, forward", Keys: []string{"Cmd+[", "Cmd+]"}},
 		{Label: "Quit the editor", Keys: []string{"Cmd+Q"}},
 		{Label: "This list", Keys: []string{"?"}},
 	}

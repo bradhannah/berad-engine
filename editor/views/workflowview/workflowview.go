@@ -1260,6 +1260,16 @@ func (s *State) workflowBounds() (image.Rectangle, bool) {
 // middle of the canvas: NodeItem then the node's ID.
 const NodeItem = "node:"
 
+// Selection is the node selected, as the item that shows it, for Back and
+// Forward (increment 38); "" while no node is.
+func (s *State) Selection() string {
+	if s.selected.IsZero() {
+		return ""
+	}
+
+	return NodeItem + s.selected.String()
+}
+
 // showNode selects the node asked for with NodeItem, and centres on it, once
 // the workflow holding it has arrived.
 func (s *State) showNode() {
