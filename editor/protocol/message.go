@@ -242,6 +242,10 @@ const (
 	NoticeSaved      = "saved"
 )
 
+// NoticeFilesLeftOut is the notice kind for files left out of the project
+// when it opened, because they could not be read as documents.
+const NoticeFilesLeftOut = "files-left-out"
+
 // Notice is a user-facing message, published on TopicNotice.
 type Notice struct {
 	Kind   string   `json:"kind"`

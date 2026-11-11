@@ -214,6 +214,7 @@ func (o *Orchestrator) load() error {
 		return err
 	}
 	o.folders = o.foldersOnDisk(dirs)
+	o.tellUnread(o.project.unread)
 	beforeZones := map[ids.ULID]bool{}
 	for _, document := range stored {
 		documentType, ok := o.cfg.Registry.Document(document.envelope.Format)

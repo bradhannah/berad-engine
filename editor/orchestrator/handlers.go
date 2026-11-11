@@ -459,6 +459,27 @@ func (o *Orchestrator) publishNotice(notice protocol.Notice) {
 	}
 }
 
+// tellUnread leaves a notice, for every window that opens, of the files
+// left out of the project because they could not be read as documents:
+// which files, and why each. The files stay where they are, to be fixed.
+func (o *Orchestrator) tellUnread(unread []unreadFile) {
+	if len(unread) == 0 {
+		return
+	}
+	named := make([]string, 0, len(unread))
+	for _, file := range unread {
+		named = append(named, file.path+" ("+file.reason+")")
+	}
+	text := "Left out of the project, as it could not be read: "
+	if len(unread) > 1 {
+		text = "Left out of the project, as they could not be read: "
+	}
+	o.publishNotice(protocol.Notice{
+		Kind: protocol.NoticeFilesLeftOut, Window: ids.ULID{}, Report: "",
+		Text: text + strings.Join(named, "; ") + ". Fix what is wrong in the file, then open the project again.",
+	})
+}
+
 // shownNotice returns the notice windows show now, of no kind when none.
 func (o *Orchestrator) shownNotice() protocol.Notice {
 	var shown protocol.Notice

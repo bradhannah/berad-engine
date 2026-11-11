@@ -38,6 +38,15 @@ const (
 type project struct {
 	root   *os.Root
 	logger *slog.Logger
+	// unread are the files left out when the project was loaded because
+	// they could not be read as documents.
+	unread []unreadFile
+}
+
+// unreadFile is a file left out of the project, and why.
+type unreadFile struct {
+	path   string
+	reason string
 }
 
 // storedDocument is a document read from disk, already upgraded if needed,
@@ -75,7 +84,7 @@ func openProject(dir string, logger *slog.Logger) (*project, error) {
 		}
 	}
 
-	opened := &project{root: root, logger: logger}
+	opened := &project{root: root, logger: logger, unread: nil}
 	if err := opened.ignoreState(); err != nil {
 		return nil, err
 	}
@@ -174,6 +183,8 @@ func (p *project) loadOne(formats *content.Registry, path string, now time.Time)
 	envelope, err := content.Decode(raw)
 	if err != nil {
 		p.logger.Warn("skipping file that is not a document", "path", path, "error", err)
+		reason := strings.TrimPrefix(err.Error(), content.ErrMalformed.Error()+": ")
+		p.unread = append(p.unread, unreadFile{path: path, reason: reason})
 
 		return noDocument(), false, nil
 	}
