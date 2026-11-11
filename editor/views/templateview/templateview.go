@@ -74,6 +74,10 @@ type guideRow struct {
 	name                           *ui.TextField
 	line, from, less, more, remove *ui.Button
 	at                             image.Rectangle
+	// shows is the guide the row last showed, which tells a guide removed
+	// or put back above it from one at the end, so a name typed in the
+	// row stays with its guide.
+	shows artplugin.Guide
 }
 
 // State is one Template editor window.
@@ -245,16 +249,7 @@ func (s *State) syncRows(template artplugin.Template) {
 	}
 	s.rules = s.rules[:len(template.Rules)]
 	rebuilt := len(s.guides) != len(template.Guides)
-	for len(s.guides) < len(template.Guides) {
-		prefix := "guide-" + strconv.Itoa(len(s.guides)+1) + "-"
-		field := ui.NewTextField(prefix+"name", textedit.NewField("", false, nameBytes), false, s.theme)
-		s.guides = append(s.guides, guideRow{
-			name: field, line: ui.NewButton(prefix+"line", ""), from: ui.NewButton(prefix+"from", ""),
-			less: ui.NewButton(prefix+"less", "−"), more: ui.NewButton(prefix+"more", "+"),
-			remove: ui.NewButton(prefix+"remove", "×"), at: ui.Zero(),
-		})
-	}
-	s.guides = s.guides[:len(template.Guides)]
+	s.guides = s.matchGuides(template.Guides)
 	if rebuilt {
 		current := s.focus.Current()
 		s.focus = ui.Focus{}
@@ -268,6 +263,52 @@ func (s *State) syncRows(template artplugin.Template) {
 	}
 	for index, guide := range template.Guides {
 		s.guides[index].name.Field.SetSaved(guide.Name)
+		s.guides[index].shows = guide
+	}
+}
+
+// matchGuides returns a row for each guide, keeping each guide's own row,
+// and with it a name typed there and not saved. When one guide has gone,
+// its row goes, wherever it was, and when one has come, a new row goes
+// where it is: the first place the rows and the guides differ, or the end.
+// Rows are named by where they are, so they are named again.
+func (s *State) matchGuides(guides []artplugin.Guide) []guideRow {
+	rows := s.guides
+	differs := min(len(rows), len(guides))
+	for index := range differs {
+		if rows[index].shows != guides[index] {
+			differs = index
+
+			break
+		}
+	}
+	switch {
+	case len(guides) == len(rows)-1:
+		rows = slices.Delete(rows, differs, differs+1)
+	case len(guides) == len(rows)+1:
+		rows = slices.Insert(rows, differs, s.newGuideRow())
+	}
+	for len(rows) < len(guides) {
+		rows = append(rows, s.newGuideRow())
+	}
+	rows = rows[:len(guides)]
+	for index := range rows {
+		prefix := "guide-" + strconv.Itoa(index+1) + "-"
+		row := &rows[index]
+		row.name.ID, row.line.ID, row.from.ID = prefix+"name", prefix+"line", prefix+"from"
+		row.less.ID, row.more.ID, row.remove.ID = prefix+"less", prefix+"more", prefix+"remove"
+	}
+
+	return rows
+}
+
+// newGuideRow returns a guide's widgets, named once the row has its place.
+func (s *State) newGuideRow() guideRow {
+	return guideRow{
+		name: ui.NewTextField("", textedit.NewField("", false, nameBytes), false, s.theme),
+		line: ui.NewButton("", ""), from: ui.NewButton("", ""), less: ui.NewButton("", "−"), more: ui.NewButton("", "+"),
+		remove: ui.NewButton("", "×"), at: ui.Zero(),
+		shows: artplugin.Guide{Name: "", Line: "", From: "", At: 0},
 	}
 }
 
