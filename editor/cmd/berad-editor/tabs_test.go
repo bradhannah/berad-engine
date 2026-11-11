@@ -171,6 +171,29 @@ func TestEveryDocumentHasATab(t *testing.T) {
 	t.Logf("screenshot: %s", shot)
 }
 
+// TestKeysMoveBetweenTabs opens a workflow and a Map, then moves between
+// the three tabs by key from the workflow's tab (increment 38): Cmd+1 to
+// the Project, Cmd+Shift+] to its neighbour, Ctrl+Tab back to the tab last
+// used, and Cmd+9, with no ninth tab, nowhere.
+func TestKeysMoveBetweenTabs(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Workflows"), wait(20), doubleClick("row:Clerk's day"),
+		must("state:tabs:2", 600), wait(30), click("row:Zones"), wait(20), doubleClick("row:Sample zone"),
+		must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	workflowScript := script(
+		must("state:tabs:3", 900), wait(30), keys("Cmd+1"), must("state:front:Project", 60),
+		keys("Cmd+Shift+]"), must("state:front:Clerk's day", 60), keys("Ctrl+Tab"), must("state:front:Project", 60),
+		keys("Cmd+9"), wait(5), must("state:front:Project", 5), keys("Cmd+3"), wait(30), keys("Cmd+W"), wait(30),
+	)
+	mapScript := script(must("state:loaded", 600), must("state:tabs:2", 1800), wait(5), keys("Cmd+W"), wait(30))
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}})
+	noCrashes(t, project)
+}
+
 // TestSpriteOpensAsATab makes a sprite in the project browser and opens it
 // as a tab under Sprites, after Audio on the bar (increment 11). The Pixel
 // editor paints a stroke there.

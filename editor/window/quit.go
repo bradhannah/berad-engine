@@ -22,7 +22,8 @@ const (
 
 // windowKeys handles what every window does the same way, before its view
 // sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, Cmd+R launches
-// the game in the Play tab, and the close button asks to close the window.
+// the game in the Play tab, the keys that move between tabs move, and the
+// close button asks to close the window.
 func (h *host) windowKeys(input *ui.Input) {
 	switch h.surface.Closing() {
 	case closeQuit:
@@ -38,6 +39,9 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.save()
 	case input.Consume(ui.KeyR, ui.Cmd()):
 		h.launch()
+	}
+	if h.tabKeys != nil {
+		h.tabKeys(input, h.frame.Status)
 	}
 }
 
@@ -187,7 +191,8 @@ func (h *host) reportUnsaved() {
 // Locate finds a named part of the window for input scripts: the quit
 // dialog's buttons while it shows, how many tabs the editor window has
 // ("state:tabs:1"), a tab's tint ("state:tab-tint:<title>=<tint>"), whether
-// a tab holds changes that wait for Save ("state:tab-unsaved:<title>"), the
+// a tab holds changes that wait for Save ("state:tab-unsaved:<title>"),
+// whether a tab is in front ("state:front:<title>"), the
 // folded inspector's strip ("ui:folded-inspector") and whether it is folded
 // ("state:inspector-folded"), the status bar's toggles, or the view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
@@ -206,6 +211,9 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 	if title, ok := strings.CutPrefix(name, "state:tab-unsaved:"); ok && h.tabUnsaved != nil {
 		return image.Pt(0, 0), h.tabUnsaved(title)
+	}
+	if title, ok := strings.CutPrefix(name, "state:front:"); ok && h.tabFront != nil {
+		return image.Pt(0, 0), h.tabFront(title)
 	}
 	switch name {
 	case "ui:folded-inspector":

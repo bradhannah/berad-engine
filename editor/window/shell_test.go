@@ -178,3 +178,56 @@ func TestTabsThatDoNotFitGoUnderMore(t *testing.T) {
 		t.Fatalf("on a wider window every tab fits: %d", len(tabs))
 	}
 }
+
+// TestKeysMoveBetweenTabs chooses tabs by position, the one last used and
+// its neighbours, and says why when a key has nowhere to go (increment 38).
+func TestKeysMoveBetweenTabs(t *testing.T) {
+	t.Parallel()
+	shown := &shell{tabs: []*tab{
+		{panes: []*pane{titled("browser", "Project")}}, {panes: []*pane{titled("workflow", "Workflow: Notes")}},
+		{panes: []*pane{titled("map", "Map: Town")}},
+	}, active: 0}
+	var said string
+	status := func(message string) { said = message }
+	press := func(key string) {
+		input := ui.NewInput(image.Pt(0, 0))
+		input.Presses = []ui.Press{ui.ParsePress(key)}
+		shown.tabKeys(&input, status)
+		shown.noteUsed()
+		if len(input.Presses) != 0 {
+			t.Fatalf("%s was left for the view", key)
+		}
+	}
+	shown.noteUsed()
+	press("Cmd+3")
+	if !shown.frontNamed("Town") {
+		t.Fatalf("Cmd+3 brings the third tab forward: %d", shown.active)
+	}
+	press("Ctrl+Tab")
+	if shown.active != 0 {
+		t.Fatalf("Ctrl+Tab goes back to the tab last used: %d", shown.active)
+	}
+	press("Ctrl+Tab")
+	if shown.active != 2 {
+		t.Fatalf("and again comes back: %d", shown.active)
+	}
+	press("Cmd+Shift+[")
+	if shown.active != 1 {
+		t.Fatalf("Cmd+Shift+[ goes to the tab before: %d", shown.active)
+	}
+	press("Cmd+Shift+]")
+	press("Cmd+Shift+]")
+	if shown.active != 2 || said != "This is the last tab" {
+		t.Fatalf("past the last tab nothing moves and the status says why: %d %q", shown.active, said)
+	}
+	press("Cmd+7")
+	if shown.active != 2 || said != "There is no tab 7: 3 tabs are open" {
+		t.Fatalf("a position with no tab: %d %q", shown.active, said)
+	}
+	input := ui.NewInput(image.Pt(0, 0))
+	input.Presses = []ui.Press{ui.ParsePress("Tab"), ui.ParsePress("Cmd+Alt+1")}
+	shown.tabKeys(&input, status)
+	if len(input.Presses) != 2 || shown.active != 2 {
+		t.Fatalf("Tab and Cmd+Alt+1 are the view's: %v", input.Presses)
+	}
+}

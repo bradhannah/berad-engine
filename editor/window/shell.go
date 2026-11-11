@@ -49,8 +49,10 @@ type shell struct {
 	dragging bool
 	// stats are the window's frame statistics, when they are asked for.
 	stats *frameStats
-	// more lists the tabs that do not fit on the bar, while open.
+	// more lists the tabs that do not fit on the bar, while open, and used
+	// holds the tabs in the order they were last in front.
 	more ui.Menu
+	used []*tab
 	// onTop is whether the window is kept above other applications' windows,
 	// and folded whether every tab's inspector is folded to its strip.
 	onTop  bool
@@ -92,7 +94,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
-		more: ui.Menu{Items: nil, Width: 0}, onTop: false, folded: false,
+		more: ui.Menu{Items: nil, Width: 0}, used: nil, onTop: false, folded: false,
 	}
 }
 
@@ -125,6 +127,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.tabs = func() int { return len(s.tabs) }
 	shown.host.tabTint = s.tintNamed
 	shown.host.tabUnsaved = s.unsavedNamed
+	shown.host.tabKeys, shown.host.tabFront = s.tabKeys, s.frontNamed
 
 	return shown, nil
 }
@@ -188,6 +191,7 @@ func (s *shell) Update() error {
 		s.run(shown)
 	}
 	s.attend()
+	s.noteUsed()
 	s.followOnTop()
 	s.followInspector()
 	s.followClock()
