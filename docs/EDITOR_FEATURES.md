@@ -25,6 +25,55 @@ under consideration), **open** (undecided).
   style of the editor wireframes for every view: IBM Plex Sans and Mono,
   dark outlines and rounded boxes, small uppercase labels, blue for selection
   and orange for anything live.
+- **Agreed (2026-11-11):** **explicit over clever.** In its author's words,
+  clever behaviour "can conceal the why did that happen and what actually
+  just happened", most of all with nodes. Every behaviour of the editor is
+  held to six rules. The editor never opens, folds, closes, pans or switches
+  anything unless its key or button was pressed. One gesture has one result,
+  whatever is selected, nearby or free; where the result must differ, the
+  control says which it will be before it is pressed. A result that is
+  large or easy to miss is shown before it happens: an area about to be
+  painted, a link about to be replaced, the uses a rename will touch. Every
+  change is said afterwards in words, and kept. A slip (a missed drop, a
+  stray Esc, a click on nothing) changes nothing. Remembering is allowed and
+  guessing is not: the editor may put things back as they were left, never
+  decide a better arrangement. The entries dated 2026-11-11 in this document
+  follow from it. None is built yet.
+- **Agreed (2026-11-11):** **a desk and a stage** replaces the plain white
+  look, whose five surfaces sat within seven points of white, so that only
+  outlines told regions apart. Four tones, each with one job. *Field*,
+  white, is where the author types or chooses, and is the only white.
+  *Page* (`#f4f2ec`) is what is read: panels, lists and a Workflow's canvas.
+  *Desk* (`#e7e4da`) is the window's frame: bar, tool rail and status bar.
+  *Stage* (`#35373b`, with no hue) is behind the game alone: a Map, a
+  sprite, the Pixel editor, a preview and Play; so the game is the brightest
+  thing in the window and pixel art is judged on a neutral ground. Regions
+  meet at a step in tone and a hairline; the dark outline is kept for what
+  is pressed or typed in, and a fact that can only be read has no box.
+  Nothing read at length is light on dark. IBM Plex stays, Mono for what the
+  engine reads: paths, values, numbers, keys, times and cells. Tones are
+  flat and edges hard; what floats casts a hard shadow, never a blur. All
+  text is at least 4.5 to 1 against its ground, and states that must be told
+  apart differ in tone or shape as well as hue. The values are a starting
+  point until judged in the real window. (Rejected: a dark theme; paper
+  throughout, which leaves the game no brighter than its surround; a dark
+  frame round light pages, where the frame outweighs the game.)
+- **Agreed (2026-11-11):** **a colour has one job.** Blue is where the
+  author is: the selection, the field with the keyboard, the tool in hand
+  and a panel's one main button. Orange is running now. Red is stop:
+  refused, never runs, will delete. **Waiting for Save is ink, not red:** a
+  dot on the tab, a dot and a heavier outline on the field, and a solid ink
+  save bar that stays in place and goes quiet when nothing waits. The seven
+  tints stay organisation, not meaning, and a type's muted colour stays on
+  its icon, drawn as a filled chip. At most one filled button in a panel.
+- **Agreed (2026-11-11):** **a history that can be read.** Every change is a
+  sentence saying what kind of change, to what, and where it went. The
+  first is what Cmd+Z will undo, and Undo answers with it in place of
+  "Undone". The list opens from the status bar, one for each pane as undo
+  is, and a click on a line selects what it names. A refusal stays in it
+  with its reason, and stays in the status bar until dismissed; other
+  messages still fade. The status bar always names the tool in hand and
+  what the pointer is over.
 - **Agreed:** typed changes wait for an explicit save: every inspector with
   fields to type into has a save bar with Revert and Save, and Cmd+S saves
   in any pane. Enter saves a one-line field and
@@ -46,12 +95,48 @@ under consideration), **open** (undecided).
   tab. There are no separate windows, and nothing pops out into one.
   (Rejected: a window process for each view, as the editor ran until
   increment 12.)
+- **Agreed (2026-11-11):** **one row of tabs,** every open document a tab,
+  so that going from a map to a workflow is one click or one key. A
+  document's tab keeps its tint, a wash and a band along its top; the tab
+  in front takes a stronger wash, a thicker band and the blue line, a dot
+  says it holds something waiting for Save, and "live" in orange that it
+  is previewing. Its type is its icon. Tabs shrink together and the last go
+  under a "more" tab. Cmd+1 to 9 choose a tab by position, Ctrl+Tab the one
+  last used, and Cmd+Shift+[ and ] its neighbours; Cmd+[ and Cmd+] step back
+  and forward through where the author has been, the tab and what was
+  selected in it. **Quick open,** Cmd+P from any tab, is the Project
+  window's search in a sheet over the window, and Cmd+Enter opens a result
+  beside the tab in front. Launch shows its key, and the clock's controls
+  sit in the bar. (Replaced: a tab for each kind with a second row for its
+  documents, which came and went and cost a click on the commonest move.
+  Quick open was set aside on 2026-11-05.)
 - **Agreed (2026-11-04):** **the inspector folds.** An Inspector toggle in
   the status bar folds every tab's inspector to a strip at the right edge,
   and clicking the strip opens it again. (Rejected: an inspector floating
   beside the selection, quick settings on the node, one docked along the
   bottom, auto-hide, and a layout fitted to the window's width; each meant
   another layout to keep in step.)
+- **Agreed (2026-11-11):** **every panel folds, when told to.** The
+  inspector and a view's left panel each have a fold button and a key,
+  Cmd+I and Cmd+Shift+I; folded, a panel is a strip with its name on it,
+  and the left panel of a Map or a Workflow is a rail of its tools. Dividers
+  drag, and a double-click puts one back. A panel's width and fold belong
+  to the kind of view, so folding it for one Map folds it for every Map and
+  leaves Workflows alone; they are kept per person, never in the project.
+  The screen's size chooses starting widths once, the first time a kind of
+  view opens on it, and the status bar says so; each size of screen keeps
+  its own arrangement. A Map keeps two, one for editing and one for
+  previewing, each as it was last left in that mode. Nothing changes while
+  the window is resized: the canvas takes up the change, and the window
+  stops narrowing rather than fold a panel. What will not fit is refused
+  with the reason and the keys that make room. Beside the canvas any tab
+  can sit beside any other. The window reopens as it was left, its frame,
+  tabs and what sits beside what, and says what could not be found. The
+  editor draws at the screen's own resolution and offers a scale for text
+  and controls, which changes nothing else. (Replaced: one toggle folding
+  every tab's inspector. This is not the layout fitted to the window's
+  width rejected on 2026-11-04: there is one layout, and only its author
+  moves it.)
 - **Agreed (2026-11-04):** on a wide window **a list keeps a readable
   width,** each row's detail in a column close to its name, and the
   inspector stands beside the list instead of at the far edge. World
@@ -536,6 +621,21 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   just under its own two nodes and dips below a node only where it would
   run through it, and only for nodes in its own container. [Increment
   29](increments/0029-lines-state-and-picking.md) builds it.
+- **Agreed (2026-11-11):** **a line does only what its author did.** A line
+  dropped on empty canvas opens a menu of nodes whose first line says what
+  will be joined to what; choosing one adds it there, joined by that line
+  alone, as one step, and Esc or a click elsewhere leaves the line as it
+  was. Tab, or a double-click on empty canvas, opens the same menu with
+  nothing joined. A line held over a dot that already has one shows the old
+  line red and dashed, with what would be replaced, before it is let go.
+  Unlinking is a command of its own: the line's menu, Backspace, and Unlink
+  beside each link in the inspector, which writes out what joins to a node
+  and where each output goes. Add after says which it will do: join from a
+  named output, or place beside when none is free. A Say or Show message
+  wraps its line on the node, and its field gets the room in the inspector.
+  (Replaced: a missed drop disconnecting the line, a drop on a used dot
+  replacing its link without a word, and Add after reading the same either
+  way.)
 - **Agreed (2026-11-05):** a node over a line shows it is not joined to it.
   A line that crosses a node is drawn over it at 40% strength, through its
   dots, and a node nothing links to rings its loose dots red and says "Not
@@ -751,6 +851,21 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   runs the preview's clock: an hour back or on, a jump to a time, stopping
   and starting it, and its rate. Its panel opens by itself when a preview
   starts.
+- **Agreed (2026-11-11):** **starting a preview opens nothing.** The clock's
+  hour steps, pause, rate and jump sit in the window bar beside its readout,
+  and no panel opens over the inspector. Watch opens when asked and stays
+  where it was put. Watch has a **Follow** switch, orange while on, that
+  keeps the node being run in view; panning by hand turns it off, and the
+  switch shows that. Watch keeps a **trail**: each node the watched NPC
+  passed, what it did and why, with the time it read, the value it compared
+  and what that value was, and what was in its way. A restart caused by a
+  change to the clock is a line in the trail, with what was cleared. Step
+  says why when it cannot run, and gives up after a bounded number of
+  ticks. Values, Log and Path share one strip, a zone or a behaviour is
+  shown by its name, and a split has one status bar. Play from here starts
+  the game at a cell for one run, beside Preview from here. (Replaced: the
+  clock's panel opening by itself. *Candidate:* setting a value by hand for
+  one preview.)
 - **Agreed (early compromise):** editing during preview restarts affected NPCs'
   behaviour rather than preserving their place in a changed workflow.
 - **Agreed:** a workflow view can show the step each NPC is on and its inputs,
