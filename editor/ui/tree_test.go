@@ -137,3 +137,14 @@ func TestWheelPanIsShared(t *testing.T) {
 		t.Fatalf("pan %v", pan)
 	}
 }
+
+// TestAConstantHasAMark gives a constant an icon of its own, a diamond the
+// editor draws, in the colour of constants: the editor's font has no
+// character for one.
+func TestAConstantHasAMark(t *testing.T) {
+	t.Parallel()
+	if ui.IconColor(ui.IconConstant) != ui.ColorConstant() {
+		t.Fatal("the mark is in the colour of constants")
+	}
+	ui.DrawIcon(ebiten.NewImage(ui.IconSize, ui.IconSize), ui.IconConstant, image.Pt(0, 0))
+}

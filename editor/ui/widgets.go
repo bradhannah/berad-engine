@@ -47,6 +47,20 @@ func (b *Button) Update(input *Input) bool {
 	return true
 }
 
+// iconWidth is the room the button's icon takes before its label: none
+// without an icon, and no gap after an icon with no label beside it, which
+// sits in the button's middle.
+func (b *Button) iconWidth() int {
+	switch {
+	case b.Icon == IconNone:
+		return 0
+	case b.Label == "":
+		return IconSize
+	default:
+		return IconSize + Gap
+	}
+}
+
 // Draw renders the button: a rounded box with an ink outline. A button laid
 // out nowhere, as a hidden one is, is not drawn.
 func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
@@ -71,12 +85,9 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 	}
 	FillRound(screen, b.Rect, Radius, fill)
 	StrokeRound(screen, b.Rect, Radius, Border, edge)
-	width := theme.TextWidth(b.Label)
+	width := theme.TextWidth(b.Label) + b.iconWidth()
 	if b.Caret {
 		width += triangle*Half + labelGap
-	}
-	if b.Icon != IconNone {
-		width += IconSize + Gap
 	}
 	left := b.Rect.Min.X + (b.Rect.Dx()-width)/Half
 	if b.Icon != IconNone {
@@ -85,7 +96,7 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 			iconInk = ink
 		}
 		DrawIconInk(screen, b.Icon, image.Pt(left, b.Rect.Min.Y+(b.Rect.Dy()-IconSize)/Half), iconInk)
-		left += IconSize + Gap
+		left += b.iconWidth()
 	}
 	theme.DrawText(screen, b.Label, left, b.Rect.Min.Y+(b.Rect.Dy()-TextSize)/Half-1, ink)
 	if b.Caret {

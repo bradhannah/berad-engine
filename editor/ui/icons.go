@@ -44,6 +44,8 @@ const (
 	IconSignal
 	// IconHome is the Project window's Home: a house.
 	IconHome
+	// IconConstant is a constant: a diamond.
+	IconConstant
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -101,6 +103,8 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorArt()
 	case IconPlace, IconHome:
 		return ColorSelect()
+	case IconConstant:
+		return ColorConstant()
 	case IconNone, IconProject, IconClock, IconSettings:
 	}
 
@@ -157,8 +161,21 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 		drawArtIcon(screen, icon, left, top, ink)
 	case IconPlay, IconPlace, IconZoneLoop, IconSignal:
 		drawMark(screen, icon, corner, ink)
+	case IconConstant:
+		drawDiamond(screen, left, top, ink)
 	case IconNone:
 	}
+}
+
+// drawDiamond draws a constant's mark: a square on its corner, filled.
+func drawDiamond(screen *ebiten.Image, left, top float32, ink color.RGBA) {
+	var diamond vector.Path
+	diamond.MoveTo(left+IconSize/Half, top+1)
+	diamond.LineTo(left+IconSize-1, top+IconSize/Half)
+	diamond.LineTo(left+IconSize/Half, top+IconSize-1)
+	diamond.LineTo(left+1, top+IconSize/Half)
+	diamond.Close()
+	fillPath(screen, &diamond, ink)
 }
 
 // drawMark draws Play's triangle, a place's ring, a zone loop's arrow or
@@ -232,7 +249,7 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 	case IconHome:
 		drawHouse(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal:
+		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal, IconConstant:
 	}
 }
 
@@ -257,7 +274,7 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 	case IconTemplate:
 		drawFrame(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome:
+		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome, IconConstant:
 	}
 }
 
