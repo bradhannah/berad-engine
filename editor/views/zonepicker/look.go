@@ -101,7 +101,7 @@ func (p *Picker) looked() (Zone, bool) {
 // drawLook draws the look at a zone: its name, its ground floor drawn
 // small, and what it holds.
 func (p *Picker) drawLook(screen *ebiten.Image) {
-	ui.FillRound(screen, p.look, ui.Radius, ui.ColorPanel())
+	ui.FillRound(screen, p.look, ui.Radius, ui.ColorDesk())
 	each, found := p.looked()
 	if !found {
 		return
@@ -110,7 +110,7 @@ func (p *Picker) drawLook(screen *ebiten.Image) {
 	p.theme.DrawStrong(screen, p.theme.FitText(each.Name, p.look.Dx()-ui.Half*ui.Inset), left, top, ui.ColorInk())
 	top += ui.LineHeight + ui.Gap
 	frame := image.Rect(left, top, p.look.Max.X-ui.Inset, top+groundHeight)
-	ui.FillRect(screen, frame, ui.ColorOutside())
+	ui.FillRect(screen, frame, ui.ColorPage())
 	if drawn := p.looks.ground(each); drawn != nil {
 		p.drawGround(screen, drawn, frame)
 		caption := each.Floors[0] + ", the ground floor"

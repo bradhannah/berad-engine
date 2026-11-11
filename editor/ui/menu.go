@@ -218,7 +218,7 @@ func (m *Menu) Draw(screen *ebiten.Image, theme *Theme) {
 		return
 	}
 	FillRound(screen, m.rect.Add(image.Pt(0, shadowDrop/Half)), dialogRadius, HexAlpha(0, shadowAlpha))
-	Box(screen, m.rect, ColorBackground())
+	FloatBox(screen, m.rect, ColorField())
 	icons := slices.ContainsFunc(m.Items, func(item MenuItem) bool { return item.Icon != IconNone })
 	for index, item := range m.Items {
 		rect := m.itemRect(index)

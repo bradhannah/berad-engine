@@ -88,7 +88,8 @@ func (k *KeySheet) Draw(screen *ebiten.Image, theme *Theme) {
 	}
 	FillRect(screen, screen.Bounds(), ColorShade())
 	FillRound(screen, k.rect.Add(image.Pt(0, shadowDrop)), dialogRadius, HexAlpha(hexInk, shadowAlpha))
-	FillRound(screen, k.rect, dialogRadius, ColorBackground())
+	Float(screen, k.rect, dialogRadius)
+	FillRound(screen, k.rect, dialogRadius, ColorPage())
 	StrokeRound(screen, k.rect, dialogRadius, Border, ColorInk())
 	left, top := k.rect.Min.X+Inset, k.rect.Min.Y+Inset
 	theme.DrawStrong(screen, "Keys", left, top, ColorInk())
@@ -101,7 +102,7 @@ func (k *KeySheet) Draw(screen *ebiten.Image, theme *Theme) {
 		for _, key := range row.Keys {
 			width := theme.MonoWidth(key) + Half*capPad
 			keyCap := image.Rect(capLeft, top, capLeft+width, top+capHeight)
-			FillRound(screen, keyCap, capRadius, ColorPanel())
+			FillRound(screen, keyCap, capRadius, ColorDesk())
 			StrokeRound(screen, keyCap, capRadius, Hairline, ColorRule())
 			theme.DrawMono(screen, key, capLeft+capPad, top+(capHeight-MonoSize)/Half-1, ColorInk())
 			capLeft += width + capGap

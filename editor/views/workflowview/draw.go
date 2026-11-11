@@ -67,7 +67,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.load(docs)
 	s.layoutWidgets(docs)
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	s.drawZoomed(screen, docs)
 	s.drawStrip(screen, docs)
 	if s.workflow != nil {
@@ -122,7 +122,7 @@ const zoneLoopLacks = "Not in a zone loop: Go to, Move and Find NPC nearby. A zo
 
 // drawCanvas draws the dotted ground, then connections behind the nodes.
 func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
-	area.Fill(ui.ColorCanvas())
+	area.Fill(ui.ColorPage())
 	canvas := area.Bounds()
 	origin := canvas.Min.Add(s.offset)
 	dot := ui.ColorRule()
@@ -191,7 +191,7 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 	}
 	centre := s.toScreen(drawn.spare)
-	fill, ring := ui.ColorBackground(), ui.ColorInk()
+	fill, ring := ui.ColorField(), ui.ColorInk()
 	if s.loose(drawn) {
 		ring = ui.ColorWarn()
 	}
@@ -209,7 +209,7 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 		centre := s.toScreen(out.at)
 		key := routeKey{from: from.node.ID, output: out.output.Name}
 		_, linked := from.node.Next[out.output.Name]
-		fill, ring, label := ui.ColorBackground(), ui.ColorInk(), ui.ColorMuted()
+		fill, ring, label := ui.ColorField(), ui.ColorInk(), ui.ColorMuted()
 		if coloured, ok := s.outcomeTint(key); ok {
 			ring = coloured.ink
 		}
@@ -253,7 +253,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 
 		return
 	}
-	face := ui.ColorBackground()
+	face := ui.ColorField()
 	if coloured, ok := s.nodeTint(drawn.node.ID); ok {
 		face = coloured.wash
 	}
@@ -302,7 +302,7 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 // drawNoteNode draws a Note: a dashed box holding its text.
 func (s *State) drawNoteNode(area *ebiten.Image, drawn shape) {
 	rect := s.screenRect(drawn.rect)
-	ui.FillRound(area, rect, ui.Radius, ui.ColorBackground())
+	ui.FillRound(area, rect, ui.Radius, ui.ColorField())
 	strokeDashed(area, rect, ui.Border, ui.ColorInk())
 	s.theme.DrawLabel(area, "Note", rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 	for index, line := range s.wrap(textParam(drawn.node, "text"), drawn.rect.Dx()-ui.Half*textPad) {

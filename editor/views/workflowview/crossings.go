@@ -93,7 +93,7 @@ func (s *State) drawLooseTag(area *ebiten.Image, drawn shape) {
 	width := s.theme.SmallWidth(looseTag) + ui.Half*looseTagPad
 	top := rect.Max.Y + looseTagGap
 	tag := image.Rect(rect.Min.X, top, rect.Min.X+width, top+ui.LabelSize+looseTagPad)
-	ui.FillRound(area, tag, float32(tag.Dy())/ui.Half, ui.ColorBackground())
+	ui.FillRound(area, tag, float32(tag.Dy())/ui.Half, ui.ColorField())
 	ui.StrokeRound(area, tag, float32(tag.Dy())/ui.Half, 1, ui.ColorWarn())
 	s.theme.DrawSmall(area, looseTag, tag.Min.X+looseTagPad, tag.Min.Y+looseTagPad/ui.Half-1, ui.ColorWarn())
 }

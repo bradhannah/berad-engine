@@ -409,7 +409,7 @@ func (s *State) drawNPC(area *ebiten.Image, rect image.Rectangle, npcID ids.ULID
 		if size >= minLabel {
 			width := s.theme.SmallWidth(label)
 			s.theme.DrawSmall(area, label, int(centreX)-width/ui.Half, int(centreY)-ui.LabelSize/ui.Half-ui.Half,
-				ui.ColorBackground())
+				ui.ColorReverse())
 		}
 	}
 	if ringed {

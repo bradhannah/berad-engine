@@ -1481,7 +1481,7 @@ func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout(docs)
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	width := frame.Content(s.size).Max.X
 	s.theme.DrawTitle(screen, "Project", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(width, toolbarHeight-ui.Outline))

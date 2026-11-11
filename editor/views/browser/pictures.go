@@ -200,7 +200,7 @@ func (s *State) drawTileText(screen *ebiten.Image, row ui.Row, rect image.Rectan
 func (s *State) drawPicture(
 	screen *ebiten.Image, docs frame.Docs, index *project.Index, row ui.Row, box image.Rectangle,
 ) {
-	ui.FillRound(screen, box, pictureRadius, ui.ColorCanvas())
+	ui.FillRound(screen, box, pictureRadius, ui.ColorPage())
 	if folder, isFolder := parseFolderRow(row.ID); isFolder {
 		s.drawFolderPicture(screen, docs, spritesIn(index, folder.Path, folderMinis), box)
 

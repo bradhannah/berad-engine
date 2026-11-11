@@ -960,7 +960,7 @@ func (s *State) drawValue(screen *ebiten.Image, docs frame.Docs, made *control, 
 // drawPickBox draws a box that opens the picker: its label, a caret, and a
 // blue outline while the picker it opens is open.
 func (s *State) drawPickBox(screen *ebiten.Image, box image.Rectangle, label string, ink color.Color, open bool) {
-	ui.Box(screen, box, ui.ColorBackground())
+	ui.Box(screen, box, ui.ColorField())
 	if open {
 		ui.StrokeRound(screen, box, ui.Radius, ui.Border, ui.ColorSelect())
 	}

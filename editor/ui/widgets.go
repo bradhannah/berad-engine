@@ -67,14 +67,14 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 	if b.Rect.Empty() {
 		return
 	}
-	fill, ink, edge := ColorBackground(), ColorInk(), ColorInk()
+	fill, ink, edge := ColorField(), ColorInk(), ColorInk()
 	switch {
 	case b.Disabled:
 		ink, edge = ColorSubdued(), ColorRule()
 	case b.Primary:
-		fill, ink, edge = ColorSelect(), ColorBackground(), ColorSelect()
+		fill, ink, edge = ColorSelect(), ColorReverse(), ColorSelect()
 	case b.On:
-		fill, ink = ColorInk(), ColorBackground()
+		fill, ink = ColorInk(), ColorReverse()
 	case b.Danger:
 		ink, edge = ColorWarn(), ColorWarn()
 		if b.hover {
@@ -129,7 +129,7 @@ func (t *Toggle) Draw(screen *ebiten.Image, theme *Theme) {
 	const box = 14
 	boxTop := t.Rect.Min.Y + (t.Rect.Dy()-box)/Half
 	square := image.Rect(t.Rect.Min.X, boxTop, t.Rect.Min.X+box, boxTop+box)
-	FillRound(screen, square, toggleInset, ColorBackground())
+	FillRound(screen, square, toggleInset, ColorField())
 	StrokeRound(screen, square, toggleInset, Border, ColorInk())
 	if t.On {
 		FillRound(screen, square.Inset(toggleInset), Half, ColorInk())
@@ -622,7 +622,7 @@ func (l *List) drawDrag(area *ebiten.Image, theme *Theme) {
 	label := ""
 	for index, row := range l.Rows {
 		if l.Faded != nil && l.Faded(l.drag.row, row.ID) {
-			Box(area, l.RowRect(index), HexAlpha(hexBackground, fadeAlpha))
+			Box(area, l.RowRect(index), HexAlpha(hexPage, fadeAlpha))
 		}
 		if row.ID == l.drag.over {
 			StrokeRound(area, highlight(l.RowRect(index)), rowRadius, Outline, ColorSelect())

@@ -77,7 +77,7 @@ func (a *artSet) image(key string) (*ebiten.Image, bool) {
 // Draw draws the game's screen, filling the tab while keeping its shape, or
 // why there is no game yet.
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
-	screen.Fill(ui.Hex(hexDark))
+	screen.Fill(ui.ColorStage())
 	if s.game == nil {
 		message := "Loading the game…"
 		if s.problem != "" {

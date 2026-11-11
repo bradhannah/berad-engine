@@ -335,7 +335,7 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 	panel := s.npc
 	s.drawZone(screen, docs, npcID, left)
 	s.theme.Heading(screen, "BEHAVIOUR", left, panel.behaviourTop)
-	ui.Box(screen, panel.behaviour, ui.ColorBackground())
+	ui.Box(screen, panel.behaviour, ui.ColorField())
 	label, ink := "No behaviour yet", ui.ColorMuted()
 	if found, loaded := s.npcOf(docs, npcID); loaded && !found.Behaviour.IsZero() {
 		label, ink = s.index(docs).Name(found.Behaviour, "Broken: its workflow was deleted"), ui.ColorInk()
@@ -347,7 +347,7 @@ func (s *State) drawNPC(screen *ebiten.Image, docs frame.Docs, left int) {
 	panel.choose.Draw(screen, s.theme)
 	panel.open.Draw(screen, s.theme)
 	s.theme.Heading(screen, "SPRITE", left, panel.spriteTop)
-	ui.Box(screen, panel.sprite, ui.ColorBackground())
+	ui.Box(screen, panel.sprite, ui.ColorField())
 	label, ink = "Its token", ui.ColorMuted()
 	if found, loaded := s.npcOf(docs, npcID); loaded && !found.Sprite.IsZero() {
 		label, ink = s.index(docs).Name(found.Sprite, "Broken: its sprite was deleted"), ui.ColorInk()

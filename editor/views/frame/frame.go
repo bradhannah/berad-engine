@@ -355,7 +355,7 @@ func Folded(size image.Point) image.Rectangle {
 // name down the strip.
 func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
 	strip := Folded(screen.Bounds().Size())
-	fill := ui.ColorPanel()
+	fill := ui.ColorDesk()
 	if hover {
 		fill = ui.ColorSelectWash()
 	}
@@ -379,7 +379,7 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	bounds := screen.Bounds()
 	f.layoutStatus(bounds.Size())
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
-	ui.FillRect(screen, bar, ui.ColorPanel())
+	ui.FillRect(screen, bar, ui.ColorDesk())
 	ui.Divider(screen, image.Pt(0, bar.Min.Y), image.Pt(bar.Max.X, bar.Min.Y))
 	message, notice := f.Message()
 	ink := ui.ColorInk()

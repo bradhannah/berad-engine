@@ -162,7 +162,7 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs) {
 func (s *State) drawThing(
 	screen *ebiten.Image, docs frame.Docs, index *project.Index, row ui.Row, box image.Rectangle,
 ) {
-	ui.FillRound(screen, box, pictureRadius, ui.ColorCanvas())
+	ui.FillRound(screen, box, pictureRadius, ui.ColorPage())
 	if cue, isCue := s.cueOf(row.ID); isCue {
 		recording, heard := heardRecording(cue)
 		s.drawWave(screen, box.Inset(ui.Inset), recording, heard)

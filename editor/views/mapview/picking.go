@@ -214,7 +214,7 @@ func (s *State) drawPickWash(area *ebiten.Image, floorData *floor.Floor, grid im
 	box := image.Rect(rect.Min.X, rect.Max.Y+ui.Gap, rect.Min.X+s.theme.TextWidth(tip)+ui.Half*pickTipPad,
 		rect.Max.Y+ui.Gap+ui.LineHeight+pickTipPad)
 	ui.FillRound(area, box, ui.Radius, ui.ColorInk())
-	s.theme.DrawText(area, tip, box.Min.X+pickTipPad, box.Min.Y+pickTipPad/ui.Half+ui.Half, ui.ColorBackground())
+	s.theme.DrawText(area, tip, box.Min.X+pickTipPad, box.Min.Y+pickTipPad/ui.Half+ui.Half, ui.ColorReverse())
 }
 
 // drawPickBanner draws the banner over the map: what the place is for,
@@ -224,7 +224,7 @@ func (s *State) drawPickBanner(screen *ebiten.Image) {
 	ui.FillRound(screen, parts.banner, ui.Radius, ui.ColorSelect())
 	left := parts.banner.Min.X + ui.Inset
 	middle := parts.banner.Min.Y + pickBannerH/ui.Half
-	ui.DrawRing(screen, image.Pt(left+ui.IconSize/ui.Half, middle), ui.ColorBackground(), false)
+	ui.DrawRing(screen, image.Pt(left+ui.IconSize/ui.Half, middle), ui.ColorReverse(), false)
 	text := "Choose a place for " + labelOr(s.pick.Label, "the other tab")
 	if s.pick.Now.Name != "" {
 		text += "  ·  Now: " + s.pick.Now.Name
@@ -234,11 +234,11 @@ func (s *State) drawPickBanner(screen *ebiten.Image) {
 	for len(text) > 0 && s.theme.TextWidth(text) > room {
 		text = text[:len(text)-1]
 	}
-	s.theme.DrawText(screen, text, textLeft, middle-ui.TextSize/ui.Half-1, ui.ColorBackground())
-	ui.StrokeRound(screen, parts.bannerCancel.Rect, ui.Radius, ui.Border, ui.ColorBackground())
+	s.theme.DrawText(screen, text, textLeft, middle-ui.TextSize/ui.Half-1, ui.ColorReverse())
+	ui.StrokeRound(screen, parts.bannerCancel.Rect, ui.Radius, ui.Border, ui.ColorReverse())
 	label := parts.bannerCancel.Label
 	s.theme.DrawText(screen, label, parts.bannerCancel.Rect.Min.X+(pickCancelWidth-s.theme.TextWidth(label))/ui.Half,
-		parts.bannerCancel.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorBackground())
+		parts.bannerCancel.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorReverse())
 }
 
 // drawPickPanel fades the tools, which rest while picking, and draws the

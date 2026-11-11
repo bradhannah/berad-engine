@@ -225,7 +225,7 @@ func (s *State) drawLoudness(window *ebiten.Image) {
 	if !clipped {
 		return
 	}
-	ui.FillRect(screen, area, ui.ColorBackground())
+	ui.FillRect(screen, area, ui.ColorPage())
 	ui.Divider(screen, area.Min, image.Pt(area.Min.X, area.Max.Y))
 	left, right := area.Min.X+ui.Inset, area.Max.X-ui.Inset
 	top := area.Min.Y + ui.Inset - view.scroll

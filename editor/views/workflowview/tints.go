@@ -263,7 +263,7 @@ func (s *State) drawColours(screen *ebiten.Image) {
 func (s *State) drawSwatch(screen *ebiten.Image, row colourRow, choice swatch) {
 	centre := ui.Center(choice.rect)
 	centreX, centreY := float32(centre.X), float32(centre.Y)
-	fill, ring := ui.ColorBackground(), ui.ColorRule()
+	fill, ring := ui.ColorField(), ui.ColorRule()
 	if coloured, ok := tintNamed(choice.label); ok {
 		fill, ring = coloured.wash, coloured.ink
 	}

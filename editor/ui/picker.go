@@ -250,7 +250,7 @@ func (p *ColorPicker) Draw(screen *ebiten.Image) {
 	ringX := float32(atFraction(p.saturation, square.Min.X, square.Dx()))
 	ringY := float32(atFraction(1-p.bright, square.Min.Y, square.Dy()))
 	vector.StrokeCircle(screen, ringX, ringY, pickerRing+1, Hairline, ColorInk(), true)
-	vector.StrokeCircle(screen, ringX, ringY, pickerRing, Hairline+1, ColorBackground(), true)
+	vector.StrokeCircle(screen, ringX, ringY, pickerRing, Hairline+1, ColorReverse(), true)
 	p.drawMark(screen, hues, p.hue)
 	if !opacities.Empty() {
 		p.drawMark(screen, opacities, p.opacity)
@@ -261,7 +261,7 @@ func (p *ColorPicker) Draw(screen *ebiten.Image) {
 func (p *ColorPicker) drawMark(screen *ebiten.Image, strip image.Rectangle, share float64) {
 	x := atFraction(share, strip.Min.X, strip.Dx())
 	mark := image.Rect(x-pickerReach, strip.Min.Y-pickerReach, x+pickerReach+1, strip.Max.Y+pickerReach)
-	FillRect(screen, mark, ColorBackground())
+	FillRect(screen, mark, ColorReverse())
 	StrokeRect(screen, mark, Hairline, ColorInk())
 }
 
@@ -319,7 +319,7 @@ const bytesPerPixel = 4
 
 // overChecker is a colour at an opacity over a square of the checkerboard.
 func overChecker(rgb color.RGBA, opacity float64, dark bool) color.RGBA {
-	under := ColorBackground()
+	under := ColorField()
 	if dark {
 		under = Hex(hexChecker)
 	}

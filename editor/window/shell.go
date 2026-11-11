@@ -441,7 +441,7 @@ func (s *shell) focused() *pane {
 
 // Draw draws the tab in front and the window bar.
 func (s *shell) Draw(screen *ebiten.Image) {
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	if front := s.front(); front != nil {
 		for _, shown := range front.panes {
 			drawPane(screen, shown)

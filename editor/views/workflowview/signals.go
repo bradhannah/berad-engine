@@ -297,7 +297,7 @@ func (s *State) drawWarningMark(area *ebiten.Image, drawn shape) {
 	centre := s.toScreen(markCentre(drawn))
 	vector.FillCircle(area, float32(centre.X), float32(centre.Y), markRadius, ui.ColorCaution(), true)
 	width := s.theme.SmallWidth("!")
-	s.theme.DrawSmall(area, "!", centre.X-width/ui.Half, centre.Y-ui.LabelSize/ui.Half-ui.Half, ui.ColorBackground())
+	s.theme.DrawSmall(area, "!", centre.X-width/ui.Half, centre.Y-ui.LabelSize/ui.Half-ui.Half, ui.ColorReverse())
 }
 
 // hasWarningState answers "warnings:N" and "warning:<kind>:<n>", or

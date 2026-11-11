@@ -148,12 +148,12 @@ func (s *State) drawCards(screen *ebiten.Image, docs frame.Docs) {
 func (s *State) drawCard(
 	screen *ebiten.Image, docs frame.Docs, index *project.Index, row ui.Row, rect image.Rectangle,
 ) {
-	ui.FillRound(screen, rect, ui.Radius, ui.ColorBackground())
+	ui.FillRound(screen, rect, ui.Radius, ui.ColorField())
 	ui.StrokeRound(screen, rect, ui.Radius, ui.Outline, ui.ColorRule())
 	s.drawTileFrame(screen, row, rect)
 	box := image.Rect(rect.Min.X+cardPad, rect.Min.Y+cardPad, rect.Min.X+cardPad+cardPicture,
 		rect.Min.Y+cardPad+cardPicture)
-	ui.FillRound(screen, box, pictureRadius, ui.ColorCanvas())
+	ui.FillRound(screen, box, pictureRadius, ui.ColorPage())
 	lines := s.drawCardPicture(screen, docs, index, row, box)
 	left, width := box.Max.X+cardPad, rect.Max.X-box.Max.X-ui.Half*cardPad
 	s.theme.DrawStrong(screen, s.theme.FitText(row.Label, width), left, rect.Min.Y+cardPad, ui.ColorInk())

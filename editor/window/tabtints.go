@@ -40,7 +40,7 @@ func (s *shell) tintOf(index int) (ui.Tint, bool) {
 	tints := ui.Tints()
 	number := s.tabs[index].tint
 	if number < 1 || number > len(tints) {
-		return ui.Tint{Name: "", Wash: ui.ColorBackground(), Ink: ui.ColorInk()}, false
+		return ui.Tint{Name: "", Wash: ui.ColorDesk(), Strong: ui.ColorPage(), Ink: ui.ColorInk()}, false
 	}
 
 	return tints[number-1], true

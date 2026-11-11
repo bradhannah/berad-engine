@@ -718,7 +718,7 @@ func (s *State) updateShowMenu(input *ui.Input, ctx *frame.Context) {
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	template, ok := s.current(docs)
 	if !ok {
 		s.theme.DrawText(screen, "Loading the template…", ui.Inset, ui.Inset, ui.ColorMuted())
@@ -772,7 +772,7 @@ func (s *State) drawValue(screen *ebiten.Image, value string, rect image.Rectang
 func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, template artplugin.Template) {
 	s.theme.Heading(screen, "PREVIEW · SHOWN ON", s.preview.Min.X, s.showOn.Rect.Min.Y+headGap)
 	s.showOn.Draw(screen, s.theme)
-	ui.FillRect(screen, s.preview, ui.ColorCanvas())
+	ui.FillRect(screen, s.preview, ui.ColorStage())
 	size := tileSize(docs)
 	zoom := max(1, min(maxZoom, (min(s.preview.Dx(), s.preview.Dy())-fitMargin*ui.Half)/size))
 	side := size * zoom
@@ -782,7 +782,7 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, template artp
 	if !clipped {
 		return
 	}
-	ui.FillRect(area, rect, ui.ColorBackground())
+	ui.FillRect(area, rect, ui.ColorField())
 	if tileID, ok := shownTile(docs, s.shown); ok && s.picture.Refresh(docs, tileID) && s.picture.Size() == size {
 		var magnify ebiten.DrawImageOptions
 		magnify.GeoM.Scale(float64(zoom), float64(zoom))

@@ -209,7 +209,7 @@ func (s *State) drawTogether(area *ebiten.Image, drawn shape) {
 		vector.FillCircle(area, float32(centre.X), float32(centre.Y), laneBadge, ui.ColorInk(), true)
 		number := strconv.Itoa(index + 1)
 		s.theme.DrawSmall(area, number, centre.X-s.theme.SmallWidth(number)/ui.Half, centre.Y-ui.LabelSize/ui.Half-1,
-			ui.ColorBackground())
+			ui.ColorReverse())
 		name := s.clip(lanes[index].Label, laneHead-textPad-ui.Half*laneBadge-textPad-portRadius)
 		s.theme.DrawText(area, name, band.Min.X+textPad, centre.Y+laneBadge+ui.Gap, ui.ColorInk())
 	}
@@ -493,7 +493,7 @@ func (s *State) drawLanes(screen *ebiten.Image, made *control) {
 		vector.FillCircle(screen, float32(centre.X), float32(centre.Y), laneBadge, ui.ColorInk(), true)
 		number := strconv.Itoa(index + 1)
 		s.theme.DrawSmall(screen, number, centre.X-s.theme.SmallWidth(number)/ui.Half, centre.Y-ui.LabelSize/ui.Half-1,
-			ui.ColorBackground())
+			ui.ColorReverse())
 		row.label.Draw(screen)
 		row.remove.Draw(screen, s.theme)
 	}

@@ -60,7 +60,7 @@ func (s *shell) barTabs() []barTab {
 		shown := barTab{
 			rect: image.Rect(at*width, 0, (at+1)*width, rowHeight), tab: index, icons: s.icons(index, true),
 			label: kindName(group.view), count: len(group.tabs), boxes: false, front: false,
-			tint: ui.Tint{Name: "", Wash: ui.ColorPanel(), Ink: ui.ColorInk()}, tinted: false,
+			tint: ui.Tint{Name: "", Wash: ui.ColorDesk(), Strong: ui.ColorPage(), Ink: ui.ColorInk()}, tinted: false,
 		}
 		if len(group.tabs) == 1 {
 			shown.label, shown.count, shown.boxes = shortTitle(s.tabTitle(index), false), 0, s.closable(index)
@@ -167,9 +167,9 @@ func quietMouse(input *ui.Input) {
 // when it has several, Launch and the clock's readout.
 func (s *shell) drawBar(screen *ebiten.Image) {
 	height := s.barHeight()
-	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorPanel())
+	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorDesk())
 	if height > rowHeight {
-		ui.FillRect(screen, image.Rect(0, rowHeight, s.size.X, height), ui.ColorBackground())
+		ui.FillRect(screen, image.Rect(0, rowHeight, s.size.X, height), ui.ColorDesk())
 		ui.Divider(screen, image.Pt(0, rowHeight-ui.Hairline), image.Pt(s.size.X, rowHeight-ui.Hairline))
 	}
 	for _, shown := range s.barTabs() {
@@ -186,7 +186,7 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	case shown.tinted:
 		drawTint(screen, rect, shown.tint)
 	case shown.front:
-		ui.FillRect(screen, rect, ui.ColorBackground())
+		ui.FillRect(screen, rect, ui.ColorPage())
 	}
 	if shown.front {
 		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ui.ColorSelect())

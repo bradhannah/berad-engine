@@ -330,7 +330,7 @@ func (s *State) drawSoundLoudness(screen *ebiten.Image, rect image.Rectangle, re
 	said, warn, evened, known := s.loudnessOf(recording)
 	meter := image.Rect(rect.Min.X, rect.Min.Y+(rect.Dy()-soundMeterH)/ui.Half, rect.Min.X+soundMeterWidth,
 		rect.Min.Y+(rect.Dy()+soundMeterH)/ui.Half)
-	ui.FillRound(screen, meter, soundMeterH/ui.Half, ui.ColorCanvas())
+	ui.FillRound(screen, meter, soundMeterH/ui.Half, ui.ColorDesk())
 	across := func(db float64) float32 {
 		return float32(meter.Min.X) + float32((db-soundQuietest)/(soundLoudest-soundQuietest))*float32(meter.Dx())
 	}

@@ -41,7 +41,6 @@ func reminder() []string {
 const (
 	dialogWidth  = 480
 	dialogRadius = 10
-	dialogShadow = 6
 	actionWidth  = 110
 	idHint       = "Lowercase letters, digits, _ and -, in parts joined by /"
 )
@@ -431,8 +430,8 @@ func (s *State) drawDialog(screen *ebiten.Image) {
 	dlg := s.dialog
 	dlg.layout(screen.Bounds())
 	ui.FillRect(screen, screen.Bounds(), ui.ColorShade())
-	ui.FillRound(screen, dlg.rect.Add(image.Pt(0, dialogShadow)), dialogRadius, ui.ColorShade())
-	ui.FillRound(screen, dlg.rect, dialogRadius, ui.ColorBackground())
+	ui.Float(screen, dlg.rect, dialogRadius)
+	ui.FillRound(screen, dlg.rect, dialogRadius, ui.ColorPage())
 	ui.StrokeRound(screen, dlg.rect, dialogRadius, ui.Border, ui.ColorInk())
 	column, row := dlg.rect.Min.X+ui.Inset, dlg.rect.Min.Y+ui.Inset
 	width := dlg.rect.Dx() - ui.Half*ui.Inset

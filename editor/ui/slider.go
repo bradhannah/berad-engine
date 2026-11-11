@@ -94,6 +94,6 @@ func (s *Slider) Draw(screen *ebiten.Image) {
 		ColorRule())
 	FillRound(screen, image.Rect(low, middle-sliderTrack/Half, handle, middle+sliderTrack/Half), sliderTrack/Half,
 		ColorSelect())
-	vector.FillCircle(screen, float32(handle), float32(middle), sliderHandle, ColorBackground(), true)
+	vector.FillCircle(screen, float32(handle), float32(middle), sliderHandle, ColorField(), true)
 	vector.StrokeCircle(screen, float32(handle), float32(middle), sliderHandle, Hairline, ColorInk(), true)
 }

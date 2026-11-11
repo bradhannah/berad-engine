@@ -191,7 +191,7 @@ func (s *State) drawAmbient(screen *ebiten.Image, cue protocol.AudioCue, left in
 // silent at the bottom, from the sound's place on the left to its distance
 // on the right, as berad-audio plays it.
 func drawDistanceCurve(screen *ebiten.Image, area image.Rectangle, radius float64) {
-	ui.FillRound(screen, area, ui.Radius, ui.ColorCanvas())
+	ui.FillRound(screen, area, ui.Radius, ui.ColorField())
 	inner := area.Inset(curvePad)
 	heightOf := func(column int) int {
 		distance := radius * float64(column-inner.Min.X) / float64(max(inner.Dx(), 1))

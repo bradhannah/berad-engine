@@ -461,7 +461,7 @@ func (s *State) moveShade(ctx *frame.Context, palette *art.Palette, fromRamp, sh
 func (s *State) drawRows(screen *ebiten.Image, palette *art.Palette) {
 	content := frame.Content(s.size)
 	ui.FillRect(screen, image.Rect(content.Min.X, s.rows.area.Min.Y-ui.Inset, content.Max.X, content.Max.Y),
-		ui.ColorCanvas())
+		ui.ColorPage())
 	area, clipped := screen.SubImage(s.rows.area).(*ebiten.Image)
 	if !clipped {
 		return
@@ -580,7 +580,7 @@ func (s *State) drawShadeDrop(screen *ebiten.Image) {
 // clear as the checkerboard alone.
 func drawSwatch(screen *ebiten.Image, rect image.Rectangle, shade art.Shade, empty bool) {
 	half := rect.Dx() / ui.Half
-	ui.FillRect(screen, rect, ui.ColorBackground())
+	ui.FillRect(screen, rect, ui.ColorField())
 	ui.FillRect(screen, image.Rect(rect.Min.X+half, rect.Min.Y, rect.Max.X, rect.Min.Y+half), ui.Hex(hexChecker))
 	ui.FillRect(screen, image.Rect(rect.Min.X, rect.Min.Y+half, rect.Min.X+half, rect.Max.Y), ui.Hex(hexChecker))
 	if !empty {
@@ -613,7 +613,7 @@ func (s *State) drawTip(screen *ebiten.Image, palette *art.Palette) {
 			corner := image.Pt(min(s.cursor.X+tipOffset, s.size.X-width-ui.Gap), s.cursor.Y+tipOffset)
 			tip := image.Rectangle{Min: corner, Max: corner.Add(image.Pt(width, ui.LineHeight+tipPad))}
 			ui.FillRound(screen, tip, ui.Radius, ui.ColorInk())
-			s.theme.DrawText(screen, text, tip.Min.X+tipPad, tip.Min.Y+tipPad/ui.Half, ui.ColorBackground())
+			s.theme.DrawText(screen, text, tip.Min.X+tipPad, tip.Min.Y+tipPad/ui.Half, ui.ColorReverse())
 
 			return
 		}

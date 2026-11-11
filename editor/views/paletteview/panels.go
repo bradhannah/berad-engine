@@ -739,7 +739,7 @@ func (s *State) drawPanels(screen *ebiten.Image) {
 	if panel.Empty() {
 		return
 	}
-	ui.Box(screen, panel, ui.ColorBackground())
+	ui.FloatBox(screen, panel, ui.ColorPage())
 	s.closeButton().Draw(screen, s.theme)
 	if s.gradient.open {
 		s.drawGradient(screen, panel)

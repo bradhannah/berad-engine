@@ -362,9 +362,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout()
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	if area, ok := screen.SubImage(s.canvas()).(*ebiten.Image); ok {
-		area.Fill(ui.ColorCanvas())
+		area.Fill(ui.ColorPage())
 	}
 	entity, watching := s.watched()
 	message := ""

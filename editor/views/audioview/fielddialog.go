@@ -87,7 +87,8 @@ func (s *State) updatePrompt(input *ui.Input, ctx *frame.Context) {
 func (d *fieldDialog) draw(screen *ebiten.Image, theme *ui.Theme) {
 	d.layout(screen.Bounds())
 	ui.FillRect(screen, screen.Bounds(), ui.ColorShade())
-	ui.FillRound(screen, d.rect, dialogRadius, ui.ColorBackground())
+	ui.Float(screen, d.rect, dialogRadius)
+	ui.FillRound(screen, d.rect, dialogRadius, ui.ColorPage())
 	ui.StrokeRound(screen, d.rect, dialogRadius, ui.Border, ui.ColorInk())
 	left, top := d.rect.Min.X+ui.Inset, d.rect.Min.Y+ui.Inset
 	theme.DrawStrong(screen, d.title, left, top, ui.ColorInk())

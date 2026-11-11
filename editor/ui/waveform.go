@@ -177,7 +177,7 @@ func (w *Waveform) Draw(screen *ebiten.Image) {
 	if w.Rect.Empty() {
 		return
 	}
-	FillRound(screen, w.Rect, Radius, ColorCanvas())
+	FillRound(screen, w.Rect, Radius, ColorField())
 	left, right := w.endX(w.Start), w.endX(w.End)
 	if w.HasRegion {
 		FillRect(screen, image.Rect(left, w.Rect.Min.Y+1, right, w.Rect.Max.Y-1), ColorSelectWash())
@@ -231,6 +231,6 @@ func (w *Waveform) drawEnd(screen *ebiten.Image, end waveDrag, ms int64, which i
 	FillRect(screen, flag, ColorSelect())
 	grip := flag.Min.X + (flag.Dx()-Half)/Half
 	top := flag.Min.Y + (flag.Dy()-waveGrip)/Half
-	FillRect(screen, image.Rect(grip, top, grip+Hairline, top+waveGrip), ColorBackground())
-	FillRect(screen, image.Rect(grip+Half, top, grip+Half+Hairline, top+waveGrip), ColorBackground())
+	FillRect(screen, image.Rect(grip, top, grip+Hairline, top+waveGrip), ColorReverse())
+	FillRect(screen, image.Rect(grip+Half, top, grip+Half+Hairline, top+waveGrip), ColorReverse())
 }

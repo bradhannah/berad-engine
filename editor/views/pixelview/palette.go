@@ -394,7 +394,7 @@ func (s *State) drawSwatches(screen *ebiten.Image, docs frame.Docs) {
 func (s *State) drawSwatch(screen *ebiten.Image, colors art.Palettes, offered swatch, outline bool) {
 	rect := offered.rect
 	half := rect.Dx() / ui.Half
-	ui.FillRect(screen, rect, ui.ColorBackground())
+	ui.FillRect(screen, rect, ui.ColorField())
 	ui.FillRect(screen, image.Rect(rect.Min.X+half, rect.Min.Y, rect.Max.X, rect.Min.Y+half), ui.Hex(hexChecker))
 	ui.FillRect(screen, image.Rect(rect.Min.X, rect.Min.Y+half, rect.Min.X+half, rect.Max.Y), ui.Hex(hexChecker))
 	if value, known := colors.Color(offered.color); known && !offered.color.IsClear() {
@@ -430,7 +430,7 @@ func (s *State) drawTip(screen *ebiten.Image, docs frame.Docs, cursor image.Poin
 		corner := image.Pt(min(cursor.X+tipOffset, s.size.X-width-ui.Gap), cursor.Y+tipOffset)
 		tip := image.Rectangle{Min: corner, Max: corner.Add(image.Pt(width, ui.LineHeight+tipPad))}
 		ui.FillRound(screen, tip, ui.Radius, ui.ColorInk())
-		s.theme.DrawText(screen, text, tip.Min.X+tipPad, tip.Min.Y+tipPad/ui.Half, ui.ColorBackground())
+		s.theme.DrawText(screen, text, tip.Min.X+tipPad, tip.Min.Y+tipPad/ui.Half, ui.ColorReverse())
 
 		return
 	}

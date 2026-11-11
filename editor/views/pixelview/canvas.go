@@ -245,7 +245,7 @@ func (s *State) checkerboard(size image.Point) *ebiten.Image {
 		split = checksPerPixel
 	}
 	board := image.NewNRGBA(image.Rectangle{Min: image.Pt(0, 0), Max: size})
-	light, dark := color.NRGBA(ui.ColorBackground()), color.NRGBA(ui.Hex(hexChecker))
+	light, dark := color.NRGBA(ui.ColorField()), color.NRGBA(ui.Hex(hexChecker))
 	for row := range size.Y {
 		for col := range size.X {
 			ink := light
@@ -268,12 +268,12 @@ func (s *State) checkerboard(size image.Point) *ebiten.Image {
 // grid and the pixel under the cursor outlined.
 func (s *State) drawCanvas(screen *ebiten.Image, docs frame.Docs) {
 	canvas := s.canvas()
-	ui.FillRect(screen, canvas, ui.ColorCanvas())
+	ui.FillRect(screen, canvas, ui.ColorStage())
 	ui.Divider(screen, canvas.Min, image.Pt(canvas.Max.X, canvas.Min.Y))
 	size, ok := s.tileSize(docs)
 	area, clipped := screen.SubImage(canvas).(*ebiten.Image)
 	if !ok || !clipped || !s.refresh(docs) {
-		s.theme.DrawText(screen, "Loading the sprite…", canvas.Min.X+ui.Inset, canvas.Min.Y+ui.Inset, ui.ColorMuted())
+		s.theme.DrawText(screen, "Loading the sprite…", canvas.Min.X+ui.Inset, canvas.Min.Y+ui.Inset, ui.ColorStageInk())
 
 		return
 	}

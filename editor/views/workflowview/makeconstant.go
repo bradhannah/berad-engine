@@ -497,7 +497,7 @@ func (s *State) drawOthers(screen *ebiten.Image) {
 	}
 	s.layoutOthers()
 	ui.FillRect(screen, image.Rect(0, 0, s.size.X, s.size.Y), ui.ColorShade())
-	ui.FillRound(screen, others.rect, ui.Radius, ui.ColorBackground())
+	ui.FillRound(screen, others.rect, ui.Radius, ui.ColorField())
 	ui.StrokeRound(screen, others.rect, ui.Radius, ui.Border, ui.ColorRule())
 	inner := others.rect.Inset(ui.Inset)
 	what := strconv.Itoa(others.number)

@@ -486,10 +486,13 @@ func (l fieldLines) Vertical(offset, delta int, column *float64) int {
 // Draw renders the field: its box, selection, text, unfinished input method
 // text, caret and an unsaved mark.
 func (w *TextField) Draw(screen *ebiten.Image) {
-	FillRound(screen, w.Rect, Radius, ColorBackground())
+	FillRound(screen, w.Rect, Radius, ColorField())
 	edge, width := ColorInk(), Border
-	if w.focused {
+	switch {
+	case w.focused:
 		edge, width = ColorSelect(), Outline
+	case w.Field.Dirty() && !w.Unmarked:
+		width = Waiting
 	}
 	StrokeRound(screen, w.Rect, Radius, width, edge)
 	area, ok := screen.SubImage(w.Rect.Inset(Hairline)).(*ebiten.Image)
@@ -507,12 +510,12 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 	}
 }
 
-// DrawUnsavedMark draws the small red square at the top right of a box that
-// says what it holds is not saved yet: a field's draft, or a choice that
-// waits for Save as typing does.
+// DrawUnsavedMark draws the ink dot at the top right of a box that says what
+// it holds waits for Save: a field's draft, or a choice that waits for Save as
+// typing does. It is ink, not red: red means stop, and a draft is not wrong.
 func DrawUnsavedMark(screen *ebiten.Image, box image.Rectangle) {
 	mark := image.Rect(box.Max.X-unsavedMark-Gap, box.Min.Y+Gap, box.Max.X-Gap, box.Min.Y+Gap+unsavedMark)
-	FillRect(screen, mark, ColorWarn())
+	FillRound(screen, mark, float32(unsavedMark)/Half, ColorInk())
 }
 
 // drawText draws the text with the selection under it and the caret, or the

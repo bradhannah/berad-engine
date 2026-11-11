@@ -110,7 +110,7 @@ func (s *shell) drawSplit(screen *ebiten.Image, front *tab) {
 		return
 	}
 	divider := dividerRect(front, s.area())
-	ui.FillRect(screen, divider, ui.ColorPanel())
+	ui.FillRect(screen, divider, ui.ColorDesk())
 	middle := divider.Min.X + dividerWidth/ui.Half
 	grip := divider.Min.Y + divider.Dy()/ui.Half
 	ui.Line(screen, image.Pt(middle, grip-ui.RowHeight), image.Pt(middle, grip+ui.RowHeight), ui.Outline, ui.ColorMuted())

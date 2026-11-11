@@ -30,7 +30,7 @@ func (s *State) summary() string {
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	s.size = screen.Bounds().Size()
 	s.layout()
-	screen.Fill(ui.ColorBackground())
+	screen.Fill(ui.ColorPage())
 	content := frame.Content(s.size)
 	s.theme.DrawTitle(screen, "Audio", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	s.theme.DrawMono(screen, s.summary(), ui.Inset+s.theme.TextWidth("Audio")+ui.Inset*ui.Half,
