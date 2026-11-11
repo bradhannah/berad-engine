@@ -124,6 +124,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.frame.ShowInspector.On = !s.folded
 	shown.host.tabs = func() int { return len(s.tabs) }
 	shown.host.tabTint = s.tintNamed
+	shown.host.tabUnsaved = s.unsavedNamed
 
 	return shown, nil
 }

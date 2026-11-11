@@ -111,10 +111,40 @@ func IconColor(icon Icon) color.RGBA {
 	return ColorInk()
 }
 
-// DrawIcon draws an icon in its type's colour with its top-left corner at a
-// point.
+// ChipPad is how far a document's chip reaches beyond its icon on each
+// side.
+const ChipPad = 2
+
+// chipRadius rounds a chip's corners.
+const chipRadius = 4
+
+// Chipped reports whether an icon is a document's, drawn white on a filled
+// chip of its type's muted colour, so its type is found at a glance: zones
+// and floors, workflows and zone loops, NPCs, sounds, sprites, palettes and
+// templates. Folders, places, Home, the clock, Watch, Play, settings and the
+// project keep a plain mark.
+func Chipped(icon Icon) bool {
+	switch icon {
+	case IconZone, IconFloor, IconWorkflow, IconZoneLoop, IconNPC, IconSound, IconSprite, IconPalette, IconTemplate:
+		return true
+	case IconNone, IconFolder, IconProject, IconClock, IconWatch, IconSettings, IconPlay, IconPlace, IconSignal,
+		IconHome, IconConstant:
+	}
+
+	return false
+}
+
+// DrawIcon draws an icon with its top-left corner at a point: a document's
+// white on a chip of its type's colour, any other in its own colour.
 func DrawIcon(screen *ebiten.Image, icon Icon, corner image.Point) {
-	DrawIconInk(screen, icon, corner, IconColor(icon))
+	if !Chipped(icon) {
+		DrawIconInk(screen, icon, corner, IconColor(icon))
+
+		return
+	}
+	chip := image.Rect(corner.X-ChipPad, corner.Y-ChipPad, corner.X+IconSize+ChipPad, corner.Y+IconSize+ChipPad)
+	FillRound(screen, chip, chipRadius, IconColor(icon))
+	DrawIconInk(screen, icon, corner, ColorReverse())
 }
 
 // DrawIconInk draws an icon in an ink of its own, as on a filled button.

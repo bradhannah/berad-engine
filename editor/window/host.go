@@ -79,6 +79,9 @@ type host struct {
 	// the tab with a title, for input scripts.
 	tabs    func() int
 	tabTint func(title string) string
+	// tabUnsaved reports whether the tab with a title holds changes that
+	// wait for Save.
+	tabUnsaved func(title string) bool
 	// visible is the host's part of the window. While the inspector is
 	// folded the view lays out and draws on wide, wider than visible by
 	// all but the folded strip, so its inspector falls past the edge;
@@ -101,7 +104,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil,
+		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 	}
 	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
 	created.ctx.Docs = conn
