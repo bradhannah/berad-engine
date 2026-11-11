@@ -31,6 +31,9 @@ const (
 	liveWord = "live"
 	// moreTab is the bar tab that stands for the tabs that do not fit.
 	moreTab = -1
+	// tabDrop is how far the tabs behind sit below the tab in front, which
+	// stands the bar's full height, joined to the page under it.
+	tabDrop = 4
 )
 
 // barTab is one tab drawn on the bar. tab is the index of the shell's tab it
@@ -50,6 +53,18 @@ type barTab struct {
 	// live while it previews.
 	unsaved bool
 	live    bool
+}
+
+// face is where a bar tab is drawn and its close box pressed: the bar's full
+// height for the tab in front, which joins the page under it, and lower for
+// a tab behind, which stops short of the bar's bottom rule (settled by its
+// author after trying it, 2026-11-11).
+func (b barTab) face() image.Rectangle {
+	if b.front {
+		return b.rect
+	}
+
+	return image.Rect(b.rect.Min.X, b.rect.Min.Y+tabDrop, b.rect.Max.X, b.rect.Max.Y-ui.Hairline)
 }
 
 // barHeight is how tall the bar is: one row.
@@ -101,7 +116,7 @@ func (s *shell) barTabs() []barTab {
 
 // noTint is the look of a tab with no tint.
 func noTint() ui.Tint {
-	return ui.Tint{Name: "", Wash: ui.ColorDesk(), Strong: ui.ColorPage(), Ink: ui.ColorInk()}
+	return ui.Tint{Name: "", Wash: ui.ColorDesk(), Ink: ui.ColorInk()}
 }
 
 // icons are the icons a tab shows: its first pane's, and those of any pane
@@ -168,7 +183,7 @@ func (s *shell) live(index int) bool {
 
 // closeBox is a bar tab's close box, at its right end.
 func closeBox(rect image.Rectangle) image.Rectangle {
-	top := rect.Min.Y + (rowHeight-closeSize)/ui.Half
+	top := rect.Min.Y + (rect.Dy()-closeSize)/ui.Half
 
 	return image.Rect(rect.Max.X-tabPad-closeSize, top, rect.Max.X-tabPad, top+closeSize)
 }
@@ -209,7 +224,7 @@ func (s *shell) pressBar(point image.Point) {
 			return
 		}
 		s.choose(shown.tab)
-		if shown.boxes && point.In(closeBox(shown.rect)) {
+		if shown.boxes && point.In(closeBox(shown.face())) {
 			for _, closing := range s.tabs[shown.tab].panes {
 				closing.host.frame.Closing = true
 			}
@@ -253,16 +268,18 @@ func quietMouse(input *ui.Input) {
 	input.WheelX, input.WheelY = 0, 0
 }
 
-// drawBar draws the window bar: its tabs, Launch and the clock's readout.
+// drawBar draws the window bar: its rule along the bottom, then its tabs,
+// the tab in front over the rule so it joins the page, Launch and the
+// clock's readout.
 func (s *shell) drawBar(screen *ebiten.Image) {
 	ui.FillRect(screen, image.Rect(0, 0, s.size.X, rowHeight), ui.ColorDesk())
+	ui.Divider(screen, image.Pt(0, rowHeight-ui.Hairline), image.Pt(s.size.X, rowHeight-ui.Hairline))
 	for _, shown := range s.barTabs() {
 		s.drawBarTab(screen, shown)
 	}
 	s.drawLaunch(screen)
 	s.drawClockButtons(screen)
 	s.drawReadout(screen)
-	ui.Divider(screen, image.Pt(0, rowHeight-ui.Hairline), image.Pt(s.size.X, rowHeight-ui.Hairline))
 }
 
 // drawMore draws the "more" tab's list while it is open, over everything.
@@ -272,8 +289,12 @@ func (s *shell) drawMore(screen *ebiten.Image) {
 	}
 }
 
+// drawBarTab draws a tab: the tab in front in the page's tone, framed by
+// hairlines and over the bar's rule, with its tint's band and its name in
+// the semi-bold face; a tab behind lower down, in its tint's wash, its name
+// in the muted ink.
 func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
-	rect := shown.rect
+	rect := shown.face()
 	switch {
 	case shown.tinted:
 		drawTint(screen, rect, shown.tint, shown.front)
@@ -281,11 +302,12 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 		ui.FillRect(screen, rect, ui.ColorPage())
 	}
 	if shown.front {
-		ui.FillRect(screen, image.Rect(rect.Min.X, rect.Max.Y-ui.Outline, rect.Max.X, rect.Max.Y), ui.ColorSelect())
+		ui.Divider(screen, image.Pt(rect.Min.X, rect.Min.Y), image.Pt(rect.Min.X, rect.Max.Y))
+		ui.Divider(screen, image.Pt(rect.Max.X-ui.Hairline, rect.Min.Y), image.Pt(rect.Max.X-ui.Hairline, rect.Max.Y))
 	}
 	left := rect.Min.X + tabPad
 	for _, icon := range shown.icons {
-		ui.DrawIcon(screen, icon, image.Pt(left, rect.Min.Y+(rowHeight-ui.IconSize)/ui.Half))
+		ui.DrawIcon(screen, icon, image.Pt(left, rect.Min.Y+(rect.Dy()-ui.IconSize)/ui.Half))
 		left += ui.IconSize + ui.Gap
 	}
 	left += ui.Gap
@@ -295,13 +317,13 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 		drawClose(screen, closeBox(rect))
 	}
 	if shown.unsaved {
-		middle := rect.Min.Y + rowHeight/ui.Half
+		middle := rect.Min.Y + rect.Dy()/ui.Half
 		right -= unsavedDot * ui.Half
 		ui.FillRound(screen, image.Rect(right, middle-unsavedDot, right+unsavedDot*ui.Half, middle+unsavedDot),
 			unsavedDot, ui.ColorInk())
 		right -= ui.Gap
 	}
-	textY := rect.Min.Y + (rowHeight-ui.TextSize)/ui.Half - 1
+	textY := rect.Min.Y + (rect.Dy()-ui.TextSize)/ui.Half - 1
 	if shown.live {
 		right -= s.theme.TextWidth(liveWord)
 		s.theme.DrawText(screen, liveWord, right, textY, ui.ColorLive())
@@ -311,7 +333,12 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 	if shown.more > 0 {
 		label = strconv.Itoa(shown.more) + " " + label
 	}
-	s.theme.DrawText(screen, s.theme.FitText(label, right-left), left, textY, ui.ColorInk())
+	if shown.front {
+		s.theme.DrawStrong(screen, s.theme.FitStrong(label, right-left), left, textY, ui.ColorInk())
+
+		return
+	}
+	s.theme.DrawText(screen, s.theme.FitText(label, right-left), left, textY, ui.ColorMuted())
 	ui.Divider(screen, image.Pt(rect.Max.X-ui.Hairline, rect.Min.Y+ui.Gap),
 		image.Pt(rect.Max.X-ui.Hairline, rect.Max.Y-ui.Gap))
 }

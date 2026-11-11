@@ -347,13 +347,21 @@ func (t *Theme) Wrap(text string, width int) []string {
 
 // FitText shortens text in the ordinary face to fit a width, ending it with
 // an ellipsis when it had to be cut.
-func (t *Theme) FitText(value string, width int) string {
-	if t.TextWidth(value) <= width {
+func (t *Theme) FitText(value string, width int) string { return fit(value, width, t.TextWidth) }
+
+// FitStrong shortens text in the semi-bold face to fit a width, as FitText
+// does in the ordinary face.
+func (t *Theme) FitStrong(value string, width int) string { return fit(value, width, t.StrongWidth) }
+
+// fit shortens text to fit a width as a face measures it, ending it with an
+// ellipsis when it had to be cut.
+func fit(value string, width int, measured func(string) int) string {
+	if measured(value) <= width {
 		return value
 	}
 	runes := []rune(value)
 	for cut := len(runes) - 1; cut > 0; cut-- {
-		if shortened := strings.TrimRight(string(runes[:cut]), " ") + "\u2026"; t.TextWidth(shortened) <= width {
+		if shortened := strings.TrimRight(string(runes[:cut]), " ") + "\u2026"; measured(shortened) <= width {
 			return shortened
 		}
 	}

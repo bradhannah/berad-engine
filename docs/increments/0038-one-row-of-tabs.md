@@ -91,6 +91,20 @@ Chosen while building, for its author to check:
 - **The Map's key sheet lists the new keys.** No other view has a key sheet
   yet.
 
+Changed after its author tried it, on 2026-11-11:
+
+- **The tab in front joins its page.** A stronger wash and a thin blue
+  line did not say clearly enough which tab was in front. The tab in front
+  now:
+  - stands the bar's full height in the page's tone, over the bar's rule,
+    so it joins the page under it;
+  - is framed by hairlines, with its tint's band and its name in the
+    semi-bold face.
+
+  The tabs behind sit four points lower, in their washes, their names in
+  the muted ink, which reads at 4.5 to 1 or better on every wash. The
+  stronger washes are gone.
+
 ## Steps
 
 | Step | Builds | Done when | Status |

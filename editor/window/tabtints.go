@@ -77,7 +77,7 @@ func (s *shell) tintOf(index int) (ui.Tint, bool) {
 	tints := ui.Tints()
 	number := s.tabs[index].tint
 	if number < 1 || number > len(tints) {
-		return ui.Tint{Name: "", Wash: ui.ColorDesk(), Strong: ui.ColorPage(), Ink: ui.ColorInk()}, false
+		return ui.Tint{Name: "", Wash: ui.ColorDesk(), Ink: ui.ColorInk()}, false
 	}
 
 	return tints[number-1], true
@@ -98,12 +98,13 @@ func (s *shell) tintNamed(title string) string {
 	return ""
 }
 
-// drawTint washes a document tab in its tint and draws the tint's band
-// along its top: the stronger wash and a thicker band on the tab in front.
+// drawTint washes a document tab behind in its tint and draws the tint's
+// band along its top; the tab in front takes the page's tone, so it joins
+// the page under it, and a thicker band.
 func drawTint(screen *ebiten.Image, rect image.Rectangle, tint ui.Tint, front bool) {
 	wash, band := tint.Wash, tintBand
 	if front {
-		wash, band = tint.Strong, frontBand
+		wash, band = ui.ColorPage(), frontBand
 	}
 	ui.FillRect(screen, rect, wash)
 	ui.FillRect(screen, image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+band), tint.Ink)

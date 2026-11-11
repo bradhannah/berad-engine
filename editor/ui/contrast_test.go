@@ -38,7 +38,7 @@ func TestTextReadsOnEveryGround(t *testing.T) {
 	}
 	for _, tint := range ui.Tints() {
 		check(t, named{"ink", ui.ColorInk()}, named{tint.Name + " wash", tint.Wash})
-		check(t, named{"ink", ui.ColorInk()}, named{tint.Name + " strong wash", tint.Strong})
+		check(t, named{"muted", ui.ColorMuted()}, named{tint.Name + " wash", tint.Wash})
 		check(t, named{"reverse", ui.ColorReverse()}, named{tint.Name + " ink", tint.Ink})
 	}
 	filled := []named{
