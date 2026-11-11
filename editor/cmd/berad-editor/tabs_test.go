@@ -149,14 +149,14 @@ func TestFrameTimes(t *testing.T) {
 	t.Logf("the editor window:\n%s", stats[0])
 }
 
-// TestTabsGroupByKind opens two workflows, then a Map and two more
-// views of it (increment 10, settled after trying it): the bar files them
-// under their kinds, and with the Maps in front a second row lists the three.
-func TestTabsGroupByKind(t *testing.T) {
+// TestEveryDocumentHasATab opens two workflows, then a Map and two more
+// views of it: the bar shows each as a tab of its own, on one row
+// (increment 38).
+func TestEveryDocumentHasATab(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	shot := shotPath(t, "tabs-kinds.png")
+	shot := shotPath(t, "tabs-row.png")
 	browserScript := script(
 		must("row:Sample zone", 600), wait(5),
 		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),

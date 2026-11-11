@@ -94,7 +94,8 @@ under consideration), **open** (undecided).
   beside a Map of its zone, in that Map's tab. Each view runs in a pane of a
   tab. There are no separate windows, and nothing pops out into one.
   (Rejected: a window process for each view, as the editor ran until
-  increment 12.)
+  increment 12.) Its bar's two rows gave way to one row of tabs, below,
+  in [increment 38](increments/0038-one-row-of-tabs.md).
 - **Agreed (2026-11-11):** **one row of tabs,** every open document a tab,
   so that going from a map to a workflow is one click or one key. A
   document's tab keeps its tint, a wash and a band along its top; the tab

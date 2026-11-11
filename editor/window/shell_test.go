@@ -3,6 +3,7 @@ package window
 import (
 	"errors"
 	"image"
+	"strconv"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -108,11 +109,10 @@ func titled(view, title string) *pane {
 	return &pane{view: view, place: place}
 }
 
-// TestTabsGroupByKind files tabs under their kinds in bar order, names a kind
-// after its one window or counts several, shows the second row only for a
-// kind in front with several, comes back to a kind's last tab, and tells two
-// views of one map apart by their IDs.
-func TestTabsGroupByKind(t *testing.T) {
+// TestOneRowOfTabs lays every open tab out on one row, in the order they
+// opened, each named by its window and two views of one map told apart by
+// their IDs (increment 38).
+func TestOneRowOfTabs(t *testing.T) {
 	t.Parallel()
 	project := titled("browser", "Project")
 	town := titled("map", "Map: Town — Ground  (view aaaaaa)")
@@ -123,50 +123,58 @@ func TestTabsGroupByKind(t *testing.T) {
 		{panes: []*pane{project}}, {panes: []*pane{town}}, {panes: []*pane{notes}},
 		{panes: []*pane{harbour}}, {panes: []*pane{townAgain}},
 	}, active: 2}
-	kinds := shown.kinds()
-	if len(kinds) != 3 || kinds[0].view != "browser" || kinds[1].view != "map" || len(kinds[1].tabs) != 3 ||
-		kinds[2].view != "workflow" {
-		t.Fatalf("kinds %+v", kinds)
-	}
-	if shown.documentRow() || shown.barHeight() != rowHeight {
-		t.Fatal("one workflow in front needs no second row")
+	if shown.barHeight() != rowHeight {
+		t.Fatal("the bar is one row")
 	}
 	tabs := shown.barTabs()
-	if len(tabs) != 3 || tabs[1].label != "Maps" || tabs[1].count != 3 || tabs[2].label != "Notes" || !tabs[2].front {
-		t.Fatalf("top row %+v", tabs)
+	want := []string{"Project", "Town — Ground  (view aaaaaa)", "Notes", "Harbour", "Town — Ground  (view dddddd)"}
+	if len(tabs) != len(want) {
+		t.Fatalf("one tab each: %+v", tabs)
 	}
-	shown.active = 3
-	shown.remember()
-	shown.active = 2
-	if got := shown.chooseKind(kinds[1]); got != 3 {
-		t.Fatalf("choosing Maps brings back the last Map in front, tab %d", got)
+	room := 1200 - readoutWidth - launchWidth
+	for index, label := range want {
+		if tabs[index].label != label || tabs[index].tab != index || tabs[index].front != (index == 2) {
+			t.Fatalf("tab %d: %+v", index, tabs[index])
+		}
 	}
-	shown.active = 3
-	if !shown.documentRow() || shown.barHeight() != rowHeight*2 {
-		t.Fatal("a Map in front, of three, shows the second row")
+	if width := tabs[0].rect.Dx(); width != min(tabWidth, room/len(want)) || tabs[4].rect.Max.X > room {
+		t.Fatalf("tabs share the room: %d wide, last ends at %d of %d", width, tabs[4].rect.Max.X, room)
 	}
-	labels := shown.documentLabels(kinds[1])
-	if labels[0] != "Town — Ground  (view aaaaaa)" || labels[1] != "Harbour" || labels[2] != "Town — Ground  (view dddddd)" {
-		t.Fatalf("document labels %q", labels)
+	shown.pressBar(ui.Center(tabs[3].rect))
+	if shown.active != 3 {
+		t.Fatalf("a press on a tab brings it forward: %d", shown.active)
 	}
 }
 
-// TestWorldStatePartsAreOneKind files World state's Values and Signals
-// under World state, with a second row that names each part.
-func TestWorldStatePartsAreOneKind(t *testing.T) {
+// TestTabsThatDoNotFitGoUnderMore shrinks tabs to their least width, then
+// puts the last of them under a "more" tab that counts them, is the tab in
+// front while one of them is, and lists them (increment 38).
+func TestTabsThatDoNotFitGoUnderMore(t *testing.T) {
 	t.Parallel()
-	values := titled("world-state", "World state: Values")
-	signals := titled("world-signals", "World state: Signals")
-	shown := &shell{size: image.Pt(1200, 832), tabs: []*tab{{panes: []*pane{values}}, {panes: []*pane{signals}}},
-		active: 1}
-	kinds := shown.kinds()
-	if len(kinds) != 1 || kinds[0].view != "world-state" || len(kinds[0].tabs) != 2 {
-		t.Fatalf("kinds %+v", kinds)
+	theme, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
 	}
+	shown := &shell{size: image.Pt(1200, 832), theme: theme, active: 8}
+	for index := range 10 {
+		shown.tabs = append(shown.tabs, &tab{panes: []*pane{titled("workflow", "Workflow: W"+strconv.Itoa(index))}})
+	}
+	room := 1200 - readoutWidth - launchWidth
 	tabs := shown.barTabs()
-	labels := shown.documentLabels(kinds[0])
-	if len(tabs) != 3 || tabs[0].label != "World state" || tabs[0].count != 2 || !shown.documentRow() ||
-		labels[0] != "Values" || labels[1] != "Signals" {
-		t.Fatalf("top row %+v, second row %q", tabs, labels)
+	more := tabs[len(tabs)-1]
+	fit := (room - moreWidth) / leastTab
+	if len(tabs) != fit+1 || more.tab != moreTab || more.more != 10-fit || !more.front {
+		t.Fatalf("%d fit beside more, which counts %d and is in front: %+v", fit, more.more, more)
+	}
+	if tabs[0].rect.Dx() < leastTab || more.rect.Max.X > room {
+		t.Fatalf("tabs at least %d wide, more inside the room: %v %v", leastTab, tabs[0].rect, more.rect)
+	}
+	shown.pressBar(ui.Center(more.rect))
+	if !shown.more.IsOpen() || len(shown.more.Items) != 10-fit || shown.more.Items[0].Label != "W"+strconv.Itoa(fit) {
+		t.Fatalf("more lists the tabs that do not fit: %+v", shown.more.Items)
+	}
+	shown.size = image.Pt(2400, 832)
+	if tabs := shown.barTabs(); len(tabs) != 10 {
+		t.Fatalf("on a wider window every tab fits: %d", len(tabs))
 	}
 }

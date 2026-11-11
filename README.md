@@ -39,10 +39,10 @@ make game     # open your game's project: put GAME_PROJECT = <path> in local.mk
 
 The editor window opens with the project browser's tab; double-click the
 sample zone, which has two floors, to open it in a Map tab. Every view opens
-as a tab of the same window: the window bar has a tab for each kind of view,
-with a second row for the documents of the kind in front when there are
-several, the clock pinned at its right end, and Watch opens beside its Map
-([increment 13](docs/increments/0013-single-window.md)). To start a project
+as a tab of the same window ([increment 13](docs/increments/0013-single-window.md)):
+the window bar has one row with a tab for each open document
+([increment 38](docs/increments/0038-one-row-of-tabs.md)), the clock pinned
+at its right end, and Watch opens beside its Map. To start a project
 of your own, open a folder that has none: `.cache/bin/berad-editor open
 --project DIR` makes one there, holding only what every project holds.
 To try an increment in a fresh sample, as the sample is made only in an

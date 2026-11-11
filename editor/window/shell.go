@@ -49,8 +49,8 @@ type shell struct {
 	dragging bool
 	// stats are the window's frame statistics, when they are asked for.
 	stats *frameStats
-	// lastTab is each kind's tab last in front.
-	lastTab map[string]*tab
+	// more lists the tabs that do not fit on the bar, while open.
+	more ui.Menu
 	// onTop is whether the window is kept above other applications' windows,
 	// and folded whether every tab's inspector is folded to its strip.
 	onTop  bool
@@ -92,7 +92,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
-		lastTab: map[string]*tab{}, onTop: false, folded: false,
+		more: ui.Menu{Items: nil, Width: 0}, onTop: false, folded: false,
 	}
 }
 
@@ -190,7 +190,6 @@ func (s *shell) Update() error {
 	s.attend()
 	s.followOnTop()
 	s.followInspector()
-	s.remember()
 	s.followClock()
 	s.retitle()
 	if len(s.tabs) == 0 {
@@ -451,6 +450,7 @@ func (s *shell) Draw(screen *ebiten.Image) {
 	}
 	s.drawClock(screen)
 	s.drawBar(screen)
+	s.drawMore(screen)
 	for _, path := range s.shots {
 		if err := saveScreenshot(screen, path); err != nil {
 			logLine(err.Error())

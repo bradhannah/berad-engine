@@ -1470,6 +1470,10 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 	s.answerPick(ctx, anchor)
 }
 
+// Live reports whether the Map runs a preview, which its tab says in orange
+// (increment 38).
+func (s *State) Live() bool { return s.preview != nil }
+
 // Locate finds a named part of the window for input scripts: "cell:C,R",
 // "edge:left" (or top, right, bottom) of the floor, "tool:<tool>",
 // "tile:<id>", "floor:<n>" (1 is the bottom floor), "player" for a
