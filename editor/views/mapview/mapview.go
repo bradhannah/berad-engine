@@ -1301,11 +1301,28 @@ func (s *State) applyFamily(family string, ctx *frame.Context) {
 		if definition, found := tiles.Lookup(family); found {
 			name = definition.Name
 		}
-		s.command(ctx, s.floor, tilefloor.PaintEdit, "", tilefloor.PaintArgs{Cells: cells}, func(protocol.Result) {
+		s.paintTogether(ctx, cells, func() {
 			ctx.Frame.Status(fmt.Sprintf("Changed %d walls to %s", len(cells), name))
 		})
 	})
 	s.tile[ToolWalls] = family
+}
+
+// paintTogether paints any number of cells as one undo step: in as many
+// commands as the cells need, none holding more than a paint command may,
+// all sharing a gesture. It runs done once the last is carried out.
+func (s *State) paintTogether(ctx *frame.Context, cells []tilefloor.Cell, done func()) {
+	s.stroke.count++
+	gesture := s.window.String() + "-" + strconv.Itoa(s.stroke.count)
+	sent := 0
+	for part := range slices.Chunk(cells, tilefloor.MaxCells) {
+		sent += len(part)
+		var then func(protocol.Result)
+		if sent == len(cells) {
+			then = func(protocol.Result) { done() }
+		}
+		s.command(ctx, s.floor, tilefloor.PaintEdit, gesture, tilefloor.PaintArgs{Cells: part}, then)
+	}
 }
 
 // selectionFamily returns the family of the selected walls when they share
