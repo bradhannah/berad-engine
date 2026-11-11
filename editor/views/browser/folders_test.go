@@ -235,6 +235,33 @@ func TestFolderInspector(t *testing.T) {
 	}
 }
 
+// TestAFolderKeepsItsNameWhenItIsCleared clears a folder's name and saves:
+// nothing is sent, least of all the folder change with no name to go to,
+// which deletes the folder; the status bar says why, and the cleared name
+// stays unsaved in its field, to type a name into or revert.
+func TestAFolderKeepsItsNameWhenItIsCleared(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withFolders(f)
+	f.click("row:Wilds", false)
+	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
+	f.click("ui:name", false)
+	f.press("Cmd+A")
+	f.typeText("  ")
+	f.click("ui:save", false)
+	if folders := f.requests.Of(project.FolderEdit); len(folders) != 0 {
+		var change project.FolderArgs
+		_ = folders[0].Decode(&change)
+		t.Fatalf("a cleared name changed the folder: %+v", change)
+	}
+	if message, _ := f.ctx.Frame.Message(); !strings.Contains(message, "needs a name") {
+		t.Fatalf("status %q", message)
+	}
+	if row, ok := f.state.SelectedRow(f.ctx.Docs); !ok || row.ID != "folder:workflow:Wilds" || f.state.Unsaved(f.ctx.Docs) != 1 {
+		t.Fatalf("Wilds stays selected with its name unsaved: %+v, %d unsaved", row, f.state.Unsaved(f.ctx.Docs))
+	}
+}
+
 // TestTagsSaveAndSearch saves typed tags, and a tag's button searches for
 // it.
 func TestTagsSaveAndSearch(t *testing.T) {

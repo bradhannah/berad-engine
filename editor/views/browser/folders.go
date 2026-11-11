@@ -294,8 +294,15 @@ func (s *State) drop(ctx *frame.Context, dragged, target string) {
 	}
 }
 
-// renameFolder saves a folder's new name.
+// renameFolder saves a folder's new name. A cleared name is refused here: a
+// folder change with nowhere to go deletes the folder.
 func (s *State) renameFolder(ctx *frame.Context, folder project.Folder, name string) {
+	if name == "" {
+		s.name.Field.Failed()
+		ctx.Frame.Status("A folder needs a name")
+
+		return
+	}
 	target := project.JoinFolder(project.FolderParent(folder.Path), name)
 	change := project.FolderArgs{Format: folder.Format, From: folder.Path, To: target}
 	s.command(ctx, project.IndexID(), project.FolderEdit, "", change,
