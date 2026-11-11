@@ -25,11 +25,17 @@ const (
 	maxSplit     = 0.75
 )
 
-// place shows a new pane: Watch beside a Map of its zone when one is open
-// alone in its tab, as that tab's right pane, and any other pane in a tab of
-// its own. The tab comes to the front; in a split the Map keeps the focus, so
-// its arrow keys still walk the preview.
+// place shows a new pane: beside the tab quick open asked for it beside
+// (increment 38), Watch beside a Map of its zone when one is open alone in
+// its tab, as that tab's right pane, and any other pane in a tab of its own.
+// The tab comes to the front; in a split the Map keeps the focus, so its
+// arrow keys still walk the preview.
 func (s *shell) place(shown *pane) {
+	if beside, asked := s.besideFor(shown); asked {
+		s.putBeside(shown, beside)
+
+		return
+	}
 	if shown.view == watchview.ViewName {
 		for index, each := range s.tabs {
 			if len(each.panes) == 1 && each.panes[0].view == mapview.ViewName && each.panes[0].target == shown.target {

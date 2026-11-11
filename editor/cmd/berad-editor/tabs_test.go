@@ -218,6 +218,37 @@ func TestBackReturnsToANode(t *testing.T) {
 	noCrashes(t, project)
 }
 
+// TestQuickOpenFromAMap presses Cmd+P in a Map's tab, finds Clerk's day in
+// the sheet and opens it with Enter in a tab of its own; then finds Fetch
+// stock and opens it with Cmd+Enter beside the Map, in the Map's tab
+// (increment 38).
+func TestQuickOpenFromAMap(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "quick-open.png")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Zones"), wait(20), doubleClick("row:Sample zone"),
+		must("state:tabs:2", 600), must("state:quick-open", 900), wait(5), typed("Clerk's"),
+		must("quick:Clerk's day", 120), step{Repeat: 2, Screenshot: shot, Front: false}, click("quick:Clerk's day"),
+		keys("Enter"), must("state:tabs:3", 600), must("state:quick-open", 1800), wait(5), typed("Fetch"),
+		must("quick:Fetch stock", 120), click("quick:Fetch stock"), keys("Cmd+Enter"),
+		must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(30), keys("Cmd+P"), must("state:tabs:3", 900),
+		must("state:front:Clerk's day", 60), must("state:tabs:2", 1800), wait(10), keys("Cmd+P"),
+		must("state:front:Fetch stock", 900), must("state:tabs:2", 5), wait(120), keys("Cmd+W"), wait(30),
+	)
+	clerkScript := script(must("state:loaded", 600), wait(30), keys("Cmd+W"), wait(30))
+	fetchScript := script(must("state:loaded", 600), wait(60), keys("Cmd+W"), wait(30))
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "map": {mapScript}, "workflow": {clerkScript, fetchScript},
+	})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}
+
 // TestSpriteOpensAsATab makes a sprite in the project browser and opens it
 // as a tab under Sprites, after Audio on the bar (increment 11). The Pixel
 // editor paints a stroke there.

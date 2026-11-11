@@ -167,9 +167,15 @@ func (l facetLabels) add(facet, value, label string, icon ui.Icon, rank int) {
 // things lists what the table can show, by name, with the facet values each
 // has, and every value's label.
 func (s *State) things(docs frame.Docs) ([]thing, facetLabels) {
+	return s.thingsFor(docs, s.search.Field.Value())
+}
+
+// thingsFor lists what a search for a query finds, as things does for the
+// search box's.
+func (s *State) thingsFor(docs frame.Docs, query string) ([]thing, facetLabels) {
 	index := s.index(docs)
 	labels := facetLabels{}
-	match := newMatcher(s.search.Field.Value())
+	match := newMatcher(query)
 	now := time.Now()
 	var found []thing
 	for _, entry := range index.Entries() {

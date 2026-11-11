@@ -34,6 +34,8 @@ func (s *shell) tabKeys(input *ui.Input, status func(string)) {
 		s.chooseNeighbour(-1, status)
 	case input.ConsumeExact(ui.KeyBracketRight, ui.CmdShift()):
 		s.chooseNeighbour(1, status)
+	case input.ConsumeExact(ui.KeyP, ui.Cmd()):
+		s.openQuick(status)
 	default:
 		s.trailKeys(input, status)
 	}

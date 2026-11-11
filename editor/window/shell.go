@@ -55,6 +55,10 @@ type shell struct {
 	used []*tab
 	// trail is where the author has been, for Back and Forward.
 	trail trail
+	// beside is a window quick open asked for beside a tab, and quickImage
+	// what the project browser draws its sheet into.
+	beside     *besideAsk
+	quickImage *ebiten.Image
 	// onTop is whether the window is kept above other applications' windows,
 	// and folded whether every tab's inspector is folded to its strip.
 	onTop  bool
@@ -97,6 +101,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
+		beside: nil, quickImage: nil,
 		onTop: false, folded: false,
 	}
 }
@@ -183,9 +188,12 @@ func (s *shell) Update() error {
 	s.receiveOpened()
 	s.tintTabs()
 	s.layout()
+	s.placeQuick()
 	input := s.readInput(s.target(s.focused()))
-	s.updateBar(&input)
-	s.updateSplit(&input)
+	if !s.quickShowing() {
+		s.updateBar(&input)
+		s.updateSplit(&input)
+	}
 	s.layout()
 	focused := s.focused()
 	s.route(input, s.target(focused), focused)
@@ -193,6 +201,7 @@ func (s *shell) Update() error {
 	for _, shown := range s.panes() {
 		s.run(shown)
 	}
+	s.takeBeside()
 	s.attend()
 	s.noteUsed()
 	s.noteTrail()
@@ -218,10 +227,14 @@ func (s *shell) layout() {
 	}
 }
 
-// target is the pane that takes the frame's input: the clock's panel while
-// the cursor is over it or its time field is being typed in, and otherwise
-// the focused pane of the tab in front.
+// target is the pane that takes the frame's input: the project browser's
+// while quick open shows, the clock's panel while the cursor is over it or
+// its time field is being typed in, and otherwise the focused pane of the
+// tab in front.
 func (s *shell) target(focused *pane) *pane {
+	if shown, quick, ok := s.browserPane(); ok && quick.QuickOpen() {
+		return shown
+	}
 	if !s.clockOpen || s.clock == nil {
 		return focused
 	}
@@ -351,6 +364,12 @@ func (s *shell) attend() {
 			if !shown.place.attention && !shown.place.front {
 				continue
 			}
+			if beside, asked := s.besideFor(shown); asked && beside != each {
+				s.putBeside(shown, beside)
+				shown.place.attention, shown.place.front = false, false
+
+				return
+			}
 			s.active, each.focus = index, slot
 			if shown.place.attention && !ebiten.IsFocused() {
 				ebiten.RequestAttention()
@@ -458,6 +477,7 @@ func (s *shell) Draw(screen *ebiten.Image) {
 	}
 	s.drawClock(screen)
 	s.drawBar(screen)
+	s.drawQuick(screen)
 	s.drawMore(screen)
 	for _, path := range s.shots {
 		if err := saveScreenshot(screen, path); err != nil {

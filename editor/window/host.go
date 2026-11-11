@@ -145,11 +145,15 @@ func (h *host) Update() error {
 	} else {
 		input = h.surface.Input(h.view.Focused())
 	}
-	h.frame.UpdateStatus(&input, h.visible)
-	h.updateFolded(&input)
+	if quick, ok := h.view.(quickOpener); !ok || !quick.QuickOpen() {
+		// Quick open's sheet takes every press while it shows, so none
+		// reaches the status bar, the folded strip or the window's keys.
+		h.frame.UpdateStatus(&input, h.visible)
+		h.updateFolded(&input)
+		h.windowKeys(&input)
+		h.updateQuitDialog(&input)
+	}
 	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
-	h.windowKeys(&input)
-	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
 	h.tellRefusal(h.view.Focused())
 	h.close()
