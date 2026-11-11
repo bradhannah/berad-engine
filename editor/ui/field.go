@@ -102,6 +102,9 @@ func (w *TextField) Center() image.Point {
 // it does not use stay in the input for the window.
 func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit.Outcome, bool) {
 	clicked := input.Pressed && input.Cursor.In(w.Rect)
+	// Whether the button is held is read before the field takes the press,
+	// which clears it from the input.
+	down := input.Down
 	if clicked {
 		w.SetFocus(true)
 		// Escape can drop the draft while the field keeps focus.
@@ -109,12 +112,7 @@ func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit
 		w.placeCaret(input)
 		input.ClearPointer()
 	}
-	if w.dragging && input.Down {
-		w.Field.Buffer().SetCaret(w.hit(input.Cursor), true)
-	}
-	if !input.Down {
-		w.dragging = false
-	}
+	w.drag(input, down)
 	if !w.focused {
 		return textedit.OutcomeNone, clicked
 	}
@@ -149,6 +147,23 @@ func (w *TextField) Update(input *Input, clipboard textedit.Clipboard) (textedit
 	w.keepCaretVisible()
 
 	return outcome, clicked
+}
+
+// drag selects from where the button was pressed in the field to the
+// pointer, for as long as the button is held, wherever the pointer goes. The
+// field keeps the held button to itself meanwhile, so nothing the pointer
+// passes over takes it for its own.
+func (w *TextField) drag(input *Input, down bool) {
+	if !down {
+		w.dragging = false
+	}
+	if !w.dragging {
+		return
+	}
+	if buffer := w.Field.Buffer(); buffer != nil {
+		buffer.SetCaret(w.hit(input.Cursor), true)
+	}
+	input.ClearPointer()
 }
 
 func (w *TextField) placeCaret(input *Input) {

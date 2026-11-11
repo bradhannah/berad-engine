@@ -172,3 +172,38 @@ func TestDialogKeys(t *testing.T) {
 		t.Fatal("a dialog must take all input")
 	}
 }
+
+// TestDraggingSelectsText presses in a field, drags along its text and lets
+// go: the text between is selected, grows and shrinks with the pointer even
+// past the field's edge, and stays selected after the button is released.
+func TestDraggingSelectsText(t *testing.T) {
+	t.Parallel()
+	field := ui.NewTextField("name", textedit.NewField("Harbour master", false, 0), false, theme(t))
+	field.Rect = image.Rect(10, 10, 210, 10+ui.ButtonH)
+	var focus ui.Focus
+	focus.Register(field)
+	middle := field.Rect.Min.Y + field.Rect.Dy()/2
+	focus.Update(&ui.Input{Cursor: image.Pt(field.Rect.Min.X+2, middle), Pressed: true, Down: true}, nil)
+	buffer := field.Field.Buffer()
+	if buffer == nil || buffer.HasSelection() || buffer.Caret() != 0 {
+		t.Fatal("a press puts the caret at the start with nothing selected")
+	}
+	focus.Update(&ui.Input{Cursor: image.Pt(field.Rect.Min.X+40, middle), Down: true}, nil)
+	_, partway := buffer.Selection()
+	if !buffer.HasSelection() || partway == 0 || partway >= len(buffer.Text()) {
+		t.Fatalf("dragging selects from the press to the pointer: %q", buffer.SelectedText())
+	}
+	focus.Update(&ui.Input{Cursor: image.Pt(field.Rect.Max.X+300, middle+80), Down: true}, nil)
+	if buffer.SelectedText() != "Harbour master" {
+		t.Fatalf("dragging past the field's edge selects to the end: %q", buffer.SelectedText())
+	}
+	focus.Update(&ui.Input{Cursor: image.Pt(field.Rect.Min.X+40, middle), Down: true}, nil)
+	if _, end := buffer.Selection(); end != partway {
+		t.Fatalf("dragging back shrinks the selection: %q", buffer.SelectedText())
+	}
+	focus.Update(&ui.Input{Cursor: image.Pt(field.Rect.Min.X+40, middle), Released: true}, nil)
+	focus.Update(&ui.Input{Cursor: image.Pt(field.Rect.Max.X-2, middle)}, nil)
+	if _, end := buffer.Selection(); end != partway || !field.Focused() {
+		t.Fatalf("the selection stays once the button is let go: %q", buffer.SelectedText())
+	}
+}
