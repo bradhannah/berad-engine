@@ -94,13 +94,20 @@ func quitDialog(ask protocol.QuitAsk) *ui.Dialog {
 		ui.DialogButton(quitDiscard, "Don't save"), ui.DialogButton(ui.DialogCancel, "Cancel"))
 }
 
+// shows is the host's part of the window, where the quit dialog is drawn.
+// It is not the size the view lays out for, which is wider while the
+// inspector is folded.
+func (h *host) shows() image.Rectangle {
+	return image.Rectangle{Min: image.Pt(0, 0), Max: h.visible}
+}
+
 // updateQuitDialog handles the quit dialog while it shows; it takes all of
 // the frame's input.
 func (h *host) updateQuitDialog(input *ui.Input) {
 	if h.quitDialog == nil {
 		return
 	}
-	switch h.quitDialog.Update(input, image.Rectangle{Min: image.Pt(0, 0), Max: h.ctx.Size}) {
+	switch h.quitDialog.Update(input, h.shows()) {
 	case "":
 		return
 	case quitNow, quitDiscard:
@@ -186,7 +193,7 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
 
-		return h.quitDialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: h.ctx.Size})
+		return h.quitDialog.Locate(value, h.shows())
 	}
 	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
 		return image.Pt(0, 0), strconv.Itoa(h.tabs()) == count
