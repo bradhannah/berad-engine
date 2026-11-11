@@ -461,3 +461,38 @@ func TestAStrokeThatLeavesTheFloorDoesNotCutAcrossIt(t *testing.T) {
 		t.Fatal("it is still one stroke, so one undo step")
 	}
 }
+
+// TestPickingOnAnotherFloor picks a place upstairs: while the map picks,
+// PageUp and the floor list still change the floor it shows, the list of
+// places follows, and a place answers with the floor it is on.
+func TestPickingOnAnotherFloor(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	bed := frametest.ID(50)
+	f.docs.View(upperID, func(document client.Document) {
+		upstairs := document.Model.(*tilefloor.Document).Floor
+		if err := upstairs.InsertAnchor(0, floor.Anchor{ID: bed, Name: "Bed", Col: 3, Row: 3}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	start := protocol.PickStart{
+		Pick: "p1", What: protocol.PickAnchor, Label: "where to sleep", Window: ids.ULID{}, Zone: ids.ULID{},
+		From: frametest.ID(7), Now: protocol.PickNow{Floor: groundID, Item: deskID.String(), Name: "Desk"},
+	}
+	f.state.Changed(client.Update{PickStart: &start}, f.ctx)
+	f.keys("PageUp")
+	if f.state.Floor() != upperID || !f.state.Picking() {
+		t.Fatalf("PageUp goes upstairs while picking: on %v, picking %v", f.state.Floor(), f.state.Picking())
+	}
+	f.click("floor:1")
+	if f.state.Floor() != groundID || !f.state.Picking() {
+		t.Fatalf("the floor list changes floor while picking: on %v, picking %v", f.state.Floor(), f.state.Picking())
+	}
+	f.click("floor:2")
+	f.draw()
+	f.click("place:Bed")
+	if len(f.requests.PickAnswers) != 1 || f.requests.PickAnswers[0].Floor != upperID ||
+		f.requests.PickAnswers[0].Item != bed.String() || f.state.Picking() {
+		t.Fatalf("a place upstairs answers with its floor: %+v", f.requests.PickAnswers)
+	}
+}

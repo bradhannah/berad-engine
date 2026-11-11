@@ -432,7 +432,7 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	}
 	heading(tileHeading, s.tileList)
 	s.tileList.Draw(screen, s.theme)
-	heading("FLOORS (TOP FIRST)", s.floorList)
+	heading(floorsHeading, s.floorList)
 	s.floorList.Draw(screen, s.theme)
 	s.below.Draw(screen, s.theme)
 	s.previewBn.Draw(screen, s.theme)

@@ -107,10 +107,12 @@ func (s *State) pickListTop() int {
 
 // updatePicking takes the window's input while it picks: Cancel or Escape
 // cancels, a name in the list or a ring on the map answers, and the map
-// still pans and zooms.
+// still pans and zooms. The place may be on another floor, so the floor
+// list and PageUp and PageDown still change the floor shown.
 func (s *State) updatePicking(input *ui.Input, ctx *frame.Context) {
 	s.updateZoom(input, ctx)
 	frame.CommonKeys(input, ctx)
+	s.pickFloor(input, ctx)
 	ctx.Docs.View(s.floor, func(document client.Document) {
 		floorDoc, ok := document.Model.(*tilefloor.Document)
 		if !ok {
@@ -135,6 +137,21 @@ func (s *State) updatePicking(input *ui.Input, ctx *frame.Context) {
 			s.updatePickGrid(input, ctx, floorDoc.Floor)
 		}
 	})
+}
+
+// pickFloor changes the floor shown while picking, from the floor list or
+// with PageUp and PageDown.
+func (s *State) pickFloor(input *ui.Input, ctx *frame.Context) {
+	switch {
+	case input.Consume(ui.KeyPageUp, ui.Plain()):
+		s.stepFloor(1, ctx)
+	case input.Consume(ui.KeyPageDown, ui.Plain()):
+		s.stepFloor(-1, ctx)
+	case s.floorList.Update(input).Changed:
+		if id, err := ids.Parse(s.floorList.Selected); err == nil {
+			s.switchFloor(id, ctx)
+		}
+	}
 }
 
 // updatePickGrid pans and zooms the map and answers a click on an anchor.
@@ -224,10 +241,13 @@ func (s *State) drawPickBanner(screen *ebiten.Image) {
 		parts.bannerCancel.Rect.Min.Y+(ui.ButtonH-ui.TextSize)/ui.Half-1, ui.ColorBackground())
 }
 
-// drawPickPanel fades the tools, which rest while picking.
+// drawPickPanel fades the tools, which rest while picking, and draws the
+// floor list over the fade: it still changes the floor shown.
 func (s *State) drawPickPanel(screen *ebiten.Image) {
 	height := s.size.Y - frame.StatusHeight
 	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.HexAlpha(hexWhite, pickWash))
+	s.theme.Heading(screen, floorsHeading, ui.Inset, s.floorList.Rect.Min.Y-headingSpace+ui.Gap)
+	s.floorList.Draw(screen, s.theme)
 	s.theme.DrawText(screen, "Tools rest while you pick.", ui.Inset, height-ui.Inset-ui.LineHeight, ui.ColorMuted())
 }
 

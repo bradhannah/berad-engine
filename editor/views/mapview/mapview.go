@@ -42,6 +42,8 @@ const (
 	floorRows    = 5
 	panelGap     = 10
 	headingSpace = 22
+	// floorsHeading heads the list of the zone's floors.
+	floorsHeading = "FLOORS (TOP FIRST)"
 	// numberedTiles have a number key; anchorRows of details sit between
 	// the anchor name and its Delete button.
 	numberedTiles = 9
