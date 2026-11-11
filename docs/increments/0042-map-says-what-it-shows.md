@@ -46,3 +46,8 @@ evening:
 
 - **Out of view:** `TestTheMapSaysWhenTheFloorIsOutOfView` pans the floor
   wholly out of view, finds the Map saying so, and Fit bringing it back.
+- **Noticed while building, and fixed:** Watch's log called a line's node
+  "a deleted node" whenever the line came from a workflow Watch was not
+  showing, since it had never loaded that workflow. Watch now loads the
+  workflow of every logged line, and names the workflow alone until it has
+  arrived. `TestALoggedLineNamesItsNode` checks it.

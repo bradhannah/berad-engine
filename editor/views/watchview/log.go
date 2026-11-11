@@ -151,10 +151,12 @@ func (s *State) layoutLog(docs frame.Docs) {
 }
 
 // lineSource names the workflow and the node that wrote a line, as
-// "Customer shops · Log".
+// "Customer shops · Log". Until the workflow has arrived it names the
+// workflow alone; a node is called deleted only when its workflow, loaded,
+// no longer has it.
 func (s *State) lineSource(docs frame.Docs, line protocol.PreviewLine) string {
 	kind := "a deleted node"
-	docs.View(line.Workflow, func(document client.Document) {
+	loaded := docs.View(line.Workflow, func(document client.Document) {
 		if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
 			if node, found := workflowDoc.Workflow.Node(line.Node); found {
 				declared, _ := flow.KindOf(node.Kind)
@@ -162,6 +164,9 @@ func (s *State) lineSource(docs frame.Docs, line protocol.PreviewLine) string {
 			}
 		}
 	})
+	if !loaded {
+		return s.name(docs, line.Workflow, "A deleted workflow")
+	}
 
 	return s.name(docs, line.Workflow, "A deleted workflow") + " · " + kind
 }
@@ -181,6 +186,9 @@ func (s *State) lineWho(docs frame.Docs, line protocol.PreviewLine) string {
 // through older lines.
 func (s *State) updateLog(input *ui.Input, ctx *frame.Context) {
 	panel := s.log
+	for _, line := range s.log.lines {
+		s.subscribe(line.Workflow, ctx)
+	}
 	s.layoutLog(ctx.Docs)
 	switch {
 	case panel.watched.Update(input):
