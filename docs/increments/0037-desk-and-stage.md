@@ -10,7 +10,7 @@ does changes; what changes is where the eye goes. White means a box the
 author can type in or choose from. Panels, lists and a workflow's canvas are
 the page. The window bar, the status bar and the split's divider are the
 desk. The game is shown on a dark stage, so it is the brightest thing in the
-window. It builds on [increment 36](0036-work-losing-bugs.md) and is held to
+window. It builds on [increment 36](0036-review-bugs.md) and is held to
 the same strict checks as [increment 1](0001-foundation.md).
 
 ## What it proves
