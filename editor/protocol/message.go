@@ -282,9 +282,35 @@ type Layout struct {
 }
 
 // Arrangement is the window's arrangement on one size of screen: each kind
-// of view's panels, by the view's name.
+// of view's panels, by the view's name; and the window's frame, its tabs,
+// what sits beside what, and the tab in front, by its place in Tabs, to
+// reopen as it was left (increment 55).
 type Arrangement struct {
-	Kinds map[string]KindLayout `json:"kinds"`
+	Kinds  map[string]KindLayout `json:"kinds"`
+	Frame  WindowFrame           `json:"frame,omitzero"`
+	Tabs   []TabLayout           `json:"tabs,omitempty"`
+	Active int                   `json:"active,omitempty"`
+}
+
+// WindowFrame is where the editor window is on the screen, and its size.
+type WindowFrame struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// TabLayout is one tab: its panes, side by side, and the share of the tab
+// the first takes when there are two.
+type TabLayout struct {
+	Panes []PaneLayout `json:"panes"`
+	Split float64      `json:"split,omitempty"`
+}
+
+// PaneLayout is one pane: its kind of view and what it shows.
+type PaneLayout struct {
+	View   string   `json:"view"`
+	Target ids.ULID `json:"target,omitzero"`
 }
 
 // KindLayout is one kind of view's panels: the inspector's and the left

@@ -54,3 +54,34 @@ func TestAMapKeepsAnArrangementForPreviewing(t *testing.T) {
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestTheWindowReopensAsItWasLeft opens the sample zone's Map and the Fetch
+// stock workflow, quits, and opens the project again: both tabs reopen, in
+// order, and the status bar says so (increment 55).
+func TestTheWindowReopensAsItWasLeft(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "reopened.png")
+	firstBrowser := script(
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), must("state:tabs:2", 600), wait(60),
+		doubleClick("row:Fetch stock"), must("state:tabs:3", 600), wait(120), keys("Cmd+Q"), must("ui:quit", 300),
+		wait(5), click("ui:quit"), wait(60),
+	)
+	idle := script(must("state:loaded", 900), wait(30))
+	runEditor(t, binary, project, scripts{
+		"browser": {firstBrowser}, "map": {idle}, "workflow": {idle},
+	})
+	againBrowser := script(
+		must("state:tabs:3", 1800), wait(60), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	reopened := script(
+		must("state:loaded", 900), must("state:said:Reopened as it was left", 900), wait(10),
+		step{Repeat: 2, Screenshot: shot, Front: false}, wait(30),
+	)
+	runEditor(t, binary, project, scripts{
+		"browser": {againBrowser}, "map": {idle}, "workflow": {reopened},
+	})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}

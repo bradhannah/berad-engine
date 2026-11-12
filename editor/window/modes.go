@@ -91,6 +91,11 @@ func (s *shell) startArrangement(shown *pane, key string) {
 	}
 	size := screenSize()
 	widths := startingWidths(size)
+	if scripted() {
+		// An input script's run starts at the views' own widths, so the
+		// real-window walks do not depend on the screen they run on.
+		widths = kindWidths{inspector: 0, left: 0}
+	}
 	s.widths[key] = widths
 	shown.host.inspectorWidth = widths.inspector
 	shown.host.setLeft(widths.left)

@@ -86,6 +86,9 @@ type host struct {
 	squeezed, resizing        bool
 	arranged                  bool
 	arrangement               func(json.RawMessage)
+	// shutdown is set once the orchestrator asked the pane to close for a
+	// quit, so the window keeps its tabs as they were (increment 55).
+	shutdown bool
 	// closeQuits makes closing this window quit the editor, as closing the
 	// project browser's tab does; hosts is told of the windows the editor
 	// window is asked to show.
@@ -127,7 +130,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
 		saidGesture: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone, squeezed: false,
-		resizing: false, arranged: false, arrangement: nil,
+		resizing: false, arranged: false, arrangement: nil, shutdown: false,
 		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
 	}
@@ -255,6 +258,7 @@ func (h *host) drainUpdates() bool {
 				return true
 			}
 			if update.Shutdown != nil {
+				h.shutdown = true
 				if !update.Shutdown.Save || !h.saveForQuit() {
 					return true
 				}

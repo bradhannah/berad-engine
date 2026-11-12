@@ -42,7 +42,11 @@ func (s *shell) keepArrangement(value json.RawMessage) {
 	if err := json.Unmarshal(value, &layout); err != nil || layout.Screens == nil {
 		return
 	}
+	first := !s.keptArrived
 	s.kept, s.keptArrived = layout, true
+	if first {
+		s.reopenAsLeft(layout.Screens[s.screen])
+	}
 	for kind, panels := range layout.Screens[s.screen].Kinds {
 		s.widths[kind] = kindWidths{inspector: panels.Inspector, left: panels.Left}
 		s.folded[kind], s.leftFolded[kind] = panels.InspectorFolded, panels.LeftFolded
@@ -98,7 +102,9 @@ func (s *shell) publishArrangement() {
 	if screens == nil {
 		screens = map[string]protocol.Arrangement{}
 	}
-	screens[s.screen] = protocol.Arrangement{Kinds: kinds}
+	screens[s.screen] = protocol.Arrangement{
+		Kinds: kinds, Frame: s.frameNow, Tabs: s.tabsNow(), Active: s.active,
+	}
 	s.kept = protocol.Layout{Screens: screens}
 	for _, shown := range s.panes() {
 		if shown.host.closeQuits {

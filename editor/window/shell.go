@@ -79,6 +79,16 @@ type shell struct {
 	known       map[string]bool
 	keptArrived bool
 	minWidth    int
+	// reopen is the tabs still being reopened as they were left; frameNow
+	// is the window's frame as kept, frameSeen and frameTicks how long it
+	// has been where it is now, and tabsKept the tabs as last kept
+	// (increment 55).
+	reopen     *reopening
+	frameNow   protocol.WindowFrame
+	frameSeen  protocol.WindowFrame
+	frameTicks int
+	tabsKept   string
+	quitting   bool
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -123,7 +133,9 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		beside: nil, quickImage: nil, statusImage: nil,
 		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
 		widths: map[string]kindWidths{}, kept: protocol.Layout{Screens: nil}, screen: screenKey(),
-		known: map[string]bool{}, keptArrived: false, minWidth: 0,
+		known: map[string]bool{}, keptArrived: false, minWidth: 0, reopen: nil,
+		frameNow:  protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0},
+		frameSeen: protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0}, frameTicks: 0, tabsKept: "", quitting: false,
 	}
 }
 
@@ -234,6 +246,8 @@ func (s *shell) Update() error {
 	s.followOnTop()
 	s.followInspector()
 	s.limitWindow()
+	s.reopenNext()
+	s.followFrame()
 	s.followClock()
 	s.retitle()
 	if len(s.tabs) == 0 {
@@ -344,6 +358,7 @@ func (s *shell) close(shown *pane, cause error) {
 			logLine("report a " + shown.view + " pane's crash: " + err.Error())
 		}
 	}
+	s.quitting = s.quitting || shown.host.shutdown
 	s.stats.addLatencies(shown.host.frame.Latencies())
 	if err := errors.Join(shown.host.sounds.Close(), shown.host.conn.Close()); err != nil {
 		logLine("close a " + shown.view + " pane: " + err.Error())
