@@ -70,8 +70,10 @@ Chosen while building, for its author to check:
   replaces. Screenshots at 1512 × 916 show a Map with its rail and a
   Workflow with its strip.
 - **Checks:** `make check` passes. The whole real-window suite was not
-  run: the computer's display slept while its author was out, and the
-  editor cannot open a window then.
+  run on this increment's own commit, as the computer's display slept
+  while its author was out. All 66 real-window walks pass on
+  [increment 44](0044-workflow-names-what-is-in-hand.md)'s commit, which
+  carries this one, run from a frozen copy.
 
 ## Not in this increment
 

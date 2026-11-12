@@ -47,7 +47,10 @@ evening:
 - **Out of view:** `TestTheMapSaysWhenTheFloorIsOutOfView` pans the floor
   wholly out of view, finds the Map saying so, and Fit bringing it back.
 - **Checks:** `make check` passes. The real-window suite was not run on
-  this increment: the computer's display slept while its author was out.
+  this increment's own commit, as the computer's display slept while its
+  author was out. All 66 real-window walks pass on
+  [increment 44](0044-workflow-names-what-is-in-hand.md)'s commit, which
+  carries this one, run from a frozen copy.
   A screenshot of a folded Map, taken with increment 43, shows the plain
   stage and the origin without its lines.
 - **Noticed while building, and fixed:** Watch's log called a line's node

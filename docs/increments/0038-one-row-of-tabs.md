@@ -108,7 +108,9 @@ Changed after its author tried it, on 2026-11-11:
   Of the real-window walks run on it, 57 passed. `TestClerkCallsFetchStock`
   timed out while other editor windows were open beside the run, and
   passed alone. Eight more could not start: the computer's display had
-  slept ("no monitor was found").
+  slept ("no monitor was found"). All 66 then passed on
+  [increment 44](0044-workflow-names-what-is-in-hand.md)'s commit, which
+  carries the joined tab, run from a frozen copy.
 
 ## Steps
 

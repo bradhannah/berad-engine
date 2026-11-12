@@ -31,9 +31,8 @@ as [increment 1](0001-foundation.md).
 
 - `TestTheStatusBarNamesWhatIsInHand` selects the start and points at a
   Wait, then at empty canvas, and reads each.
-- `make check` passes.
-- **Not run:** the real-window walks. The computer's display slept while
-  its author was out, and the editor cannot open a window then.
+- `make check` passes. All 66 real-window walks pass on the increment's
+  commit, run from a frozen copy.
 
 ## Not in this increment
 
