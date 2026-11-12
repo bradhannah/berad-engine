@@ -144,14 +144,7 @@ func (s *State) Zoom() int { return s.zoom }
 
 // Title is the window title: the sprite's name.
 func (s *State) Title(docs frame.Docs) string {
-	name := "Sprite"
-	docs.View(project.IndexID(), func(document client.Document) {
-		if index, ok := document.Model.(*project.Index); ok {
-			name = index.Name(s.sprite, name)
-		}
-	})
-
-	return "Sprite: " + name + "  (view " + s.window.Short(shortID) + ")"
+	return "Sprite: " + s.spriteName(docs) + "  (view " + s.window.Short(shortID) + ")"
 }
 
 // Focused returns nil: the Pixel editor has no text fields.
@@ -346,6 +339,7 @@ func (s *State) command(ctx *frame.Context, document ids.ULID, edit, gesture str
 
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
+	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.layout(ctx.Docs)
