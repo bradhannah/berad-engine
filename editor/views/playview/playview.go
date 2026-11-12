@@ -11,8 +11,10 @@ package playview
 
 import (
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"image"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -33,6 +35,38 @@ const ViewName = "play"
 // that is asked to show it launches again.
 const LaunchItem = "launch"
 
+// launchFromPrefix starts the item Play from here opens the Play tab with
+// (increment 47).
+const launchFromPrefix = "launch-from:"
+
+// LaunchFromItem is the item Play from here opens the Play tab with: the
+// game launches once with the player at a cell, and the player start stays
+// where it is (increment 47).
+func LaunchFromItem(start game.Start) string {
+	return launchFromPrefix + start.Zone.String() + ":" + start.Floor.String() + ":" + strconv.Itoa(start.Col) + ":" +
+		strconv.Itoa(start.Row)
+}
+
+// startOfItem reads where a LaunchFromItem puts the player.
+func startOfItem(item string) (game.Start, bool) {
+	parts := strings.Split(strings.TrimPrefix(item, launchFromPrefix), ":")
+	if len(parts) != startParts {
+		return game.NoStart(), false
+	}
+	zoneID, zoneErr := ids.Parse(parts[0])
+	floorID, floorErr := ids.Parse(parts[1])
+	col, colErr := strconv.Atoi(parts[2])
+	row, rowErr := strconv.Atoi(parts[3])
+	if zoneErr != nil || floorErr != nil || colErr != nil || rowErr != nil {
+		return game.NoStart(), false
+	}
+
+	return game.Start{Zone: zoneID, Floor: floorID, Col: col, Row: row}, true
+}
+
+// startParts is how many parts a LaunchFromItem has after its prefix.
+const startParts = 4
+
 // State is the Play tab.
 type State struct {
 	window ids.ULID
@@ -45,6 +79,9 @@ type State struct {
 	problem   string
 	launching bool
 	launches  int
+	// from is where Play from here puts the player for the next launch
+	// alone, nil to launch at the player start.
+	from *game.Start
 	// zone and floors are the zone being played and its floors from the
 	// bottom up, for "floor:" states.
 	floors []ids.ULID
@@ -76,7 +113,7 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
-		launching: true, launches: 0, floors: nil, held: 0, shown: true, standIns: map[string]ids.ULID{},
+		launching: true, launches: 0, from: nil, floors: nil, held: 0, shown: true, standIns: map[string]ids.ULID{},
 		npcSprites: map[ids.ULID]ids.ULID{}, art: newArtSet(), sound: newSounds(),
 		canvas: nil, sharp: nil, scale: 1, origin: image.Pt(0, 0), tile: 0, clockStart: protocol.DefaultClockStart,
 	}
@@ -100,8 +137,13 @@ func (s *State) SetShown(shown bool) { s.shown = shown }
 // Changed follows the orchestrator: Launch asked again, so the game launches
 // again, and the time the Clock window sets for the clock to start at.
 func (s *State) Changed(update client.Update, _ *frame.Context) {
-	if update.Attention && update.Item == LaunchItem {
-		s.launching = true
+	switch {
+	case update.Attention && update.Item == LaunchItem:
+		s.launching, s.from = true, nil
+	case update.Attention && strings.HasPrefix(update.Item, launchFromPrefix):
+		if start, ok := startOfItem(update.Item); ok {
+			s.launching, s.from = true, &start
+		}
 	}
 	if update.Session != nil && update.Session.Topic == protocol.TopicClockStart {
 		var start protocol.ClockStart
@@ -188,7 +230,12 @@ func (s *State) launch(ctx *frame.Context) {
 	s.game, s.tile, s.floors = played, tile, project.Zone.Floors()
 	s.art.draw(ctx.Docs, tile)
 	s.sound.launch(ctx, played, s.workflowCues(project))
-	if s.launches > 1 {
+	switch {
+	case s.from != nil:
+		ctx.Frame.Status(fmt.Sprintf("Playing from %d,%d for this run. Launch plays from the player start again.",
+			s.from.Col, s.from.Row))
+		s.from = nil
+	case s.launches > 1:
 		ctx.Frame.Status("Launched again with the project as it is now")
 	}
 }

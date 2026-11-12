@@ -11,6 +11,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
+	"github.com/bradhannah/berad-engine/editor/views/playview"
+	"github.com/bradhannah/berad-engine/engine/game"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -30,7 +32,7 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.rightClick("cell:4,4")
-	if got := f.menu(); got != "rename-anchor, delete-anchor, add-anchor (disabled), place-npc (disabled), place-sound (disabled), preview-here, set-start" {
+	if got := f.menu(); got != "rename-anchor, delete-anchor, add-anchor (disabled), place-npc (disabled), place-sound (disabled), preview-here, play-here, set-start" {
 		t.Fatalf("anchor menu: %s", got)
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
@@ -39,7 +41,7 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 		t.Fatal("Escape keeps the menu open")
 	}
 	f.rightClick("cell:2,2")
-	want := "select-walls, add-anchor, place-npc (disabled), clear-top, place-sound (disabled), preview-here (disabled), set-start (disabled)"
+	want := "select-walls, add-anchor, place-npc (disabled), clear-top, place-sound (disabled), preview-here (disabled), play-here (disabled), set-start (disabled)"
 	if got := f.menu(); got != want {
 		t.Fatalf("wall menu: %s", got)
 	}
@@ -104,6 +106,12 @@ func TestRightClickMenuActions(t *testing.T) {
 		t.Fatalf("extend sent %+v", resize.Bounds)
 	}
 	f.rightClick("cell:9,8")
+	f.click("menu:play-here")
+	from := playview.LaunchFromItem(game.Start{Zone: zoneID, Floor: groundID, Col: 9, Row: 8})
+	if opened := f.requests.Opened; len(opened) != 1 || opened[0].View != playview.ViewName || opened[0].Item != from {
+		t.Fatalf("Play from here opens the Play tab to launch from the cell: %+v", opened)
+	}
+	f.rightClick("cell:9,8")
 	f.click("menu:preview-here")
 	if len(f.requests.Previews) != 1 {
 		t.Fatal("Preview from here asks to start a preview")
@@ -122,7 +130,7 @@ func TestRightClickOnAnNPC(t *testing.T) {
 	}
 	f.docs.Put(groundID, "Ground", ground)
 	f.rightClick("cell:9,8")
-	want := "select-npc, open-behaviour, remove-npc, add-anchor, place-npc (disabled), place-sound (disabled), preview-here, set-start"
+	want := "select-npc, open-behaviour, remove-npc, add-anchor, place-npc (disabled), place-sound (disabled), preview-here, play-here, set-start"
 	if got := f.menu(); got != want {
 		t.Fatalf("NPC menu: %s", got)
 	}
