@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/bradhannah/berad-engine/engine/clock"
@@ -162,7 +163,30 @@ type Result struct {
 	// Said is the sentence the change an Undo or Redo took back or put back
 	// was said with, such as "Painted Ground floor" (increment 39).
 	Said string `json:"said,omitempty"`
+	// Touched is what the change said with Said touched, so a line in
+	// History can select what it names (increment 45).
+	Touched Touch `json:"touched,omitzero"`
 }
+
+// Touch is a change's document and the parts of it the change touched, in
+// the document's own words, as "node:<ID>" in a workflow. A Touch keeps the
+// first TouchedLength parts: enough to find something to select.
+type Touch struct {
+	Document ids.ULID `json:"document,omitzero"`
+	Items    []string `json:"items,omitempty"`
+}
+
+// TouchedLength is the most parts of a document a Touch keeps.
+const TouchedLength = 16
+
+// Touching is what a change to a document touched, keeping the first
+// TouchedLength parts.
+func Touching(document ids.ULID, items []string) Touch {
+	return Touch{Document: document, Items: slices.Clone(items[:min(len(items), TouchedLength)])}
+}
+
+// Untouched is the Touch of a result that changed nothing.
+func Untouched() Touch { return Touch{Document: ids.ULID{}, Items: nil} }
 
 // Event reports an applied edit. Windows apply the same edit with the same
 // arguments to their copy of the document.

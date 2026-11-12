@@ -331,7 +331,7 @@ func (f *Frame) ReportStep(did string) func(protocol.Result, error) {
 		case err != nil:
 			f.Report("")(result, err)
 		case result.Said != "":
-			f.Status(did + ": " + result.Said)
+			f.StatusAbout(did+": "+result.Said, result.Touched)
 		default:
 			f.Status(did)
 		}

@@ -149,7 +149,7 @@ func (h *host) Update() error {
 		// Quick open's sheet takes every press while it shows, so none
 		// reaches the status bar, the folded strip or the window's keys; the
 		// History list takes them while it is open.
-		h.frame.UpdateHistory(&input, h.visible)
+		h.updateHistory(&input)
 		h.frame.UpdateStatus(&input, h.visible)
 		h.updateFolded(&input)
 		h.windowKeys(&input)
@@ -360,7 +360,7 @@ type outgoing struct {
 func (h *host) Command(command protocol.Command, done func(protocol.Result, error)) {
 	said := func(result protocol.Result, err error) {
 		if err == nil && result.Said != "" {
-			h.frame.Status(result.Said)
+			h.frame.StatusAbout(result.Said, result.Touched)
 		}
 		if done != nil {
 			done(result, err)
@@ -375,6 +375,7 @@ func (h *host) flush() {
 		if err != nil {
 			reply(item.done, protocol.Result{
 				OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: "", Said: "",
+				Touched: protocol.Untouched(),
 			}, err)
 
 			continue

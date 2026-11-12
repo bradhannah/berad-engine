@@ -180,7 +180,7 @@ func (o *Orchestrator) audioFinished(outcome audioOutcome) {
 	o.history.noteWrite(job.from.group, model.AudioLibraryID(), touched, o.seq)
 	o.send(job.from, mustMessage(protocol.KindResult, job.request, protocol.Result{
 		OK: true, Reason: "", Revision: o.edits.revision + 1, Created: model.AudioLibraryID(), Item: outcome.created,
-		Said: job.step.says,
+		Said: job.step.says, Touched: job.step.touch(),
 	}))
 	o.audioChanged()
 	o.startAudio()

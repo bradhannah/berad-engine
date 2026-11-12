@@ -2,11 +2,13 @@ package frame
 
 import (
 	"image"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 )
 
@@ -27,11 +29,23 @@ const (
 )
 
 // Said is one message a window was given, when, and whether it was a
-// refusal.
+// refusal. Touched is what the change it says touched; Item and Name are
+// the thing of it the view can still select and its name, found while
+// History is open (increment 45).
 type Said struct {
 	At      time.Time
 	Text    string
 	Refusal bool
+	Touched protocol.Touch
+	Item    string
+	Name    string
+}
+
+// Namer is a view that can say which of its things a change touched: an
+// item it can be asked to show, as Back and Forward ask, and the thing's
+// name; ok is false while none it can select is still there (increment 45).
+type Namer interface {
+	Named(touched protocol.Touch, docs Docs) (item, name string, ok bool)
 }
 
 // historyState is the window's log, the refusal it shows until dismissed,
@@ -46,22 +60,46 @@ type historyState struct {
 	panel   image.Rectangle
 	// hand is what the status bar says is in hand, at its right.
 	hand string
+	// chosen is the item of the line last clicked in History, until the
+	// window takes it, and chosenName its name.
+	chosen     string
+	chosenName string
 }
 
 func newHistoryState() historyState {
 	return historyState{
 		log: nil, refusal: "", open: false, list: ui.NewList("history", ""),
 		button: ui.NewButton("history", "History"), dismiss: ui.NewButton("dismiss", "Dismiss"), panel: ui.Zero(),
-		hand: "",
+		hand: "", chosen: "", chosenName: "",
 	}
 }
 
 // keep adds a message to the log.
 func (f *Frame) keep(text string, refusal bool) {
-	f.history.log = append(f.history.log, Said{At: f.now(), Text: text, Refusal: refusal})
+	f.history.log = append(f.history.log, Said{
+		At: f.now(), Text: text, Refusal: refusal, Touched: protocol.Untouched(), Item: "", Name: "",
+	})
 	if len(f.history.log) > logLength {
 		f.history.log = f.history.log[len(f.history.log)-logLength:]
 	}
+}
+
+// StatusAbout says a change, as Status does, and keeps what it touched with
+// its line in the log, so a click on the line in History selects it.
+func (f *Frame) StatusAbout(message string, touched protocol.Touch) {
+	f.Status(message)
+	if last := len(f.history.log) - 1; last >= 0 && f.history.log[last].Text == message {
+		f.history.log[last].Touched = touched
+	}
+}
+
+// TakeChosen is the item of the line clicked in History and its name, once:
+// the window asks its view to show it.
+func (f *Frame) TakeChosen() (string, string, bool) {
+	item, name := f.history.chosen, f.history.chosenName
+	f.history.chosen, f.history.chosenName = "", ""
+
+	return item, name, item != ""
 }
 
 // Refuse shows why something was refused. It stays in the status bar until
@@ -126,13 +164,16 @@ func (f *Frame) updateHistoryButtons(input *ui.Input) {
 }
 
 // UpdateHistory runs the open History list for a frame, taking every press:
-// Esc, History again or a click outside closes it.
-func (f *Frame) UpdateHistory(input *ui.Input, size image.Point) {
+// Esc, History again or a click outside closes it. A click on a line that
+// names something the view can select closes it and chooses that thing.
+// named finds, for each line, what the view can still select.
+func (f *Frame) UpdateHistory(input *ui.Input, size image.Point, named func(protocol.Touch) (string, string, bool)) {
 	if !f.history.open {
 		return
 	}
 	defer input.ClearAll()
 	f.layoutStatus(size)
+	f.nameLines(named)
 	f.history.list.Rows = f.historyRows()
 	if input.Has(ui.KeyEscape, ui.Plain()) {
 		f.history.open = false
@@ -150,15 +191,66 @@ func (f *Frame) UpdateHistory(input *ui.Input, size image.Point) {
 		return
 	}
 	f.history.list.Update(input)
+	f.chooseLine()
 }
 
-// historyRows lists the log newest first, each with its time.
+// nameLines finds what each line's change touched that the view can still
+// select.
+func (f *Frame) nameLines(named func(protocol.Touch) (string, string, bool)) {
+	for index := range f.history.log {
+		said := &f.history.log[index]
+		said.Item, said.Name = "", ""
+		if named == nil || said.Touched.Document.IsZero() {
+			continue
+		}
+		if item, name, ok := named(said.Touched); ok {
+			said.Item, said.Name = item, name
+		}
+	}
+}
+
+// chooseLine takes a click on a line that names something to select: it
+// closes History and chooses the thing. A line that names nothing does
+// nothing.
+func (f *Frame) chooseLine() {
+	clicked := f.history.list.Selected
+	f.history.list.Selected = ""
+	index, ok := lineIndex(clicked)
+	if !ok || index >= len(f.history.log) || f.history.log[index].Item == "" {
+		return
+	}
+	f.history.chosen, f.history.chosenName = f.history.log[index].Item, f.history.log[index].Name
+	f.history.open = false
+}
+
+// lineRow is the row ID of the log's line at an index, and lineIndex the
+// index of a row ID.
+func lineRow(index int) string { return linePrefix + strconv.Itoa(index) }
+
+func lineIndex(row string) (int, bool) {
+	number, ok := strings.CutPrefix(row, linePrefix)
+	if !ok {
+		return 0, false
+	}
+	index, err := strconv.Atoi(number)
+
+	return index, err == nil && index >= 0
+}
+
+// linePrefix starts the row ID of a line in History.
+const linePrefix = "line:"
+
+// historyRows lists the log newest first, each with its time, and what a
+// click selects where a line names something still there.
 func (f *Frame) historyRows() []ui.Row {
 	rows := make([]ui.Row, 0, len(f.history.log))
 	for index := len(f.history.log) - 1; index >= 0; index-- {
 		said := f.history.log[index]
-		row := ui.NewRow("said:"+said.At.Format(time.RFC3339Nano)+":"+said.Text, said.Text)
+		row := ui.NewRow(lineRow(index), said.Text)
 		row.Detail = said.At.Format(historyStamp)
+		if said.Item != "" {
+			row.Detail = "selects " + said.Name + " · " + row.Detail
+		}
 		if said.Refusal {
 			row.Label = "Refused: " + said.Text
 		}
@@ -179,7 +271,7 @@ func (f *Frame) DrawHistory(screen *ebiten.Image, theme *ui.Theme) {
 	panel := f.history.panel
 	ui.FloatBox(screen, panel, ui.ColorPage())
 	theme.DrawStrong(screen, "History", panel.Min.X+ui.Gap, panel.Min.Y+ui.Gap, ui.ColorInk())
-	note := "newest first · Esc closes"
+	note := "newest first · a click selects what a line names · Esc closes"
 	theme.DrawText(screen, note, panel.Min.X+ui.Gap+theme.StrongWidth("History")+ui.Inset, panel.Min.Y+ui.Gap,
 		ui.ColorSubdued())
 	if len(f.history.log) == 0 {
@@ -193,7 +285,8 @@ func (f *Frame) DrawHistory(screen *ebiten.Image, theme *ui.Theme) {
 
 // locateHistory finds History's parts for input scripts: "ui:history",
 // "ui:dismiss", "state:history-open", "state:refused" while a refusal shows,
-// and "state:said:<words>" when a message in the log has the words.
+// "state:said:<words>" when a message in the log has the words, and
+// "history:<words>" for the newest line with the words in the open list.
 func (f *Frame) locateHistory(name string) (image.Point, bool, bool) {
 	switch name {
 	case "ui:history":
@@ -208,6 +301,9 @@ func (f *Frame) locateHistory(name string) (image.Point, bool, bool) {
 	if words, ok := strings.CutPrefix(name, "state:hand:"); ok {
 		return image.Pt(0, 0), strings.Contains(f.history.hand, words), true
 	}
+	if words, ok := strings.CutPrefix(name, "history:"); ok {
+		return f.locateLine(words)
+	}
 	if words, ok := strings.CutPrefix(name, "state:said:"); ok {
 		for _, said := range f.history.log {
 			if strings.Contains(said.Text, words) {
@@ -219,4 +315,20 @@ func (f *Frame) locateHistory(name string) (image.Point, bool, bool) {
 	}
 
 	return image.Pt(0, 0), false, false
+}
+
+// locateLine finds the newest line in the open History list with the words.
+func (f *Frame) locateLine(words string) (image.Point, bool, bool) {
+	if !f.history.open {
+		return image.Pt(0, 0), false, true
+	}
+	for index := len(f.history.log) - 1; index >= 0; index-- {
+		if strings.Contains(f.history.log[index].Text, words) {
+			point, ok := f.history.list.Locate(lineRow(index))
+
+			return point, ok && point.In(f.history.list.Rect), true
+		}
+	}
+
+	return image.Pt(0, 0), false, true
 }

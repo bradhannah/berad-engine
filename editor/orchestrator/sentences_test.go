@@ -27,11 +27,16 @@ func TestChangesAreSaidAndUndoSaysWhich(t *testing.T) {
 	view := h.dial(t, "map:said")
 	if result := mustPaint(t, view, h.floor, 1, 1, "wall", "stroke"); result.Said != "Painted Floor 1" {
 		t.Fatalf("a paint is said: %q", result.Said)
+	} else if touched := result.Touched; touched.Document != h.floor || len(touched.Items) == 0 {
+		t.Fatalf("a change says what it touched, for History to select (increment 45): %+v", touched)
 	}
 	mustPaint(t, view, h.floor, 2, 1, "wall", "stroke")
 	result, err := undo(t, view)
 	if err != nil || result.Said != "Painted Floor 1" || tileAt(t, view, h.floor, 2, 1) == "wall" {
 		t.Fatalf("undo says which change it took back, the whole stroke: %+v %v", result, err)
+	}
+	if result.Touched.Document != h.floor || len(result.Touched.Items) == 0 {
+		t.Fatalf("undo says what it touched: %+v", result.Touched)
 	}
 	result, err = redo(t, view)
 	if err != nil || result.Said != "Painted Floor 1" {

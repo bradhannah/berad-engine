@@ -12,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // TestARefusalStaysAndHistoryKeepsWhatWasSaid keeps every message in the
@@ -34,7 +35,7 @@ func TestARefusalStaysAndHistoryKeepsWhatWasSaid(t *testing.T) {
 		}
 		input := ui.NewInput(point)
 		input.Pressed, input.Down = true, true
-		status.UpdateHistory(&input, size)
+		status.UpdateHistory(&input, size, nil)
 		status.UpdateStatus(&input, size)
 	}
 	status.UpdateStatus(&ui.Input{}, size)
@@ -68,8 +69,55 @@ func TestARefusalStaysAndHistoryKeepsWhatWasSaid(t *testing.T) {
 	status.DrawHistory(ebiten.NewImage(size.X, size.Y), theme)
 	escape := ui.NewInput(image.Pt(0, 0))
 	escape.Presses = []ui.Press{ui.ParsePress("Escape")}
-	status.UpdateHistory(&escape, size)
+	status.UpdateHistory(&escape, size, nil)
 	if status.HistoryOpen() || len(escape.Presses) != 0 {
 		t.Fatal("Esc closes the list and goes nowhere else")
+	}
+}
+
+// TestALineInHistorySelectsWhatItNames chooses, on a click, the thing a
+// line's change touched that the view can still select, and closes History;
+// a line that names nothing does nothing (increment 45).
+func TestALineInHistorySelectsWhatItNames(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 11, 16, 0, 0, 0, time.UTC)
+	status := frame.NewFrame(func() time.Time { return now })
+	size := image.Pt(1200, 800)
+	workflow := ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
+	status.StatusAbout("Added nodes to Clerk", protocol.Touching(workflow, []string{"box:x", "node:wait"}))
+	status.Status("Saved")
+	named := func(touched protocol.Touch) (string, string, bool) {
+		for _, item := range touched.Items {
+			if touched.Document == workflow && item == "node:wait" {
+				return item, "Wait", true
+			}
+		}
+
+		return "", "", false
+	}
+	click := func(name string) {
+		status.UpdateHistory(&ui.Input{}, size, named)
+		point, found := status.LocateStatus(name)
+		if !found {
+			t.Fatalf("no %s", name)
+		}
+		input := ui.NewInput(point)
+		input.Pressed, input.Down = true, true
+		status.UpdateHistory(&input, size, named)
+		status.UpdateStatus(&input, size)
+	}
+	status.UpdateStatus(&ui.Input{}, size)
+	click("ui:history")
+	click("history:Saved")
+	if _, _, chosen := status.TakeChosen(); chosen || !status.HistoryOpen() {
+		t.Fatal("a line that names nothing does nothing")
+	}
+	click("history:Added nodes")
+	item, name, chosen := status.TakeChosen()
+	if !chosen || item != "node:wait" || name != "Wait" || status.HistoryOpen() {
+		t.Fatalf("a line chooses what it names and closes History: %q %q %v", item, name, chosen)
+	}
+	if _, _, again := status.TakeChosen(); again {
+		t.Fatal("a choice is taken once")
 	}
 }

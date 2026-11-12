@@ -377,10 +377,15 @@ func (s *State) pickChanged(update client.Update, ctx *frame.Context) {
 	}
 }
 
-// attend shows what the window is opened to show: a placement.
+// attend shows what the window is opened to show: a placement, or an
+// anchor a line in History names.
 func (s *State) attend(update client.Update, ctx *frame.Context) {
-	if update.Attention && strings.HasPrefix(update.Item, PlacementItem) {
+	switch {
+	case !update.Attention:
+	case strings.HasPrefix(update.Item, PlacementItem):
 		s.showPlacement(update.Item, ctx)
+	case strings.HasPrefix(update.Item, AnchorItem):
+		s.showAnchor(update.Item, ctx)
 	}
 }
 
@@ -391,10 +396,8 @@ const PlacementItem = "placement:"
 // showPlacement shows the floor a placement is on and selects it, with the
 // Place NPC tool.
 func (s *State) showPlacement(item string, ctx *frame.Context) {
-	floorPart, placementPart, _ := strings.Cut(strings.TrimPrefix(item, PlacementItem), ":")
-	floorID, floorErr := ids.Parse(floorPart)
-	placementID, placementErr := ids.Parse(placementPart)
-	if floorErr != nil || placementErr != nil || indexOf(s.floors, floorID) < 0 {
+	floorID, placementID, ok := s.floorAndID(item, PlacementItem)
+	if !ok {
 		return
 	}
 	s.switchFloor(floorID, ctx)

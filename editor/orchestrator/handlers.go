@@ -156,6 +156,7 @@ func (o *Orchestrator) command(from *window, message protocol.Message) {
 	o.history.record(from.group, command.Gesture, applied.action, says)
 	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
 		OK: true, Reason: "", Revision: applied.revision, Created: applied.created, Item: "", Said: says,
+		Touched: protocol.Touching(applied.action.document, applied.action.touched),
 	}))
 }
 
@@ -312,7 +313,7 @@ func (o *Orchestrator) undo(from *window, request uint64) {
 
 		return
 	}
-	o.replySaid(from, request, revision, candidate.says)
+	o.replySaid(from, request, revision, candidate)
 }
 
 func (o *Orchestrator) redo(from *window, request uint64) {
@@ -354,7 +355,7 @@ func (o *Orchestrator) redo(from *window, request uint64) {
 
 		return
 	}
-	o.replySaid(from, request, revision, candidate.says)
+	o.replySaid(from, request, revision, candidate)
 }
 
 // applyStep applies a step's actions in order, as one change: if one is
@@ -557,14 +558,20 @@ func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
 
 // reply answers a request; an empty reason means success.
 func (o *Orchestrator) reply(target *window, request uint64, reason string) {
-	result := protocol.Result{OK: reason == "", Reason: reason, Revision: 0, Created: ids.ULID{}, Item: "", Said: ""}
+	result := protocol.Result{
+		OK: reason == "", Reason: reason, Revision: 0, Created: ids.ULID{}, Item: "", Said: "",
+		Touched: protocol.Untouched(),
+	}
 	o.send(target, mustMessage(protocol.KindResult, request, result))
 }
 
 // replySaid answers an undo or redo that was carried out with the sentence
-// of the step it took back or put back.
-func (o *Orchestrator) replySaid(target *window, request, revision uint64, said string) {
-	result := protocol.Result{OK: true, Reason: "", Revision: revision, Created: ids.ULID{}, Item: "", Said: said}
+// of the step it took back or put back, and what its first change touched.
+func (o *Orchestrator) replySaid(target *window, request, revision uint64, taken step) {
+	result := protocol.Result{
+		OK: true, Reason: "", Revision: revision, Created: ids.ULID{}, Item: "", Said: taken.says,
+		Touched: taken.touch(),
+	}
 	o.send(target, mustMessage(protocol.KindResult, request, result))
 }
 

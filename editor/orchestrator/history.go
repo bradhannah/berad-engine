@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -26,6 +27,15 @@ type step struct {
 	gesture string
 	actions []action
 	says    string
+}
+
+// touch is what a step's first change touched.
+func (s step) touch() protocol.Touch {
+	if len(s.actions) == 0 {
+		return protocol.Untouched()
+	}
+
+	return protocol.Touching(s.actions[0].document, s.actions[0].touched)
 }
 
 type undoList struct {

@@ -164,7 +164,7 @@ func (s *shell) goTo(where place) {
 		return
 	}
 	if shown.host.reported.Count > 0 {
-		shown.host.frame.Status("Kept what is selected in this tab: it has changes waiting for Save")
+		shown.host.frame.Status(keptForSave)
 
 		return
 	}
