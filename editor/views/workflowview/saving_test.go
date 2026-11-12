@@ -169,11 +169,12 @@ func TestAConstantChosenSurvivesARebuild(t *testing.T) {
 	}
 }
 
-// TestALongLineGrowsItsField wraps a long line in its field, which grows a
-// row at a time, pushing Insert value… down, up to six rows.
+// TestALongLineGrowsItsField wraps a Log's long line in its field, which
+// grows a row at a time, pushing Insert value… down, up to six rows. A
+// Say's field starts with more room (increment 50).
 func TestALongLineGrowsItsField(t *testing.T) {
 	t.Parallel()
-	f := withNode(t, flow.KindSay)
+	f := withNode(t, flow.KindLog)
 	short := f.at("ui:insert-value").Y
 	f.typeOnly("param-message", strings.Repeat("Fresh bread, still warm! ", 4))
 	grown := f.at("ui:insert-value").Y

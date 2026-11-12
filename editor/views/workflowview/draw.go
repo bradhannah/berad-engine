@@ -273,8 +273,10 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	case flow.KindCall:
 		s.drawCallNode(area, drawn, docs)
-	case flow.KindLog, flow.KindSay, flow.KindShowMessage:
+	case flow.KindLog:
 		s.drawLogNode(area, drawn, docs)
+	case flow.KindSay, flow.KindShowMessage:
+		s.drawMessageNode(area, drawn, docs)
 	case flow.KindReturn:
 		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		s.theme.DrawStrong(area, s.clip(wayLabel(drawn.node), drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
@@ -648,6 +650,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 		return found, true
 	}
 	if found, handled := s.hasLinkState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasWrapState(state); handled {
 		return found, true
 	}
 	if found, handled := s.hasCrossingState(state); handled {

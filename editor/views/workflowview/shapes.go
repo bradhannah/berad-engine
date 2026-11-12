@@ -224,11 +224,22 @@ func shapeOf(node flow.Node, box flow.Box, noteHeight func(flow.Node, int) int, 
 			made.addOption = image.Rect(made.rect.Min.X, top, made.rect.Max.X, top+outputRow)
 		}
 	default:
-		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, max(nodeHeight, entries)))}
+		made.rect = image.Rectangle{Min: origin, Max: origin.Add(image.Pt(nodeWidth, max(nodeHeight, entries,
+			grownHeight(node, noteHeight))))}
 		made.ports = rightPorts(made.rect, outputs)
 	}
 
 	return made
+}
+
+// grownHeight is how tall a Say or a Show message is with its message
+// wrapped (increment 50), and nothing for another node.
+func grownHeight(node flow.Node, noteHeight func(flow.Node, int) int) int {
+	if !wraps(node.Kind) {
+		return 0
+	}
+
+	return noteHeight(node, nodeWidth)
 }
 
 // containerShape lays out a time-bound container: its first step's dot

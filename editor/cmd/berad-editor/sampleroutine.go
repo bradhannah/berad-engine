@@ -320,7 +320,13 @@ func arrangedRoutine(start ids.ULID, made *routineBuilder, note ids.ULID) (*flow
 	if err := workflow.Insert(made.nodes, nil, made.links); err != nil {
 		return nil, fmt.Errorf("sample routine: %w", err)
 	}
-	boxes := workflowview.Arrange(workflow, func(flow.Node, int) int { return noteHeight })
+	boxes := workflowview.Arrange(workflow, func(node flow.Node, _ int) int {
+		if node.Kind == flow.KindNote {
+			return noteHeight
+		}
+
+		return 0
+	})
 	bottom := 0
 	for _, box := range boxes {
 		bottom = max(bottom, box.Y+max(box.H, noteHeight))

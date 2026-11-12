@@ -413,7 +413,7 @@ func (s *State) load(docs frame.Docs) {
 		return
 	}
 	if changed {
-		s.shapes = shapes(s.workflow, s.noteHeight)
+		s.shapes = shapes(s.workflow, s.heights(docs))
 		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
 		s.tints = s.workflow.Tints()
 		s.laidOut, s.hasLayout, s.watchFloors = revision, true, true
@@ -1227,7 +1227,7 @@ func (s *State) removeSelected(ctx *frame.Context) {
 // hand back where routing puts it, as one undo step. Notes already placed
 // keep their place, beside whatever they explain.
 func (s *State) autoArrange(ctx *frame.Context) {
-	boxes := arrange(s.workflow, s.noteHeight)
+	boxes := arrange(s.workflow, s.heights(ctx.Docs))
 	for _, node := range s.workflow.Nodes() {
 		if _, placed := s.workflow.Box(node.ID); placed && node.Kind == flow.KindNote {
 			delete(boxes, node.ID)
