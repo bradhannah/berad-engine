@@ -71,6 +71,10 @@ type host struct {
 	// saidGesture is the gesture of the change said last, whose line in
 	// History a later command of the same gesture takes over.
 	saidGesture string
+	// statusArea is, in a split, the tab's whole area from the pane's
+	// corner: the status bar spans it, and the shell draws it under the
+	// focused pane (increment 52). It is empty for a pane alone in its tab.
+	statusArea image.Rectangle
 	// closeQuits makes closing this window quit the editor, as closing the
 	// project browser's tab does; hosts is told of the windows the editor
 	// window is asked to show.
@@ -111,8 +115,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		saidGesture: "",
-		closeQuits:  false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
+		saidGesture: "", statusArea: ui.Zero(),
+		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
 	}
 	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
@@ -153,8 +157,7 @@ func (h *host) Update() error {
 		// Quick open's sheet takes every press while it shows, so none
 		// reaches the status bar, the folded strip or the window's keys; the
 		// History list takes them while it is open.
-		h.updateHistory(&input)
-		h.frame.UpdateStatus(&input, h.visible)
+		h.updateStatusBar(&input)
 		h.updateFolded(&input)
 		h.windowKeys(&input)
 		h.updateQuitDialog(&input)
@@ -613,8 +616,10 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 // and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
 	h.drawView(screen)
-	h.frame.DrawStatus(screen, h.theme)
-	h.frame.DrawHistory(screen, h.theme)
+	if h.statusArea.Empty() {
+		h.frame.DrawStatus(screen, h.theme)
+		h.frame.DrawHistory(screen, h.theme)
+	}
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
 	}

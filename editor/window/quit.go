@@ -217,7 +217,7 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return image.Pt(0, 0), !h.frame.ShowLeft.On
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" || name == "state:inspector" {
-		return point, found
+		return point.Add(h.statusArea.Min), found
 	}
 
 	return h.view.Locate(name, docs)

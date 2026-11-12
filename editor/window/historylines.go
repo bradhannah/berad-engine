@@ -1,6 +1,8 @@
 package window
 
 import (
+	"image"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
@@ -16,10 +18,10 @@ import (
 // because changes in it wait for Save.
 const keptForSave = "Kept what is selected in this tab: it has changes waiting for Save"
 
-// updateHistory runs the open History list, and shows the thing a clicked
-// line names.
-func (h *host) updateHistory(input *ui.Input) {
-	h.frame.UpdateHistory(input, h.visible, h.named())
+// updateHistory runs the open History list, laid out in a size, and shows
+// the thing a clicked line names.
+func (h *host) updateHistory(input *ui.Input, size image.Point) {
+	h.frame.UpdateHistory(input, size, h.named())
 	item, name, ok := h.frame.TakeChosen()
 	if !ok {
 		return

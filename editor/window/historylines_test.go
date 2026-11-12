@@ -28,19 +28,19 @@ func (v *namingView) Named(touched protocol.Touch, _ frame.Docs) (string, string
 func TestAClickOnAHistoryLineAsksTheViewToShowIt(t *testing.T) {
 	t.Parallel()
 	view := &namingView{pickingView{selected: ""}}
-	shown := &host{view: view, frame: frame.NewFrame(time.Now), visible: image.Pt(1200, 800)}
+	shown := &host{view: view, frame: frame.NewFrame(time.Now), visible: image.Pt(1200, 800), statusArea: image.Rectangle{}}
 	notes := ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
 	shown.frame.StatusAbout("Added nodes to Notes", protocol.Touching(notes, []string{"node:wait"}))
 	shown.frame.UpdateStatus(&ui.Input{}, shown.visible)
 	click := func(name string) {
-		shown.updateHistory(&ui.Input{})
+		shown.updateHistory(&ui.Input{}, shown.visible)
 		point, found := shown.frame.LocateStatus(name)
 		if !found {
 			t.Fatalf("no %s", name)
 		}
 		input := ui.NewInput(point)
 		input.Pressed, input.Down = true, true
-		shown.updateHistory(&input)
+		shown.updateHistory(&input, shown.visible)
 		shown.frame.UpdateStatus(&input, shown.visible)
 	}
 	shown.reported = protocol.Unsaved{Count: 1, Name: "Notes"}

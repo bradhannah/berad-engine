@@ -59,6 +59,8 @@ type shell struct {
 	// what the project browser draws its sheet into.
 	beside     *besideAsk
 	quickImage *ebiten.Image
+	// statusImage is where a split's one status bar is drawn (increment 52).
+	statusImage *ebiten.Image
 	// onTop is whether the window is kept above other applications' windows,
 	// and folded and leftFolded which kinds of view have their inspector or
 	// their left panel folded (increment 43).
@@ -103,7 +105,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
-		beside: nil, quickImage: nil,
+		beside: nil, quickImage: nil, statusImage: nil,
 		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
 	}
 }
@@ -225,6 +227,7 @@ func (s *shell) layout() {
 	for _, each := range s.tabs {
 		layoutTab(each, s.area())
 	}
+	s.shareStatus()
 	if s.clock != nil {
 		s.clock.rect = s.panelRect()
 	}
@@ -485,6 +488,7 @@ func (s *shell) Draw(screen *ebiten.Image) {
 			drawPane(screen, shown)
 		}
 		s.drawSplit(screen, front)
+		s.drawSharedStatus(screen, front)
 	}
 	s.drawClock(screen)
 	s.drawBar(screen)
