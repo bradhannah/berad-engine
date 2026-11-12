@@ -237,6 +237,11 @@ type Frame struct {
 	// folds it to a strip at the right edge, session state the editor
 	// window shares.
 	ShowInspector *ui.Toggle
+	// ShowLeft shows a view's left panel, or folds it to a rail or a strip,
+	// for the views that have one (increment 43). Like the inspector's, it
+	// belongs to the kind of view: the editor window keeps every pane of a
+	// kind the same.
+	ShowLeft *ui.Toggle
 	// history is every message the window was given, and the refusal shown
 	// until it is dismissed (increment 39).
 	history historyState
@@ -249,6 +254,7 @@ func NewFrame(now func() time.Time) *Frame {
 		Crash: false, CrashKey: false,
 		OnTop:         &ui.Toggle{ID: "on-top", Label: "On top", Rect: ui.Zero(), On: false},
 		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
+		ShowLeft:      &ui.Toggle{ID: "left-panel", Label: "Left panel", Rect: ui.Zero(), On: true},
 		history:       newHistoryState(),
 	}
 }
@@ -387,7 +393,7 @@ func (f *Frame) LocateStatus(name string) (image.Point, bool) {
 	if point, found, handled := f.locateHistory(name); handled {
 		return point, found
 	}
-	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector} {
+	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector, f.ShowLeft} {
 		switch name {
 		case "ui:" + toggle.ID:
 			return ui.Center(toggle.Rect), !toggle.Rect.Empty()

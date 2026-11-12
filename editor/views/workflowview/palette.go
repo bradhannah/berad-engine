@@ -92,7 +92,17 @@ func (s *State) paletteArea() image.Rectangle {
 // line; scrolled when they don't fit.
 func (s *State) layoutPalette() {
 	panel := s.pal
-	panel.search.Rect = image.Rect(ui.Inset-ui.Half, paletteTop, PaletteWidth-ui.Inset, paletteTop+ui.ButtonH)
+	s.layoutFold()
+	searchRight := PaletteWidth - ui.Inset - foldButton - ui.Gap
+	panel.search.Rect = image.Rect(ui.Inset-ui.Half, paletteTop, searchRight, paletteTop+ui.ButtonH)
+	if s.paletteFolded {
+		panel.search.Rect = ui.Zero()
+		for index := range s.palette {
+			s.palette[index].rect, s.palette[index].lines = ui.Zero(), nil
+		}
+
+		return
+	}
 	panel.listTop = panel.search.Rect.Max.Y + ui.Gap
 	for index := range s.palette {
 		s.palette[index].rect, s.palette[index].lines = ui.Zero(), nil
@@ -149,6 +159,11 @@ func (s *State) paletteEntryAt(point image.Point) (string, bool) {
 // result's help and Escape clears the search.
 func (s *State) updateSearch(input *ui.Input, ctx *frame.Context) {
 	panel := s.pal
+	if s.paletteFolded {
+		panel.focus.Set(nil)
+
+		return
+	}
 	if panel.focus.Current() == panel.search {
 		results := s.results()
 		plain := ui.Plain()
@@ -252,6 +267,12 @@ func labelOf(kind string) string {
 // drawPalette draws the search, the entries or the results, the zone loop's
 // note of what it lacks, the node being dragged and the tooltip.
 func (s *State) drawPalette(screen *ebiten.Image) {
+	if s.paletteFolded {
+		s.drawFoldedPalette(screen)
+
+		return
+	}
+	defer s.foldBn.Draw(screen, s.theme)
 	content := frame.Content(s.size)
 	ui.Divider(screen, image.Pt(PaletteWidth-ui.Outline, toolbarHeight), image.Pt(PaletteWidth-ui.Outline, content.Max.Y))
 	s.pal.search.Draw(screen)

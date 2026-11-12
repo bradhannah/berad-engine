@@ -245,7 +245,7 @@ func (s *State) drawPickBanner(screen *ebiten.Image) {
 // floor list over the fade: it still changes the floor shown.
 func (s *State) drawPickPanel(screen *ebiten.Image) {
 	height := s.size.Y - frame.StatusHeight
-	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.HexAlpha(hexWhite, pickWash))
+	ui.FillRect(screen, image.Rect(0, 0, s.panelWidth(), height), ui.HexAlpha(hexWhite, pickWash))
 	s.theme.Heading(screen, floorsHeading, ui.Inset, s.floorsHeadingTop())
 	s.floorList.Draw(screen, s.theme)
 	s.theme.DrawText(screen, "Tools rest while you pick.", ui.Inset, height-ui.Inset-ui.LineHeight, ui.ColorMuted())

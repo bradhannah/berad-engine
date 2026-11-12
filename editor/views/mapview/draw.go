@@ -421,6 +421,12 @@ func (s *State) floorsHeadingTop() int { return s.floorList.Rect.Min.Y - heading
 
 // drawPanel draws the tools, tiles and floors on the left.
 func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
+	if s.fold.folded {
+		s.drawRail(screen)
+
+		return
+	}
+	defer s.fold.button.Draw(screen, s.theme)
 	height := s.size.Y - frame.StatusHeight
 	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorPage())
 	ui.Divider(screen, image.Pt(PanelWidth-ui.Outline, 0), image.Pt(PanelWidth-ui.Outline, height))

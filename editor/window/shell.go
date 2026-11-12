@@ -60,9 +60,11 @@ type shell struct {
 	beside     *besideAsk
 	quickImage *ebiten.Image
 	// onTop is whether the window is kept above other applications' windows,
-	// and folded whether every tab's inspector is folded to its strip.
-	onTop  bool
-	folded bool
+	// and folded and leftFolded which kinds of view have their inspector or
+	// their left panel folded (increment 43).
+	onTop      bool
+	folded     map[string]bool
+	leftFolded map[string]bool
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -102,7 +104,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
 		beside: nil, quickImage: nil,
-		onTop: false, folded: false,
+		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
 	}
 }
 
@@ -131,7 +133,8 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
 	shown.host.frame.OnTop.On = s.onTop
-	shown.host.frame.ShowInspector.On = !s.folded
+	shown.host.frame.ShowInspector.On = !s.folded[args.View]
+	shown.host.frame.ShowLeft.On = !s.leftFolded[args.View]
 	shown.host.tabs = func() int { return len(s.tabs) }
 	shown.host.tabTint = s.tintNamed
 	shown.host.tabUnsaved = s.unsavedNamed
@@ -397,24 +400,32 @@ func (s *shell) followOnTop() {
 	}
 }
 
-// followInspector shows or folds every tab's inspector together: any pane's
-// Inspector toggle, or a click on its folded strip, changes it for the whole
-// window, and every pane's toggle shows it. The clock's panel has no
-// inspector to fold.
+// followInspector keeps the inspector and the left panel of every pane of a
+// kind of view the same (increment 43): any pane's Inspector toggle, its
+// folded strip, Cmd+I, its left panel's fold button or Cmd+Shift+I changes
+// them for every pane of its kind, and leaves other kinds alone. The
+// clock's panel has neither to fold.
 func (s *shell) followInspector() {
 	var panes []*pane
 	for _, each := range s.tabs {
 		panes = append(panes, each.panes...)
 	}
-	for _, shown := range panes {
-		if shown.host.frame.ShowInspector.On == s.folded {
-			s.folded = !shown.host.frame.ShowInspector.On
+	follow(panes, s.folded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowInspector })
+	follow(panes, s.leftFolded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowLeft })
+}
 
-			break
+// follow keeps a toggle the same across the panes of each kind of view,
+// folded meaning it is off: a pane whose toggle differs from its kind's
+// changes its kind, then every pane of the kind shows it.
+func follow(panes []*pane, folded map[string]bool, toggle func(*pane) *ui.Toggle) {
+	changed := map[string]bool{}
+	for _, shown := range panes {
+		if on := toggle(shown).On; on == folded[shown.view] && !changed[shown.view] {
+			folded[shown.view], changed[shown.view] = !on, true
 		}
 	}
 	for _, shown := range panes {
-		shown.host.frame.ShowInspector.On = !s.folded
+		toggle(shown).On = !folded[shown.view]
 	}
 }
 

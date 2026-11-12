@@ -1230,7 +1230,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return ui.Center(s.pal.search.Rect), true
 	}
 	for _, button := range slices.Concat([]*ui.Button{
-		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add, s.removeGroup,
+		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add, s.removeGroup, s.foldBn,
 	}, s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true

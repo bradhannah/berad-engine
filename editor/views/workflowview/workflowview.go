@@ -157,10 +157,14 @@ type State struct {
 	// nodeAdd is where the node menu adds a node, and the line that joins
 	// it (increment 40).
 	nodeAdd *nodeMenu
-	resize  *containerResize
-	bending *lineDrag
-	panning bool
-	lastPan image.Point
+	// paletteFolded is set while the palette is folded to its strip, and
+	// foldBn folds and unfolds it (increment 43).
+	paletteFolded bool
+	foldBn        *ui.Button
+	resize        *containerResize
+	bending       *lineDrag
+	panning       bool
+	lastPan       image.Point
 	// zoom is the canvas's zoom level, an index into zoomLevels; panRest is
 	// the part of a canvas pixel panned but not yet moved, and wheel the
 	// Cmd+scroll not yet zoomed by. drawn is the image a zoomed canvas is
@@ -284,6 +288,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(), nodeAdd: nil,
+		paletteFolded: false, foldBn: ui.NewButton(foldID, "‹"),
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}
@@ -429,7 +434,7 @@ func (s *State) Canvas() image.Rectangle {
 	}
 	content := frame.Content(s.size)
 
-	return image.Rect(PaletteWidth, toolbarHeight, content.Max.X, content.Max.Y)
+	return image.Rect(s.paletteWidth(), toolbarHeight, content.Max.X, content.Max.Y)
 }
 
 func (s *State) toScreen(point image.Point) image.Point {
@@ -548,7 +553,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateToolbar(input, ctx)
 	s.updateZoom(input)
-	s.updatePalette(input, ctx)
+	if !s.updateFold(input, ctx) && !s.paletteFolded {
+		s.updatePalette(input, ctx)
+	}
 	s.updateCanvas(input, ctx)
 	s.settleSelection()
 	s.guardSelection(ctx)
@@ -562,6 +569,7 @@ func (s *State) startFrame(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.sounds = ctx.Sounds
+	s.paletteFolded = s.live == nil && !ctx.Frame.ShowLeft.On
 	s.fade()
 	s.nudges.idle++
 }

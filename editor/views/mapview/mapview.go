@@ -205,7 +205,9 @@ type State struct {
 	preview  *previewRun
 	remote   *remotePreview
 
-	toolList  *ui.List
+	toolList *ui.List
+	// fold is the left panel's fold button and its rail (increment 43).
+	fold      foldState
 	tileList  *ui.List
 	floorList *ui.List
 	below     *ui.Toggle
@@ -256,7 +258,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
-		toolList:  ui.NewList("tools", string(ToolGround)),
+		toolList: ui.NewList("tools", string(ToolGround)), fold: newFoldState(),
 		tileList:  ui.NewList("tiles", "grass"),
 		floorList: ui.NewList("floors", ""),
 		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
@@ -501,7 +503,7 @@ func (s *State) floorBelow() (ids.ULID, bool) {
 func (s *State) Grid() image.Rectangle {
 	content := frame.Content(s.size)
 
-	return image.Rect(PanelWidth, 0, content.Max.X, content.Max.Y)
+	return image.Rect(s.panelWidth(), 0, content.Max.X, content.Max.Y)
 }
 
 // layoutWidgets places the panel widgets for the window size.
@@ -539,6 +541,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.previewBn.Label = "Preview (P)"
 	}
 
+	s.layoutFold()
 	s.layoutInspector()
 	s.layoutZonePalettes(docs)
 }
@@ -626,6 +629,7 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
+	s.fold.folded = !ctx.Frame.ShowLeft.On
 	s.layoutWidgets(ctx.Docs)
 	// The status bar names what is in hand once the frame has moved it.
 	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
@@ -823,6 +827,9 @@ func (s *State) chooseTile(tileID string, ctx *frame.Context) {
 }
 
 func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
+	if s.updateFold(input, ctx) {
+		return
+	}
 	if s.toolList.Update(input).Changed {
 		s.setTool(Tool(s.toolList.Selected))
 	}
@@ -1513,7 +1520,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "floor":
 		return s.locateFloor(value)
 	case "ui":
-		if at, found := s.zonePalettes.Locate(name); found {
+		if at, found := s.locateSides(name); found {
 			return at, true
 		}
 

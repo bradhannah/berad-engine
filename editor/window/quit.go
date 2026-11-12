@@ -39,6 +39,10 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.save()
 	case input.Consume(ui.KeyR, ui.Cmd()):
 		h.launch()
+	case input.ConsumeExact(ui.KeyI, ui.Cmd()):
+		h.frame.ShowInspector.On = !h.frame.ShowInspector.On
+	case input.ConsumeExact(ui.KeyI, ui.CmdShift()):
+		h.frame.ShowLeft.On = !h.frame.ShowLeft.On
 	}
 	if h.tabKeys != nil {
 		h.tabKeys(input, h.frame.Status)
@@ -201,29 +205,43 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return h.quitDialog.Locate(value, h.shows())
 	}
-	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
-		return image.Pt(0, 0), strconv.Itoa(h.tabs()) == count
-	}
-	if tinted, ok := strings.CutPrefix(name, "state:tab-tint:"); ok && h.tabTint != nil {
-		title, tint, _ := strings.Cut(tinted, "=")
-
-		return image.Pt(0, 0), h.tabTint(title) == tint
-	}
-	if title, ok := strings.CutPrefix(name, "state:tab-unsaved:"); ok && h.tabUnsaved != nil {
-		return image.Pt(0, 0), h.tabUnsaved(title)
-	}
-	if title, ok := strings.CutPrefix(name, "state:front:"); ok && h.tabFront != nil {
-		return image.Pt(0, 0), h.tabFront(title)
+	if found, handled := h.tabState(name); handled {
+		return image.Pt(0, 0), found
 	}
 	switch name {
 	case "ui:folded-inspector":
 		return ui.Center(frame.Folded(h.visible)), h.folded()
 	case "state:inspector-folded":
 		return image.Pt(0, 0), h.folded()
+	case "state:left-folded":
+		return image.Pt(0, 0), !h.frame.ShowLeft.On
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" || name == "state:inspector" {
 		return point, found
 	}
 
 	return h.view.Locate(name, docs)
+}
+
+// tabState answers the input scripts' questions about the editor window's
+// tabs, and reports whether the name was one: how many there are, a tab's
+// tint, whether it holds changes that wait for Save, and whether it is in
+// front.
+func (h *host) tabState(name string) (bool, bool) {
+	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
+		return strconv.Itoa(h.tabs()) == count, true
+	}
+	if tinted, ok := strings.CutPrefix(name, "state:tab-tint:"); ok && h.tabTint != nil {
+		title, tint, _ := strings.Cut(tinted, "=")
+
+		return h.tabTint(title) == tint, true
+	}
+	if title, ok := strings.CutPrefix(name, "state:tab-unsaved:"); ok && h.tabUnsaved != nil {
+		return h.tabUnsaved(title), true
+	}
+	if title, ok := strings.CutPrefix(name, "state:front:"); ok && h.tabFront != nil {
+		return h.tabFront(title), true
+	}
+
+	return false, false
 }

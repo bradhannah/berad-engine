@@ -43,6 +43,7 @@ const (
 	KeyC            Key = "C"
 	KeyD            Key = "D"
 	KeyF            Key = "F"
+	KeyI            Key = "I"
 	KeyJ            Key = "J"
 	KeyK            Key = "K"
 	KeyN            Key = "N"

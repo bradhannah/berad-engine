@@ -5,10 +5,12 @@ import (
 	"image"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -229,5 +231,33 @@ func TestKeysMoveBetweenTabs(t *testing.T) {
 	shown.tabKeys(&input, status)
 	if len(input.Presses) != 2 || shown.active != 2 {
 		t.Fatalf("Tab and Cmd+Alt+1 are the view's: %v", input.Presses)
+	}
+}
+
+// TestFoldsBelongToAKindOfView folds one Map's inspector and left panel:
+// every Map follows, and a workflow keeps its own (increment 43).
+func TestFoldsBelongToAKindOfView(t *testing.T) {
+	t.Parallel()
+	framed := func(view string) *pane {
+		shown := titled(view, view)
+		shown.host = &host{frame: frame.NewFrame(time.Now)}
+
+		return shown
+	}
+	town, harbour, notes := framed("map"), framed("map"), framed("workflow")
+	shown := &shell{tabs: []*tab{{panes: []*pane{town}}, {panes: []*pane{harbour}}, {panes: []*pane{notes}}},
+		folded: map[string]bool{}, leftFolded: map[string]bool{}}
+	town.host.frame.ShowInspector.On, town.host.frame.ShowLeft.On = false, false
+	shown.followInspector()
+	if harbour.host.frame.ShowInspector.On || harbour.host.frame.ShowLeft.On {
+		t.Fatal("every Map folds with the one folded")
+	}
+	if !notes.host.frame.ShowInspector.On || !notes.host.frame.ShowLeft.On {
+		t.Fatal("a workflow keeps its own")
+	}
+	harbour.host.frame.ShowInspector.On = true
+	shown.followInspector()
+	if !town.host.frame.ShowInspector.On || town.host.frame.ShowLeft.On {
+		t.Fatal("unfolding one Map's inspector unfolds every Map's, and leaves their left panels folded")
 	}
 }
