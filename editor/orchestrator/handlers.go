@@ -443,6 +443,12 @@ func (o *Orchestrator) sessionUpdate(from *window, message protocol.Message) {
 
 			return
 		}
+	case protocol.TopicLayout:
+		if err := o.keepLayout(update.Value); err != nil {
+			o.reply(from, message.Request, err.Error())
+
+			return
+		}
 	}
 	o.session[update.Topic] = update.Value
 	for _, other := range o.windows {

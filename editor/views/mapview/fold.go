@@ -48,7 +48,7 @@ func (s *State) panelWidth() int {
 		return RailWidth
 	}
 
-	return PanelWidth
+	return s.panelFull()
 }
 
 // layoutFold places the fold button at the panel's top right, or at the
@@ -58,7 +58,7 @@ func (s *State) layoutFold() {
 	top := railGap
 	if !s.fold.folded {
 		s.fold.button.Label = "‹"
-		s.fold.button.Rect = image.Rect(PanelWidth-foldButton-railGap*ui.Half, top, PanelWidth-railGap*ui.Half,
+		s.fold.button.Rect = image.Rect(s.panelFull()-foldButton-railGap*ui.Half, top, s.panelFull()-railGap*ui.Half,
 			top+foldButton)
 		for _, button := range s.fold.rail {
 			button.Rect = ui.Zero()

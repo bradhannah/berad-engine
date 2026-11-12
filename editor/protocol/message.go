@@ -270,6 +270,32 @@ type HomeKept struct {
 	Folders map[string]FolderChoice `json:"folders"`
 }
 
+// TopicLayout is the session topic of how this person arranges the editor
+// window, a Layout (increment 53). The window sets it, and the orchestrator
+// keeps it, for this person alone, in the project's own state.
+const TopicLayout = "layout"
+
+// Layout is how the editor window is arranged on each size of screen, by the
+// screen's size, as "1512x982".
+type Layout struct {
+	Screens map[string]Arrangement `json:"screens"`
+}
+
+// Arrangement is the window's arrangement on one size of screen: each kind
+// of view's panels, by the view's name.
+type Arrangement struct {
+	Kinds map[string]KindLayout `json:"kinds"`
+}
+
+// KindLayout is one kind of view's panels: the inspector's and the left
+// panel's widths, 0 for the starting width, and whether each is folded.
+type KindLayout struct {
+	Inspector       int  `json:"inspector,omitempty"`
+	Left            int  `json:"left,omitempty"`
+	InspectorFolded bool `json:"inspectorFolded,omitempty"`
+	LeftFolded      bool `json:"leftFolded,omitempty"`
+}
+
 // NoticeWindowCrashed is the notice kind for a window that closed unexpectedly.
 const NoticeWindowCrashed = "window-crashed"
 

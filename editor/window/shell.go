@@ -67,6 +67,12 @@ type shell struct {
 	onTop      bool
 	folded     map[string]bool
 	leftFolded map[string]bool
+	// widths are each kind of view's panel widths, kept is the arrangement
+	// the orchestrator keeps for this person, and screen the size of the
+	// screen it is kept for (increment 53).
+	widths map[string]kindWidths
+	kept   protocol.Layout
+	screen string
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -107,6 +113,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
 		beside: nil, quickImage: nil, statusImage: nil,
 		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
+		widths: map[string]kindWidths{}, kept: protocol.Layout{Screens: nil}, screen: screenKey(),
 	}
 }
 
@@ -141,6 +148,9 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown.host.tabTint = s.tintNamed
 	shown.host.tabUnsaved = s.unsavedNamed
 	shown.host.tabKeys, shown.host.tabFront = s.tabKeys, s.frontNamed
+	shown.host.arrangement = s.keepArrangement
+	shown.host.inspectorWidth = s.widths[args.View].inspector
+	shown.host.setLeft(s.widths[args.View].left)
 
 	return shown, nil
 }
@@ -413,14 +423,18 @@ func (s *shell) followInspector() {
 	for _, each := range s.tabs {
 		panes = append(panes, each.panes...)
 	}
-	follow(panes, s.folded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowInspector })
-	follow(panes, s.leftFolded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowLeft })
+	inspectors := follow(panes, s.folded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowInspector })
+	lefts := follow(panes, s.leftFolded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowLeft })
+	if widths := s.followWidths(); inspectors || lefts || widths {
+		s.publishArrangement()
+	}
 }
 
 // follow keeps a toggle the same across the panes of each kind of view,
 // folded meaning it is off: a pane whose toggle differs from its kind's
-// changes its kind, then every pane of the kind shows it.
-func follow(panes []*pane, folded map[string]bool, toggle func(*pane) *ui.Toggle) {
+// changes its kind, then every pane of the kind shows it. It reports
+// whether a kind changed.
+func follow(panes []*pane, folded map[string]bool, toggle func(*pane) *ui.Toggle) bool {
 	changed := map[string]bool{}
 	for _, shown := range panes {
 		if on := toggle(shown).On; on == folded[shown.view] && !changed[shown.view] {
@@ -430,6 +444,8 @@ func follow(panes []*pane, folded map[string]bool, toggle func(*pane) *ui.Toggle
 	for _, shown := range panes {
 		toggle(shown).On = !folded[shown.view]
 	}
+
+	return len(changed) > 0
 }
 
 // retitle names the window after its focused pane.

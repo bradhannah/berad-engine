@@ -84,7 +84,7 @@ func (s *State) results() []int {
 
 // paletteArea is where the palette's entries are, below its search.
 func (s *State) paletteArea() image.Rectangle {
-	return image.Rect(0, s.pal.listTop, PaletteWidth-ui.Outline, frame.Content(s.size).Max.Y)
+	return image.Rect(0, s.pal.listTop, s.paletteFull()-ui.Outline, frame.Content(s.size).Max.Y)
 }
 
 // layoutPalette places the search and the entries: every entry under its
@@ -93,7 +93,7 @@ func (s *State) paletteArea() image.Rectangle {
 func (s *State) layoutPalette() {
 	panel := s.pal
 	s.layoutFold()
-	searchRight := PaletteWidth - ui.Inset - foldButton - ui.Gap
+	searchRight := s.paletteFull() - ui.Inset - foldButton - ui.Gap
 	panel.search.Rect = image.Rect(ui.Inset-ui.Half, paletteTop, searchRight, paletteTop+ui.ButtonH)
 	if s.paletteFolded {
 		panel.search.Rect = ui.Zero()
@@ -107,7 +107,7 @@ func (s *State) layoutPalette() {
 	for index := range s.palette {
 		s.palette[index].rect, s.palette[index].lines = ui.Zero(), nil
 	}
-	top, left, right := panel.listTop-panel.scroll, ui.Inset-ui.Half, PaletteWidth-ui.Inset
+	top, left, right := panel.listTop-panel.scroll, ui.Inset-ui.Half, s.paletteFull()-ui.Inset
 	if s.query() == "" {
 		group := ""
 		for index := range s.palette {
@@ -274,7 +274,8 @@ func (s *State) drawPalette(screen *ebiten.Image) {
 	}
 	defer s.foldBn.Draw(screen, s.theme)
 	content := frame.Content(s.size)
-	ui.Divider(screen, image.Pt(PaletteWidth-ui.Outline, toolbarHeight), image.Pt(PaletteWidth-ui.Outline, content.Max.Y))
+	edge := s.paletteFull() - ui.Outline
+	ui.Divider(screen, image.Pt(edge, toolbarHeight), image.Pt(edge, content.Max.Y))
 	s.pal.search.Draw(screen)
 	area, ok := screen.SubImage(s.paletteArea()).(*ebiten.Image)
 	if !ok {
@@ -302,7 +303,7 @@ func (s *State) drawPaletteEntries(area *ebiten.Image) {
 	}
 	if s.workflow != nil && s.workflow.Purpose() == flow.PurposeZoneLoop && len(s.palette) > 0 {
 		top := s.palette[len(s.palette)-1].rect.Max.Y + groupSpace
-		for index, line := range s.theme.Wrap(zoneLoopLacks, PaletteWidth-ui.Inset*ui.Half) {
+		for index, line := range s.theme.Wrap(zoneLoopLacks, s.paletteFull()-ui.Inset*ui.Half) {
 			s.theme.DrawText(area, line, ui.Inset, top+index*ui.LineHeight, ui.ColorMuted())
 		}
 	}
@@ -334,7 +335,7 @@ func (s *State) drawResults(area *ebiten.Image) {
 	if len(results) > 0 {
 		count = strconv.Itoa(len(results)) + " " + plural(len(results), "node matches", "nodes match")
 	}
-	for index, line := range s.theme.Wrap(count, PaletteWidth-ui.Half*ui.Inset) {
+	for index, line := range s.theme.Wrap(count, s.paletteFull()-ui.Half*ui.Inset) {
 		s.theme.DrawText(area, line, ui.Inset, s.pal.listTop-s.pal.scroll+index*ui.LineHeight, ui.ColorMuted())
 	}
 	for place, index := range results {
@@ -376,7 +377,7 @@ func (s *State) drawMarked(area *ebiten.Image, text string, left, top int, query
 // drawDragged draws the node being dragged from the palette, with its
 // outputs, and lights the line it would go into, saying so.
 func (s *State) drawDragged(screen *ebiten.Image) {
-	if s.adding == nil || s.adding.at.In(image.Rect(0, 0, PaletteWidth, s.size.Y)) {
+	if s.adding == nil || s.adding.at.In(image.Rect(0, 0, s.paletteFull(), s.size.Y)) {
 		return
 	}
 	corner := s.adding.at.Sub(image.Pt(nodeWidth/ui.Half, nodeHeight/ui.Half))
@@ -409,7 +410,8 @@ func (s *State) drawTooltip(screen *ebiten.Image) {
 	}
 	lines := s.wrap(hintFor(kind), tooltipWidth-ui.Half*ui.Inset)
 	height := ui.Half*ui.Gap + (tooltipFrame+len(lines))*ui.LineHeight
-	box := image.Rect(PaletteWidth+ui.Gap, entry.rect.Min.Y, PaletteWidth+ui.Gap+tooltipWidth, entry.rect.Min.Y+height)
+	left := s.paletteFull() + ui.Gap
+	box := image.Rect(left, entry.rect.Min.Y, left+tooltipWidth, entry.rect.Min.Y+height)
 	ui.FillRound(screen, box, ui.Radius, ui.ColorInk())
 	left, top := box.Min.X+ui.Inset, box.Min.Y+ui.Gap
 	s.theme.DrawStrong(screen, labelOf(kind), left, top, ui.ColorReverse())

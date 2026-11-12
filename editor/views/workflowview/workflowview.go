@@ -163,7 +163,10 @@ type State struct {
 	foldBn        *ui.Button
 	// links are the selected node's lines as the inspector writes them,
 	// each with its Unlink (increment 48).
-	links   []linkRow
+	links []linkRow
+	// left is the palette's width as dragged, zero for PaletteWidth
+	// (increment 53).
+	left    int
 	resize  *containerResize
 	bending *lineDrag
 	panning bool
@@ -291,7 +294,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(), nodeAdd: nil,
-		paletteFolded: false, foldBn: ui.NewButton(foldID, "‹"), links: nil,
+		paletteFolded: false, foldBn: ui.NewButton(foldID, "‹"), links: nil, left: 0,
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}

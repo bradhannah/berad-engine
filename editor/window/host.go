@@ -75,6 +75,17 @@ type host struct {
 	// corner: the status bar spans it, and the shell draws it under the
 	// focused pane (increment 52). It is empty for a pane alone in its tab.
 	statusArea image.Rectangle
+	// inspectorWidth and leftWidth are the panels' widths for the view's
+	// kind, zero for its own; dragging is the divider being dragged,
+	// squeezed set when it was dragged into the canvas's room, resizing
+	// while the pointer shows it drags, and arranged once a width changed,
+	// for the window to keep; arrangement takes the arrangement kept
+	// (increment 53).
+	inspectorWidth, leftWidth int
+	dragging                  dragging
+	squeezed, resizing        bool
+	arranged                  bool
+	arrangement               func(json.RawMessage)
 	// closeQuits makes closing this window quit the editor, as closing the
 	// project browser's tab does; hosts is told of the windows the editor
 	// window is asked to show.
@@ -115,7 +126,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		saidGesture: "", statusArea: ui.Zero(),
+		saidGesture: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone, squeezed: false,
+		resizing: false, arranged: false, arrangement: nil,
 		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
 	}
@@ -133,6 +145,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 
 // Update runs once per tick.
 func (h *host) Update() error {
+	h.useWidths()
 	if !h.started {
 		h.started = true
 		if view, ok := h.view.(starter); ok {
@@ -158,6 +171,7 @@ func (h *host) Update() error {
 		// reaches the status bar, the folded strip or the window's keys; the
 		// History list takes them while it is open.
 		h.updateStatusBar(&input)
+		h.updateDividers(&input)
 		h.updateFolded(&input)
 		h.windowKeys(&input)
 		h.updateQuitDialog(&input)
@@ -283,6 +297,13 @@ func (h *host) onUpdate(update client.Update) {
 	}
 	if update.AudioChanged != nil {
 		h.sounds.Changed()
+	}
+	if update.Session != nil && update.Session.Topic == protocol.TopicLayout {
+		if h.arrangement != nil {
+			h.arrangement(update.Session.Value)
+		}
+
+		return
 	}
 	if update.Session != nil && update.Session.Topic == protocol.TopicNotice {
 		var notice protocol.Notice
@@ -615,6 +636,7 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 // Draw renders the view, its inspector or the folded strip, the status bar
 // and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
+	h.useWidths()
 	h.drawView(screen)
 	if h.statusArea.Empty() {
 		h.frame.DrawStatus(screen, h.theme)
@@ -637,6 +659,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 
 // Layout uses the window's real size, one screen pixel per pixel.
 func (h *host) Layout(outsideWidth, outsideHeight int) (int, int) {
+	h.useWidths()
 	h.visible = image.Pt(outsideWidth, outsideHeight)
 	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
 
@@ -653,7 +676,7 @@ func (h *host) viewSize() image.Point {
 		return h.visible
 	}
 
-	return h.visible.Add(image.Pt(frame.InspectorWidth-frame.FoldedWidth, 0))
+	return h.visible.Add(image.Pt(frame.InspectorWide()-frame.FoldedWidth, 0))
 }
 
 // updateFolded keeps the pointer on the folded strip from the view, which

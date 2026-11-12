@@ -413,7 +413,7 @@ func (s *State) npcHintLines() []string {
 func (s *State) npcHint() image.Rectangle {
 	top := s.tileList.Rect.Min.Y + ui.Gap
 
-	return image.Rect(ui.Inset, top, PanelWidth, top+len(s.npcHintLines())*ui.LineHeight)
+	return image.Rect(ui.Inset, top, s.panelFull(), top+len(s.npcHintLines())*ui.LineHeight)
 }
 
 // floorsHeadingTop is where the heading of the floor list starts.
@@ -428,8 +428,8 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	}
 	defer s.fold.button.Draw(screen, s.theme)
 	height := s.size.Y - frame.StatusHeight
-	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorPage())
-	ui.Divider(screen, image.Pt(PanelWidth-ui.Outline, 0), image.Pt(PanelWidth-ui.Outline, height))
+	ui.FillRect(screen, image.Rect(0, 0, s.panelFull(), height), ui.ColorPage())
+	ui.Divider(screen, image.Pt(s.panelFull()-ui.Outline, 0), image.Pt(s.panelFull()-ui.Outline, height))
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}

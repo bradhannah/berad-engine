@@ -2,6 +2,7 @@ package window
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"strconv"
 	"strings"
@@ -200,6 +201,7 @@ func (h *host) reportUnsaved() {
 // folded inspector's strip ("ui:folded-inspector") and whether it is folded
 // ("state:inspector-folded"), the status bar's toggles, or the view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
+	h.useWidths()
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
 
@@ -215,6 +217,15 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return image.Pt(0, 0), h.folded()
 	case "state:left-folded":
 		return image.Pt(0, 0), !h.frame.ShowLeft.On
+	}
+	if point, found, handled := h.locateDivider(name); handled {
+		return point, found
+	}
+	if at, ok := strings.CutPrefix(name, "point:"); ok {
+		var x, y int
+		_, err := fmt.Sscanf(at, "%d,%d", &x, &y)
+
+		return image.Pt(x, y), err == nil
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" || name == "state:inspector" {
 		return point.Add(h.statusArea.Min), found

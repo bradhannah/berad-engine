@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -353,7 +354,7 @@ func (f *Frame) Latencies() []time.Duration { return f.latencies }
 // Content returns the area left for a view's own content: everything above
 // the status bar and left of the inspector.
 func Content(size image.Point) image.Rectangle {
-	return image.Rect(0, 0, size.X-InspectorWidth, size.Y-StatusHeight)
+	return image.Rect(0, 0, size.X-InspectorWide(), size.Y-StatusHeight)
 }
 
 // AboveStatus is a window's area above its status bar, which a menu opened
@@ -365,7 +366,25 @@ func AboveStatus(size image.Point) image.Rectangle {
 // Inspector returns the inspector panel's area (D13: embedded on the right of
 // every window).
 func Inspector(size image.Point) image.Rectangle {
-	return image.Rect(size.X-InspectorWidth, 0, size.X, size.Y-StatusHeight)
+	return image.Rect(size.X-InspectorWide(), 0, size.X, size.Y-StatusHeight)
+}
+
+// inspectorWide is the inspector's width for the view being run or drawn
+// now: the window sets its kind's before running or drawing each view, one
+// at a time (increment 53). Zero is InspectorWidth.
+var inspectorWide atomic.Int64 //nolint:gochecknoglobals // One view is laid out at a time.
+
+// SetInspectorWidth sets the inspector's width for the view about to be run
+// or drawn; zero is InspectorWidth.
+func SetInspectorWidth(width int) { inspectorWide.Store(int64(width)) }
+
+// InspectorWide is the inspector's width for the view being run or drawn.
+func InspectorWide() int {
+	if width := inspectorWide.Load(); width > 0 {
+		return int(width)
+	}
+
+	return InspectorWidth
 }
 
 // layoutStatus places the On top toggle at the right end of the status bar,

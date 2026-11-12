@@ -209,7 +209,10 @@ type State struct {
 
 	toolList *ui.List
 	// fold is the left panel's fold button and its rail (increment 43).
-	fold      foldState
+	fold foldState
+	// left is the left panel's width as dragged, zero for PanelWidth
+	// (increment 53).
+	left      int
 	tileList  *ui.List
 	floorList *ui.List
 	below     *ui.Toggle
@@ -260,7 +263,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
-		toolList: ui.NewList("tools", string(ToolGround)), fold: newFoldState(),
+		toolList: ui.NewList("tools", string(ToolGround)), fold: newFoldState(), left: 0,
 		tileList:  ui.NewList("tiles", "grass"),
 		floorList: ui.NewList("floors", ""),
 		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
@@ -516,7 +519,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
 	rowY := ui.Inset + headingSpace
-	s.toolList.Rect = image.Rect(0, rowY, PanelWidth, rowY+toolRows*ui.RowHeight)
+	s.toolList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
 	s.tileList.Rows = s.tileRows()
 	if s.tool == ToolSelect {
@@ -528,15 +531,15 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	}
 	// With no NPCs to list, the list's place holds the hint's lines.
 	tilesHeight = max(tilesHeight, ui.Gap+len(s.npcHintLines())*ui.LineHeight)
-	s.tileList.Rect = image.Rect(0, rowY, PanelWidth, rowY+tilesHeight)
+	s.tileList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+tilesHeight)
 	rowY = s.tileList.Rect.Max.Y + panelGap + headingSpace
 	s.floorList.Rows = s.floorRows(docs)
 	s.floorList.Selected = s.floor.String()
-	s.floorList.Rect = image.Rect(0, rowY, PanelWidth, rowY+floorRows*ui.RowHeight)
+	s.floorList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+floorRows*ui.RowHeight)
 	rowY = s.floorList.Rect.Max.Y + panelGap/ui.Half
-	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, PanelWidth-ui.Inset, rowY+ui.RowHeight)
+	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, s.panelFull()-ui.Inset, rowY+ui.RowHeight)
 	rowY = s.below.Rect.Max.Y + panelGap
-	s.previewBn.Rect = image.Rect(ui.Inset, rowY, PanelWidth-ui.Inset, rowY+ui.ButtonH)
+	s.previewBn.Rect = image.Rect(ui.Inset, rowY, s.panelFull()-ui.Inset, rowY+ui.ButtonH)
 	switch {
 	case s.preview != nil:
 		s.previewBn.Label = "Stop preview (P)"

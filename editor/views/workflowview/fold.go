@@ -29,7 +29,7 @@ func (s *State) paletteWidth() int {
 		return RailWidth
 	}
 
-	return PaletteWidth
+	return s.paletteFull()
 }
 
 // layoutFold places the fold button: right of the search while the palette
@@ -48,7 +48,7 @@ func (s *State) layoutFold() {
 		return
 	}
 	s.foldBn.Label = "‹"
-	right := PaletteWidth - ui.Inset
+	right := s.paletteFull() - ui.Inset
 	s.foldBn.Rect = image.Rect(right-foldButton, paletteTop, right, paletteTop+foldButton)
 }
 
