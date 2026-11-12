@@ -45,5 +45,5 @@ Chosen while building, for its author to check:
 - In the real window, `TestWatchKeepsATrail`, `TestLoggingInWatch` and
   `TestWatchOpensBesideItsMap` pass with Watch beside the Map; a screenshot
   shows one bar under both, saying Watch's message.
-- **Checks:** `make check` passes. The whole real-window suite runs again
-  on the last increment.
+- **Checks:** `make check` passes. All 74 real-window walks pass on the night's last commit, which carries
+  this one, run from a frozen copy.

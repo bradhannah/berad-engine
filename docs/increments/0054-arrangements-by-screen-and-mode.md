@@ -64,5 +64,5 @@ Chosen while building, for its author to check:
   Map's left panel, inspector and canvas, and the strip for a folded
   inspector.
 - **Checks:** `make check` passes, and so do `TestDividersDragAndAreKept`,
-  `TestTheInspectorFolds` and `TestWatchOpensBesideItsMap`. The whole
-  real-window suite runs again on the last increment.
+  `TestTheInspectorFolds` and `TestWatchOpensBesideItsMap`. All 74 real-window walks pass on the night's last commit, which carries
+  this one, run from a frozen copy.

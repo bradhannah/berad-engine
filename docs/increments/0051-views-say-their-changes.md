@@ -84,5 +84,13 @@ Chosen while building, for its author to check:
 - **Refusals:** the tests that read these messages now find them marked
   "Refused:", and a refusal made after another message shows.
 - **Checks:** `make check` passes, and so do the walks above and
-  `TestTheInspectorWritesOutLinks`. The whole real-window suite runs again
-  on the last increment.
+  `TestTheInspectorWritesOutLinks`. All 74 real-window walks pass on the night's last commit, which carries
+  this one, run from a frozen copy.
+
+## Changed after the whole suite
+
+The whole real-window suite found that the node menu's adding a node and
+joining it, one gesture, left History saying only "Joined Start · then to
+Wait". A later command of a gesture now takes over the gesture's line in
+History only when it is the same kind of change, as a stroke's are, as the
+undo step's sentence does; the node menu's two changes keep a line each.

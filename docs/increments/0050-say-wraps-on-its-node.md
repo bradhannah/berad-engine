@@ -59,5 +59,5 @@ Chosen while building, for its author to check:
   workflow's start and types it a long line; the Say shows it in three
   lines, and its screenshot shows the field and the node together.
 - **Checks:** `make check` passes, and so does `TestLoggingInWatch`, whose
-  workflows hold Says. The whole real-window suite runs again on the last
-  increment.
+  workflows hold Says. All 74 real-window walks pass on the night's last commit, which carries
+  this one, run from a frozen copy.

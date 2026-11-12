@@ -55,5 +55,5 @@ Chosen while building, for its author to check:
   zone's Map and the Fetch stock workflow, quits, opens the project again,
   and finds both tabs back with "Reopened as it was left"; its screenshot
   shows them.
-- **Checks:** `make check` passes. The whole real-window suite runs again
-  on the last increment.
+- **Checks:** `make check` passes. All 74 real-window walks pass on the night's last commit, which carries
+  this one, run from a frozen copy.

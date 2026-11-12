@@ -64,5 +64,13 @@ Chosen while building, for its author to check:
 - In the real window, `TestDividersDragAndAreKept` drags a Map's left panel
   to 260 and its inspector to 500, quits, opens the project again, and
   finds both as they were left; its screenshot shows the wider panels.
-- **Checks:** `make check` passes. The whole real-window suite runs again
-  on the last increment.
+- **Checks:** `make check` passes. All 74 real-window walks pass on the night's last commit, which carries
+  this one, run from a frozen copy.
+
+## Changed after the whole suite
+
+The whole real-window suite found a fold undone when panels were folded
+quickly: the orchestrator echoes the arrangement to the other panes, and an
+older echo arriving after a newer fold put the older fold back. The window
+now takes the kept arrangement only as it opens; what arrives after is its
+own, echoed.
