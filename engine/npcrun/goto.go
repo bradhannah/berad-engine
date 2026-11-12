@@ -32,6 +32,10 @@ func (n *NPC) actGoTo(world World, node flow.Node) (string, bool) {
 		}
 	}
 	if len(n.work.route) == 0 {
+		if n.work.goal != "" {
+			n.work.why = "Arrived at " + n.work.goal
+		}
+
 		return flow.OutputNext, true
 	}
 	next := n.work.route[0]

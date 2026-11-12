@@ -61,7 +61,7 @@ func (s *State) refreshModules(ctx *frame.Context, runners []*npcRun) {
 		if run.npc.Module() != (ids.ULID{}) && slices.ContainsFunc(changed, func(target ids.ULID) bool {
 			return inside(run, target)
 		}) {
-			run.npc.Restart()
+			run.npc.Restart("Started again: a workflow it called was changed")
 		}
 	}
 }

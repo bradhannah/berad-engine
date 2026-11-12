@@ -47,6 +47,9 @@ const (
 	// stoppedStepLimit, ten minutes of them, room for a walk to finish.
 	stepLimit        = 24 * 60 * stepBudget
 	stoppedStepLimit = 10 * stepBudget
+	// restartedByEdit is why an NPC starts again when its workflow is
+	// edited during a preview.
+	restartedByEdit = "Started again: its workflow was changed"
 )
 
 // npcRun is one NPC in this window's preview: its runner, and a copy of its
@@ -167,7 +170,7 @@ func (s *State) refreshWorkflow(ctx *frame.Context, run *npcRun) {
 		restart := run.workflow != nil
 		run.workflow, run.source, run.revision = workflowDoc.Workflow.Clone(), behaviour, document.Revision
 		if restart {
-			run.npc.Restart()
+			run.npc.Restart(restartedByEdit)
 		}
 		if cues := cuesOf(run.workflow); len(cues) > 0 {
 			ctx.Sounds.Prepare(cues)
@@ -210,7 +213,7 @@ func (s *State) takeLoop(ctx *frame.Context, loopID ids.ULID) bool {
 		restart := run.workflow != nil
 		run.workflow, run.source, run.revision = loop.Clone(), loopID, document.Revision
 		if restart {
-			run.npc.Restart()
+			run.npc.Restart(restartedByEdit)
 		}
 		if cues := cuesOf(run.workflow); len(cues) > 0 {
 			ctx.Sounds.Prepare(cues)
@@ -347,7 +350,7 @@ func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 	case protocol.ControlStopClock, protocol.ControlStartClock:
 		s.preview.clock.Stop(control.Action == protocol.ControlStopClock)
 	case protocol.ControlWatch:
-		s.preview.watched, s.preview.step = control.Placement, nil
+		s.preview.watched, s.preview.step, s.preview.trail = control.Placement, nil, nil
 	case protocol.ControlPause:
 		s.preview.paused, s.preview.stepping = true, false
 		ctx.Frame.Status("NPCs paused")
@@ -409,7 +412,7 @@ func (s *State) liveNPCOf(placement ids.ULID) ids.ULID {
 func previewChange(change npcrun.Change) protocol.PreviewChange {
 	return protocol.PreviewChange{
 		From: change.From, Output: change.Output, To: change.To, Tick: change.Tick, Status: change.Status,
-		Lane: change.Lane,
+		Lane: change.Lane, Why: change.Why,
 	}
 }
 
@@ -436,6 +439,7 @@ func (s *State) stepTick(runners []*npcRun, base npcrun.World) []npcrun.Sound {
 	if loop := s.preview.loop; loop.workflow != nil {
 		step(loop, s.zone.String())
 	}
+	s.keepTrail()
 
 	return asked
 }
@@ -610,11 +614,30 @@ func (s *State) previewState() protocol.PreviewState {
 		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
 		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
 		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step), Values: s.watchedValues(),
-		Log: slices.Clone(s.preview.lines), Box: showdraw.BoxOf(s.preview.stage), ShakeX: 0, ShakeY: 0,
+		Log: slices.Clone(s.preview.lines), Trail: slices.Clone(s.preview.trail), Box: showdraw.BoxOf(s.preview.stage),
+		ShakeX: 0, ShakeY: 0,
 	}
 	state.ShakeX, state.ShakeY = s.preview.stage.Offset()
 
 	return state
+}
+
+// keepTrail numbers the changes of node the watched NPC made this tick, at
+// the game time now, keeping the latest protocol.TrailLength (increment 46).
+func (s *State) keepTrail() {
+	watched, ok := s.watchedRun()
+	if !ok {
+		return
+	}
+	for _, change := range watched.npc.Taken {
+		s.preview.passed++
+		s.preview.trail = append(s.preview.trail, protocol.PreviewTrail{
+			Seq: s.preview.passed, Clock: s.preview.clock.Seconds(), Change: previewChange(change),
+		})
+	}
+	if over := len(s.preview.trail) - protocol.TrailLength; over > 0 {
+		s.preview.trail = slices.Delete(s.preview.trail, 0, over)
+	}
 }
 
 // keepLines numbers the lines an NPC's or the zone loop's Logs wrote this

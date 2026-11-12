@@ -103,7 +103,10 @@ func (n *NPC) laneTake(workflow *flow.Workflow, running *lane, from flow.Node, o
 
 		return
 	}
-	n.Last = Change{From: from.ID, Output: output, To: next, Tick: tick, Status: n.work.skipped, Lane: running.port}
+	n.Last = Change{
+		From: from.ID, Output: output, To: next, Tick: tick, Status: n.work.skipped, Lane: running.port,
+		Why: n.work.why,
+	}
 	n.Taken = append(n.Taken, n.Last)
 	n.Changes++
 	running.node, n.work = next, idle()

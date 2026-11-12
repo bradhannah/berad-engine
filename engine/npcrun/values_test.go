@@ -186,7 +186,7 @@ func TestSetAndCheck(t *testing.T) {
 	if count := town.value(t, countID, id(zoneID)); count.Integer != 2*clerk.Locals()[id(tallyL)].Integer {
 		t.Fatalf("the zone's count goes up by two a loop: %+v", count)
 	}
-	clerk.Restart()
+	clerk.Restart("Started again")
 	if len(clerk.Locals()) != 0 {
 		t.Fatal("a restart clears the local values")
 	}

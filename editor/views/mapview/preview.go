@@ -83,6 +83,10 @@ type previewRun struct {
 	// protocol.RecentLines, and written counts every line so far.
 	lines   []protocol.PreviewLine
 	written uint64
+	// trail is the watched NPC's latest changes of node, at most
+	// protocol.TrailLength, and passed counts every one so far.
+	trail  []protocol.PreviewTrail
+	passed uint64
 	// stage is the message boxes and the shake the workflows share.
 	stage *show.Stage
 	// signals are the signals sent on the latest tick, which land on the
@@ -186,7 +190,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
 				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
 			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0,
-			stage: show.NewStage(), signals: nil, named: nil,
+			trail: nil, passed: 0, stage: show.NewStage(), signals: nil, named: nil,
 		}
 		for _, document := range valuetree.Documents(ctx.Docs) {
 			s.subscribe(document, ctx)
@@ -358,7 +362,7 @@ func entityOf(player play.Player) protocol.PreviewEntity {
 	return protocol.PreviewEntity{
 		ID: protocol.EntityPlayer, Floor: player.Floor, X: x, Y: y, Face: [2]int{player.Facing.X, player.Facing.Y},
 		NPC: ids.ULID{}, Workflow: ids.ULID{}, Node: ids.ULID{}, Activity: "", Status: "",
-		Last:    protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: ""},
+		Last:    protocol.PreviewChange{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: "", Why: ""},
 		Changes: 0, Calls: nil, Way: nil, Loop: ids.ULID{}, Sprite: ids.ULID{}, Saying: "", SayingLeft: 0, Lanes: nil,
 		Handling: "", HandlingFrom: "", Resumes: "", Held: nil,
 	}

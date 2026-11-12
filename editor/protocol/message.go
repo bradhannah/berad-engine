@@ -514,7 +514,23 @@ type PreviewChange struct {
 	Tick   uint64   `json:"tick,omitempty"`
 	Status string   `json:"status,omitempty"`
 	Lane   string   `json:"lane,omitempty"`
+	// Why says what the node it left read or did that sent it this way,
+	// or why it started again (increment 46).
+	Why string `json:"why,omitempty"`
 }
+
+// PreviewTrail is one change of node on the watched NPC's trail: its number
+// in the preview, from 1, the game time of day in seconds it was made at,
+// and the change (increment 46).
+type PreviewTrail struct {
+	Seq    uint64        `json:"seq"`
+	Clock  float64       `json:"clock"`
+	Change PreviewChange `json:"change"`
+}
+
+// TrailLength is how many of the watched NPC's latest changes a preview's
+// state holds.
+const TrailLength = 50
 
 // PreviewState is a preview's latest live state, sent at a limited rate; the
 // latest value wins (D7). Tick orders the states of one run, so a receiver
@@ -544,6 +560,10 @@ type PreviewState struct {
 	// oldest first, at most RecentLines, so a window keeps those it has not
 	// seen by their numbers.
 	Log []PreviewLine `json:"log,omitempty"`
+	// Trail is the watched NPC's latest changes of node, oldest first, at
+	// most TrailLength, so a window keeps those it has not seen by their
+	// numbers; it starts again when another NPC is watched.
+	Trail []PreviewTrail `json:"trail,omitempty"`
 	// Box is the message box shown now, if any, and ShakeX and ShakeY how
 	// far the world is shaken, in pixels of the game's scale.
 	Box    *PreviewBox `json:"box,omitempty"`

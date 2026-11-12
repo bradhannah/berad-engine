@@ -127,7 +127,13 @@ func (s *State) layoutLog(docs frame.Docs) {
 	}
 	panel.watched.On, panel.all.On = !s.everyNPC(), s.everyNPC()
 	panel.watched.Disabled = s.state == nil || s.state.Watched.IsZero()
-	left := ui.Inset + s.theme.LabelWidth("LOG") + ui.Inset
+	panel.shown = panel.shown[:0]
+	if s.strip.part != partLog {
+		panel.watched.Rect, panel.all.Rect, panel.clear.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+
+		return
+	}
+	left := s.stripLeft()
 	top := area.Min.Y + ui.Gap
 	for _, button := range []*ui.Button{panel.watched, panel.all, panel.clear} {
 		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
@@ -138,7 +144,6 @@ func (s *State) layoutLog(docs frame.Docs) {
 	panel.back = max(0, min(panel.back, len(lines)-logRows))
 	end := len(lines) - panel.back
 	shown := lines[max(0, end-logRows):end]
-	panel.shown = panel.shown[:0]
 	rowTop := area.Max.Y - ui.Gap - len(shown)*ui.LineHeight
 	for index, line := range shown {
 		label := s.lineSource(docs, line)
@@ -205,7 +210,7 @@ func (s *State) updateLog(input *ui.Input, ctx *frame.Context) {
 			ctx.Requests.OpenItem(workflowview.ViewName, row.line.Workflow, workflowview.NodeItem+row.line.Node.String())
 		}
 	}
-	if input.Cursor.In(s.logArea()) && input.WheelY != 0 {
+	if s.strip.part == partLog && input.Cursor.In(s.logArea()) && input.WheelY != 0 {
 		step := 1
 		if input.WheelY < 0 {
 			step = -1
@@ -221,9 +226,6 @@ func (s *State) updateLog(input *ui.Input, ctx *frame.Context) {
 func (s *State) drawLog(screen *ebiten.Image, docs frame.Docs) {
 	area := s.logArea()
 	panel := s.log
-	ui.Divider(screen, area.Min, image.Pt(area.Max.X, area.Min.Y))
-	s.theme.DrawLabel(screen, "LOG", ui.Inset, panel.clear.Rect.Min.Y+(ui.ButtonH-ui.LabelSize)/ui.Half-1,
-		ui.ColorMuted())
 	for _, button := range []*ui.Button{panel.watched, panel.all, panel.clear} {
 		button.Draw(screen, s.theme)
 	}

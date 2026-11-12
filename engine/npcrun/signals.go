@@ -174,7 +174,10 @@ func (n *NPC) actResume(world World, node flow.Node, tick uint64) {
 		return
 	}
 	n.handling = nil
-	n.Last = Change{From: node.ID, Output: "", To: kept.node, Tick: tick, Status: "", Lane: ""}
+	n.Last = Change{
+		From: node.ID, Output: "", To: kept.node, Tick: tick, Status: "", Lane: "",
+		Why: "Went back to what it was doing before the signal",
+	}
 	n.Taken = append(n.Taken, n.Last)
 	n.Changes++
 	if len(kept.calls) > 0 {
