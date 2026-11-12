@@ -647,6 +647,9 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasWarningState(state); handled {
 		return found, true
 	}
+	if found, handled := s.hasLinkState(state); handled {
+		return found, true
+	}
 	if found, handled := s.hasCrossingState(state); handled {
 		return found, true
 	}
@@ -807,6 +810,7 @@ func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.No
 	if s.form.call != nil {
 		s.drawCall(screen, docs, node, left)
 	}
+	s.drawLinks(screen, left, frame.Inspector(s.size).Dx()-ui.Half*ui.Inset)
 }
 
 // drawAnchor draws an anchor parameter: its place's box, the zone and floor
@@ -1027,6 +1031,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.locateMenuItem(value)
 	case localPrefix:
 		return s.locateLocal(value)
+	case strings.TrimSuffix(linkIDPrefix, ":"):
+		return s.locateLink(value)
 	default:
 		if at, found := s.locateOnCanvas(kind, value); found {
 			return s.onScreen(at), true

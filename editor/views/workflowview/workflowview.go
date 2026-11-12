@@ -161,10 +161,13 @@ type State struct {
 	// foldBn folds and unfolds it (increment 43).
 	paletteFolded bool
 	foldBn        *ui.Button
-	resize        *containerResize
-	bending       *lineDrag
-	panning       bool
-	lastPan       image.Point
+	// links are the selected node's lines as the inspector writes them,
+	// each with its Unlink (increment 48).
+	links   []linkRow
+	resize  *containerResize
+	bending *lineDrag
+	panning bool
+	lastPan image.Point
 	// zoom is the canvas's zoom level, an index into zoomLevels; panRest is
 	// the part of a canvas pixel panned but not yet moved, and wheel the
 	// Cmd+scroll not yet zoomed by. drawn is the image a zoomed canvas is
@@ -288,7 +291,7 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
 		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(), nodeAdd: nil,
-		paletteFolded: false, foldBn: ui.NewButton(foldID, "‹"),
+		paletteFolded: false, foldBn: ui.NewButton(foldID, "‹"), links: nil,
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}
@@ -682,17 +685,7 @@ func (s *State) lineSelected() bool {
 // removeLine unlinks the selected line, saying what from what; undo joins
 // it again.
 func (s *State) removeLine(ctx *frame.Context) {
-	from, ok := s.workflow.Node(s.selectedLink.from)
-	if !ok {
-		return
-	}
-	output := s.selectedLink.output
-	said := "Unlinked " + labelOf(from.Kind) + " · " + output
-	if target, found := s.workflow.Node(from.Next[output]); found {
-		said += " from " + labelOf(target.Kind)
-	}
-	s.selectedLink = noRoute()
-	s.replace(ctx, from.WithLink(output, ids.ULID{}), said+". Undo joins it again.")
+	s.unlink(ctx, s.selectedLink)
 }
 
 // updateCanvas handles panning and the gestures on nodes and ports.
