@@ -86,8 +86,10 @@ Chosen while building, for its author to check:
   Say, with what the time switch and the container read. Its screenshots
   show the trail and the values, "1–6 of 9 · scroll for more".
 - **Checks:** `make check` passes, and so do the walks that read Watch's
-  log, `TestLoggingInWatch` and `TestWatchOpensBesideItsMap`. The whole
-  real-window suite runs on the last increment of the night.
+  log, `TestLoggingInWatch` and `TestWatchOpensBesideItsMap`. All 70
+  real-window walks pass on
+  [increment 49](0049-pixel-editor-names-what-is-in-hand.md)'s commit,
+  which carries this one, run from a frozen copy.
 
 ## Not in this increment
 

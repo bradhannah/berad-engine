@@ -70,3 +70,4 @@ accepted it.
 | [46. Watch keeps a trail](increments/0046-watch-keeps-a-trail.md) | Watch keeps a trail: each node the watched NPC passed, with what the node read or did that sent it on, and restarts with what they cleared; the Log, the Trail and the Values share one strip | Built |
 | [47. Play from here](increments/0047-play-from-here.md) | Play from here: a cell's menu plays the game from that cell for one run, beside Preview from here, and the player start stays where it is | Built |
 | [48. The inspector writes out a node's links](increments/0048-inspector-writes-links.md) | The inspector writes out a node's links: what joins to the selected node and where each output goes, with Unlink beside each line | Built |
+| [49. The Pixel editor names what is in hand](increments/0049-pixel-editor-names-what-is-in-hand.md) | The Pixel editor names what is in hand: the sprite, the tool, its colour and the pixel under the pointer, in the status bar | Built |

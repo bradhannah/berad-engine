@@ -52,8 +52,9 @@ Chosen while building, for its author to check:
   unlinks the start from the Wait's inspector. Its screenshot shows the
   links under the Wait's fields, matching the "→ start" on the canvas.
 - **Checks:** `make check` passes, and so does
-  `TestALineDroppedOnEmptyCanvasOffersANode`. The whole real-window suite
-  runs on the last increment of the night.
+  `TestALineDroppedOnEmptyCanvasOffersANode`. All 70 real-window walks
+  pass on [increment 49](0049-pixel-editor-names-what-is-in-hand.md)'s
+  commit, which carries this one, run from a frozen copy.
 
 ## Not in this increment
 

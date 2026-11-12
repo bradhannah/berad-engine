@@ -51,4 +51,6 @@ Chosen while building, for its author to check:
   Its screenshot shows the player inside the shop's door and the status
   bar saying the run is from 3,1.
 - **Checks:** `make check` passes, and so does `TestLaunchPlaysTheSample`.
-  The whole real-window suite runs on the last increment of the night.
+  All 70 real-window walks pass on
+  [increment 49](0049-pixel-editor-names-what-is-in-hand.md)'s commit,
+  which carries this one, run from a frozen copy.
