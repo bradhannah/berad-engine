@@ -73,3 +73,4 @@ accepted it.
 | [49. The Pixel editor names what is in hand](increments/0049-pixel-editor-names-what-is-in-hand.md) | The Pixel editor names what is in hand: the sprite, the tool, its colour and the pixel under the pointer, in the status bar | Built |
 | [50. A Say wraps its line on the node](increments/0050-say-wraps-on-its-node.md) | A Say wraps its line on the node: a Say or a Show message grows a line for each line its message takes, up to four, and its field has room in the inspector | Built |
 | [51. Views say their changes and refusals](increments/0051-views-say-their-changes.md) | Views say their changes and refusals: a Map, a Workflow and the Pixel editor say each change in their own words, a stroke as one line, and the refusals they make stay until dismissed | Built |
+| [52. A split has one status bar](increments/0052-split-has-one-status-bar.md) | A split has one status bar: the focused pane's, across the whole tab, under both panes | Built |
