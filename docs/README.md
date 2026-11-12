@@ -71,3 +71,4 @@ accepted it.
 | [47. Play from here](increments/0047-play-from-here.md) | Play from here: a cell's menu plays the game from that cell for one run, beside Preview from here, and the player start stays where it is | Built |
 | [48. The inspector writes out a node's links](increments/0048-inspector-writes-links.md) | The inspector writes out a node's links: what joins to the selected node and where each output goes, with Unlink beside each line | Built |
 | [49. The Pixel editor names what is in hand](increments/0049-pixel-editor-names-what-is-in-hand.md) | The Pixel editor names what is in hand: the sprite, the tool, its colour and the pixel under the pointer, in the status bar | Built |
+| [50. A Say wraps its line on the node](increments/0050-say-wraps-on-its-node.md) | A Say wraps its line on the node: a Say or a Show message grows a line for each line its message takes, up to four, and its field has room in the inspector | Built |
