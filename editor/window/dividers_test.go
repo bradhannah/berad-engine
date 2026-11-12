@@ -65,6 +65,7 @@ func TestDividersDrag(t *testing.T) { //nolint:paralleltest // It sets the width
 	shown := &shell{
 		tabs: []*tab{{panes: []*pane{first}}, {panes: []*pane{second}}}, folded: map[string]bool{},
 		leftFolded: map[string]bool{}, widths: map[string]kindWidths{}, size: image.Pt(1200, 800),
+		known: map[string]bool{},
 	}
 	host := first.host
 	host.useWidths()
@@ -105,7 +106,7 @@ func TestTheArrangementIsKept(t *testing.T) {
 	first, view := panelPane("map")
 	shown := &shell{
 		tabs: []*tab{{panes: []*pane{first}}}, folded: map[string]bool{}, leftFolded: map[string]bool{},
-		widths: map[string]kindWidths{}, screen: "1512x982",
+		widths: map[string]kindWidths{}, screen: "1512x982", known: map[string]bool{},
 	}
 	kept, err := json.Marshal(protocol.Layout{Screens: map[string]protocol.Arrangement{
 		"1512x982":  {Kinds: map[string]protocol.KindLayout{"map": {Inspector: 340, Left: 230, InspectorFolded: true}}},
@@ -115,6 +116,7 @@ func TestTheArrangementIsKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	shown.keepArrangement(kept)
+	shown.followInspector()
 	if first.host.inspectorWidth != 340 || view.left != 230 || first.host.frame.ShowInspector.On {
 		t.Fatalf("this screen's arrangement is put back: %d %d %v", first.host.inspectorWidth, view.left,
 			first.host.frame.ShowInspector.On)

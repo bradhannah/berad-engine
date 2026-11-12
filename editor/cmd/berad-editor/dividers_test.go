@@ -31,3 +31,26 @@ func TestDividersDragAndAreKept(t *testing.T) {
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestAMapKeepsAnArrangementForPreviewing folds a Map's inspector while it
+// previews: stopping the preview brings the inspector back as it was for
+// editing, and the next preview folds it again (increment 54).
+func TestAMapKeepsAnArrangementForPreviewing(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "preview-arrangement.png")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), must("state:tabs:2", 600),
+		quitWhenAlone(),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(30), keys("P"), click("cell:3,1"), must("state:previewing", 300), wait(10),
+		keys("Cmd+I"), must("state:inspector-folded", 60), wait(10), keys("P"), wait(20), must("state:inspector", 60),
+		keys("P"), click("cell:3,1"), must("state:previewing", 300), must("state:inspector-folded", 60), wait(10),
+		step{Repeat: 2, Screenshot: shot, Front: false}, keys("P"), wait(20), quit(),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}

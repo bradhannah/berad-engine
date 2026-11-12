@@ -18,3 +18,8 @@ func (s *State) LeftEdge() (int, bool) { return s.panelFull(), !s.fold.folded }
 
 // SetLeftWidth sets the left panel's width; zero is PanelWidth.
 func (s *State) SetLeftWidth(width int) { s.left = width }
+
+// Previewing reports whether the Map is previewing, for the window, which
+// keeps a Map's panels for previewing apart from those for editing
+// (increment 54).
+func (s *State) Previewing() bool { return s.preview != nil }

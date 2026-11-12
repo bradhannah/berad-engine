@@ -73,6 +73,12 @@ type shell struct {
 	widths map[string]kindWidths
 	kept   protocol.Layout
 	screen string
+	// known are the arrangements this screen has, and keptArrived is set
+	// once the orchestrator gave the kept one; minWidth is the narrowest
+	// the window goes for the tab in front (increment 54).
+	known       map[string]bool
+	keptArrived bool
+	minWidth    int
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -96,6 +102,9 @@ type pane struct {
 	image  *ebiten.Image
 	rect   image.Rectangle
 	failed error
+	// arrangedAs is the arrangement the pane's panels follow: its kind of
+	// view's, or a previewing Map's (increment 54).
+	arrangedAs string
 }
 
 // openedPane is a window connected for the shell, or why it could not be.
@@ -114,6 +123,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		beside: nil, quickImage: nil, statusImage: nil,
 		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
 		widths: map[string]kindWidths{}, kept: protocol.Layout{Screens: nil}, screen: screenKey(),
+		known: map[string]bool{}, keptArrived: false, minWidth: 0,
 	}
 }
 
@@ -138,6 +148,7 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown := &pane{
 		host: newHost(conn, newView(args, conn.Window(), s.theme), args.View, s.theme, place),
 		view: args.View, target: args.Target, place: place, image: nil, rect: ui.Zero(), failed: nil,
+		arrangedAs: "",
 	}
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
@@ -222,6 +233,7 @@ func (s *shell) Update() error {
 	s.noteTrail()
 	s.followOnTop()
 	s.followInspector()
+	s.limitWindow()
 	s.followClock()
 	s.retitle()
 	if len(s.tabs) == 0 {
@@ -423,26 +435,29 @@ func (s *shell) followInspector() {
 	for _, each := range s.tabs {
 		panes = append(panes, each.panes...)
 	}
-	inspectors := follow(panes, s.folded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowInspector })
-	lefts := follow(panes, s.leftFolded, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowLeft })
-	if widths := s.followWidths(); inspectors || lefts || widths {
+	switched := s.switchArrangements()
+	inspectors := follow(panes, s.folded, s.arrangement,
+		func(shown *pane) *ui.Toggle { return shown.host.frame.ShowInspector })
+	lefts := follow(panes, s.leftFolded, s.arrangement, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowLeft })
+	if widths := s.followWidths(); switched || inspectors || lefts || widths {
 		s.publishArrangement()
 	}
 }
 
-// follow keeps a toggle the same across the panes of each kind of view,
-// folded meaning it is off: a pane whose toggle differs from its kind's
-// changes its kind, then every pane of the kind shows it. It reports
-// whether a kind changed.
-func follow(panes []*pane, folded map[string]bool, toggle func(*pane) *ui.Toggle) bool {
+// follow keeps a toggle the same across the panes of each arrangement,
+// folded meaning it is off: a pane whose toggle differs from its
+// arrangement's changes it, then every pane of the arrangement shows it. It
+// reports whether an arrangement changed.
+func follow(panes []*pane, folded map[string]bool, key func(*pane) string, toggle func(*pane) *ui.Toggle) bool {
 	changed := map[string]bool{}
 	for _, shown := range panes {
-		if on := toggle(shown).On; on == folded[shown.view] && !changed[shown.view] {
-			folded[shown.view], changed[shown.view] = !on, true
+		kind := key(shown)
+		if on := toggle(shown).On; on == folded[kind] && !changed[kind] {
+			folded[kind], changed[kind] = !on, true
 		}
 	}
 	for _, shown := range panes {
-		toggle(shown).On = !folded[shown.view]
+		toggle(shown).On = !folded[key(shown)]
 	}
 
 	return len(changed) > 0

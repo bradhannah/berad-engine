@@ -42,16 +42,15 @@ func (s *shell) keepArrangement(value json.RawMessage) {
 	if err := json.Unmarshal(value, &layout); err != nil || layout.Screens == nil {
 		return
 	}
-	s.kept = layout
+	s.kept, s.keptArrived = layout, true
 	for kind, panels := range layout.Screens[s.screen].Kinds {
 		s.widths[kind] = kindWidths{inspector: panels.Inspector, left: panels.Left}
 		s.folded[kind], s.leftFolded[kind] = panels.InspectorFolded, panels.LeftFolded
+		s.known[kind] = true
 	}
 	for _, shown := range s.panes() {
-		shown.host.frame.ShowInspector.On = !s.folded[shown.view]
-		shown.host.frame.ShowLeft.On = !s.leftFolded[shown.view]
+		shown.arrangedAs = ""
 	}
-	s.applyWidths()
 }
 
 // followWidths takes a width a view's divider was dragged to, or put back,
@@ -61,7 +60,7 @@ func (s *shell) followWidths() bool {
 	for _, shown := range s.panes() {
 		if shown.host.arranged {
 			shown.host.arranged = false
-			s.widths[shown.view] = kindWidths{inspector: shown.host.inspectorWidth, left: shown.host.leftWidth}
+			s.widths[s.arrangement(shown)] = kindWidths{inspector: shown.host.inspectorWidth, left: shown.host.leftWidth}
 			changed = true
 		}
 	}
@@ -77,7 +76,7 @@ func (s *shell) applyWidths() {
 		if shown.host.dragging != dragNone {
 			continue
 		}
-		widths := s.widths[shown.view]
+		widths := s.widths[s.arrangement(shown)]
 		shown.host.inspectorWidth = widths.inspector
 		if shown.host.leftWidth != widths.left {
 			shown.host.setLeft(widths.left)
