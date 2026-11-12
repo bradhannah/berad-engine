@@ -35,18 +35,18 @@ func screenKey() string {
 	return strconv.Itoa(width) + "x" + strconv.Itoa(height)
 }
 
-// keepArrangement takes the arrangement the orchestrator kept, and puts this
-// screen's back: each kind's widths and folds, on every view of the kind.
+// keepArrangement takes the arrangement the orchestrator kept, as the first
+// pane joins, and puts this screen's back: each kind's widths and folds, on
+// every view of the kind, and the window's frame and tabs.
 func (s *shell) keepArrangement(value json.RawMessage) {
 	var layout protocol.Layout
-	if err := json.Unmarshal(value, &layout); err != nil || layout.Screens == nil {
+	if s.keptArrived || json.Unmarshal(value, &layout) != nil || layout.Screens == nil {
+		// After the first, what arrives is this window's own arrangement
+		// echoed back, perhaps older than what it has now.
 		return
 	}
-	first := !s.keptArrived
 	s.kept, s.keptArrived = layout, true
-	if first {
-		s.reopenAsLeft(layout.Screens[s.screen])
-	}
+	s.reopenAsLeft(layout.Screens[s.screen])
 	for kind, panels := range layout.Screens[s.screen].Kinds {
 		s.widths[kind] = kindWidths{inspector: panels.Inspector, left: panels.Left}
 		s.folded[kind], s.leftFolded[kind] = panels.InspectorFolded, panels.LeftFolded

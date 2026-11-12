@@ -71,6 +71,7 @@ type host struct {
 	// saidGesture is the gesture of the change said last, whose line in
 	// History a later command of the same gesture takes over.
 	saidGesture string
+	saidEdit    string
 	// statusArea is, in a split, the tab's whole area from the pane's
 	// corner: the status bar spans it, and the shell draws it under the
 	// focused pane (increment 52). It is empty for a pane alone in its tab.
@@ -129,7 +130,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		saidGesture: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone, squeezed: false,
+		saidGesture: "", saidEdit: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone,
+		squeezed: false,
 		resizing: false, arranged: false, arrangement: nil, shutdown: false,
 		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
@@ -393,13 +395,13 @@ func (h *host) Command(command protocol.Command, done func(protocol.Result, erro
 	said := func(result protocol.Result, err error) {
 		switch {
 		case err != nil || result.Said == "":
-		case command.Gesture != "" && command.Gesture == h.saidGesture:
+		case command.Gesture != "" && command.Gesture == h.saidGesture && command.Edit == h.saidEdit:
 			h.frame.StatusAgain(result.Said, result.Touched)
 		default:
 			h.frame.StatusAbout(result.Said, result.Touched)
 		}
 		if err == nil && result.Said != "" {
-			h.saidGesture = command.Gesture
+			h.saidGesture, h.saidEdit = command.Gesture, command.Edit
 		}
 		if done != nil {
 			done(result, err)
