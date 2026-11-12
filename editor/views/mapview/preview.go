@@ -142,7 +142,7 @@ func (s *State) togglePreview(ctx *frame.Context) {
 		s.choosing = false
 		ctx.Frame.Status("Preview cancelled")
 	case s.remote != nil:
-		ctx.Frame.Status("A preview is already running in another view of this zone")
+		ctx.Frame.Refuse("A preview is already running in another view of this zone")
 	default:
 		s.choosing = true
 		ctx.Frame.Status("Click the cell where the player starts. Escape cancels.")
@@ -156,7 +156,7 @@ func (s *State) updateChoosing(input *ui.Input, ctx *frame.Context, floorData *f
 		return
 	}
 	if !s.canStart(floorData, cell) {
-		ctx.Frame.Status("The player cannot stand there. Choose a cell where nothing blocks.")
+		ctx.Frame.Refuse("The player cannot stand there. Choose a cell where nothing blocks.")
 
 		return
 	}
@@ -260,7 +260,7 @@ func (s *State) stepPreview(input *ui.Input, ctx *frame.Context) {
 		s.switchFloor(player.Floor, ctx)
 		ctx.Frame.Status("Took the stairs to " + s.floorName(ctx.Docs, player.Floor))
 	case play.NoFloor:
-		ctx.Frame.Status("These stairs lead to a floor this zone does not have")
+		ctx.Frame.Refuse("These stairs lead to a floor this zone does not have")
 	case play.StairsBlocked:
 		ctx.Frame.Status("The other end of these stairs is blocked or outside that floor")
 	case play.Lost:

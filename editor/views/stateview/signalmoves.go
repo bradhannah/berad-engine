@@ -128,7 +128,7 @@ func (s *State) moveSignal(ctx *frame.Context, selected item, group string) {
 	where := signalWhere(declared, parent)
 	for _, beside := range worldstate.SignalChildren(declared, parent) {
 		if beside.Name == moved.Name && beside.ID != moved.ID {
-			ctx.Frame.Status("There is a " + moved.Name + " " + where + " already.")
+			ctx.Frame.Refuse("There is a " + moved.Name + " " + where + " already.")
 
 			return
 		}

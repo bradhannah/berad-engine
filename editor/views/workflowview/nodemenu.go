@@ -124,7 +124,7 @@ func (s *State) chooseFromNodeMenu(ctx *frame.Context, chosen string) bool {
 		return true
 	}
 	if flow.IsStart(kind) || !flow.Runs(kind) {
-		ctx.Frame.Status("A line cannot lead to a " + labelOf(kind) + ": nothing was added")
+		ctx.Frame.Refuse("A line cannot lead to a " + labelOf(kind) + ": nothing was added")
 
 		return true
 	}

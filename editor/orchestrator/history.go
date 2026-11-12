@@ -87,8 +87,10 @@ func (h *history) leave(group string) {
 }
 
 // record adds an action to the group's history, extending the latest step when
-// it belongs to the same gesture, and clears the redo list.
-func (h *history) record(group, gesture string, applied action, says string) {
+// it belongs to the same gesture, and clears the redo list. A sentence the
+// view said itself, own, for the same kind of edit as the step's first,
+// replaces the step's, so a stroke is said as a whole (increment 51).
+func (h *history) record(group, gesture string, applied action, says string, own bool) {
 	list, ok := h.groups[group]
 	if !ok {
 		return
@@ -96,6 +98,9 @@ func (h *history) record(group, gesture string, applied action, says string) {
 	list.redo = nil
 	last := len(list.undo) - 1
 	if gesture != "" && last >= 0 && list.undo[last].gesture == gesture {
+		if own && list.undo[last].actions[0].edit == applied.edit {
+			list.undo[last].says = says
+		}
 		list.undo[last].actions = append(list.undo[last].actions, applied)
 
 		return

@@ -207,7 +207,7 @@ func (s *State) updateMovingSound(
 		return
 	}
 	if _, taken := floorData.SoundAt(cell.X, cell.Y); taken {
-		ctx.Frame.Status("Another ambient sound is already there")
+		ctx.Frame.Refuse("Another ambient sound is already there")
 
 		return
 	}

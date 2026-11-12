@@ -146,14 +146,17 @@ func (o *Orchestrator) command(from *window, message protocol.Message) {
 
 		return
 	}
-	says := o.sentence(command.Document, command.Edit, command.Args)
+	says := command.Says
+	if says == "" {
+		says = o.sentence(command.Document, command.Edit, command.Args)
+	}
 	applied, err := o.applyEdit(from, command.Document, command.Edit, command.Args, message.Request)
 	if err != nil {
 		o.reply(from, message.Request, err.Error())
 
 		return
 	}
-	o.history.record(from.group, command.Gesture, applied.action, says)
+	o.history.record(from.group, command.Gesture, applied.action, says, command.Says != "")
 	o.send(from, mustMessage(protocol.KindResult, message.Request, protocol.Result{
 		OK: true, Reason: "", Revision: applied.revision, Created: applied.created, Item: "", Said: says,
 		Touched: protocol.Touching(applied.action.document, applied.action.touched),

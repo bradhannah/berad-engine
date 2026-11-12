@@ -301,7 +301,7 @@ func (s *State) saveHeld(ctx *frame.Context) bool {
 	}
 	if !selected.declared.Fits(value) {
 		s.focus.Set(field)
-		ctx.Frame.Status("That does not fit " + selected.declared.Name)
+		ctx.Frame.Refuse("That does not fit " + selected.declared.Name)
 
 		return false
 	}

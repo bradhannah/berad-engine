@@ -121,3 +121,20 @@ func TestALineInHistorySelectsWhatItNames(t *testing.T) {
 		t.Fatal("a choice is taken once")
 	}
 }
+
+// TestAStrokeKeepsOneLine says each command of a stroke again in the line
+// it began, so History holds one line for the stroke (increment 51).
+func TestAStrokeKeepsOneLine(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 11, 16, 0, 0, 0, time.UTC)
+	status := frame.NewFrame(func() time.Time { return now })
+	status.StatusAbout("Painted 1 cell of Road on Ground floor", protocol.Untouched())
+	status.StatusAgain("Painted 4 cells of Road on Ground floor", protocol.Untouched())
+	log := status.Log()
+	if len(log) != 1 || log[0].Text != "Painted 4 cells of Road on Ground floor" {
+		t.Fatalf("the stroke keeps one line, saying it whole: %+v", log)
+	}
+	if text, _ := status.Message(); text != "Painted 4 cells of Road on Ground floor" {
+		t.Fatalf("and the status bar says it: %q", text)
+	}
+}

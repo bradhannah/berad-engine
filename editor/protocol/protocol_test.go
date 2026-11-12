@@ -24,7 +24,7 @@ func everyMessage(t *testing.T) []protocol.Message {
 		protocol.KindWelcome:   protocol.Welcome{Window: testID},
 		protocol.KindSubscribe: protocol.Subscribe{Document: testID},
 		protocol.KindSnapshot:  protocol.Snapshot{Document: testID, Format: "f", Name: "n", Revision: 3, Data: json.RawMessage(`{"a":1}`)},
-		protocol.KindCommand:   protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`)},
+		protocol.KindCommand:   protocol.Command{Document: testID, Edit: "e", Gesture: "g", Args: json.RawMessage(`{"b":2}`), Says: ""},
 		protocol.KindResult:    protocol.Result{OK: false, Reason: "why", Revision: 4, Created: testID, Item: "door/open"},
 		protocol.KindEvent:     protocol.Event{Document: testID, Revision: 5, Edit: "e", Args: json.RawMessage(`[1]`), Origin: testID, Request: 9},
 		protocol.KindSession:   protocol.Session{Topic: "t", Value: json.RawMessage(`"v"`)},

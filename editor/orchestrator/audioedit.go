@@ -170,7 +170,7 @@ func (o *Orchestrator) audioFinished(outcome audioOutcome) {
 			o.history.record(job.from.group, job.edit.Gesture, action{
 				document: model.AudioLibraryID(), edit: audioPatchEdit, backEdit: "", forward: outcome.change.forward,
 				back: outcome.change.back, touched: touched, covers: nil, seq: o.seq,
-			}, "Changed the sounds")
+			}, "Changed the sounds", false)
 		}
 	case audioUndoJob:
 		o.history.pushRedo(job.from.group, restamp(job.step, o.seq))

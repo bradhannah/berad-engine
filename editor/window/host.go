@@ -68,6 +68,9 @@ type host struct {
 	quitAsking bool
 	quitSaving bool
 	reported   protocol.Unsaved
+	// saidGesture is the gesture of the change said last, whose line in
+	// History a later command of the same gesture takes over.
+	saidGesture string
 	// closeQuits makes closing this window quit the editor, as closing the
 	// project browser's tab does; hosts is told of the windows the editor
 	// window is asked to show.
@@ -108,7 +111,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
-		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
+		saidGesture: "",
+		closeQuits:  false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
 	}
 	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
@@ -359,8 +363,15 @@ type outgoing struct {
 // answer, if it gives one, is said after it.
 func (h *host) Command(command protocol.Command, done func(protocol.Result, error)) {
 	said := func(result protocol.Result, err error) {
-		if err == nil && result.Said != "" {
+		switch {
+		case err != nil || result.Said == "":
+		case command.Gesture != "" && command.Gesture == h.saidGesture:
+			h.frame.StatusAgain(result.Said, result.Touched)
+		default:
 			h.frame.StatusAbout(result.Said, result.Touched)
+		}
+		if err == nil && result.Said != "" {
+			h.saidGesture = command.Gesture
 		}
 		if done != nil {
 			done(result, err)

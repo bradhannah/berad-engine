@@ -77,7 +77,7 @@ func (s *State) paste(ctx *frame.Context) {
 		return
 	}
 	if kind, refused := s.notOffered(held.Nodes); refused {
-		ctx.Frame.Status("This workflow has no " + kind + ", so nothing was pasted.")
+		ctx.Frame.Refuse("This workflow has no " + kind + ", so nothing was pasted.")
 
 		return
 	}

@@ -1336,7 +1336,9 @@ func (s *State) command(ctx *frame.Context, edit, gesture string, args any, done
 	if gesture == "" {
 		gesture = s.joining
 	}
-	command := protocol.Command{Document: s.document, Edit: edit, Gesture: gesture, Args: data}
+	command := protocol.Command{
+		Document: s.document, Edit: edit, Gesture: gesture, Args: data, Says: s.sentenceOf(ctx.Docs, args),
+	}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)

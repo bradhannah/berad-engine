@@ -400,7 +400,7 @@ func (f *fixture) carryOutOn(document ids.ULID, edit string, args any) {
 		f.t.Fatal(err)
 	}
 	f.carryOut(frametest.Command{
-		Command: protocol.Command{Document: document, Edit: edit, Gesture: "", Args: data}, Done: nil,
+		Command: protocol.Command{Document: document, Edit: edit, Gesture: "", Args: data, Says: ""}, Done: nil,
 	})
 }
 

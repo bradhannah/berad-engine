@@ -113,6 +113,8 @@ type stroke struct {
 	// left is set while the pointer is off the floor with the button
 	// held: where it comes back in is painted alone, not joined to last.
 	left bool
+	// cells counts the cells the stroke has painted, for its sentence.
+	cells int
 }
 
 type rectDrag struct {
@@ -249,7 +251,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
-		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false},
+		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false, cells: 0},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
 		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
@@ -969,7 +971,7 @@ func (s *State) paintValue() (string, string) {
 func (s *State) updatePaint(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
 	switch {
 	case input.Pressed && onFloor:
-		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: cell, left: false}
+		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: cell, left: false, cells: 0}
 		s.paint(ctx, floorData, []Cell{cell})
 	case s.stroke.active && input.Down && !onFloor:
 		s.stroke.left = true
@@ -1002,13 +1004,37 @@ func (s *State) paint(ctx *frame.Context, floorData *floor.Floor, cells []Cell) 
 	if len(changed) == 0 {
 		return
 	}
+	s.stroke.cells += len(changed)
 	gesture := s.window.String() + "-" + strconv.Itoa(s.stroke.count)
-	s.command(ctx, s.floor, tilefloor.PaintEdit, gesture, tilefloor.PaintArgs{Cells: changed}, nil)
+	says := paintSentence(tile, s.stroke.cells, s.names.Name(s.floor, "this floor"))
+	s.commandSaying(ctx, s.floor, tilefloor.PaintEdit, gesture, says, tilefloor.PaintArgs{Cells: changed}, nil)
+}
+
+// paintSentence says a stroke: how many cells it painted, with what, on
+// which floor (increment 51).
+func paintSentence(tile string, cells int, floorName string) string {
+	counted := strconv.Itoa(cells) + " cells"
+	if cells == 1 {
+		counted = "1 cell"
+	}
+	if tile == "" {
+		return "Cleared " + counted + " on " + floorName
+	}
+
+	return "Painted " + counted + " of " + tileName(tile) + " on " + floorName
 }
 
 // command sends an edit, reporting a refusal in the status bar.
 func (s *State) command(
 	ctx *frame.Context, document ids.ULID, edit, gesture string, args any, done func(protocol.Result),
+) {
+	s.commandSaying(ctx, document, edit, gesture, "", args, done)
+}
+
+// commandSaying sends an edit said in the Map's own words (increment 51),
+// as "Painted 6 cells of Road on Ground floor".
+func (s *State) commandSaying(
+	ctx *frame.Context, document ids.ULID, edit, gesture, says string, args any, done func(protocol.Result),
 ) {
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -1016,7 +1042,7 @@ func (s *State) command(
 
 		return
 	}
-	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data}
+	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: says}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)
@@ -1046,13 +1072,14 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 			return
 		}
 		if _, taken := floorData.AnchorAt(cell.X, cell.Y); taken {
-			ctx.Frame.Status("Another anchor is already there")
+			ctx.Frame.Refuse("Another anchor is already there")
 
 			return
 		}
 		if moved, _, found := floorData.Anchor(drag.id); found {
 			moved.Col, moved.Row = cell.X, cell.Y
-			s.command(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
+			says := fmt.Sprintf("Moved %s to %d, %d", anchorName(moved.Name), cell.X, cell.Y)
+			s.commandSaying(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", says, tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
 		}
 	}
 }
@@ -1064,7 +1091,8 @@ func (s *State) addAnchor(ctx *frame.Context, floorData *floor.Floor, cell Cell)
 	args := tilefloor.AddAnchorArgs{
 		Anchor: floor.Anchor{ID: ids.ULID{}, Name: name, Col: cell.X, Row: cell.Y}, Index: len(floorData.Anchors()),
 	}
-	s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
+	says := fmt.Sprintf("Added %s at %d, %d on %s", anchorName(name), cell.X, cell.Y, s.names.Name(s.floor, "this floor"))
+	s.commandSaying(ctx, s.floor, tilefloor.AddAnchorEdit, "", says, args, func(result protocol.Result) {
 		s.anchor = result.Created
 		s.placement, s.selected = ids.ULID{}, nil
 		if s.nameField.Field.Unsaved() {
@@ -1202,7 +1230,7 @@ func (s *State) saveName(ctx *frame.Context) {
 
 		return
 	}
-	command := protocol.Command{Document: s.floor, Edit: tilefloor.UpdateAnchorEdit, Gesture: "", Args: data}
+	command := protocol.Command{Document: s.floor, Edit: tilefloor.UpdateAnchorEdit, Gesture: "", Args: data, Says: ""}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			s.nameField.Field.Failed()
@@ -1265,7 +1293,7 @@ func (s *State) updateSelect(input *ui.Input, ctx *frame.Context, floorData *flo
 		case input.DoubleClick && !isWallAt(floorData, cell):
 			walls, closed := RoomWalls(floorData, cell)
 			if !closed {
-				ctx.Frame.Status("That space is not closed in by walls and doors")
+				ctx.Frame.Refuse("That space is not closed in by walls and doors")
 
 				return
 			}
@@ -1293,7 +1321,7 @@ func (s *State) updateSelect(input *ui.Input, ctx *frame.Context, floorData *flo
 // applyFamily changes the family of every selected wall in one undo step.
 func (s *State) applyFamily(family string, ctx *frame.Context) {
 	if len(s.selected) == 0 {
-		ctx.Frame.Status("Select walls first: click a wall, double-click a room or drag an area")
+		ctx.Frame.Refuse("Select walls first: click a wall, double-click a room or drag an area")
 
 		return
 	}

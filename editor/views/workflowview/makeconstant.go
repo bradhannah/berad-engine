@@ -195,7 +195,7 @@ func (s *State) updateMakeText(input *ui.Input, ctx *frame.Context, node flow.No
 		return false
 	}
 	if s.form.words == nil {
-		ctx.Frame.Status("Select typed words in the line first.")
+		ctx.Frame.Refuse("Select typed words in the line first.")
 
 		return true
 	}
@@ -465,7 +465,7 @@ func (s *State) useInOthers(ctx *frame.Context) {
 			continue
 		}
 		ctx.Requests.Command(protocol.Command{
-			Document: row.workflow, Edit: workflowplugin.ReplaceEdit, Gesture: others.gesture, Args: data,
+			Document: row.workflow, Edit: workflowplugin.ReplaceEdit, Gesture: others.gesture, Args: data, Says: "",
 		}, ctx.Frame.Report(""))
 	}
 }

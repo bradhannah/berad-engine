@@ -1,8 +1,11 @@
 package orchestrator_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/orchestrator"
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -14,6 +17,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
 // TestChangesAreSaidAndUndoSaysWhich paints a stroke of two cells as one
@@ -65,5 +70,40 @@ func TestEveryEditHasWords(t *testing.T) {
 		if !orchestrator.EditHasWords(edit) {
 			t.Errorf("%s has no words", edit)
 		}
+	}
+}
+
+// paintSaying paints a cell with a sentence of the view's own.
+func paintSaying(t *testing.T, c *client.Client, floor ids.ULID, col int, gesture, says string) protocol.Result {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := c.Command(ctx, protocol.Command{
+		Document: floor, Edit: tilefloor.PaintEdit, Gesture: gesture,
+		Args: paintArgs(t, tilefloor.Cell{Col: col, Row: 1, Layer: tilefloor.LayerGround, Tile: "wall"}), Says: says,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return result
+}
+
+// TestAViewSaysItsOwnSentence says a change in the view's words in place of
+// the orchestrator's, and the latest of a stroke's sentences is the step's,
+// which Undo answers with (increment 51).
+func TestAViewSaysItsOwnSentence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	createProject(t, dir)
+	h := start(t, dir, nil)
+	view := h.dial(t, "map:own")
+	if result := paintSaying(t, view, h.floor, 1, "stroke", "Painted 1 cell of Wall on Floor 1"); result.Said !=
+		"Painted 1 cell of Wall on Floor 1" {
+		t.Fatalf("the view's sentence is said: %q", result.Said)
+	}
+	paintSaying(t, view, h.floor, 2, "stroke", "Painted 2 cells of Wall on Floor 1")
+	if result, err := undo(t, view); err != nil || result.Said != "Painted 2 cells of Wall on Floor 1" {
+		t.Fatalf("undo says the whole stroke: %+v %v", result, err)
 	}
 }

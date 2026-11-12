@@ -292,11 +292,11 @@ func (s *State) giveUpStep(ctx *frame.Context) {
 	}
 	s.preview.paused, s.preview.stepping = true, false
 	if stopped {
-		ctx.Frame.Status("Step gave up: the clock is stopped, so what waits on it never ends. Start the clock, then step.")
+		ctx.Frame.Refuse("Step gave up: the clock is stopped, so what waits on it never ends. Start the clock, then step.")
 
 		return
 	}
-	ctx.Frame.Status("Step gave up: the watched NPC stayed on the same node for a day of ticks.")
+	ctx.Frame.Refuse("Step gave up: the watched NPC stayed on the same node for a day of ticks.")
 }
 
 // hear plays the cues NPCs asked for in one tick, each once however many
@@ -371,7 +371,7 @@ func (s *State) startStep(ctx *frame.Context) {
 		return
 	}
 	if watched.workflow == nil {
-		ctx.Frame.Status("Cannot step: the watched NPC has no behaviour to follow.")
+		ctx.Frame.Refuse("Cannot step: the watched NPC has no behaviour to follow.")
 
 		return
 	}

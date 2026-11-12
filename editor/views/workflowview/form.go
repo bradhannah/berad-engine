@@ -906,13 +906,17 @@ func (s *State) Save(ctx *frame.Context) bool {
 	for _, slot := range slots {
 		slot.saving = true
 	}
-	data, err := json.Marshal(workflowplugin.ReplaceArgs{Node: changed})
+	args := workflowplugin.ReplaceArgs{Node: changed}
+	data, err := json.Marshal(args)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
 		return false
 	}
-	command := protocol.Command{Document: s.document, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data}
+	command := protocol.Command{
+		Document: s.document, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data,
+		Says: s.sentenceOf(ctx.Docs, args),
+	}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			for _, field := range saving {

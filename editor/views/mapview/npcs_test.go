@@ -183,7 +183,7 @@ func TestPlacingInItsZone(t *testing.T) {
 	f.click("npc:Customer")
 	f.click("cell:3,3")
 	if added := f.requests.Of(tilefloor.AddPlacementEdit); len(added) != 0 ||
-		f.status() != "Customer lives in Harbour. To place it here, change its zone in its details." {
+		f.status() != "Refused: Customer lives in Harbour. To place it here, change its zone in its details." {
 		t.Fatalf("an NPC living elsewhere is refused: %d sent, %q", len(added), f.status())
 	}
 	f.click("npc:Ada Clerk")

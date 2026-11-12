@@ -687,7 +687,7 @@ func (s *State) declareValue(ctx *frame.Context, nodeID ids.ULID, param string, 
 
 		return
 	}
-	command := protocol.Command{Document: list.Document, Edit: list.Edit, Gesture: made.gesture, Args: data}
+	command := protocol.Command{Document: list.Document, Edit: list.Edit, Gesture: made.gesture, Args: data, Says: ""}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)

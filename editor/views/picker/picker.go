@@ -207,7 +207,7 @@ func (p *Picker) begin(ctx *frame.Context, start protocol.PickStart) {
 func (p *Picker) chooseZone(ctx *frame.Context) {
 	zones := names(ctx.Docs).OfFormat(zone.FormatName)
 	if len(zones) == 0 {
-		ctx.Frame.Status("There are no zones to pick from. Create one in the project browser.")
+		ctx.Frame.Refuse("There are no zones to pick from. Create one in the project browser.")
 
 		return
 	}

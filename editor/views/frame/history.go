@@ -93,6 +93,20 @@ func (f *Frame) StatusAbout(message string, touched protocol.Touch) {
 	}
 }
 
+// StatusAgain says a change that goes on one said just before, as a stroke
+// does: its line in the log takes the new words, rather than another line
+// being added (increment 51).
+func (f *Frame) StatusAgain(message string, touched protocol.Touch) {
+	last := len(f.history.log) - 1
+	if last < 0 || f.history.log[last].Refusal {
+		f.StatusAbout(message, touched)
+
+		return
+	}
+	f.status, f.statusUntil = message, f.now().Add(statusDuration)
+	f.history.log[last].At, f.history.log[last].Text, f.history.log[last].Touched = f.now(), message, touched
+}
+
 // TakeChosen is the item of the line clicked in History and its name, once:
 // the window asks its view to show it.
 func (f *Frame) TakeChosen() (string, string, bool) {
@@ -103,9 +117,11 @@ func (f *Frame) TakeChosen() (string, string, bool) {
 }
 
 // Refuse shows why something was refused. It stays in the status bar until
-// Dismiss is pressed, and goes into the log as a refusal.
+// Dismiss is pressed, and goes into the log as a refusal. It takes the place
+// of a message said before it, which a later message takes from it again.
 func (f *Frame) Refuse(reason string) {
 	f.history.refusal = reason
+	f.statusUntil = f.now()
 	f.keep(reason, true)
 }
 

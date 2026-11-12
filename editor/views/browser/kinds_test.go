@@ -130,7 +130,8 @@ func TestChoosingWhatFits(t *testing.T) {
 	f.click("row:Harbour patrol", false)
 	f.click("ui:use", false)
 	if got := f.status(); len(f.requests.Of(npcplugin.SetBehaviourEdit)) != 0 ||
-		got != "Harbour patrol runs in Harbour, and Ada Clerk lives in Town. Choose one that runs there or in any zone." {
+		got != "Refused: Harbour patrol runs in Harbour, and Ada Clerk lives in Town. "+
+			"Choose one that runs there or in any zone." {
 		t.Fatalf("a behaviour running elsewhere is refused, saying why: %q", got)
 	}
 	f.click("row:Town", false)

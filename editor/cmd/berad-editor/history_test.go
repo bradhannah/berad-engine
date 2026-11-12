@@ -22,7 +22,8 @@ func TestUndoSaysWhatItTookBack(t *testing.T) {
 	mapScript := script(
 		must("state:loaded", 600), wait(30), keys("3"), drag("cell:4,8", "cell:5,8"), wait(10),
 		must("state:hand:Ground floor · Ground · Road · cell 5, 8: Road", 60),
-		must("state:said:Painted Ground floor", 120), keys("Cmd+Z"), must("state:said:Undid: Painted Ground floor", 120),
+		must("state:said:Painted 2 cells of Road on Ground floor", 120), keys("Cmd+Z"),
+		must("state:said:Undid: Painted 2 cells of Road on Ground floor", 120),
 		click("ui:history"), must("state:history-open", 60), step{Repeat: 2, Screenshot: shot, Front: false},
 		keys("Escape"), wait(5), keys("Cmd+W"), wait(30),
 	)
@@ -47,10 +48,10 @@ func TestClickingAHistoryLineSelectsTheWait(t *testing.T) {
 	workflowScript := script(
 		must("state:loaded", 600), wait(30), drag("port:start:1:next", "canvas:520,160"),
 		must("menu:node-menu", 60), click("menu:node-group:Action"), must("menu:node-kind:wait", 60),
-		click("menu:node-kind:wait"), must("state:nodes:2", 120), must("state:said:Added nodes to", 120),
+		click("menu:node-kind:wait"), must("state:nodes:2", 120), must("state:said:Added a Wait to", 120),
 		click("node:start:1"), must("state:selected:start", 60), click("ui:history"),
-		must("history:Added nodes to", 60), step{Repeat: 2, Screenshot: shot, Front: false},
-		click("history:Added nodes to"), must("state:selected:wait", 120), must("state:said:Selected Wait", 60),
+		must("history:Added a Wait to", 60), step{Repeat: 2, Screenshot: shot, Front: false},
+		click("history:Added a Wait to"), must("state:selected:wait", 120), must("state:said:Selected Wait", 60),
 		wait(10), keys("Cmd+W"), wait(30),
 	)
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})

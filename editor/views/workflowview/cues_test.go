@@ -66,7 +66,7 @@ func (f *fixture) replaceNode(node flow.Node) {
 		f.t.Fatal(err)
 	}
 	f.carryOut(frametest.Command{
-		Command: protocol.Command{Document: workflowID, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data}, Done: nil,
+		Command: protocol.Command{Document: workflowID, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data, Says: ""}, Done: nil,
 	})
 }
 

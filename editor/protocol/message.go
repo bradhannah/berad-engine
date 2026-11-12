@@ -140,6 +140,11 @@ type Command struct {
 	// one undo step. Empty means the command is its own step.
 	Gesture string          `json:"gesture,omitempty"`
 	Args    json.RawMessage `json:"args"`
+	// Says is the change in the view's own words, as "Painted 6 cells of
+	// Road on Ground floor": the orchestrator says it in place of its own
+	// sentence, and one said by a later command of the same gesture
+	// replaces the step's (increment 51).
+	Says string `json:"says,omitempty"`
 }
 
 // The reasons an Undo or Redo gives when there is no step to take back or

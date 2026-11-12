@@ -850,7 +850,7 @@ func (s *State) command(ctx *frame.Context, document ids.ULID, edit, gesture str
 
 		return
 	}
-	ctx.Requests.Command(protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data},
+	ctx.Requests.Command(protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: ""},
 		func(result protocol.Result, err error) {
 			if err != nil {
 				ctx.Frame.Report("")(result, err)
@@ -1089,7 +1089,7 @@ func (s *State) openSelected(ctx *frame.Context) {
 	}
 	view, target, refusal := s.entryWindow(ctx.Docs, entry)
 	if refusal != "" {
-		ctx.Frame.Status(refusal)
+		ctx.Frame.Refuse(refusal)
 
 		return
 	}
@@ -1167,7 +1167,7 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 		return
 	}
 	if everyProjectHolds(entry.ID) {
-		ctx.Frame.Status("Every project holds “" + entry.Name + "”, so it cannot be deleted")
+		ctx.Frame.Refuse("Every project holds “" + entry.Name + "”, so it cannot be deleted")
 
 		return
 	}
@@ -1202,7 +1202,7 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 func (s *State) askDelete(ctx *frame.Context, entry project.Entry, floors int, uses []protocol.Use) {
 	if entry.Format == art.PaletteFormatName && len(uses) > 0 {
 		ctx.Requests.OpenItem(paletteView, entry.ID, paletteview.ItemDelete)
-		ctx.Frame.Status("“" + entry.Name + "” is used. Its Palette Editor lists each use to remove first.")
+		ctx.Frame.Refuse("“" + entry.Name + "” is used. Its Palette Editor lists each use to remove first.")
 
 		return
 	}
