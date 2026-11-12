@@ -105,6 +105,11 @@ Changed after its author tried it, on 2026-11-11:
   the muted ink, which reads at 4.5 to 1 or better on every wash. The
   stronger washes are gone.
 
+  Of the real-window walks run on it, 57 passed. `TestClerkCallsFetchStock`
+  timed out while other editor windows were open beside the run, and
+  passed alone. Eight more could not start: the computer's display had
+  slept ("no monitor was found").
+
 ## Steps
 
 | Step | Builds | Done when | Status |

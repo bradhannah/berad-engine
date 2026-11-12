@@ -517,7 +517,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.startFrame(input, ctx)
-	s.load(ctx.Docs)
+	// The status bar names what is in hand once the frame has moved it.
+	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
 	s.showNode()
 	s.ask(ctx)
 	if s.guard.Active() {
@@ -563,8 +564,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 }
 
 // startFrame takes what a frame starts from: the window's size, the
-// pointer and the sounds; then fades what was lit, and counts a frame since
-// the last nudge.
+// pointer, the sounds and whether the palette is folded; then fades what
+// was lit, counts a frame since the last nudge, and loads the workflow.
 func (s *State) startFrame(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
@@ -572,6 +573,7 @@ func (s *State) startFrame(input *ui.Input, ctx *frame.Context) {
 	s.paletteFolded = s.live == nil && !ctx.Frame.ShowLeft.On
 	s.fade()
 	s.nudges.idle++
+	s.load(ctx.Docs)
 }
 
 // updateTyping runs the palette's search, then the inspector's fields while

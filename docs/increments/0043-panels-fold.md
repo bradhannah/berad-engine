@@ -69,6 +69,9 @@ Chosen while building, for its author to check:
   It used to find the Project's folding with it, which the agreed design
   replaces. Screenshots at 1512 × 916 show a Map with its rail and a
   Workflow with its strip.
+- **Checks:** `make check` passes. The whole real-window suite was not
+  run: the computer's display slept while its author was out, and the
+  editor cannot open a window then.
 
 ## Not in this increment
 
