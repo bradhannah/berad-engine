@@ -74,7 +74,7 @@ func TestAnchorNameSavesAndAsksBeforeLeaving(t *testing.T) {
 	if f.state.Unsaved(f.ctx.Docs) != 1 {
 		t.Fatalf("unsaved %d", f.state.Unsaved(f.ctx.Docs))
 	}
-	f.keys("Tab")
+	f.keys("Escape")
 	f.keys("S")
 	f.click("cell:9,8")
 	f.click("ui:cancel")

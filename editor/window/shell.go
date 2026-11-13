@@ -227,14 +227,15 @@ func (s *shell) Update() error {
 	s.tintTabs()
 	s.layout()
 	s.placeQuick()
-	input := s.readInput(s.target(s.focused()))
+	input := s.readInput(s.target(s.focused(), true))
 	if !s.quickShowing() {
 		s.updateBar(&input)
 		s.updateSplit(&input)
+		s.closeClock(&input, s.focused())
 	}
 	s.layout()
 	focused := s.focused()
-	s.route(input, s.target(focused), focused)
+	s.route(input, s.target(focused, len(input.Presses) > 0 || input.Text != ""), focused)
 	s.tellShown()
 	for _, shown := range s.panes() {
 		s.run(shown)
@@ -270,21 +271,42 @@ func (s *shell) layout() {
 }
 
 // target is the pane that takes the frame's input: the project browser's
-// while quick open shows, the clock's panel while the cursor is over it or
-// its time field is being typed in, and otherwise the focused pane of the
-// tab in front.
-func (s *shell) target(focused *pane) *pane {
+// while quick open shows, the clock's panel while its time field has the
+// keyboard, or while the pointer is over it and no key is pressed, and
+// otherwise the focused pane of the tab in front. Keys stay with the tab in
+// front wherever the pointer rests (increment 59).
+func (s *shell) target(focused *pane, keys bool) *pane {
 	if shown, quick, ok := s.browserPane(); ok && quick.QuickOpen() {
 		return shown
 	}
 	if !s.clockOpen || s.clock == nil {
 		return focused
 	}
-	if image.Pt(ebiten.CursorPosition()).In(s.clock.rect) || s.clock.host.view.Focused() != nil {
+	if s.clock.host.view.Focused() != nil {
+		return s.clock
+	}
+	if !keys && image.Pt(ebiten.CursorPosition()).In(s.clock.rect) {
 		return s.clock
 	}
 
 	return focused
+}
+
+// closeClock closes the clock's panel on a press outside it and the bar,
+// and on Esc while no field has the keyboard (increment 59).
+func (s *shell) closeClock(input *ui.Input, focused *pane) {
+	if !s.clockOpen || s.clock == nil {
+		return
+	}
+	if input.Pressed && !input.Cursor.In(s.clock.rect) && input.Cursor.In(s.area()) {
+		s.clockOpen = false
+
+		return
+	}
+	typing := s.clock.host.view.Focused() != nil || focused != nil && focused.host.view.Focused() != nil
+	if !typing && input.Consume(ui.KeyEscape, ui.Plain()) {
+		s.clockOpen = false
+	}
 }
 
 // readInput reads the frame's input for the focused pane's text field.

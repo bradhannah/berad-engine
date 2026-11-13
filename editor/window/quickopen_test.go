@@ -62,7 +62,7 @@ func TestQuickOpenShowsOverTheTabInFront(t *testing.T) {
 	input := ui.NewInput(image.Pt(0, 0))
 	input.Presses = []ui.Press{ui.ParsePress("Cmd+P")}
 	shown.tabKeys(&input, func(string) {})
-	if !shown.quickShowing() || shown.target(town) != project {
+	if !shown.quickShowing() || shown.target(town, false) != project {
 		t.Fatal("Cmd+P opens the sheet, and the browser's pane takes the input")
 	}
 	shown.placeQuick()

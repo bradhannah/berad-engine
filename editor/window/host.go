@@ -187,9 +187,7 @@ func (h *host) Update() error {
 		h.windowKeys(&input)
 		h.updateQuitDialog(&input)
 	}
-	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
-	h.view.Update(&input, &h.ctx)
-	h.tellRefusal(h.view.Focused())
+	h.runView(&input)
 	h.close()
 	h.reportUnsaved()
 	h.flush()
@@ -211,6 +209,19 @@ func (h *host) Update() error {
 	}
 
 	return nil
+}
+
+// runView runs the view for a frame, then says what its fields had to say:
+// the one with the keyboard, and one the keyboard just left, as Esc leaves
+// it (increment 59).
+func (h *host) runView(input *ui.Input) {
+	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
+	before := h.view.Focused()
+	h.view.Update(input, &h.ctx)
+	h.tellRefusal(before)
+	if after := h.view.Focused(); after != before {
+		h.tellRefusal(after)
+	}
 }
 
 // tellRefusal says in the status bar why the field with the keyboard refused

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -145,11 +146,17 @@ func (d *Dialog) Draw(screen *ebiten.Image, theme *Theme) {
 	}
 }
 
-// Focus tracks which text field in a window has keyboard focus.
+// Focus tracks which text field in a window has keyboard focus. reveal,
+// when set, brings a field Tab moved to into view, as a panel that scrolls
+// does.
 type Focus struct {
 	fields  []*TextField
 	current *TextField
+	reveal  func(*TextField)
 }
+
+// SetReveal sets what brings a field Tab moved to into view.
+func (f *Focus) SetReveal(reveal func(*TextField)) { f.reveal = reveal }
 
 // Register adds the window's fields, in Tab order.
 func (f *Focus) Register(fields ...*TextField) {
@@ -200,6 +207,35 @@ func (f *Focus) Update(input *Input, clipboard textedit.Clipboard) (*TextField, 
 	if outcome == textedit.OutcomeBlur {
 		f.Set(nil)
 	}
+	if f.current != nil {
+		if step := f.current.Field.TakeTab(); step != 0 {
+			f.move(step)
+		}
+	}
 
 	return acted, outcome
+}
+
+// move gives the keyboard to the next field shown, or with Shift the one
+// before, in Tab order, and Reveal brings it into view; at the last or the
+// first it stays, and says so (increment 59). What was typed in the field
+// left waits for Save.
+func (f *Focus) move(step int) {
+	at := slices.Index(f.fields, f.current)
+	for next := at + step; at >= 0 && next >= 0 && next < len(f.fields); next += step {
+		if f.fields[next].Rect.Empty() {
+			continue
+		}
+		f.Set(f.fields[next])
+		if f.reveal != nil {
+			f.reveal(f.fields[next])
+		}
+
+		return
+	}
+	if step > 0 {
+		f.current.Field.Say("This is the last field. Esc leaves it.")
+	} else {
+		f.current.Field.Say("This is the first field. Esc leaves it.")
+	}
 }
