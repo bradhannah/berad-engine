@@ -67,6 +67,12 @@ type documentEntry struct {
 	version  int
 	document model.Document
 	dirty    bool
+	// standIn is set on a document every project holds that stands in for
+	// a file that cannot be read: it is never written (increment 57).
+	standIn bool
+	// unknown is what its file holds that the editor does not know, which
+	// the next save drops, after copying the file to the backups.
+	unknown []string
 }
 
 type window struct {
@@ -110,6 +116,16 @@ type Orchestrator struct {
 	// attentions are items to show in windows being opened, sent once each
 	// joins.
 	attentions map[ids.ULID]string
+	// notices are the lasting notices, oldest first (increment 57).
+	notices []protocol.Notice
+	// held are documents changed both outside the editor and in it, not
+	// written until their author chooses; opening is what keeps the project
+	// from opening as it is, until its author answers.
+	held    map[ids.ULID]bool
+	opening *opening
+	// crashedPanes are the tabs that crashed, by their notice's key, to
+	// reopen when told (increment 60).
+	crashedPanes map[string]hostedPane
 	// removed holds files of deleted, renamed or moved documents, moved to
 	// the backups at the next save.
 	removed map[string]bool
@@ -174,9 +190,10 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		preview:    nil,
 		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir, lengths: newRecordingLengths()},
 		edits:      newAudioEdits(), analyses: newAudioAnalyses(),
-		attentions: map[ids.ULID]string{},
-		removed:    map[string]bool{},
-		folders:    map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
+		attentions: map[ids.ULID]string{}, notices: nil, held: map[ids.ULID]bool{}, opening: nil,
+		crashedPanes: map[string]hostedPane{},
+		removed:      map[string]bool{},
+		folders:      map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
 		seq:      0,
 		stopping: false,
 		quit:     false,
@@ -205,25 +222,54 @@ func (o *Orchestrator) open() error {
 	}
 	o.loadHome()
 	o.loadLayout()
+	o.loadColours()
 
 	return nil
 }
 
+// load reads the project's documents and replays the journal. A file that
+// cannot be read is left out, and a journal that does not fit the files is
+// not applied at all: the project is then held until its author answers
+// (increment 57).
 func (o *Orchestrator) load() error {
 	stored, dirs, err := o.project.loadDocuments(o.cfg.Registry.Formats(), o.cfg.Clock())
 	if err != nil {
 		return err
 	}
+	unreadFiles := slices.Clone(o.project.unread)
 	o.folders = o.foldersOnDisk(dirs)
-	o.tellUnread(o.project.unread)
+	beforeZones := o.decodeStored(stored)
+	if err := o.addRequired(); err != nil {
+		return err
+	}
+	entries, skipped, replayErr := o.replay()
+	if replayErr != nil {
+		o.cfg.Logger.Warn("the journal does not fit the files; loading without it", "error", replayErr)
+		o.docs, o.removed, o.removedDirs, o.seq = map[ids.ULID]*documentEntry{}, map[string]bool{}, map[string]bool{}, 0
+		o.project.unread = unreadFiles
+		o.folders = o.foldersOnDisk(dirs)
+		beforeZones = o.decodeStored(stored)
+		if err := o.addRequired(); err != nil {
+			return err
+		}
+	}
+	o.settleHomes()
+	o.settleRunsIn(beforeZones)
+	o.buildIndex()
+	o.askOpening(journalSaid(entries, replayErr, skipped), replayErr != nil)
+
+	return nil
+}
+
+// decodeStored decodes the documents read from disk. One that cannot be
+// decoded is left out, with why; workflows from before zones are named, to
+// be settled.
+func (o *Orchestrator) decodeStored(stored []storedDocument) map[ids.ULID]bool {
 	beforeZones := map[ids.ULID]bool{}
 	for _, document := range stored {
 		documentType, ok := o.cfg.Registry.Document(document.envelope.Format)
 		if !ok {
 			continue
-		}
-		if document.envelope.Format == flow.FormatName && document.fromVersion < workflowZonesSince {
-			beforeZones[document.envelope.ID] = true
 		}
 		var layout json.RawMessage
 		if document.layout != nil {
@@ -231,7 +277,12 @@ func (o *Orchestrator) load() error {
 		}
 		decoded, err := documentType.DecodeWithLayout(document.envelope.Data, layout)
 		if err != nil {
-			return fmt.Errorf("decode %s: %w", document.path, err)
+			o.project.unread = append(o.project.unread, unreadFile{path: document.path, reason: plainReason(err)})
+
+			continue
+		}
+		if document.envelope.Format == flow.FormatName && document.fromVersion < workflowZonesSince {
+			beforeZones[document.envelope.ID] = true
 		}
 		o.docs[document.envelope.ID] = &documentEntry{
 			info: DocumentInfo{
@@ -247,61 +298,68 @@ func (o *Orchestrator) load() error {
 			version:  document.envelope.Version,
 			document: decoded,
 			dirty:    document.upgraded(),
+			standIn:  false,
+			unknown:  unknownIn(document, decoded),
 		}
 	}
-	if err := o.addRequired(); err != nil {
-		return err
-	}
-	if err := o.replay(); err != nil {
-		return err
-	}
-	o.settleHomes()
-	o.settleRunsIn(beforeZones)
-	o.buildIndex()
 
-	return nil
+	return beforeZones
 }
 
-// replay applies journal entries newer than the saved documents.
-func (o *Orchestrator) replay() error {
+// replay applies journal entries newer than the saved documents. It returns
+// how many entries the journal holds and how many were for documents not in
+// the project, which were skipped; an entry that does not fit fails it.
+func (o *Orchestrator) replay() (int, int, error) {
 	entries, err := o.journal.entries()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
+	skipped := 0
 	for _, entry := range entries {
 		o.seq = max(o.seq, entry.Seq)
 		if isIndex(entry.Document) {
 			if err := o.replayLifecycle(entry); err != nil {
-				return err
+				return len(entries), skipped, err
 			}
 
 			continue
 		}
 		target, found := o.docs[entry.Document]
-		if !found {
+		if !found || target.standIn {
 			o.cfg.Logger.Warn("journal entry for a missing document", "document", entry.Document)
+			skipped++
 
 			continue
 		}
-		if entry.Revision <= target.info.Revision {
-			continue
+		if err := o.replayOne(target, entry); err != nil {
+			return len(entries), skipped, err
 		}
-		if entry.Revision != target.info.Revision+1 {
-			return fmt.Errorf("%w: %s at %d, entry %d", ErrJournalGap, entry.Document, target.info.Revision, entry.Revision)
-		}
-		kind, ok := o.cfg.Registry.Edit(entry.Edit)
-		if !ok {
-			return fmt.Errorf("replay: %w: %s", ErrUnknownEdit, entry.Edit)
-		}
-		if _, err := kind.Apply(target.document, entry.Args); err != nil {
-			return fmt.Errorf("replay %s on %s: %w", entry.Edit, entry.Document, err)
-		}
-		target.info.Revision, target.info.Changed = entry.Revision, o.cfg.Clock()
-		target.dirty = true
 	}
 	if len(entries) > 0 {
 		o.cfg.Logger.Info("recovered edits from the journal", "entries", len(entries))
 	}
+
+	return len(entries), skipped, nil
+}
+
+// replayOne applies one journal entry to its document, unless the document
+// already holds it.
+func (o *Orchestrator) replayOne(target *documentEntry, entry journalEntry) error {
+	if entry.Revision <= target.info.Revision {
+		return nil
+	}
+	if entry.Revision != target.info.Revision+1 {
+		return fmt.Errorf("%w: %s at %d, entry %d", ErrJournalGap, target.info.Name, target.info.Revision, entry.Revision)
+	}
+	kind, ok := o.cfg.Registry.Edit(entry.Edit)
+	if !ok {
+		return fmt.Errorf("replay: %w: %s", ErrUnknownEdit, entry.Edit)
+	}
+	if _, err := kind.Apply(target.document, entry.Args); err != nil {
+		return fmt.Errorf("replay %s on %s: %w", entry.Edit, target.info.Name, err)
+	}
+	target.info.Revision, target.info.Changed = entry.Revision, o.cfg.Clock()
+	target.dirty = true
 
 	return nil
 }
@@ -358,6 +416,8 @@ func (o *Orchestrator) CreateDocument(name string, document model.Document) (ids
 		version:  documentType.Format.Current,
 		document: document,
 		dirty:    true,
+		standIn:  false,
+		unknown:  nil,
 	}
 	if err := o.save(entry); err != nil {
 		return ids.ULID{}, err
@@ -485,13 +545,28 @@ func (o *Orchestrator) closeResources() error {
 // and renamed documents to the backups, then empties the journal. New files
 // are written before old ones move, so a crash in between leaves two copies,
 // which loading resolves, rather than none.
+//
+// Nothing is written while the project waits for its author's answer, and
+// a document changed outside the editor is taken in or held first
+// (increment 57). A held document keeps its changes in the journal, which
+// is then not emptied; a stand-in is never written.
 func (o *Orchestrator) flush() error {
+	if o.opening != nil {
+		return nil
+	}
+	o.checkOutside()
 	var errs []error
 	live := map[string]bool{}
+	keepJournal := false
 	for _, entry := range o.docs {
 		live[entry.info.Path] = true
 		live[layoutPath(entry.info.Path)] = true
-		if !entry.dirty || entry.info.Path == "" {
+		if !entry.dirty || entry.info.Path == "" || entry.standIn {
+			continue
+		}
+		if o.held[entry.info.ID] {
+			keepJournal = true
+
 			continue
 		}
 		if err := o.save(entry); err != nil {
@@ -507,6 +582,9 @@ func (o *Orchestrator) flush() error {
 	}
 	if len(errs) > 0 {
 		return errors.Join(errs...)
+	}
+	if keepJournal {
+		return nil
 	}
 
 	return o.journal.reset()
@@ -551,6 +629,14 @@ func (o *Orchestrator) flushLogged() {
 }
 
 func (o *Orchestrator) save(entry *documentEntry) error {
+	if entry.standIn {
+		return nil
+	}
+	if len(entry.unknown) > 0 {
+		if err := o.keepUnknown(entry); err != nil {
+			return err
+		}
+	}
 	data, err := entry.document.Encode()
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", entry.info.Name, err)
@@ -571,7 +657,7 @@ func (o *Orchestrator) save(entry *documentEntry) error {
 	if err := o.saveLayout(entry); err != nil {
 		return err
 	}
-	entry.dirty = false
+	entry.dirty, entry.unknown = false, nil
 
 	return nil
 }

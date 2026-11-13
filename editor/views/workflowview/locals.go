@@ -220,6 +220,9 @@ func (s *State) updateLocalForm(input *ui.Input, ctx *frame.Context) {
 	case valueform.ChangeValue:
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", localChange(nil, changed, ids.ULID{}), nil)
 	case valueform.ChangeDelete:
+		if s.refuseLocalInUse(ctx, changed) {
+			return
+		}
 		removal := localChange(nil, worldstate.New(ids.ULID{}, "", "", ""), changed.ID)
 		s.command(ctx, workflowplugin.ChangeLocalsEdit, "", removal,
 			func(protocol.Result) { ctx.Frame.Status(localPath(changed) + " deleted. Undo brings it back.") })

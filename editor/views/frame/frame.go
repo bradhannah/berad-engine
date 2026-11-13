@@ -72,6 +72,9 @@ type Questions interface {
 	// Runners asks which NPCs run a workflow, as their behaviour or
 	// through Calls.
 	Runners(workflow ids.ULID, done func([]protocol.Use, error))
+	// OpenUnsaved asks which other windows show a document and hold
+	// unsaved changes to it (increment 58).
+	OpenUnsaved(document ids.ULID, done func([]protocol.Use, error))
 }
 
 // Windows are the requests that open windows (D13).
@@ -246,6 +249,9 @@ type Frame struct {
 	// history is every message the window was given, and the refusal shown
 	// until it is dismissed (increment 39).
 	history historyState
+	// notices is the notice's buttons and how many others last (increment
+	// 57).
+	notices noticeState
 }
 
 // NewFrame returns an empty frame.
@@ -257,6 +263,7 @@ func NewFrame(now func() time.Time) *Frame {
 		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
 		ShowLeft:      &ui.Toggle{ID: "left-panel", Label: "Left panel", Rect: ui.Zero(), On: true},
 		history:       newHistoryState(),
+		notices:       newNoticeState(),
 	}
 }
 
@@ -412,6 +419,9 @@ func (f *Frame) LocateStatus(name string) (image.Point, bool) {
 	if point, found, handled := f.locateHistory(name); handled {
 		return point, found
 	}
+	if point, found, handled := f.locateNotice(name); handled {
+		return point, found
+	}
 	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector, f.ShowLeft} {
 		switch name {
 		case "ui:" + toggle.ID:
@@ -484,6 +494,7 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	if !f.history.dismiss.Rect.Empty() {
 		f.history.dismiss.Draw(screen, theme)
 	}
+	f.drawNotice(screen, theme)
 	if f.history.hand != "" {
 		return
 	}

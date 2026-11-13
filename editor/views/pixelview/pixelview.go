@@ -65,6 +65,11 @@ type State struct {
 	// color is what the pencil and the fill paint with and what the palette
 	// panel shows: clear or a shade.
 	color art.ColorRef
+	// chosen is whether a colour was chosen, or kept from the last time;
+	// keeping is set until a colour chosen is kept; kept is every sprite's
+	// colour as this person last left it (increment 60).
+	chosen, keeping bool
+	kept            protocol.PixelColours
 	// zoom is the whole number each tile pixel is magnified by, zero until
 	// the tile is first fitted; pan moves the tile from the canvas's centre.
 	zoom   int
@@ -106,7 +111,8 @@ func New(window, sprite ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, sprite: sprite, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{},
 		palettes: []ids.ULID{art.DefaultPaletteID()}, first: nil, folds: map[ids.ULID]bool{},
-		tool: ToolPencil, color: clearColor(),
+		tool: ToolPencil, color: clearColor(), chosen: false, keeping: false,
+		kept: protocol.PixelColours{Sprites: nil},
 		zoom: 0, pan: image.Pt(0, 0), wheel: 0,
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0), skipped: 0, pixels: 0},
 		hover:  image.Pt(0, 0), hovering: false,
@@ -180,6 +186,7 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 // Changed keeps the window subscribed to the sprite's tile, every palette,
 // and the zones and floors, and works out which palettes come first.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
+	s.takeKept(update)
 	if update.Event != nil || update.Snapshot != nil {
 		s.syncSubscriptions(ctx)
 	}
@@ -372,6 +379,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updatePanel(input, ctx)
 	s.updateCanvas(input, ctx)
+	s.keepColour(ctx)
 }
 
 // keys handles the window's own keys while no text field has focus: a

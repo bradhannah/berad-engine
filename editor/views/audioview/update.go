@@ -140,7 +140,10 @@ func (s *State) updateFields(input *ui.Input, ctx *frame.Context) {
 		value, _ := s.search.Field.Commit()
 		s.search.Field.SetSaved(value)
 	case field == s.search && outcome == textedit.OutcomeBlur:
+		// Esc clears a search, which waits for no Save.
+		s.search.Field.Revert()
 		s.search.Field.SetSaved("")
+		s.search.Field.TakeRefusal()
 	case field != nil && field != s.search && outcome == textedit.OutcomeCommit:
 		if !s.commitRegionField(field) {
 			s.commitField(ctx, field)

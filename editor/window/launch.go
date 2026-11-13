@@ -32,18 +32,16 @@ func (s *shell) launchRect() image.Rectangle {
 	return image.Rect(right-launchWidth, 0, right, rowHeight)
 }
 
-// pressLaunch launches the game when Launch is pressed, through the project
-// browser's pane, which is always open.
+// pressLaunch launches the game when Launch is pressed, through the
+// focused pane, so it works whichever tabs are open (increment 60).
 func (s *shell) pressLaunch(point image.Point) bool {
 	if !point.In(s.launchRect()) {
 		return false
 	}
-	for _, shown := range s.panes() {
-		if shown.host != nil && shown.host.closeQuits {
-			shown.host.launch()
+	if focused := s.focused(); focused != nil && focused.host != nil {
+		focused.host.launch()
 
-			return true
-		}
+		return true
 	}
 
 	return false

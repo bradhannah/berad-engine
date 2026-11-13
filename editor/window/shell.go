@@ -29,7 +29,10 @@ var errPaneCrashed = errors.New("pane crashed")
 // pane keeps its own connection, so to the orchestrator it is a window; the
 // shell gives each its part of the window, its input and its tab.
 type shell struct {
-	args     Args
+	args Args
+	// hosting is the editor window's own connection, through which it is
+	// asked to show panes (increment 60).
+	hosting  *client.Client
 	registry *plugin.Registry
 	theme    *ui.Theme
 	reader   *inputReader
@@ -126,7 +129,7 @@ type openedPane struct {
 
 func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
-		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
+		args: args, hosting: nil, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
@@ -204,12 +207,7 @@ func (s *shell) receiveOpened() {
 
 func (s *shell) show(opened openedPane) {
 	if opened.err == nil {
-		var err error
-		if opened.args.View == clockview.ViewName && s.clock == nil {
-			err = s.pinClock(opened.conn, opened.args)
-		} else {
-			_, err = s.addPane(opened.conn, opened.args)
-		}
+		err := s.showOpened(opened)
 		if err == nil {
 			return
 		}
@@ -220,21 +218,37 @@ func (s *shell) show(opened openedPane) {
 	}
 }
 
+// showOpened shows a window that connected: the pinned clock, or a pane in
+// a tab, a Project tab reopened becoming the Project tab again.
+func (s *shell) showOpened(opened openedPane) error {
+	if opened.args.View == clockview.ViewName && s.clock == nil {
+		return s.pinClock(opened.conn, opened.args)
+	}
+	shown, err := s.addPane(opened.conn, opened.args)
+	if err == nil {
+		s.becomeProject(shown)
+	}
+
+	return err
+}
+
 // Update runs every pane once per tick. The focused pane gets the frame's
 // input and the others none, so hidden tabs keep working.
 func (s *shell) Update() error {
+	s.drainHosting()
 	s.receiveOpened()
 	s.tintTabs()
 	s.layout()
 	s.placeQuick()
-	input := s.readInput(s.target(s.focused()))
+	input := s.readInput(s.target(s.focused(), true))
 	if !s.quickShowing() {
 		s.updateBar(&input)
 		s.updateSplit(&input)
+		s.closeClock(&input, s.focused())
 	}
 	s.layout()
 	focused := s.focused()
-	s.route(input, s.target(focused), focused)
+	s.route(input, s.target(focused, len(input.Presses) > 0 || input.Text != ""), focused)
 	s.tellShown()
 	for _, shown := range s.panes() {
 		s.run(shown)
@@ -270,21 +284,42 @@ func (s *shell) layout() {
 }
 
 // target is the pane that takes the frame's input: the project browser's
-// while quick open shows, the clock's panel while the cursor is over it or
-// its time field is being typed in, and otherwise the focused pane of the
-// tab in front.
-func (s *shell) target(focused *pane) *pane {
+// while quick open shows, the clock's panel while its time field has the
+// keyboard, or while the pointer is over it and no key is pressed, and
+// otherwise the focused pane of the tab in front. Keys stay with the tab in
+// front wherever the pointer rests (increment 59).
+func (s *shell) target(focused *pane, keys bool) *pane {
 	if shown, quick, ok := s.browserPane(); ok && quick.QuickOpen() {
 		return shown
 	}
 	if !s.clockOpen || s.clock == nil {
 		return focused
 	}
-	if image.Pt(ebiten.CursorPosition()).In(s.clock.rect) || s.clock.host.view.Focused() != nil {
+	if s.clock.host.view.Focused() != nil {
+		return s.clock
+	}
+	if !keys && image.Pt(ebiten.CursorPosition()).In(s.clock.rect) {
 		return s.clock
 	}
 
 	return focused
+}
+
+// closeClock closes the clock's panel on a press outside it and the bar,
+// and on Esc while no field has the keyboard (increment 59).
+func (s *shell) closeClock(input *ui.Input, focused *pane) {
+	if !s.clockOpen || s.clock == nil {
+		return
+	}
+	if input.Pressed && !input.Cursor.In(s.clock.rect) && input.Cursor.In(s.area()) {
+		s.clockOpen = false
+
+		return
+	}
+	typing := s.clock.host.view.Focused() != nil || focused != nil && focused.host.view.Focused() != nil
+	if !typing && input.Consume(ui.KeyEscape, ui.Plain()) {
+		s.clockOpen = false
+	}
 }
 
 // readInput reads the frame's input for the focused pane's text field.
@@ -590,6 +625,9 @@ func (s *shell) Layout(outsideWidth, outsideHeight int) (int, int) {
 // closeAll closes the panes still open when the window closes.
 func (s *shell) closeAll() error {
 	var err error
+	if s.hosting != nil {
+		err = s.hosting.Close()
+	}
 	for _, shown := range s.panes() {
 		s.stats.addLatencies(shown.host.frame.Latencies())
 		err = errors.Join(err, shown.host.sounds.Close(), shown.host.conn.Close())

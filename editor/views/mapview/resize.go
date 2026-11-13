@@ -211,48 +211,72 @@ func (s *State) dragBounds(cursor image.Point) image.Rectangle {
 	return next
 }
 
-// requestResize resizes the current floor. When anchors would be removed it
-// first shows where they are used and asks (D4).
+// requestResize resizes the current floor. When it gives up anything, it
+// first lists all of it, with where its anchors are used, and asks (D4,
+// increment 58). A resize that would leave the player start off the floor
+// is refused. It runs while the floor is read, so it notes what it can see
+// there, and finishResize goes on once the floor is not read.
 func (s *State) requestResize(ctx *frame.Context, floorData *floor.Floor, next image.Rectangle) {
-	resize := pendingResize{floor: s.floor, bounds: next, ground: s.newCellGround(floorData), npcs: 0}
-	for _, placement := range floorData.Placements() {
-		if !image.Pt(placement.Col, placement.Row).In(next) {
-			resize.npcs++
-		}
+	if s.startOff(next) {
+		s.refuseStartOff(ctx)
+
+		return
 	}
-	var lost []floor.Anchor
+	asked := &resizeAsk{
+		resize: pendingResize{floor: s.floor, bounds: next, ground: s.newCellGround(floorData), npcs: 0},
+		from:   floorData.Bounds(), going: s.goesHere(floorData, next), lost: nil,
+	}
+	asked.resize.npcs = len(asked.going.npcs)
 	for _, anchor := range floorData.Anchors() {
 		if !image.Pt(anchor.Col, anchor.Row).In(next) {
-			lost = append(lost, anchor)
+			asked.lost = append(asked.lost, anchor)
 		}
 	}
-	if len(lost) == 0 {
-		s.sendResize(ctx, resize)
+	s.resizeAsked = asked
+}
+
+// finishResize goes on with a resize asked for while the floor was read:
+// it looks at the floors above and below, then resizes, or asks first.
+func (s *State) finishResize(ctx *frame.Context) {
+	asked := s.resizeAsked
+	if asked == nil {
+		return
+	}
+	s.resizeAsked = nil
+	asked.going.leading = s.leadingInto(ctx.Docs, asked.from, asked.resize.bounds)
+	if len(asked.lost) == 0 {
+		if asked.going.empty() {
+			s.sendResize(ctx, asked.resize)
+		} else {
+			s.confirmResize(asked.resize, nil, nil, asked.going)
+		}
 
 		return
 	}
 	var uses []protocol.Use
-	remaining := len(lost)
-	for _, anchor := range lost {
-		ctx.Requests.WhereUsed(resize.floor, anchor.ID.String(), func(found []protocol.Use, err error) {
+	remaining := len(asked.lost)
+	for _, anchor := range asked.lost {
+		ctx.Requests.WhereUsed(asked.resize.floor, anchor.ID.String(), func(found []protocol.Use, err error) {
 			remaining--
 			if err == nil {
 				uses = append(uses, found...)
 			}
 			if remaining == 0 {
-				s.confirmResize(resize, lost, uses)
+				s.confirmResize(asked.resize, asked.lost, uses, asked.going)
 			}
 		})
 	}
 }
 
-func (s *State) confirmResize(resize pendingResize, lost []floor.Anchor, uses []protocol.Use) {
-	names := make([]string, 0, len(lost))
-	for _, anchor := range lost {
-		names = append(names, anchor.Name)
-	}
-	lines := []string{
-		fmt.Sprintf("This removes %d %s: %s.", len(lost), plural(len(lost), "anchor", "anchors"), strings.Join(names, ", ")),
+func (s *State) confirmResize(resize pendingResize, lost []floor.Anchor, uses []protocol.Use, going shrinking) {
+	var lines []string
+	if len(lost) > 0 {
+		names := make([]string, 0, len(lost))
+		for _, anchor := range lost {
+			names = append(names, anchor.Name)
+		}
+		lines = append(lines,
+			fmt.Sprintf("This removes %d %s: %s.", len(lost), plural(len(lost), "anchor", "anchors"), strings.Join(names, ", ")))
 	}
 	if len(uses) > 0 {
 		lines = append(lines, fmt.Sprintf("%s used in %d %s:",
@@ -262,6 +286,7 @@ func (s *State) confirmResize(resize pendingResize, lost []floor.Anchor, uses []
 		}
 		lines = append(lines, "Those references will be broken.")
 	}
+	lines = append(lines, going.said()...)
 	lines = append(lines, "You can undo this.")
 	s.dialog = ui.NewDialog("Resize the floor?", lines,
 		ui.DialogButton("resize", "Resize"), ui.DialogButton(ui.DialogCancel, "Cancel"))

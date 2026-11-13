@@ -58,13 +58,13 @@ func (s *State) tokenOf(docs frame.Docs, ref flow.ValueRef) string {
 	return tokenOpen + "#" + ref.Value.Short(shortID) + tokenClose
 }
 
-// messageText is a message as its field shows it: text as it is, each
-// value as its token.
+// messageText is a message as its field shows it: text as it is, a brace
+// in it as two (increment 60), and each value as its token.
 func (s *State) messageText(docs frame.Docs, segments []flow.Segment) string {
 	var text strings.Builder
 	for _, segment := range segments {
 		if segment.Ref == nil {
-			text.WriteString(segment.Text)
+			text.WriteString(strings.ReplaceAll(segment.Text, tokenOpen, tokenOpen+tokenOpen))
 
 			continue
 		}
@@ -102,8 +102,9 @@ func (s *State) applyMessageField(docs frame.Docs, node flow.Node, field *ui.Tex
 }
 
 // parseMessage reads a message's text: each token a value the workflow can
-// read, by its path, or one the message already holds; the rest text, as
-// typed, so a space before a value inserted later stays.
+// read, by its path, or one the message already holds; two braces one
+// brace of text, as two brackets are one in markup (increment 60); the
+// rest text, as typed, so a space before a value inserted later stays.
 func (s *State) parseMessage(docs frame.Docs, value string, saved []flow.Segment) ([]flow.Segment, string) {
 	known := map[string]flow.ValueRef{}
 	for _, option := range s.valueOptions(docs, roleGive) {
@@ -129,6 +130,12 @@ func (s *State) parseMessage(docs frame.Docs, value string, saved []flow.Segment
 	rest := value
 	for rest != "" {
 		before, after, opened := strings.Cut(rest, tokenOpen)
+		if escaped, brace := strings.CutPrefix(after, tokenOpen); opened && brace {
+			addText(before + tokenOpen)
+			rest = escaped
+
+			continue
+		}
 		token, next, closed := strings.Cut(after, tokenClose)
 		if !opened || !closed {
 			addText(rest)

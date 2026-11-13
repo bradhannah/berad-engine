@@ -207,6 +207,11 @@ func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return h.quitDialog.Locate(value, h.shows())
 	}
+	if h.openingDialog != nil {
+		_, value, _ := strings.Cut(name, ":")
+
+		return h.openingDialog.Locate(value, h.shows())
+	}
 	if found, handled := h.tabState(name); handled {
 		return image.Pt(0, 0), found
 	}

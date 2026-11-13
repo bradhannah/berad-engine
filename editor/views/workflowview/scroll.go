@@ -121,3 +121,22 @@ func (s *State) hasScrollState(state string, _ frame.Docs) (bool, bool) {
 
 	return s.form != nil && s.scrolled.most > 0, true
 }
+
+// revealField scrolls the node inspector so a field Tab moved to shows in
+// its body (increment 59); the next frame lays it out there.
+func (s *State) revealField(field *ui.TextField) {
+	body := s.formBody()
+	if s.form == nil || s.scrolled.most == 0 || field.Rect.Empty() ||
+		field.Rect.Min.Y >= body.Min.Y && field.Rect.Max.Y <= body.Max.Y {
+		return
+	}
+	middle := (field.Rect.Min.Y + field.Rect.Max.Y) / ui.Half
+	s.scrolled.offset = min(max(s.scrolled.offset+middle-(body.Min.Y+body.Max.Y)/ui.Half, 0), s.scrolled.most)
+}
+
+// freshFocus starts the node inspector's fields again, Tab bringing each
+// into view.
+func (s *State) freshFocus() {
+	s.focus = ui.Focus{}
+	s.focus.SetReveal(s.revealField)
+}

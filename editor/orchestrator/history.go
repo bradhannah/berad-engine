@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -181,4 +182,23 @@ func pop(list *undoList, pick func(*undoList) *[]step) (step, bool) {
 
 func itemKey(document ids.ULID, item string) string {
 	return document.String() + "/" + item
+}
+
+// forget drops every undo and redo step that changed a document, whose
+// version they were made for is gone, as when its file was taken in after a
+// change outside the editor (increment 57).
+func (h *history) forget(document ids.ULID) {
+	touches := func(candidate step) bool {
+		for _, applied := range candidate.actions {
+			if applied.document == document {
+				return true
+			}
+		}
+
+		return false
+	}
+	for _, list := range h.groups {
+		list.undo = slices.DeleteFunc(list.undo, touches)
+		list.redo = slices.DeleteFunc(list.redo, touches)
+	}
 }

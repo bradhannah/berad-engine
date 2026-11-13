@@ -34,6 +34,8 @@ func (o *Orchestrator) buildIndex() {
 		version:  1,
 		document: index,
 		dirty:    false,
+		standIn:  false,
+		unknown:  nil,
 	}
 }
 
@@ -130,6 +132,9 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 		return nil, err
 	}
 	if err := o.refuseKept(deletion.ID, entry.document); err != nil {
+		return nil, err
+	}
+	if err := o.refuseOutOfStep(deletion.ID, entry); err != nil {
 		return nil, err
 	}
 	data, err := entry.document.Encode()
@@ -239,6 +244,8 @@ func (o *Orchestrator) createDocument(create projectindex.DocumentArgs) error {
 		version:  documentType.Format.Current,
 		document: document,
 		dirty:    true,
+		standIn:  false,
+		unknown:  nil,
 	}
 
 	return nil
@@ -263,6 +270,7 @@ func (o *Orchestrator) removeDocument(documentID ids.ULID, live bool) {
 				Save:   false,
 				Reason: "“" + entry.info.Name + "” was deleted",
 			}))
+			o.tellClosed(connected, entry.info.Name)
 		}
 	}
 }

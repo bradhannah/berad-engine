@@ -70,3 +70,23 @@ func TestOpeningAtANode(t *testing.T) {
 		t.Fatal("opening at the Log selects it")
 	}
 }
+
+// TestABraceInALine types a line with a brace written as two: it is kept as
+// text, reads with one brace, and shows with two again, while a value beside
+// it still reads as its value (increment 60).
+func TestABraceInALine(t *testing.T) {
+	t.Parallel()
+	f := withNode(t, flow.KindLog)
+	count := worldstate.New(frametest.ID(54), "count", worldstate.ScopeLocal, worldstate.TypeInteger)
+	f.carryOutOn(workflowID, workflowplugin.ChangeLocalsEdit, stateplugin.ChangeArgs{
+		Add: []worldstate.Declaration{count}, Set: nil, Remove: nil,
+	})
+	f.typeInto("param-message", "Use the {{red} door, {local.count}")
+	if !f.has("message=Use the {{red} door, {local.count}") || !f.has("reads=Use the {red} door, 0") {
+		t.Fatalf("two braces are one of text: %q", f.status())
+	}
+	segments, err := f.nth(flow.KindLog, 1).Message()
+	if err != nil || len(segments) != 2 || segments[0].Text != "Use the {red} door, " {
+		t.Fatalf("the line holds one brace as text: %+v %v", segments, err)
+	}
+}

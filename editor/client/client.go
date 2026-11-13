@@ -52,8 +52,10 @@ type Update struct {
 	Result *protocol.Result
 	// Request is the request number Result answers.
 	Request uint64
-	// Snapshot reports a document (re)loaded from a snapshot.
+	// Snapshot reports a document (re)loaded from a snapshot, and Said why
+	// it was sent when no window asked for it (increment 57).
 	Snapshot *ids.ULID
+	Said     string
 	// Session is a session-state update, such as a notice.
 	Session *protocol.Session
 	// Shutdown asks the window to clean up and close.
@@ -302,6 +304,26 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 	return answer.Uses, nil
 }
 
+// OpenUnsaved asks which other windows show a document and hold unsaved
+// changes to it.
+func (c *Client) OpenUnsaved(ctx context.Context, document ids.ULID) ([]protocol.Use, error) {
+	reply, err := c.request(ctx, protocol.KindQuery, protocol.Query{
+		Question: protocol.QuestionOpenUnsaved, Document: document, Item: "",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return nil, rejected(reply)
+	}
+	answer, err := protocol.DecodePayload[protocol.Answer](reply)
+	if err != nil {
+		return nil, err
+	}
+
+	return answer.Uses, nil
+}
+
 // Runners asks which NPCs run a workflow, as their behaviour or through
 // Calls.
 func (c *Client) Runners(ctx context.Context, workflow ids.ULID) ([]protocol.Use, error) {
@@ -426,6 +448,11 @@ func (c *Client) Unsaved(unsaved protocol.Unsaved) error {
 // a crash report with the failure.
 func (c *Client) Crashed(failure string) error {
 	return c.notify(protocol.KindCrashed, protocol.Crashed{Failure: failure})
+}
+
+// NoticeChoice answers a notice with one of its buttons.
+func (c *Client) NoticeChoice(key, action string) error {
+	return c.notify(protocol.KindNoticeChoice, protocol.NoticeChoice{Key: key, Action: action})
 }
 
 // QuitAsk asks what quitting would close: how many windows are open and which

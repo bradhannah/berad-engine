@@ -392,7 +392,7 @@ func newForm(node flow.Node, kind flow.Kind) *form {
 func (s *State) buildForm(docs frame.Docs, node flow.Node) *form {
 	kind, _ := flow.KindOf(node.Kind)
 	built := newForm(node, kind)
-	s.focus = ui.Focus{}
+	s.freshFocus()
 	text := func(id string, multiline bool) *ui.TextField {
 		field := ui.NewTextField(id, textedit.NewField("", multiline, maxTextField), multiline, s.theme)
 		s.focus.Register(field)

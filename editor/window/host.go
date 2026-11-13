@@ -65,9 +65,12 @@ type host struct {
 	// set while the window saves before closing for a quit. reported is the
 	// unsaved changes last told to the orchestrator.
 	quitDialog *ui.Dialog
-	quitAsking bool
-	quitSaving bool
-	reported   protocol.Unsaved
+	// openingDialog asks, in the Project tab, whether to open a project
+	// that cannot open as it is (increment 57).
+	openingDialog *ui.Dialog
+	quitAsking    bool
+	quitSaving    bool
+	reported      protocol.Unsaved
 	// saidGesture is the gesture of the change said last, whose line in
 	// History a later command of the same gesture takes over.
 	saidGesture string
@@ -91,10 +94,8 @@ type host struct {
 	// quit, so the window keeps its tabs as they were (increment 55).
 	shutdown bool
 	// closeQuits makes closing this window quit the editor, as closing the
-	// project browser's tab does; hosts is told of the windows the editor
-	// window is asked to show.
+	// project browser's tab does.
 	closeQuits bool
-	hosts      func(protocol.Host)
 	// saveShot saves a screenshot, of the whole editor window.
 	saveShot func(screen *ebiten.Image, path string) error
 	// tabs counts the editor window's tabs, and tabTint names the tint of
@@ -129,11 +130,12 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
-		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
+		quitDialog: nil, openingDialog: nil, quitAsking: false, quitSaving: false,
+		reported:    protocol.Unsaved{Count: 0, Name: ""},
 		saidGesture: "", saidEdit: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone,
 		squeezed: false,
 		resizing: false, arranged: false, arrangement: nil, shutdown: false,
-		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
+		closeQuits: false, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
 	}
 	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
@@ -176,14 +178,14 @@ func (h *host) Update() error {
 		// reaches the status bar, the folded strip or the window's keys; the
 		// History list takes them while it is open.
 		h.updateStatusBar(&input)
+		h.takeNoticeChoice()
 		h.updateDividers(&input)
 		h.updateFolded(&input)
+		h.updateOpeningDialog(&input)
 		h.windowKeys(&input)
 		h.updateQuitDialog(&input)
 	}
-	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
-	h.view.Update(&input, &h.ctx)
-	h.tellRefusal(h.view.Focused())
+	h.runView(&input)
 	h.close()
 	h.reportUnsaved()
 	h.flush()
@@ -205,6 +207,19 @@ func (h *host) Update() error {
 	}
 
 	return nil
+}
+
+// runView runs the view for a frame, then says what its fields had to say:
+// the one with the keyboard, and one the keyboard just left, as Esc leaves
+// it (increment 59).
+func (h *host) runView(input *ui.Input) {
+	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
+	before := h.view.Focused()
+	h.view.Update(input, &h.ctx)
+	h.tellRefusal(before)
+	if after := h.view.Focused(); after != before {
+		h.tellRefusal(after)
+	}
 }
 
 // tellRefusal says in the status bar why the field with the keyboard refused
@@ -281,10 +296,6 @@ func (h *host) onUpdate(update client.Update) {
 		h.frame.AddLatency(update.Latency)
 	}
 	if update.Host != nil {
-		if h.hosts != nil {
-			h.hosts(*update.Host)
-		}
-
 		return
 	}
 	if update.Result != nil {
@@ -304,22 +315,36 @@ func (h *host) onUpdate(update client.Update) {
 	if update.AudioChanged != nil {
 		h.sounds.Changed()
 	}
-	if update.Session != nil && update.Session.Topic == protocol.TopicLayout {
-		if h.arrangement != nil {
-			h.arrangement(update.Session.Value)
-		}
-
+	if update.Session != nil && h.onSession(*update.Session) {
 		return
 	}
-	if update.Session != nil && update.Session.Topic == protocol.TopicNotice {
-		var notice protocol.Notice
-		if err := json.Unmarshal(update.Session.Value, &notice); err == nil {
-			h.showNotice(notice)
-		}
-
-		return
+	if update.Said != "" {
+		h.frame.Status(update.Said)
 	}
 	h.view.Changed(update, &h.ctx)
+}
+
+// onSession takes what the window itself keeps of the session: the
+// arrangement, the question a project that cannot open asks, and notices.
+// It reports whether it took it, so the view need not see it.
+func (h *host) onSession(update protocol.Session) bool {
+	switch update.Topic {
+	case protocol.TopicLayout:
+		if h.arrangement != nil {
+			h.arrangement(update.Value)
+		}
+	case protocol.TopicOpening:
+		h.takeOpening(update.Value)
+	case protocol.TopicNotice:
+		var notice protocol.Notice
+		if err := json.Unmarshal(update.Value, &notice); err == nil {
+			h.showNotice(notice)
+		}
+	default:
+		return false
+	}
+
+	return true
 }
 
 // showNotice shows a notice in the status bar until another replaces it. A
@@ -327,12 +352,26 @@ func (h *host) onUpdate(update client.Update) {
 // so for a few seconds.
 func (h *host) showNotice(notice protocol.Notice) {
 	if notice.Kind == protocol.NoticeSaved {
-		h.frame.Notice("")
+		h.frame.ShowNotice(protocol.Notice{
+			Kind: "", Text: "", Window: ids.ULID{}, Report: "", Key: "", Actions: nil, More: 0,
+		})
 		h.frame.Status(notice.Text)
 
 		return
 	}
-	h.frame.Notice(notice.Text)
+	h.frame.ShowNotice(notice)
+}
+
+// takeNoticeChoice sends the button pressed on a notice to the
+// orchestrator, which acts on it (increment 57).
+func (h *host) takeNoticeChoice() {
+	key, action, ok := h.frame.TakeNoticeChoice()
+	if !ok {
+		return
+	}
+	if err := h.conn.NoticeChoice(key, action); err != nil {
+		h.frame.Refuse("Could not answer the notice: " + err.Error())
+	}
 }
 
 func (h *host) answer(done func(protocol.Result, error), result protocol.Result) {
@@ -550,6 +589,15 @@ func (h *host) WhereUsed(document ids.ULID, item string, done func([]protocol.Us
 }
 
 // Runners asks which NPCs run a workflow.
+// OpenUnsaved asks which other windows hold unsaved changes to a document.
+func (h *host) OpenUnsaved(document ids.ULID, done func([]protocol.Use, error)) {
+	h.background(func(ctx context.Context) func() {
+		uses, err := h.conn.OpenUnsaved(ctx, document)
+
+		return func() { done(uses, err) }
+	})
+}
+
 func (h *host) Runners(workflow ids.ULID, done func([]protocol.Use, error)) {
 	h.background(func(ctx context.Context) func() {
 		uses, err := h.conn.Runners(ctx, workflow)
@@ -650,6 +698,9 @@ func (h *host) Draw(screen *ebiten.Image) {
 	}
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
+	}
+	if h.openingDialog != nil {
+		h.openingDialog.Draw(screen, h.theme)
 	}
 	h.frames++
 	if h.screenshot != "" && h.frames == screenshotFrame {

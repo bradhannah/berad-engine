@@ -60,22 +60,26 @@ type Args struct {
 func Run(args Args, registry *plugin.Registry) error {
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-	conn, err := connect(ctx, args, registry, true)
+	hosting, err := connectHosting(ctx, args, registry)
 	if err != nil {
 		return err
 	}
+	conn, err := connect(ctx, args, registry, false)
+	if err != nil {
+		return errors.Join(err, hosting.Close())
+	}
 	theme, err := ui.NewTheme()
 	if err != nil {
-		return errors.Join(err, conn.Close())
+		return errors.Join(err, conn.Close(), hosting.Close())
 	}
 	defer theme.Close()
 	shown := newShell(args, registry, theme)
+	shown.hosting = hosting
 	project, err := shown.addPane(conn, args)
 	if err != nil {
-		return errors.Join(err, conn.Close())
+		return errors.Join(err, conn.Close(), hosting.Close())
 	}
 	project.host.closeQuits = true
-	project.host.hosts = shown.host
 	// The pinned clock is a Clock window, always running.
 	project.host.Open(clockview.ViewName, args.Target, false)
 	ebiten.SetWindowTitle(project.host.view.Title(conn))

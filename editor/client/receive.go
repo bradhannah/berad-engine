@@ -53,7 +53,7 @@ func (c *Client) dispatch(message protocol.Message) {
 		c.dispatchPreview(message)
 	case protocol.KindHello, protocol.KindWelcome, protocol.KindSubscribe, protocol.KindCommand,
 		protocol.KindUndo, protocol.KindRedo, protocol.KindOpen, protocol.KindQuery, protocol.KindUnsaved,
-		protocol.KindQuit, protocol.KindAudioEdit, protocol.KindCrashed:
+		protocol.KindQuit, protocol.KindAudioEdit, protocol.KindCrashed, protocol.KindNoticeChoice:
 		return
 	default:
 		return
@@ -126,7 +126,7 @@ func (c *Client) dispatchPick(message protocol.Message) {
 		protocol.KindPreviewStop, protocol.KindPreviewControl, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
 		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness,
-		protocol.KindHost, protocol.KindCrashed:
+		protocol.KindHost, protocol.KindCrashed, protocol.KindNoticeChoice:
 		return
 	default:
 		return
@@ -163,7 +163,7 @@ func (c *Client) dispatchPreview(message protocol.Message) {
 		protocol.KindPickAnswer, protocol.KindPickCancel, protocol.KindUnsaved, protocol.KindQuitAsk,
 		protocol.KindQuit, protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit,
 		protocol.KindAudioChanged, protocol.KindAudioAnalysis, protocol.KindAudioCheck, protocol.KindAudioLoudness,
-		protocol.KindHost, protocol.KindCrashed:
+		protocol.KindHost, protocol.KindCrashed, protocol.KindNoticeChoice:
 		return
 	default:
 		return
@@ -188,6 +188,7 @@ func (c *Client) onSnapshot(message protocol.Message) {
 		document := snapshot.Document
 		update := newUpdate()
 		update.Snapshot = &document
+		update.Said = snapshot.Said
 		c.emit(update)
 	}
 	if !resync {
@@ -331,7 +332,7 @@ func (c *Client) emit(update Update) {
 
 func newUpdate() Update {
 	return Update{
-		Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Session: nil, Shutdown: nil,
+		Event: nil, Latency: 0, Result: nil, Request: 0, Snapshot: nil, Said: "", Session: nil, Shutdown: nil,
 		Attention: false, Item: "", AudioChanged: nil, PickStart: nil, PickAnswer: nil, PickCancel: nil,
 		PreviewStart: nil, PreviewState: nil, PreviewStop: nil, PreviewControl: nil, Host: nil,
 	}
