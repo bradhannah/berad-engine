@@ -63,6 +63,16 @@ func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 		return
 	}
 	o.record(message.from, directionIn, message.message)
+	if o.opening != nil && changes(message.message.Kind) {
+		o.reply(message.from, message.message.Request, reasonNotOpen)
+
+		return
+	}
+	o.dispatch(ctx, message)
+}
+
+// dispatch carries out a message from a window.
+func (o *Orchestrator) dispatch(ctx context.Context, message inbound) {
 	request := message.message.Request
 	switch message.message.Kind {
 	case protocol.KindSubscribe:
@@ -84,8 +94,9 @@ func (o *Orchestrator) handle(ctx context.Context, message inbound) {
 	case protocol.KindPreviewStart, protocol.KindPreviewState, protocol.KindPreviewStop,
 		protocol.KindPreviewControl:
 		o.handlePreview(message.from, message.message)
-	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit, protocol.KindCrashed:
-		o.handleQuit(message.from, message.message)
+	case protocol.KindUnsaved, protocol.KindQuitAsk, protocol.KindQuit, protocol.KindCrashed,
+		protocol.KindNoticeChoice:
+		o.handleWindow(message.from, message.message)
 	case protocol.KindAudioLibrary, protocol.KindRecording, protocol.KindAudioEdit, protocol.KindAudioAnalysis,
 		protocol.KindAudioCheck, protocol.KindAudioLoudness:
 		o.handleAudio(ctx, message.from, message.message)
@@ -111,13 +122,7 @@ func (o *Orchestrator) subscribe(from *window, message protocol.Message) {
 
 		return
 	}
-	data, err := entry.document.Encode()
-	if err != nil {
-		o.reply(from, message.Request, err.Error())
-
-		return
-	}
-	layout, err := model.LayoutOf(entry.document)
+	snapshot, err := snapshotOf(entry)
 	if err != nil {
 		o.reply(from, message.Request, err.Error())
 
@@ -129,14 +134,7 @@ func (o *Orchestrator) subscribe(from *window, message protocol.Message) {
 		o.subscribed[request.Document] = subscribers
 	}
 	subscribers[from.id] = from
-	o.send(from, mustMessage(protocol.KindSnapshot, message.Request, protocol.Snapshot{
-		Document: entry.info.ID,
-		Format:   entry.info.Format,
-		Name:     entry.info.Name,
-		Revision: entry.info.Revision,
-		Data:     data,
-		Layout:   layout,
-	}))
+	o.send(from, mustMessage(protocol.KindSnapshot, message.Request, snapshot))
 }
 
 func (o *Orchestrator) command(from *window, message protocol.Message) {
@@ -487,22 +485,11 @@ func (o *Orchestrator) tellUnread(unread []unreadFile) {
 	if len(unread) > 1 {
 		text = "Left out of the project, as they could not be read: "
 	}
-	o.publishNotice(protocol.Notice{
-		Kind: protocol.NoticeFilesLeftOut, Window: ids.ULID{}, Report: "",
-		Text: text + strings.Join(named, "; ") + ". Fix what is wrong in the file, then open the project again.",
+	o.addNotice(protocol.Notice{
+		Kind: protocol.NoticeFilesLeftOut, Window: ids.ULID{}, Report: "", Key: "", More: 0,
+		Text:    text + strings.Join(named, "; ") + ". Fix what is wrong in the file, then open the project again.",
+		Actions: []protocol.NoticeAction{dismissButton()},
 	})
-}
-
-// shownNotice returns the notice windows show now, of no kind when none.
-func (o *Orchestrator) shownNotice() protocol.Notice {
-	var shown protocol.Notice
-	if value, kept := o.session[protocol.TopicNotice]; kept {
-		if err := json.Unmarshal(value, &shown); err != nil {
-			o.cfg.Logger.Error("decode notice", "error", err)
-		}
-	}
-
-	return shown
 }
 
 // tellSaving tells every window that a save failed, with the first reason
@@ -511,7 +498,6 @@ func (o *Orchestrator) shownNotice() protocol.Notice {
 // succeeds tells the windows so, which ends the notice; windows opened
 // later hear nothing of it.
 func (o *Orchestrator) tellSaving(failure error) {
-	shown := o.shownNotice()
 	if failure != nil {
 		reason, more, _ := strings.Cut(failure.Error(), "\n")
 		if more != "" {
@@ -519,19 +505,33 @@ func (o *Orchestrator) tellSaving(failure error) {
 		}
 		text := "Changes are not reaching the project's files: " + reason +
 			". They are kept in the journal, and the editor keeps trying."
-		if shown.Kind != protocol.NoticeSaveFailed || shown.Text != text {
-			o.publishNotice(protocol.Notice{Kind: protocol.NoticeSaveFailed, Text: text, Window: ids.ULID{}, Report: ""})
+		if !o.lastingAs(protocol.NoticeSaveFailed, text) {
+			o.addNotice(protocol.Notice{
+				Kind: protocol.NoticeSaveFailed, Text: text, Window: ids.ULID{}, Report: "", Key: "", Actions: nil, More: 0,
+			})
 		}
 
 		return
 	}
-	if shown.Kind != protocol.NoticeSaveFailed {
+	if !o.lasting(protocol.NoticeSaveFailed) {
 		return
 	}
-	o.publishNotice(protocol.Notice{
-		Kind: protocol.NoticeSaved, Text: "Saved: the project's files are up to date again.", Window: ids.ULID{}, Report: "",
+	o.tellWindows(protocol.Notice{
+		Kind: protocol.NoticeSaved, Text: "Saved: the project's files are up to date again.", Window: ids.ULID{},
+		Report: "", Key: "", Actions: nil, More: 0,
 	})
-	delete(o.session, protocol.TopicNotice)
+	o.endNotice(protocol.NoticeSaveFailed)
+}
+
+// lastingAs reports whether the notice with a key lasts, saying text.
+func (o *Orchestrator) lastingAs(key, text string) bool {
+	for _, kept := range o.notices {
+		if kept.Key == key {
+			return kept.Text == text
+		}
+	}
+
+	return false
 }
 
 func (o *Orchestrator) openWindow(from *window, message protocol.Message) {
@@ -618,4 +618,23 @@ func (o *Orchestrator) record(target *window, direction string, message protocol
 			o.cfg.Logger.Warn("wire tap failed", "error", err)
 		}
 	}
+}
+
+// changes reports whether a message asks to change the project, which
+// waits while the project cannot open as it is (increment 57).
+func changes(kind protocol.Kind) bool {
+	return slices.Contains([]protocol.Kind{
+		protocol.KindCommand, protocol.KindUndo, protocol.KindRedo, protocol.KindAudioEdit,
+	}, kind)
+}
+
+// handleWindow carries out what a window says of itself: its unsaved
+// changes, quitting, a crash, and a notice answered.
+func (o *Orchestrator) handleWindow(from *window, message protocol.Message) {
+	if message.Kind == protocol.KindNoticeChoice {
+		o.noticeChoice(message)
+
+		return
+	}
+	o.handleQuit(from, message)
 }

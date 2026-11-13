@@ -70,6 +70,9 @@ const (
 	// KindCrashed tells the orchestrator a pane failed and is closing, so it
 	// saves a crash report (increment 13).
 	KindCrashed Kind = "crashed"
+	// KindNoticeChoice answers a notice with one of its buttons, or the
+	// question a project that cannot open as it is asks (increment 57).
+	KindNoticeChoice Kind = "notice-choice"
 	// The audio messages (D8): a window asks for the project's audio
 	// library, the cues it can play, and for a recording's bytes, a part at
 	// a time. The orchestrator replies to each with the same kind, filled in.
@@ -130,6 +133,10 @@ type Snapshot struct {
 	Data     json.RawMessage `json:"data"`
 	// Layout is the document's layout, for documents that keep one (D17).
 	Layout json.RawMessage `json:"layout,omitempty"`
+	// Said, on a snapshot no window asked for, says why the document was
+	// sent again, as when its file changed outside the editor and was taken
+	// in (increment 57).
+	Said string `json:"said,omitempty"`
 }
 
 // Command asks the orchestrator to apply one edit to one document.
@@ -337,12 +344,66 @@ const (
 // when it opened, because they could not be read as documents.
 const NoticeFilesLeftOut = "files-left-out"
 
-// Notice is a user-facing message, published on TopicNotice.
+// NoticeChangedOnDisk is the notice kind for a document whose file changed
+// outside the editor while it had changes of its own, NoticeUnknownFields
+// for files holding what the editor does not know, and NoticeStandIn for a
+// document every project holds that stands in for a file that cannot be
+// read (increment 57).
+const (
+	NoticeChangedOnDisk = "changed-on-disk"
+	NoticeUnknownFields = "unknown-fields"
+	NoticeStandIn       = "stand-in"
+)
+
+// Notice is a user-facing message, published on TopicNotice. Key tells
+// notices apart, for a choice to name; Actions are its buttons; More is how
+// many other notices last beside it, newest first (increment 57).
 type Notice struct {
-	Kind   string   `json:"kind"`
-	Text   string   `json:"text"`
-	Window ids.ULID `json:"window"`
-	Report string   `json:"report,omitempty"`
+	Kind    string         `json:"kind"`
+	Text    string         `json:"text"`
+	Window  ids.ULID       `json:"window"`
+	Report  string         `json:"report,omitempty"`
+	Key     string         `json:"key,omitempty"`
+	Actions []NoticeAction `json:"actions,omitempty"`
+	More    int            `json:"more,omitempty"`
+}
+
+// NoticeAction is a button on a notice.
+type NoticeAction struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// NoticeChoice is the button pressed on the notice with Key.
+type NoticeChoice struct {
+	Key    string `json:"key"`
+	Action string `json:"action"`
+}
+
+// TopicOpening is the session topic of a project that cannot open as it
+// is, an Opening, kept until its author answers (increment 57).
+const TopicOpening = "opening"
+
+// OpeningKey is the key a NoticeChoice answering an Opening carries, with
+// OpenAnyway to open without what could not be read.
+const (
+	OpeningKey = "opening"
+	OpenAnyway = "open"
+)
+
+// Opening is what keeps a project from opening as it is: the files that
+// cannot be read, each with why, and the journal when it does not fit the
+// files.
+type Opening struct {
+	Project string       `json:"project"`
+	Files   []UnreadFile `json:"files,omitempty"`
+	Journal string       `json:"journal,omitempty"`
+}
+
+// UnreadFile is a file left out of the project, and why.
+type UnreadFile struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 // Open asks the orchestrator to open a window. Opening a view and target that

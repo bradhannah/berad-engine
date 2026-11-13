@@ -52,7 +52,15 @@ func TestAFileThatCannotBeReadIsNamed(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := start(t, dir, nil)
-	notice := nextNotice(t, h.dial(t, ""))
+	view := h.dial(t, "")
+	asked := nextOpening(t, view)
+	if len(asked.Files) != 2 {
+		t.Fatalf("the question names both files: %+v", asked)
+	}
+	if err := view.NoticeChoice(protocol.OpeningKey, protocol.OpenAnyway); err != nil {
+		t.Fatal(err)
+	}
+	notice := nextNotice(t, view)
 	if notice.Kind != protocol.NoticeFilesLeftOut {
 		t.Fatalf("the notice is about files left out: %+v", notice)
 	}

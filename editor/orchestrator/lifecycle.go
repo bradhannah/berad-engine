@@ -34,6 +34,8 @@ func (o *Orchestrator) buildIndex() {
 		version:  1,
 		document: index,
 		dirty:    false,
+		standIn:  false,
+		unknown:  nil,
 	}
 }
 
@@ -239,6 +241,8 @@ func (o *Orchestrator) createDocument(create projectindex.DocumentArgs) error {
 		version:  documentType.Format.Current,
 		document: document,
 		dirty:    true,
+		standIn:  false,
+		unknown:  nil,
 	}
 
 	return nil

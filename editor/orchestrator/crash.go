@@ -33,11 +33,14 @@ func (o *Orchestrator) crashed(from *window, message protocol.Message) {
 		o.cfg.Logger.Error("could not write a crash report", "window", from.id, "error", err)
 	}
 	o.cfg.Logger.Warn("a tab closed unexpectedly", "window", from.id, "view", from.hello.View, "report", reportPath)
-	o.publishNotice(protocol.Notice{
-		Kind:   protocol.NoticeWindowCrashed,
-		Text:   "A " + from.hello.View + " tab closed unexpectedly. A failure report was saved.",
-		Window: from.id,
-		Report: reportPath,
+	o.addNotice(protocol.Notice{
+		Kind:    protocol.NoticeWindowCrashed,
+		Text:    "A " + from.hello.View + " tab closed unexpectedly. A failure report was saved.",
+		Window:  from.id,
+		Report:  reportPath,
+		Key:     "crash:" + from.id.String(),
+		Actions: []protocol.NoticeAction{dismissButton()},
+		More:    0,
 	})
 }
 

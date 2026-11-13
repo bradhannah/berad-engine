@@ -52,8 +52,10 @@ type Update struct {
 	Result *protocol.Result
 	// Request is the request number Result answers.
 	Request uint64
-	// Snapshot reports a document (re)loaded from a snapshot.
+	// Snapshot reports a document (re)loaded from a snapshot, and Said why
+	// it was sent when no window asked for it (increment 57).
 	Snapshot *ids.ULID
+	Said     string
 	// Session is a session-state update, such as a notice.
 	Session *protocol.Session
 	// Shutdown asks the window to clean up and close.
@@ -426,6 +428,11 @@ func (c *Client) Unsaved(unsaved protocol.Unsaved) error {
 // a crash report with the failure.
 func (c *Client) Crashed(failure string) error {
 	return c.notify(protocol.KindCrashed, protocol.Crashed{Failure: failure})
+}
+
+// NoticeChoice answers a notice with one of its buttons.
+func (c *Client) NoticeChoice(key, action string) error {
+	return c.notify(protocol.KindNoticeChoice, protocol.NoticeChoice{Key: key, Action: action})
 }
 
 // QuitAsk asks what quitting would close: how many windows are open and which
