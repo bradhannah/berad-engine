@@ -171,7 +171,10 @@ type State struct {
 	placement ids.ULID
 	placing   *placementDrag
 	names     *project.Index
-	placedNPC ids.ULID
+	// resizeAsked is a resize asked for while the floor was read, finished
+	// once it is not (increment 58).
+	resizeAsked *resizeAsk
+	placedNPC   ids.ULID
 	// zoneNPCs counts how often each NPC is placed on the zone's floors,
 	// and floorsOf how many floors in the project place the selected
 	// placement's NPC, as asked for floorsFor: an NPC is placed once in the
@@ -256,7 +259,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		outside: false,
 		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false, cells: 0},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
-		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
+		names: project.NewIndex(nil), resizeAsked: nil, placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
 		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
 		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
 		menu: nil, openLoaded: ids.ULID{},
@@ -692,6 +695,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if !loaded {
 		s.hovering, s.outside = false, false
 	}
+	s.finishResize(ctx)
 	s.guardAnchor()
 }
 

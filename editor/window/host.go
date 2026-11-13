@@ -584,6 +584,15 @@ func (h *host) WhereUsed(document ids.ULID, item string, done func([]protocol.Us
 }
 
 // Runners asks which NPCs run a workflow.
+// OpenUnsaved asks which other windows hold unsaved changes to a document.
+func (h *host) OpenUnsaved(document ids.ULID, done func([]protocol.Use, error)) {
+	h.background(func(ctx context.Context) func() {
+		uses, err := h.conn.OpenUnsaved(ctx, document)
+
+		return func() { done(uses, err) }
+	})
+}
+
 func (h *host) Runners(workflow ids.ULID, done func([]protocol.Use, error)) {
 	h.background(func(ctx context.Context) func() {
 		uses, err := h.conn.Runners(ctx, workflow)

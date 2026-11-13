@@ -134,6 +134,9 @@ func (o *Orchestrator) prepareDelete(args json.RawMessage) (json.RawMessage, err
 	if err := o.refuseKept(deletion.ID, entry.document); err != nil {
 		return nil, err
 	}
+	if err := o.refuseOutOfStep(deletion.ID, entry); err != nil {
+		return nil, err
+	}
 	data, err := entry.document.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode %s: %w", entry.info.Name, err)
@@ -267,6 +270,7 @@ func (o *Orchestrator) removeDocument(documentID ids.ULID, live bool) {
 				Save:   false,
 				Reason: "“" + entry.info.Name + "” was deleted",
 			}))
+			o.tellClosed(connected, entry.info.Name)
 		}
 	}
 }

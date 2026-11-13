@@ -1177,11 +1177,19 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 		targets = append(targets, tile)
 	}
 	containing, _ := s.zoneOf(ctx.Docs, entry.ID)
-	var uses []protocol.Use
-	remaining := len(targets)
+	var uses, open []protocol.Use
+	// Each target is asked about twice: where it is used, and which tabs
+	// hold unsaved changes to it.
+	const questions = 2
+	remaining := questions * len(targets)
+	answered := func() {
+		remaining--
+		if remaining == 0 {
+			s.askDelete(ctx, entry, s.namesOf(ctx.Docs, floors), uses, open)
+		}
+	}
 	for _, target := range targets {
 		ctx.Requests.WhereUsed(target, "", func(found []protocol.Use, err error) {
-			remaining--
 			if err == nil {
 				for _, use := range found {
 					if use.Document != containing && use.Document != entry.ID && !contains(targets, use.Document) {
@@ -1189,24 +1197,41 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 					}
 				}
 			}
-			if remaining == 0 {
-				s.askDelete(ctx, entry, len(floors), uses)
+			answered()
+		})
+		ctx.Requests.OpenUnsaved(target, func(found []protocol.Use, err error) {
+			if err == nil {
+				open = append(open, found...)
 			}
+			answered()
 		})
 	}
+}
+
+// namesOf names documents by the project index, in order.
+func (s *State) namesOf(docs frame.Docs, documents []ids.ULID) []string {
+	names := make([]string, 0, len(documents))
+	index := s.index(docs)
+	for _, documentID := range documents {
+		if entry, ok := index.Entry(documentID); ok {
+			names = append(names, entry.Name)
+		}
+	}
+
+	return names
 }
 
 // askDelete asks before deleting, once where it is used is known. A palette
 // that is used opens in its Palette Editor instead, which lists each use to
 // remove first.
-func (s *State) askDelete(ctx *frame.Context, entry project.Entry, floors int, uses []protocol.Use) {
+func (s *State) askDelete(ctx *frame.Context, entry project.Entry, floors []string, uses, open []protocol.Use) {
 	if entry.Format == art.PaletteFormatName && len(uses) > 0 {
 		ctx.Requests.OpenItem(paletteView, entry.ID, paletteview.ItemDelete)
 		ctx.Frame.Refuse("“" + entry.Name + "” is used. Its Palette Editor lists each use to remove first.")
 
 		return
 	}
-	s.confirmDelete(entry, floors, uses)
+	s.confirmDelete(entry, floors, uses, open)
 }
 
 func contains(list []ids.ULID, id ids.ULID) bool {
@@ -1219,11 +1244,21 @@ func contains(list []ids.ULID, id ids.ULID) bool {
 	return false
 }
 
-func (s *State) confirmDelete(entry project.Entry, floors int, uses []protocol.Use) {
+// confirmDelete asks before deleting, naming all that goes: a zone's
+// floors, the tabs holding unsaved changes to it, and where it is used
+// (increment 58).
+func (s *State) confirmDelete(entry project.Entry, floors []string, uses, open []protocol.Use) {
 	title := "Delete “" + entry.Name + "”?"
 	lines := []string{}
-	if floors > 0 {
-		lines = append(lines, fmt.Sprintf("Its %d %s will be deleted too.", floors, plural(floors, "floor", "floors")))
+	if len(floors) > 0 {
+		lines = append(lines, fmt.Sprintf("Its %d %s go with it: %s.", len(floors),
+			plural(len(floors), "floor", "floors"), strings.Join(floors, ", ")))
+	}
+	if len(open) > 0 {
+		lines = append(lines, "Open with unsaved changes, which go too:")
+		for _, tab := range open {
+			lines = append(lines, "  "+tab.Name+" tab · "+tab.Label)
+		}
 	}
 	if len(uses) > 0 {
 		lines = append(lines, fmt.Sprintf("It is used in %d %s:", len(uses), plural(len(uses), "place", "places")))
@@ -1288,7 +1323,12 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 	}
 	switch entry.Format {
 	case zone.FormatName:
+		// Each floor is taken out of the zone before it goes, and the zone
+		// last, as the orchestrator holds a part and what holds it together
+		// (increment 58).
 		for _, floorID := range s.floorsOf(ctx.Docs, documentID) {
+			out := zoneplugin.FloorArgs{Floor: floorID, Index: 0}
+			s.command(ctx, documentID, zoneplugin.RemoveFloorEdit, gesture, out, nil, nil)
 			remove(floorID)
 		}
 	case floor.FormatName:

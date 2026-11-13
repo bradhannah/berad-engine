@@ -123,3 +123,22 @@ func TestAProjectThatCannotOpenAsksFirst(t *testing.T) {
 	}
 	t.Logf("screenshots: %s %s", asked, told)
 }
+
+// TestDeletingAZoneNamesItsFloors asks to delete the sample zone: the
+// question names the floors that go with it, and Cancel leaves everything
+// as it was (increment 58).
+func TestDeletingAZoneNamesItsFloors(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "delete-zone.png")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Sample zone"), wait(5), click("ui:delete"),
+		must("state:dialog-line=go with it: Ground floor", 300), wait(5), shoot(shot), click("ui:cancel"),
+		must("row:Sample zone", 120), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"),
+		wait(60),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}

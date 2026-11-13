@@ -304,6 +304,26 @@ func (c *Client) WhereUsed(ctx context.Context, document ids.ULID, item string) 
 	return answer.Uses, nil
 }
 
+// OpenUnsaved asks which other windows show a document and hold unsaved
+// changes to it.
+func (c *Client) OpenUnsaved(ctx context.Context, document ids.ULID) ([]protocol.Use, error) {
+	reply, err := c.request(ctx, protocol.KindQuery, protocol.Query{
+		Question: protocol.QuestionOpenUnsaved, Document: document, Item: "",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if reply.Kind == protocol.KindResult {
+		return nil, rejected(reply)
+	}
+	answer, err := protocol.DecodePayload[protocol.Answer](reply)
+	if err != nil {
+		return nil, err
+	}
+
+	return answer.Uses, nil
+}
+
 // Runners asks which NPCs run a workflow, as their behaviour or through
 // Calls.
 func (c *Client) Runners(ctx context.Context, workflow ids.ULID) ([]protocol.Use, error) {

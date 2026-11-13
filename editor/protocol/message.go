@@ -355,6 +355,10 @@ const (
 	NoticeStandIn       = "stand-in"
 )
 
+// NoticeTabClosed is the notice kind for a tab closed because its document
+// was deleted (increment 58).
+const NoticeTabClosed = "tab-closed"
+
 // Notice is a user-facing message, published on TopicNotice. Key tells
 // notices apart, for a choice to name; Actions are its buttons; More is how
 // many other notices last beside it, newest first (increment 57).
@@ -441,6 +445,11 @@ const QuestionWhereUsed = "where-used"
 // any number of Calls, labelled RunsByCall. The answer's uses are the NPCs
 // and zones.
 const QuestionRunners = "runners"
+
+// QuestionOpenUnsaved asks which windows show a document and hold unsaved
+// changes to it, other than the window asking, each as a Use: its name, its
+// view as Format and how many changes as Label (increment 58).
+const QuestionOpenUnsaved = "open-unsaved"
 
 // Labels of the NPCs and zones that run a workflow.
 const (

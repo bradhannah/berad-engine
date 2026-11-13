@@ -72,6 +72,9 @@ type Questions interface {
 	// Runners asks which NPCs run a workflow, as their behaviour or
 	// through Calls.
 	Runners(workflow ids.ULID, done func([]protocol.Use, error))
+	// OpenUnsaved asks which other windows show a document and hold
+	// unsaved changes to it (increment 58).
+	OpenUnsaved(document ids.ULID, done func([]protocol.Use, error))
 }
 
 // Windows are the requests that open windows (D13).
