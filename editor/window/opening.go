@@ -12,10 +12,12 @@ import (
 // Open without them, which leaves out what cannot be read and keeps the
 // journal whole in the backups.
 
-// The opening question's buttons, for input scripts.
+// The opening question's buttons, for input scripts, and the width its
+// lines wrap at, inside the dialog's.
 const (
-	openingQuit = "opening-quit"
-	openingOpen = "opening-open"
+	openingQuit  = "opening-quit"
+	openingOpen  = "opening-open"
+	openingLineW = 380
 )
 
 // takeOpening shows the question in the tab that quits the editor when it
@@ -30,28 +32,29 @@ func (h *host) takeOpening(value json.RawMessage) {
 
 		return
 	}
-	h.openingDialog = openingDialog(asked)
+	h.openingDialog = openingDialog(asked, func(line string) []string { return h.theme.Wrap(line, openingLineW) })
 }
 
 // openingDialog names each file that cannot be read and why, and what is
-// wrong with the journal.
-func openingDialog(asked protocol.Opening) *ui.Dialog {
+// wrong with the journal, each wrapped to fit.
+func openingDialog(asked protocol.Opening, wrap func(string) []string) *ui.Dialog {
 	var lines []string
 	if len(asked.Files) > 0 {
 		lines = append(lines, "These cannot be read:")
 		for _, file := range asked.Files {
-			lines = append(lines, "  "+file.Path+" · "+file.Reason)
+			lines = append(lines, wrap(file.Path+" · "+file.Reason)...)
 		}
 	}
 	if asked.Journal != "" {
-		lines = append(lines, asked.Journal+".")
+		lines = append(lines, wrap(asked.Journal+".")...)
 	}
-	lines = append(lines, "", "Open without them: what cannot be read is left out and never written over,")
+	open := "Open without them: what cannot be read is left out and never written over, " +
+		"so that it can be fixed and the project opened again."
 	if asked.Journal != "" {
-		lines = append(lines, "and the journal is kept whole in the backups.")
-	} else {
-		lines = append(lines, "so that it can be fixed and the project opened again.")
+		open = "Open without them: what cannot be read is left out and never written over, " +
+			"and the journal is kept whole in the backups."
 	}
+	lines = append(append(lines, ""), wrap(open)...)
 
 	return ui.NewDialog(asked.Project+" can't open as it is", lines,
 		ui.DialogButton(openingQuit, "Quit"), ui.DialogButton(openingOpen, "Open without them"))

@@ -485,7 +485,7 @@ func TestDeleteZoneNamesAllThatGoes(t *testing.T) {
 		answer(nil, nil)
 	}
 	lines := strings.Join(f.state.DialogLines(), "\n")
-	for _, want := range []string{"Its 1 floor go with it: Ground.", "Town tab · 2 changes"} {
+	for _, want := range []string{"Its floor goes with it: Ground.", "Town tab · 2 changes"} {
 		if !strings.Contains(lines, want) {
 			t.Fatalf("the question names %q:\n%s", want, lines)
 		}

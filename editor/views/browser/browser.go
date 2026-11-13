@@ -1251,8 +1251,9 @@ func (s *State) confirmDelete(entry project.Entry, floors []string, uses, open [
 	title := "Delete “" + entry.Name + "”?"
 	lines := []string{}
 	if len(floors) > 0 {
-		lines = append(lines, fmt.Sprintf("Its %d %s go with it: %s.", len(floors),
-			plural(len(floors), "floor", "floors"), strings.Join(floors, ", ")))
+		counted := plural(len(floors), "floor", strconv.Itoa(len(floors))+" floors")
+		lines = append(lines, fmt.Sprintf("Its %s %s with it: %s.", counted, plural(len(floors), "goes", "go"),
+			strings.Join(floors, ", ")))
 	}
 	if len(open) > 0 {
 		lines = append(lines, "Open with unsaved changes, which go too:")
