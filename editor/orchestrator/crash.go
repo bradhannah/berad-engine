@@ -35,13 +35,14 @@ func (o *Orchestrator) crashed(from *window, message protocol.Message) {
 	o.cfg.Logger.Warn("a tab closed unexpectedly", "window", from.id, "view", from.hello.View, "report", reportPath)
 	o.addNotice(protocol.Notice{
 		Kind:    protocol.NoticeWindowCrashed,
-		Text:    "A " + from.hello.View + " tab closed unexpectedly. A failure report was saved.",
+		Text:    "The " + tabName(from.hello.View) + " tab closed unexpectedly. A failure report was saved.",
 		Window:  from.id,
 		Report:  reportPath,
-		Key:     "crash:" + from.id.String(),
-		Actions: []protocol.NoticeAction{dismissButton()},
+		Key:     crashKeyPrefix + from.id.String(),
+		Actions: []protocol.NoticeAction{{ID: reopenAction, Label: "Reopen"}, dismissButton()},
 		More:    0,
 	})
+	o.crashedPanes[crashKeyPrefix+from.id.String()] = hostedPane{view: from.hello.View, target: from.hello.Target}
 }
 
 func (o *Orchestrator) writeCrashReport(from *window, failure string) (string, error) {
@@ -66,4 +67,43 @@ func (o *Orchestrator) writeCrashReport(from *window, failure string) (string, e
 	}
 
 	return path, nil
+}
+
+// A crashed tab reopens when told (increment 60): its notice offers Reopen,
+// and nothing reopens by itself.
+const (
+	crashKeyPrefix = "crash:"
+	reopenAction   = "reopen"
+)
+
+// reopenCrashed shows a crashed tab's view again, as its notice's Reopen
+// asks, and ends the notice; one that cannot be shown says why.
+func (o *Orchestrator) reopenCrashed(key string) {
+	crashed, known := o.crashedPanes[key]
+	if !known {
+		o.endNotice(key)
+
+		return
+	}
+	if _, err := o.launch(crashed.view, crashed.target); err != nil {
+		o.addNotice(protocol.Notice{
+			Kind: protocol.NoticeWindowCrashed, Window: ids.ULID{}, Report: "", Key: key, More: 0,
+			Text:    "The " + tabName(crashed.view) + " tab closed unexpectedly, and could not be reopened: " + err.Error(),
+			Actions: []protocol.NoticeAction{dismissButton()},
+		})
+
+		return
+	}
+	delete(o.crashedPanes, key)
+	o.endNotice(key)
+}
+
+// tabName names a tab by its view as an author knows it: the project
+// browser is the Project tab.
+func tabName(view string) string {
+	if view == "browser" {
+		return "Project"
+	}
+
+	return view
 }

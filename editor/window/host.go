@@ -94,10 +94,8 @@ type host struct {
 	// quit, so the window keeps its tabs as they were (increment 55).
 	shutdown bool
 	// closeQuits makes closing this window quit the editor, as closing the
-	// project browser's tab does; hosts is told of the windows the editor
-	// window is asked to show.
+	// project browser's tab does.
 	closeQuits bool
-	hosts      func(protocol.Host)
 	// saveShot saves a screenshot, of the whole editor window.
 	saveShot func(screen *ebiten.Image, path string) error
 	// tabs counts the editor window's tabs, and tabTint names the tint of
@@ -137,7 +135,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		saidGesture: "", saidEdit: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone,
 		squeezed: false,
 		resizing: false, arranged: false, arrangement: nil, shutdown: false,
-		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
+		closeQuits: false, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
 		tabKeys: nil, tabFront: nil,
 	}
 	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
@@ -298,10 +296,6 @@ func (h *host) onUpdate(update client.Update) {
 		h.frame.AddLatency(update.Latency)
 	}
 	if update.Host != nil {
-		if h.hosts != nil {
-			h.hosts(*update.Host)
-		}
-
 		return
 	}
 	if update.Result != nil {

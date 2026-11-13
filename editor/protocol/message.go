@@ -320,6 +320,17 @@ type PaneLayout struct {
 	Target ids.ULID `json:"target,omitzero"`
 }
 
+// TopicPixelColours is the session topic of the colour this person last
+// painted with in each sprite, a PixelColours (increment 60). The Pixel
+// editor sets it, and the orchestrator keeps it beside the arrangement.
+const TopicPixelColours = "pixel-colours"
+
+// PixelColours is the colour last painted with in each sprite, by the
+// sprite's ID.
+type PixelColours struct {
+	Sprites map[string]json.RawMessage `json:"sprites"`
+}
+
 // KindLayout is one kind of view's panels: the inspector's and the left
 // panel's widths, 0 for the starting width, and whether each is folded.
 type KindLayout struct {

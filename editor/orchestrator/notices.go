@@ -76,6 +76,8 @@ func (o *Orchestrator) noticeChoice(message protocol.Message) {
 		o.openAnyway()
 	case strings.HasPrefix(choice.Key, changedKeyPrefix):
 		o.settleChanged(strings.TrimPrefix(choice.Key, changedKeyPrefix), choice.Action)
+	case strings.HasPrefix(choice.Key, crashKeyPrefix) && choice.Action == reopenAction:
+		o.reopenCrashed(choice.Key)
 	case choice.Action == dismissAction:
 		o.endNotice(choice.Key)
 	}

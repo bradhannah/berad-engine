@@ -29,7 +29,10 @@ var errPaneCrashed = errors.New("pane crashed")
 // pane keeps its own connection, so to the orchestrator it is a window; the
 // shell gives each its part of the window, its input and its tab.
 type shell struct {
-	args     Args
+	args Args
+	// hosting is the editor window's own connection, through which it is
+	// asked to show panes (increment 60).
+	hosting  *client.Client
 	registry *plugin.Registry
 	theme    *ui.Theme
 	reader   *inputReader
@@ -126,7 +129,7 @@ type openedPane struct {
 
 func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
-		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
+		args: args, hosting: nil, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
@@ -204,12 +207,7 @@ func (s *shell) receiveOpened() {
 
 func (s *shell) show(opened openedPane) {
 	if opened.err == nil {
-		var err error
-		if opened.args.View == clockview.ViewName && s.clock == nil {
-			err = s.pinClock(opened.conn, opened.args)
-		} else {
-			_, err = s.addPane(opened.conn, opened.args)
-		}
+		err := s.showOpened(opened)
 		if err == nil {
 			return
 		}
@@ -220,9 +218,24 @@ func (s *shell) show(opened openedPane) {
 	}
 }
 
+// showOpened shows a window that connected: the pinned clock, or a pane in
+// a tab, a Project tab reopened becoming the Project tab again.
+func (s *shell) showOpened(opened openedPane) error {
+	if opened.args.View == clockview.ViewName && s.clock == nil {
+		return s.pinClock(opened.conn, opened.args)
+	}
+	shown, err := s.addPane(opened.conn, opened.args)
+	if err == nil {
+		s.becomeProject(shown)
+	}
+
+	return err
+}
+
 // Update runs every pane once per tick. The focused pane gets the frame's
 // input and the others none, so hidden tabs keep working.
 func (s *shell) Update() error {
+	s.drainHosting()
 	s.receiveOpened()
 	s.tintTabs()
 	s.layout()
@@ -612,6 +625,9 @@ func (s *shell) Layout(outsideWidth, outsideHeight int) (int, int) {
 // closeAll closes the panes still open when the window closes.
 func (s *shell) closeAll() error {
 	var err error
+	if s.hosting != nil {
+		err = s.hosting.Close()
+	}
 	for _, shown := range s.panes() {
 		s.stats.addLatencies(shown.host.frame.Latencies())
 		err = errors.Join(err, shown.host.sounds.Close(), shown.host.conn.Close())

@@ -167,3 +167,27 @@ func TestKeysInAFieldStayWithIt(t *testing.T) {
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestACrashedProjectTabReopensWhenTold crashes the Project tab while a Map
+// is open, with the key only tests turn on: the Map's status bar offers
+// Reopen, and Reopen brings the Project tab back, which then quits the
+// editor as before (increment 60).
+func TestACrashedProjectTabReopensWhenTold(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "reopen.png")
+	browserScript := script(openZone(), must("state:tabs:2", 600), wait(20), keys("Cmd+Shift+K"), wait(30))
+	reopenedScript := script(must("row:Sample zone", 600), quitWhenAlone())
+	mapScript := script(
+		must("state:loaded", 600), must("ui:notice-reopen", 900), wait(5), shoot(shot), click("ui:notice-reopen"),
+		must("state:tabs:2", 900), wait(30), quit(),
+	)
+	runEditorWith(t, binary, project, scripts{"browser": {browserScript, reopenedScript}, "map": {mapScript}},
+		"BERAD_TEST_CRASH_KEY=1")
+	reports, err := filepath.Glob(filepath.Join(project, ".berad", "logs", "*-crash.json"))
+	if err != nil || len(reports) != 1 {
+		t.Fatalf("one crash, the one asked for: %v %v", reports, err)
+	}
+	t.Logf("screenshot: %s", shot)
+}

@@ -263,7 +263,7 @@ func (s *State) updatePanel(input *ui.Input, ctx *frame.Context) {
 func (s *State) choosePanel(input *ui.Input) {
 	for _, offered := range s.panel.swatches {
 		if input.Cursor.In(offered.rect) {
-			s.color = offered.color
+			s.choose(offered.color)
 			input.ClearPointer()
 
 			return
@@ -271,7 +271,7 @@ func (s *State) choosePanel(input *ui.Input) {
 	}
 	for _, label := range s.panel.ramps {
 		if input.Cursor.In(label.rect) && len(label.ramp.Shades) > 0 {
-			s.color = art.Named(label.palette, label.ramp.ID, label.ramp.Shades[0].ID)
+			s.choose(art.Named(label.palette, label.ramp.ID, label.ramp.Shades[0].ID))
 			input.ClearPointer()
 
 			return

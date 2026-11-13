@@ -123,6 +123,9 @@ type Orchestrator struct {
 	// from opening as it is, until its author answers.
 	held    map[ids.ULID]bool
 	opening *opening
+	// crashedPanes are the tabs that crashed, by their notice's key, to
+	// reopen when told (increment 60).
+	crashedPanes map[string]hostedPane
 	// removed holds files of deleted, renamed or moved documents, moved to
 	// the backups at the next save.
 	removed map[string]bool
@@ -188,8 +191,9 @@ func newOrchestrator(cfg Config, opened *project) *Orchestrator {
 		audio:      &projectAudio{root: opened.root, dir: cfg.ProjectDir, lengths: newRecordingLengths()},
 		edits:      newAudioEdits(), analyses: newAudioAnalyses(),
 		attentions: map[ids.ULID]string{}, notices: nil, held: map[ids.ULID]bool{}, opening: nil,
-		removed: map[string]bool{},
-		folders: map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
+		crashedPanes: map[string]hostedPane{},
+		removed:      map[string]bool{},
+		folders:      map[projectindex.Folder]bool{}, removedDirs: map[string]bool{},
 		seq:      0,
 		stopping: false,
 		quit:     false,
@@ -218,6 +222,7 @@ func (o *Orchestrator) open() error {
 	}
 	o.loadHome()
 	o.loadLayout()
+	o.loadColours()
 
 	return nil
 }

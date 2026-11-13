@@ -447,6 +447,8 @@ func (o *Orchestrator) sessionUpdate(from *window, message protocol.Message) {
 
 			return
 		}
+	case protocol.TopicPixelColours:
+		o.keepColours(update.Value)
 	}
 	o.session[update.Topic] = update.Value
 	for _, other := range o.windows {

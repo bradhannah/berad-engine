@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
@@ -96,5 +97,41 @@ func TestOtherTabsUnsavedChangesAreNamed(t *testing.T) {
 	notice := nextNotice(t, browser)
 	if notice.Kind != protocol.NoticeTabClosed || !strings.Contains(notice.Text, "without the 2 changes") {
 		t.Fatalf("the closed tab is told, with what went: %+v", notice)
+	}
+}
+
+// A crashed tab's notice offers Reopen, and Reopen asks the editor window to
+// show the same view again, through the editor window's own connection,
+// not any tab's (increment 60).
+func TestACrashedTabReopensWhenTold(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	floorID := createProject(t, dir)
+	h := start(t, dir, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	shell, err := client.Dial(ctx, h.connect, protocol.Hello{
+		View: "browser", Target: project.IndexID(), UndoGroup: "", Hosts: true,
+	}, newRegistry(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = shell.Close() })
+	shown := h.dialView(t, "map", floorID, "", floorID)
+	if err := shown.Crashed("a test failure"); err != nil {
+		t.Fatal(err)
+	}
+	notice := nextNotice(t, shell)
+	if len(notice.Actions) != 2 || notice.Actions[0].Label != "Reopen" {
+		t.Fatalf("the notice offers Reopen: %+v", notice)
+	}
+	if err := shell.NoticeChoice(notice.Key, notice.Actions[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	update := nextUpdate(t, shell, "the editor window asked to show the map", func(update client.Update) bool {
+		return update.Host != nil
+	})
+	if update.Host.View != "map" || update.Host.Target != floorID {
+		t.Fatalf("the same view is shown again: %+v", update.Host)
 	}
 }
