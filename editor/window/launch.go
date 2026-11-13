@@ -12,8 +12,12 @@ import (
 // opens the Play tab, or launches the open one again, as Cmd+R does in any
 // tab.
 
-// launchWidth is the width of Launch on the bar.
-const launchWidth = 110
+// launchWidth is the width of Launch on the bar, and launchKey the key it
+// shows (increment 38).
+const (
+	launchWidth = 156
+	launchKey   = "Cmd+R"
+)
 
 // shower is a view that stops while its tab is behind another, as the Play
 // tab does.
@@ -23,7 +27,7 @@ type shower interface {
 
 // launchRect is Launch's place on the bar, left of the clock's readout.
 func (s *shell) launchRect() image.Rectangle {
-	right := s.size.X - readoutWidth
+	right := s.size.X - readoutWidth - controlsWidth
 
 	return image.Rect(right-launchWidth, 0, right, rowHeight)
 }
@@ -64,4 +68,6 @@ func (s *shell) drawLaunch(screen *ebiten.Image) {
 	ui.DrawIcon(screen, ui.IconPlay, image.Pt(rect.Min.X+tabPad, (rowHeight-ui.IconSize)/ui.Half))
 	left := rect.Min.X + tabPad + ui.IconSize + ui.Gap*ui.Half
 	s.theme.DrawText(screen, "Launch", left, (rowHeight-ui.TextSize)/ui.Half-1, ui.ColorInk())
+	key := rect.Max.X - tabPad - s.theme.MonoWidth(launchKey)
+	s.theme.DrawMono(screen, launchKey, key, (rowHeight-ui.MonoSize)/ui.Half-1, ui.ColorSubdued())
 }

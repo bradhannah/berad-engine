@@ -49,6 +49,23 @@ func NewLive(window, document ids.ULID, theme *ui.Theme) *State {
 	return view
 }
 
+// ShowNode pans a live view so a node is in the middle of it, selecting
+// nothing, for Watch's Follow (increment 41).
+func (s *State) ShowNode(node ids.ULID) {
+	if drawn, ok := s.shapes[node]; ok {
+		s.centreOn(drawn.rect)
+	}
+}
+
+// TakePanned reports whether the author panned the view by hand since it
+// was last asked.
+func (s *State) TakePanned() bool {
+	panned := s.handPanned
+	s.handPanned = false
+
+	return panned
+}
+
 // SetArea sets where a live view draws its canvas.
 func (s *State) SetArea(area image.Rectangle) {
 	if s.live != nil {

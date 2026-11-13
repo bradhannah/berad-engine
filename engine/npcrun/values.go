@@ -274,6 +274,7 @@ func (n *NPC) actCheck(world World, node flow.Node) string {
 
 		return flow.OutputOtherwise
 	}
+	n.work.why = "Read " + declared.Name + ": " + worldstate.Text(declared, current, n.names(world))
 	compare, err := node.Choice(flow.ParamCompare)
 	if err != nil {
 		compare = flow.CompareIs
@@ -402,8 +403,11 @@ func (n *NPC) actFind(world World, node flow.Node) string {
 	found.Type, found.NPC = worldstate.TypeNPC, nearest
 	n.write(world, keep, found)
 	if nearest.IsZero() {
+		n.work.why = "Found no one within " + tilesText(within)
+
 		return flow.OutputNone
 	}
+	n.work.why = "Found " + n.names(world).NPC(nearest) + ", " + tilesText(best) + " away"
 
 	return flow.OutputFound
 }

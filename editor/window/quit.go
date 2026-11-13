@@ -2,6 +2,7 @@ package window
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"strconv"
 	"strings"
@@ -22,7 +23,8 @@ const (
 
 // windowKeys handles what every window does the same way, before its view
 // sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, Cmd+R launches
-// the game in the Play tab, and the close button asks to close the window.
+// the game in the Play tab, the keys that move between tabs move, and the
+// close button asks to close the window.
 func (h *host) windowKeys(input *ui.Input) {
 	switch h.surface.Closing() {
 	case closeQuit:
@@ -38,6 +40,13 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.save()
 	case input.Consume(ui.KeyR, ui.Cmd()):
 		h.launch()
+	case input.ConsumeExact(ui.KeyI, ui.Cmd()):
+		h.frame.ShowInspector.On = !h.frame.ShowInspector.On
+	case input.ConsumeExact(ui.KeyI, ui.CmdShift()):
+		h.frame.ShowLeft.On = !h.frame.ShowLeft.On
+	}
+	if h.tabKeys != nil {
+		h.tabKeys(input, h.frame.Status)
 	}
 }
 
@@ -187,35 +196,63 @@ func (h *host) reportUnsaved() {
 // Locate finds a named part of the window for input scripts: the quit
 // dialog's buttons while it shows, how many tabs the editor window has
 // ("state:tabs:1"), a tab's tint ("state:tab-tint:<title>=<tint>"), whether
-// a tab holds changes that wait for Save ("state:tab-unsaved:<title>"), the
+// a tab holds changes that wait for Save ("state:tab-unsaved:<title>"),
+// whether a tab is in front ("state:front:<title>"), the
 // folded inspector's strip ("ui:folded-inspector") and whether it is folded
 // ("state:inspector-folded"), the status bar's toggles, or the view's parts.
 func (h *host) Locate(name string, docs frame.Docs) (image.Point, bool) {
+	h.useWidths()
 	if h.quitDialog != nil {
 		_, value, _ := strings.Cut(name, ":")
 
 		return h.quitDialog.Locate(value, h.shows())
 	}
-	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
-		return image.Pt(0, 0), strconv.Itoa(h.tabs()) == count
-	}
-	if tinted, ok := strings.CutPrefix(name, "state:tab-tint:"); ok && h.tabTint != nil {
-		title, tint, _ := strings.Cut(tinted, "=")
-
-		return image.Pt(0, 0), h.tabTint(title) == tint
-	}
-	if title, ok := strings.CutPrefix(name, "state:tab-unsaved:"); ok && h.tabUnsaved != nil {
-		return image.Pt(0, 0), h.tabUnsaved(title)
+	if found, handled := h.tabState(name); handled {
+		return image.Pt(0, 0), found
 	}
 	switch name {
 	case "ui:folded-inspector":
 		return ui.Center(frame.Folded(h.visible)), h.folded()
 	case "state:inspector-folded":
 		return image.Pt(0, 0), h.folded()
+	case "state:left-folded":
+		return image.Pt(0, 0), !h.frame.ShowLeft.On
+	}
+	if point, found, handled := h.locateDivider(name); handled {
+		return point, found
+	}
+	if at, ok := strings.CutPrefix(name, "point:"); ok {
+		var x, y int
+		_, err := fmt.Sscanf(at, "%d,%d", &x, &y)
+
+		return image.Pt(x, y), err == nil
 	}
 	if point, found := h.frame.LocateStatus(name); found || name == "state:on-top" || name == "state:inspector" {
-		return point, found
+		return point.Add(h.statusArea.Min), found
 	}
 
 	return h.view.Locate(name, docs)
+}
+
+// tabState answers the input scripts' questions about the editor window's
+// tabs, and reports whether the name was one: how many there are, a tab's
+// tint, whether it holds changes that wait for Save, and whether it is in
+// front.
+func (h *host) tabState(name string) (bool, bool) {
+	if count, ok := strings.CutPrefix(name, "state:tabs:"); ok && h.tabs != nil {
+		return strconv.Itoa(h.tabs()) == count, true
+	}
+	if tinted, ok := strings.CutPrefix(name, "state:tab-tint:"); ok && h.tabTint != nil {
+		title, tint, _ := strings.Cut(tinted, "=")
+
+		return h.tabTint(title) == tint, true
+	}
+	if title, ok := strings.CutPrefix(name, "state:tab-unsaved:"); ok && h.tabUnsaved != nil {
+		return h.tabUnsaved(title), true
+	}
+	if title, ok := strings.CutPrefix(name, "state:front:"); ok && h.tabFront != nil {
+		return h.tabFront(title), true
+	}
+
+	return false, false
 }

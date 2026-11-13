@@ -42,12 +42,8 @@ const (
 	// labelBacking is the opacity behind an anchor name, so it reads over
 	// whatever lies under it.
 	labelBacking = 0xd0
-	// hexOrigin marks the zone origin and its axes; axisAlpha keeps the axes
-	// quieter than the origin cell's outline.
-	hexOrigin = 0xc2410c
 	// hexBlue is the selection blue, for marks drawn with partial alpha.
-	hexBlue   = 0x1f5fbf
-	axisAlpha = 0x99
+	hexBlue = 0x1f5fbf
 	// A stairs chevron spans a third of the cell's width and a sixth of its
 	// height either side of the centre.
 	chevronWidth  = 3
@@ -140,14 +136,16 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 	if !loaded {
 		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
 	}
+	s.drawOffView(area, grid, docs)
 }
 
-// drawOutside shades the zone beyond the floor bounds and draws a fainter
-// grid over it, so the space around the floor can be pictured, then clears
-// the floor's own rectangle for the floors drawn over it.
+// drawOutside fills the zone beyond the floor bounds with the stage, then
+// clears the floor's own rectangle for the floors drawn over it. A fainter
+// grid shows the cells beyond the floor only while Resize floor is the tool
+// in hand, when they are where the floor can grow (increment 42).
 func (s *State) drawOutside(area *ebiten.Image, bounds, grid image.Rectangle) {
 	ui.FillRect(area, grid, ui.ColorStage())
-	if s.camera.cellSize() >= minGridSize {
+	if s.camera.cellSize() >= minGridSize && s.tool == ToolResize {
 		ink := ui.ColorStageGrid()
 		cells := s.camera.inView(grid)
 		for col := cells.Min.X; col <= cells.Max.X; col++ {
@@ -234,14 +232,14 @@ func (s *State) drawCell(area *ebiten.Image, floorData *floor.Floor, cell Cell, 
 }
 
 // drawOrigin marks the zone origin, cell 0,0, that every floor of the zone
-// is positioned from: an axis along the top and the left edge of the cell
-// across the whole view, an outline round the cell and a label.
+// is positioned from: an ink outline round the cell, with a page-tone line
+// inside it so it shows on the stage as on the floor, and a label. It draws
+// no lines across the view, and no orange, which means running now
+// (increment 42).
 func (s *State) drawOrigin(area *ebiten.Image, grid image.Rectangle) {
 	cell := s.camera.cellRect(image.Pt(0, 0), grid)
-	axis := ui.HexAlpha(hexOrigin, axisAlpha)
-	ui.FillRect(area, image.Rect(grid.Min.X, cell.Min.Y, grid.Max.X, cell.Min.Y+ui.Hairline), axis)
-	ui.FillRect(area, image.Rect(cell.Min.X, grid.Min.Y, cell.Min.X+ui.Hairline, grid.Max.Y), axis)
-	ui.StrokeRect(area, cell, ui.Outline, ui.Hex(hexOrigin))
+	ui.StrokeRect(area, cell, ui.Outline, ui.ColorInk())
+	ui.StrokeRect(area, cell.Inset(ui.Outline), ui.Hairline, ui.ColorPage())
 	if cell.Dx() < minLabel {
 		return
 	}
@@ -249,7 +247,7 @@ func (s *State) drawOrigin(area *ebiten.Image, grid image.Rectangle) {
 	labelX, labelY := cell.Min.X+ui.Half, cell.Min.Y-ui.TextSize-ui.Gap-ui.Half
 	backing := image.Rect(labelX-1, labelY, labelX+s.theme.TextWidth(label)+ui.Half, labelY+ui.TextSize+ui.Gap)
 	ui.FillRect(area, backing, ui.HexAlpha(hexWhite, labelBacking))
-	s.theme.DrawText(area, label, labelX, labelY, ui.Hex(hexOrigin))
+	s.theme.DrawText(area, label, labelX, labelY, ui.ColorInk())
 }
 
 func tint(id string, alpha uint8) color.RGBA {
@@ -415,7 +413,7 @@ func (s *State) npcHintLines() []string {
 func (s *State) npcHint() image.Rectangle {
 	top := s.tileList.Rect.Min.Y + ui.Gap
 
-	return image.Rect(ui.Inset, top, PanelWidth, top+len(s.npcHintLines())*ui.LineHeight)
+	return image.Rect(ui.Inset, top, s.panelFull(), top+len(s.npcHintLines())*ui.LineHeight)
 }
 
 // floorsHeadingTop is where the heading of the floor list starts.
@@ -423,9 +421,15 @@ func (s *State) floorsHeadingTop() int { return s.floorList.Rect.Min.Y - heading
 
 // drawPanel draws the tools, tiles and floors on the left.
 func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
+	if s.fold.folded {
+		s.drawRail(screen)
+
+		return
+	}
+	defer s.fold.button.Draw(screen, s.theme)
 	height := s.size.Y - frame.StatusHeight
-	ui.FillRect(screen, image.Rect(0, 0, PanelWidth, height), ui.ColorPage())
-	ui.Divider(screen, image.Pt(PanelWidth-ui.Outline, 0), image.Pt(PanelWidth-ui.Outline, height))
+	ui.FillRect(screen, image.Rect(0, 0, s.panelFull(), height), ui.ColorPage())
+	ui.Divider(screen, image.Pt(s.panelFull()-ui.Outline, 0), image.Pt(s.panelFull()-ui.Outline, height))
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}
@@ -622,6 +626,10 @@ func keyRows() []ui.KeyRow {
 		{Label: "New view of the zone", Keys: []string{"Cmd+N"}},
 		{Label: "Save", Keys: []string{"Cmd+S"}},
 		{Label: "Close tab", Keys: []string{"Cmd+W"}},
+		{Label: "Tab by place, last used", Keys: []string{"Cmd+1\u20139", "Ctrl+Tab"}},
+		{Label: "Tab before, after", Keys: []string{"Cmd+Shift+[", "Cmd+Shift+]"}},
+		{Label: "Back, forward", Keys: []string{"Cmd+[", "Cmd+]"}},
+		{Label: "Quick open", Keys: []string{"Cmd+P"}},
 		{Label: "Quit the editor", Keys: []string{"Cmd+Q"}},
 		{Label: "This list", Keys: []string{"?"}},
 	}

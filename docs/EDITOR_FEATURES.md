@@ -94,12 +94,19 @@ under consideration), **open** (undecided).
   beside a Map of its zone, in that Map's tab. Each view runs in a pane of a
   tab. There are no separate windows, and nothing pops out into one.
   (Rejected: a window process for each view, as the editor ran until
-  increment 12.)
+  increment 12.) Its bar's two rows gave way to one row of tabs, below,
+  in [increment 38](increments/0038-one-row-of-tabs.md).
 - **Agreed (2026-11-11):** **one row of tabs,** every open document a tab,
   so that going from a map to a workflow is one click or one key. A
-  document's tab keeps its tint, a wash and a band along its top; the tab
-  in front takes a stronger wash, a thicker band and the blue line, a dot
-  says it holds something waiting for Save, and "live" in orange that it
+  document's tab keeps its tint, a wash and a band along its top. **The tab
+  in front joins its page** (settled by its author after trying it,
+  2026-11-11): it stands the bar's full height in the page's tone, over the
+  bar's rule, framed by hairlines, with a thicker band and its name in the
+  semi-bold face, while the tabs behind sit lower in their washes with
+  their names in the muted ink. (Replaced: a stronger wash and a blue line
+  under the tab in front, which did not say clearly enough which tab was
+  in front; also considered, the tab in front filled with its tint.) A dot
+  says a tab holds something waiting for Save, and "live" in orange that it
   is previewing. Its type is its icon. Tabs shrink together and the last go
   under a "more" tab. Cmd+1 to 9 choose a tab by position, Ctrl+Tab the one
   last used, and Cmd+Shift+[ and ] its neighbours; Cmd+[ and Cmd+] step back

@@ -395,13 +395,13 @@ func (o *Orchestrator) sendAudioLibrary(from *window, message protocol.Message) 
 func (o *Orchestrator) sendRecording(from *window, message protocol.Message) {
 	asked, err := protocol.DecodePayload[protocol.Recording](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	part, err := o.audio.recording(asked)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}

@@ -249,7 +249,7 @@ func (s *State) setZoneLoop(ctx *frame.Context, chosen string) {
 	zoneID := s.loopFor
 	name := s.index(ctx.Docs).Name(zoneID, "The zone")
 	if refused := s.refusal(ctx.Docs, loop, zoneID, name); refused != "" {
-		ctx.Frame.Status(refused)
+		ctx.Frame.Refuse(refused)
 
 		return
 	}
@@ -285,7 +285,7 @@ func (s *State) setBehaviour(ctx *frame.Context, chosen string) {
 	npcID := s.npc.npc
 	name := s.index(ctx.Docs).Name(npcID, "The NPC")
 	if refused := s.refusal(ctx.Docs, behaviour, s.zoneOfNPC(ctx.Docs, npcID), name); refused != "" {
-		ctx.Frame.Status(refused)
+		ctx.Frame.Refuse(refused)
 
 		return
 	}

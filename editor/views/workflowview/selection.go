@@ -91,6 +91,12 @@ func (s *State) pressCanvas(input *ui.Input, ctx *frame.Context, point image.Poi
 
 		return
 	}
+	if input.DoubleClick && s.emptyAt(point) {
+		s.box = nil
+		s.openNodeMenu(input.Cursor, point, nil)
+
+		return
+	}
 	s.pressOrOpen(ctx, point, input.DoubleClick)
 }
 

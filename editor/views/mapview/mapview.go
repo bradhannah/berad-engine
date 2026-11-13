@@ -113,6 +113,8 @@ type stroke struct {
 	// left is set while the pointer is off the floor with the button
 	// held: where it comes back in is painted alone, not joined to last.
 	left bool
+	// cells counts the cells the stroke has painted, for its sentence.
+	cells int
 }
 
 type rectDrag struct {
@@ -205,7 +207,12 @@ type State struct {
 	preview  *previewRun
 	remote   *remotePreview
 
-	toolList  *ui.List
+	toolList *ui.List
+	// fold is the left panel's fold button and its rail (increment 43).
+	fold foldState
+	// left is the left panel's width as dragged, zero for PanelWidth
+	// (increment 53).
+	left      int
 	tileList  *ui.List
 	floorList *ui.List
 	below     *ui.Toggle
@@ -247,7 +254,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
-		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false},
+		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false, cells: 0},
 		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
 		names: project.NewIndex(nil), placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
 		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
@@ -256,7 +263,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
-		toolList:  ui.NewList("tools", string(ToolGround)),
+		toolList: ui.NewList("tools", string(ToolGround)), fold: newFoldState(), left: 0,
 		tileList:  ui.NewList("tiles", "grass"),
 		floorList: ui.NewList("floors", ""),
 		below:     &ui.Toggle{ID: "below", Label: "Show floor below", Rect: ui.Zero(), On: true},
@@ -375,10 +382,15 @@ func (s *State) pickChanged(update client.Update, ctx *frame.Context) {
 	}
 }
 
-// attend shows what the window is opened to show: a placement.
+// attend shows what the window is opened to show: a placement, or an
+// anchor a line in History names.
 func (s *State) attend(update client.Update, ctx *frame.Context) {
-	if update.Attention && strings.HasPrefix(update.Item, PlacementItem) {
+	switch {
+	case !update.Attention:
+	case strings.HasPrefix(update.Item, PlacementItem):
 		s.showPlacement(update.Item, ctx)
+	case strings.HasPrefix(update.Item, AnchorItem):
+		s.showAnchor(update.Item, ctx)
 	}
 }
 
@@ -389,10 +401,8 @@ const PlacementItem = "placement:"
 // showPlacement shows the floor a placement is on and selects it, with the
 // Place NPC tool.
 func (s *State) showPlacement(item string, ctx *frame.Context) {
-	floorPart, placementPart, _ := strings.Cut(strings.TrimPrefix(item, PlacementItem), ":")
-	floorID, floorErr := ids.Parse(floorPart)
-	placementID, placementErr := ids.Parse(placementPart)
-	if floorErr != nil || placementErr != nil || indexOf(s.floors, floorID) < 0 {
+	floorID, placementID, ok := s.floorAndID(item, PlacementItem)
+	if !ok {
 		return
 	}
 	s.switchFloor(floorID, ctx)
@@ -501,7 +511,7 @@ func (s *State) floorBelow() (ids.ULID, bool) {
 func (s *State) Grid() image.Rectangle {
 	content := frame.Content(s.size)
 
-	return image.Rect(PanelWidth, 0, content.Max.X, content.Max.Y)
+	return image.Rect(s.panelWidth(), 0, content.Max.X, content.Max.Y)
 }
 
 // layoutWidgets places the panel widgets for the window size.
@@ -509,7 +519,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
 	rowY := ui.Inset + headingSpace
-	s.toolList.Rect = image.Rect(0, rowY, PanelWidth, rowY+toolRows*ui.RowHeight)
+	s.toolList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
 	s.tileList.Rows = s.tileRows()
 	if s.tool == ToolSelect {
@@ -521,15 +531,15 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	}
 	// With no NPCs to list, the list's place holds the hint's lines.
 	tilesHeight = max(tilesHeight, ui.Gap+len(s.npcHintLines())*ui.LineHeight)
-	s.tileList.Rect = image.Rect(0, rowY, PanelWidth, rowY+tilesHeight)
+	s.tileList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+tilesHeight)
 	rowY = s.tileList.Rect.Max.Y + panelGap + headingSpace
 	s.floorList.Rows = s.floorRows(docs)
 	s.floorList.Selected = s.floor.String()
-	s.floorList.Rect = image.Rect(0, rowY, PanelWidth, rowY+floorRows*ui.RowHeight)
+	s.floorList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+floorRows*ui.RowHeight)
 	rowY = s.floorList.Rect.Max.Y + panelGap/ui.Half
-	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, PanelWidth-ui.Inset, rowY+ui.RowHeight)
+	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, s.panelFull()-ui.Inset, rowY+ui.RowHeight)
 	rowY = s.below.Rect.Max.Y + panelGap
-	s.previewBn.Rect = image.Rect(ui.Inset, rowY, PanelWidth-ui.Inset, rowY+ui.ButtonH)
+	s.previewBn.Rect = image.Rect(ui.Inset, rowY, s.panelFull()-ui.Inset, rowY+ui.ButtonH)
 	switch {
 	case s.preview != nil:
 		s.previewBn.Label = "Stop preview (P)"
@@ -539,6 +549,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		s.previewBn.Label = "Preview (P)"
 	}
 
+	s.layoutFold()
 	s.layoutInspector()
 	s.layoutZonePalettes(docs)
 }
@@ -626,7 +637,10 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
+	s.fold.folded = !ctx.Frame.ShowLeft.On
 	s.layoutWidgets(ctx.Docs)
+	// The status bar names what is in hand once the frame has moved it.
+	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
 	if s.updateOver(input, ctx) {
 		return
 	}
@@ -821,6 +835,9 @@ func (s *State) chooseTile(tileID string, ctx *frame.Context) {
 }
 
 func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
+	if s.updateFold(input, ctx) {
+		return
+	}
 	if s.toolList.Update(input).Changed {
 		s.setTool(Tool(s.toolList.Selected))
 	}
@@ -957,7 +974,7 @@ func (s *State) paintValue() (string, string) {
 func (s *State) updatePaint(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
 	switch {
 	case input.Pressed && onFloor:
-		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: cell, left: false}
+		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: cell, left: false, cells: 0}
 		s.paint(ctx, floorData, []Cell{cell})
 	case s.stroke.active && input.Down && !onFloor:
 		s.stroke.left = true
@@ -990,13 +1007,37 @@ func (s *State) paint(ctx *frame.Context, floorData *floor.Floor, cells []Cell) 
 	if len(changed) == 0 {
 		return
 	}
+	s.stroke.cells += len(changed)
 	gesture := s.window.String() + "-" + strconv.Itoa(s.stroke.count)
-	s.command(ctx, s.floor, tilefloor.PaintEdit, gesture, tilefloor.PaintArgs{Cells: changed}, nil)
+	says := paintSentence(tile, s.stroke.cells, s.names.Name(s.floor, "this floor"))
+	s.commandSaying(ctx, s.floor, tilefloor.PaintEdit, gesture, says, tilefloor.PaintArgs{Cells: changed}, nil)
+}
+
+// paintSentence says a stroke: how many cells it painted, with what, on
+// which floor (increment 51).
+func paintSentence(tile string, cells int, floorName string) string {
+	counted := strconv.Itoa(cells) + " cells"
+	if cells == 1 {
+		counted = "1 cell"
+	}
+	if tile == "" {
+		return "Cleared " + counted + " on " + floorName
+	}
+
+	return "Painted " + counted + " of " + tileName(tile) + " on " + floorName
 }
 
 // command sends an edit, reporting a refusal in the status bar.
 func (s *State) command(
 	ctx *frame.Context, document ids.ULID, edit, gesture string, args any, done func(protocol.Result),
+) {
+	s.commandSaying(ctx, document, edit, gesture, "", args, done)
+}
+
+// commandSaying sends an edit said in the Map's own words (increment 51),
+// as "Painted 6 cells of Road on Ground floor".
+func (s *State) commandSaying(
+	ctx *frame.Context, document ids.ULID, edit, gesture, says string, args any, done func(protocol.Result),
 ) {
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -1004,7 +1045,7 @@ func (s *State) command(
 
 		return
 	}
-	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data}
+	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: says}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)
@@ -1034,13 +1075,14 @@ func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *flo
 			return
 		}
 		if _, taken := floorData.AnchorAt(cell.X, cell.Y); taken {
-			ctx.Frame.Status("Another anchor is already there")
+			ctx.Frame.Refuse("Another anchor is already there")
 
 			return
 		}
 		if moved, _, found := floorData.Anchor(drag.id); found {
 			moved.Col, moved.Row = cell.X, cell.Y
-			s.command(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
+			says := fmt.Sprintf("Moved %s to %d, %d", anchorName(moved.Name), cell.X, cell.Y)
+			s.commandSaying(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", says, tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
 		}
 	}
 }
@@ -1052,7 +1094,8 @@ func (s *State) addAnchor(ctx *frame.Context, floorData *floor.Floor, cell Cell)
 	args := tilefloor.AddAnchorArgs{
 		Anchor: floor.Anchor{ID: ids.ULID{}, Name: name, Col: cell.X, Row: cell.Y}, Index: len(floorData.Anchors()),
 	}
-	s.command(ctx, s.floor, tilefloor.AddAnchorEdit, "", args, func(result protocol.Result) {
+	says := fmt.Sprintf("Added %s at %d, %d on %s", anchorName(name), cell.X, cell.Y, s.names.Name(s.floor, "this floor"))
+	s.commandSaying(ctx, s.floor, tilefloor.AddAnchorEdit, "", says, args, func(result protocol.Result) {
 		s.anchor = result.Created
 		s.placement, s.selected = ids.ULID{}, nil
 		if s.nameField.Field.Unsaved() {
@@ -1190,7 +1233,7 @@ func (s *State) saveName(ctx *frame.Context) {
 
 		return
 	}
-	command := protocol.Command{Document: s.floor, Edit: tilefloor.UpdateAnchorEdit, Gesture: "", Args: data}
+	command := protocol.Command{Document: s.floor, Edit: tilefloor.UpdateAnchorEdit, Gesture: "", Args: data, Says: ""}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			s.nameField.Field.Failed()
@@ -1253,7 +1296,7 @@ func (s *State) updateSelect(input *ui.Input, ctx *frame.Context, floorData *flo
 		case input.DoubleClick && !isWallAt(floorData, cell):
 			walls, closed := RoomWalls(floorData, cell)
 			if !closed {
-				ctx.Frame.Status("That space is not closed in by walls and doors")
+				ctx.Frame.Refuse("That space is not closed in by walls and doors")
 
 				return
 			}
@@ -1281,7 +1324,7 @@ func (s *State) updateSelect(input *ui.Input, ctx *frame.Context, floorData *flo
 // applyFamily changes the family of every selected wall in one undo step.
 func (s *State) applyFamily(family string, ctx *frame.Context) {
 	if len(s.selected) == 0 {
-		ctx.Frame.Status("Select walls first: click a wall, double-click a room or drag an area")
+		ctx.Frame.Refuse("Select walls first: click a wall, double-click a room or drag an area")
 
 		return
 	}
@@ -1470,6 +1513,10 @@ func (s *State) updatePick(input *ui.Input, ctx *frame.Context, floorData *floor
 	s.answerPick(ctx, anchor)
 }
 
+// Live reports whether the Map runs a preview, which its tab says in orange
+// (increment 38).
+func (s *State) Live() bool { return s.preview != nil }
+
 // Locate finds a named part of the window for input scripts: "cell:C,R",
 // "edge:left" (or top, right, bottom) of the floor, "tool:<tool>",
 // "tile:<id>", "floor:<n>" (1 is the bottom floor), "player" for a
@@ -1507,7 +1554,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "floor":
 		return s.locateFloor(value)
 	case "ui":
-		if at, found := s.zonePalettes.Locate(name); found {
+		if at, found := s.locateSides(name); found {
 			return at, true
 		}
 
@@ -1533,7 +1580,10 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
 // is placed on that cell.
 func (s *State) hasState(state string, docs frame.Docs) bool {
-	simple := map[string]bool{"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen()}
+	_, offView := s.floorOffView(docs)
+	simple := map[string]bool{
+		"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen(), "floor-off-view": offView,
+	}
 	if s.pick != nil {
 		simple["pick-now="+s.pick.Now.Name] = true
 	}

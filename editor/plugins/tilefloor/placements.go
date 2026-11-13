@@ -19,8 +19,11 @@ const (
 
 // PlacementKey names a placement for undo-clash detection.
 func PlacementKey(id ids.ULID) string {
-	return "placement:" + id.String()
+	return placementPrefix + id.String()
 }
+
+// PlacementOfKey is the placement a PlacementKey names.
+func PlacementOfKey(key string) (ids.ULID, bool) { return idOfKey(key, placementPrefix) }
 
 // References lists the NPCs the floor places and the cues of its ambient
 // sounds, so deleting an NPC or a cue shows where it is.

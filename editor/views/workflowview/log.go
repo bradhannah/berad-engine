@@ -380,6 +380,9 @@ func (s *State) previewText(docs frame.Docs, node flow.Node) (string, color.RGBA
 func (s *State) layoutMessage(docs frame.Docs, made *control, left, width, top int) int {
 	made.field.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	made.field.Rect.Max.Y = top + made.field.FitHeight(lineRows)
+	if node, ok := s.selectedNode(); ok && wraps(node.Kind) {
+		made.field.Rect.Max.Y = top + max(made.field.FitHeight(sayRows), made.field.RowsHeight(sayLeast))
+	}
 	top = s.layoutMessageButtons(made, left, width, made.field.Rect.Max.Y+rowSpace) + fieldSpace
 	if node, ok := s.selectedNode(); ok {
 		shown, _ := s.previewText(docs, node)

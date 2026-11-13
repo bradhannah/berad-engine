@@ -257,14 +257,15 @@ func (s *State) updateNPCTool(input *ui.Input, ctx *frame.Context, floorData *fl
 			return
 		}
 		if _, taken := floorData.PlacementAt(cell.X, cell.Y); taken {
-			ctx.Frame.Status("Another NPC is already there")
+			ctx.Frame.Refuse("Another NPC is already there")
 
 			return
 		}
 		if moved, _, found := floorData.Placement(drag.id); found {
 			moved.Col, moved.Row = cell.X, cell.Y
 			update := tilefloor.UpdatePlacementArgs{Placement: moved}
-			s.command(ctx, s.floor, tilefloor.UpdatePlacementEdit, "", update, nil)
+			says := fmt.Sprintf("Moved %s to %d, %d", s.names.Name(moved.NPC, "an NPC"), cell.X, cell.Y)
+			s.commandSaying(ctx, s.floor, tilefloor.UpdatePlacementEdit, "", says, update, nil)
 		}
 	}
 }
@@ -273,7 +274,7 @@ func (s *State) updateNPCTool(input *ui.Input, ctx *frame.Context, floorData *fl
 func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) {
 	npcID, err := ids.Parse(s.tile[ToolNPC])
 	if err != nil {
-		ctx.Frame.Status("Choose an NPC on the left first. New NPC in the project browser makes one.")
+		ctx.Frame.Refuse("Choose an NPC on the left first. New NPC in the project browser makes one.")
 
 		return
 	}
@@ -281,18 +282,18 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 	once := " An NPC is placed once in the whole project; one that seems to travel is several NPCs, " +
 		"and a character that repeats, such as a guard, is several NPCs."
 	if s.zoneNPCs[npcID] > 0 {
-		ctx.Frame.Status(name + " is already placed in this zone." + once)
+		ctx.Frame.Refuse(name + " is already placed in this zone." + once)
 
 		return
 	}
 	home, loaded := s.homes[npcID]
 	if !loaded {
-		ctx.Frame.Status(name + " has not loaded yet. Try again in a moment.")
+		ctx.Frame.Refuse(name + " has not loaded yet. Try again in a moment.")
 
 		return
 	}
 	if !home.IsZero() && home != s.zone {
-		ctx.Frame.Status(name + " lives in " + s.names.Name(home, "another zone") +
+		ctx.Frame.Refuse(name + " lives in " + s.names.Name(home, "another zone") +
 			". To place it here, change its zone in its details.")
 
 		return
@@ -305,7 +306,7 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 			return
 		}
 		if placed := floorsPlacing(uses); len(placed) > 0 {
-			ctx.Frame.Status(name + " is already placed on " + placed[0].Name + "." + once)
+			ctx.Frame.Refuse(name + " is already placed on " + placed[0].Name + "." + once)
 
 			return
 		}
@@ -315,12 +316,15 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 		s.stroke.count++
 		gesture := s.window.String() + "-place-" + strconv.Itoa(s.stroke.count)
 		placedLine := fmt.Sprintf("Placed %s at %d, %d", name, cell.X, cell.Y)
+		says := placedLine + " on " + s.names.Name(floorID, "this floor")
 		if home.IsZero() {
 			placedLine += ". It lives in " + s.names.Name(s.zone, "this zone") + " now."
 		}
-		s.command(ctx, floorID, tilefloor.AddPlacementEdit, gesture, args, func(result protocol.Result) {
+		s.commandSaying(ctx, floorID, tilefloor.AddPlacementEdit, gesture, says, args, func(result protocol.Result) {
 			s.selectPlacement(result.Created)
-			ctx.Frame.Status(placedLine)
+			if home.IsZero() {
+				ctx.Frame.Status(placedLine)
+			}
 		})
 		if home.IsZero() {
 			s.command(ctx, npcID, npcplugin.SetZoneEdit, gesture, npcplugin.SetZoneArgs{Zone: s.zone}, nil)
@@ -356,7 +360,7 @@ func (s *State) removePlacement(ctx *frame.Context) {
 // openBehaviour opens the selected NPC's behaviour in a Workflow window.
 func (s *State) openBehaviour(ctx *frame.Context) {
 	if s.behaviour.IsZero() {
-		ctx.Frame.Status("This NPC has no behaviour yet. Choose one in the project browser.")
+		ctx.Frame.Refuse("This NPC has no behaviour yet. Choose one in the project browser.")
 
 		return
 	}

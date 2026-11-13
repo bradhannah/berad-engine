@@ -63,7 +63,7 @@ func (s *State) openContextMenu() {
 	}
 	switch {
 	case s.lineSelected():
-		item.ID, item.Label = menuDeleteLine, "Delete line"
+		item.ID, item.Label, item.Danger = menuDeleteLine, "Unlink", false
 	case len(s.group) > 0:
 		count := len(s.removable())
 		item.ID, item.Label, item.Disabled = menuDeleteAll, "Delete "+countNodes(count), count == 0
@@ -82,6 +82,8 @@ func (s *State) openContextMenu() {
 			item,
 		}
 	}
+	s.nodeAdd = nil
+	s.contextMenu.ClearSubs()
 	s.contextMenu.Items, s.contextMenu.Width = items, ui.MenuWidth(items, s.theme)
 	s.contextMenu.OpenAt(click.at, frame.AboveStatus(s.size))
 }
@@ -118,6 +120,9 @@ func (s *State) updateOverlay(input *ui.Input, ctx *frame.Context) bool {
 
 // chooseFromContext carries out a right-click menu choice on the selection.
 func (s *State) chooseFromContext(ctx *frame.Context, chosen string) {
+	if s.chooseFromNodeMenu(ctx, chosen) {
+		return
+	}
 	if strings.HasPrefix(chosen, menuWorkflow) {
 		s.chooseModule(ctx, chosen)
 

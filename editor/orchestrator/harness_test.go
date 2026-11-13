@@ -165,7 +165,7 @@ func paint(t testing.TB, c *client.Client, floor ids.ULID, col, row int, tile, g
 	defer cancel()
 	return c.Command(ctx, protocol.Command{
 		Document: floor, Edit: tilefloor.PaintEdit, Gesture: gesture,
-		Args: paintArgs(t, tilefloor.Cell{Col: col, Row: row, Layer: tilefloor.LayerGround, Tile: tile}),
+		Args: paintArgs(t, tilefloor.Cell{Col: col, Row: row, Layer: tilefloor.LayerGround, Tile: tile}), Says: "",
 	})
 }
 

@@ -97,7 +97,7 @@ func TestFillStopsAtWhatTheTemplateDoesNotAllow(t *testing.T) {
 	f.click("swatch:gloomy / grey 4")
 	f.keys("G")
 	f.click("pixel:0,0")
-	if len(f.requests.Of(artplugin.PaintEdit)) != 0 || f.status() != "Pickup does not allow painting there" {
+	if len(f.requests.Of(artplugin.PaintEdit)) != 0 || f.status() != "Refused: Pickup does not allow painting there" {
 		t.Fatalf("a fill started where it is not allowed: %q", f.status())
 	}
 	f.click("pixel:3,3")

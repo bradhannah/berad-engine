@@ -373,7 +373,7 @@ func command(ctx *frame.Context, zoneID ids.ULID, edit string, args any, done st
 
 		return
 	}
-	ctx.Requests.Command(protocol.Command{Document: zoneID, Edit: edit, Gesture: "", Args: data},
+	ctx.Requests.Command(protocol.Command{Document: zoneID, Edit: edit, Gesture: "", Args: data, Says: ""},
 		func(result protocol.Result, err error) {
 			if err != nil {
 				ctx.Frame.Report("")(result, err)

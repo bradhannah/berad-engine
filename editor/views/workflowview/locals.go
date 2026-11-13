@@ -336,7 +336,9 @@ func (s *State) saveLocal(ctx *frame.Context) bool {
 
 		return false
 	}
-	command := protocol.Command{Document: s.document, Edit: workflowplugin.ChangeLocalsEdit, Gesture: "", Args: data}
+	command := protocol.Command{
+		Document: s.document, Edit: workflowplugin.ChangeLocalsEdit, Gesture: "", Args: data, Says: "",
+	}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			for _, each := range saving {

@@ -68,6 +68,28 @@ type host struct {
 	quitAsking bool
 	quitSaving bool
 	reported   protocol.Unsaved
+	// saidGesture is the gesture of the change said last, whose line in
+	// History a later command of the same gesture takes over.
+	saidGesture string
+	saidEdit    string
+	// statusArea is, in a split, the tab's whole area from the pane's
+	// corner: the status bar spans it, and the shell draws it under the
+	// focused pane (increment 52). It is empty for a pane alone in its tab.
+	statusArea image.Rectangle
+	// inspectorWidth and leftWidth are the panels' widths for the view's
+	// kind, zero for its own; dragging is the divider being dragged,
+	// squeezed set when it was dragged into the canvas's room, resizing
+	// while the pointer shows it drags, and arranged once a width changed,
+	// for the window to keep; arrangement takes the arrangement kept
+	// (increment 53).
+	inspectorWidth, leftWidth int
+	dragging                  dragging
+	squeezed, resizing        bool
+	arranged                  bool
+	arrangement               func(json.RawMessage)
+	// shutdown is set once the orchestrator asked the pane to close for a
+	// quit, so the window keeps its tabs as they were (increment 55).
+	shutdown bool
 	// closeQuits makes closing this window quit the editor, as closing the
 	// project browser's tab does; hosts is told of the windows the editor
 	// window is asked to show.
@@ -82,6 +104,10 @@ type host struct {
 	// tabUnsaved reports whether the tab with a title holds changes that
 	// wait for Save.
 	tabUnsaved func(title string) bool
+	// tabKeys moves between tabs for the keys that do (increment 38), and
+	// tabFront reports whether the tab with a title is in front.
+	tabKeys  func(input *ui.Input, status func(string))
+	tabFront func(title string) bool
 	// visible is the host's part of the window. While the inspector is
 	// folded the view lays out and draws on wide, wider than visible by
 	// all but the folded strip, so its inspector falls past the edge;
@@ -104,7 +130,11 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
 		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
 		quitDialog: nil, quitAsking: false, quitSaving: false, reported: protocol.Unsaved{Count: 0, Name: ""},
+		saidGesture: "", saidEdit: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone,
+		squeezed: false,
+		resizing: false, arranged: false, arrangement: nil, shutdown: false,
 		closeQuits: false, hosts: nil, saveShot: saveScreenshot, tabs: nil, tabTint: nil, tabUnsaved: nil,
+		tabKeys: nil, tabFront: nil,
 	}
 	created.frame.CrashKey = os.Getenv(crashKeyEnv) != ""
 	created.ctx.Docs = conn
@@ -120,6 +150,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 
 // Update runs once per tick.
 func (h *host) Update() error {
+	h.useWidths()
 	if !h.started {
 		h.started = true
 		if view, ok := h.view.(starter); ok {
@@ -140,11 +171,17 @@ func (h *host) Update() error {
 	} else {
 		input = h.surface.Input(h.view.Focused())
 	}
-	h.frame.UpdateStatus(&input, h.visible)
-	h.updateFolded(&input)
+	if quick, ok := h.view.(quickOpener); !ok || !quick.QuickOpen() {
+		// Quick open's sheet takes every press while it shows, so none
+		// reaches the status bar, the folded strip or the window's keys; the
+		// History list takes them while it is open.
+		h.updateStatusBar(&input)
+		h.updateDividers(&input)
+		h.updateFolded(&input)
+		h.windowKeys(&input)
+		h.updateQuitDialog(&input)
+	}
 	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
-	h.windowKeys(&input)
-	h.updateQuitDialog(&input)
 	h.view.Update(&input, &h.ctx)
 	h.tellRefusal(h.view.Focused())
 	h.close()
@@ -223,6 +260,7 @@ func (h *host) drainUpdates() bool {
 				return true
 			}
 			if update.Shutdown != nil {
+				h.shutdown = true
 				if !update.Shutdown.Save || !h.saveForQuit() {
 					return true
 				}
@@ -265,6 +303,13 @@ func (h *host) onUpdate(update client.Update) {
 	}
 	if update.AudioChanged != nil {
 		h.sounds.Changed()
+	}
+	if update.Session != nil && update.Session.Topic == protocol.TopicLayout {
+		if h.arrangement != nil {
+			h.arrangement(update.Session.Value)
+		}
+
+		return
 	}
 	if update.Session != nil && update.Session.Topic == protocol.TopicNotice {
 		var notice protocol.Notice
@@ -342,15 +387,37 @@ type outgoing struct {
 // Command queues a command. Views make requests while reading documents,
 // which holds the connection's lock, so commands go out after the view's
 // Update, in order; each result comes back as an update.
+//
+// Every change it makes is said in the status bar and kept in History, in
+// the sentence the orchestrator said it with (increment 39); the view's own
+// answer, if it gives one, is said after it.
 func (h *host) Command(command protocol.Command, done func(protocol.Result, error)) {
-	h.outbox = append(h.outbox, outgoing{command: command, done: done})
+	said := func(result protocol.Result, err error) {
+		switch {
+		case err != nil || result.Said == "":
+		case command.Gesture != "" && command.Gesture == h.saidGesture && command.Edit == h.saidEdit:
+			h.frame.StatusAgain(result.Said, result.Touched)
+		default:
+			h.frame.StatusAbout(result.Said, result.Touched)
+		}
+		if err == nil && result.Said != "" {
+			h.saidGesture, h.saidEdit = command.Gesture, command.Edit
+		}
+		if done != nil {
+			done(result, err)
+		}
+	}
+	h.outbox = append(h.outbox, outgoing{command: command, done: said})
 }
 
 func (h *host) flush() {
 	for _, item := range h.outbox {
 		request, err := h.conn.Send(item.command)
 		if err != nil {
-			reply(item.done, protocol.Result{OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: ""}, err)
+			reply(item.done, protocol.Result{
+				OK: false, Reason: err.Error(), Revision: 0, Created: ids.ULID{}, Item: "", Said: "",
+				Touched: protocol.Untouched(),
+			}, err)
 
 			continue
 		}
@@ -575,8 +642,12 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 // Draw renders the view, its inspector or the folded strip, the status bar
 // and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
+	h.useWidths()
 	h.drawView(screen)
-	h.frame.DrawStatus(screen, h.theme)
+	if h.statusArea.Empty() {
+		h.frame.DrawStatus(screen, h.theme)
+		h.frame.DrawHistory(screen, h.theme)
+	}
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
 	}
@@ -594,6 +665,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 
 // Layout uses the window's real size, one screen pixel per pixel.
 func (h *host) Layout(outsideWidth, outsideHeight int) (int, int) {
+	h.useWidths()
 	h.visible = image.Pt(outsideWidth, outsideHeight)
 	h.ctx.Size, h.ctx.InspectorFolded = h.viewSize(), h.folded()
 
@@ -610,7 +682,7 @@ func (h *host) viewSize() image.Point {
 		return h.visible
 	}
 
-	return h.visible.Add(image.Pt(frame.InspectorWidth-frame.FoldedWidth, 0))
+	return h.visible.Add(image.Pt(frame.InspectorWide()-frame.FoldedWidth, 0))
 }
 
 // updateFolded keeps the pointer on the folded strip from the view, which

@@ -83,7 +83,7 @@ func childEditor() error {
 		if err != nil {
 			return err
 		}
-		result, err := pane.Command(ctx, protocol.Command{Document: floor, Edit: tilefloor.PaintEdit, Args: args})
+		result, err := pane.Command(ctx, protocol.Command{Document: floor, Edit: tilefloor.PaintEdit, Args: args, Says: ""})
 		if err != nil || !result.OK {
 			return fmt.Errorf("paint %d: %+v %w", index, result, err)
 		}

@@ -51,7 +51,7 @@ func (s *State) send(ctx *frame.Context, document ids.ULID, edit string, args an
 
 		return
 	}
-	ctx.Requests.Command(protocol.Command{Document: document, Edit: edit, Gesture: "", Args: data}, done)
+	ctx.Requests.Command(protocol.Command{Document: document, Edit: edit, Gesture: "", Args: data, Says: ""}, done)
 }
 
 // target is where Add value and Add group declare: a list, a scope and a

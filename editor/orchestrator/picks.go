@@ -58,7 +58,7 @@ type handler func(*window, protocol.Message)
 func (o *Orchestrator) route(from *window, message protocol.Message, handlers map[protocol.Kind]handler) {
 	handle, ok := handlers[message.Kind]
 	if !ok {
-		o.reply(from, message.Request, reasonUnexpected, 0)
+		o.reply(from, message.Request, reasonUnexpected)
 
 		return
 	}
@@ -70,7 +70,7 @@ func (o *Orchestrator) route(from *window, message protocol.Message, handlers ma
 func (o *Orchestrator) pickAsk(from *window, message protocol.Message) {
 	ask, err := protocol.DecodePayload[protocol.PickAsk](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
@@ -112,7 +112,7 @@ func (o *Orchestrator) zoneCanPick(zoneID ids.ULID, what string) bool {
 func (o *Orchestrator) pickStart(from *window, message protocol.Message) {
 	start, err := protocol.DecodePayload[protocol.PickStart](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
@@ -120,25 +120,25 @@ func (o *Orchestrator) pickStart(from *window, message protocol.Message) {
 	if start.Window.IsZero() {
 		launched, err := o.launch(MapView, start.Zone)
 		if err != nil {
-			o.reply(from, message.Request, err.Error(), 0)
+			o.reply(from, message.Request, err.Error())
 
 			return
 		}
 		start.Window = launched
 		o.picks.waiting[launched] = start
 		o.picks.active[start.Pick] = &pick{token: start.Pick, from: from.id, to: launched, start: start}
-		o.reply(from, message.Request, "", 0)
+		o.reply(from, message.Request, "")
 
 		return
 	}
 	target, ok := o.windows[start.Window]
 	if !ok || target.hello.View != MapView {
-		o.reply(from, message.Request, reasonNoMap, 0)
+		o.reply(from, message.Request, reasonNoMap)
 
 		return
 	}
 	o.beginPick(target, start)
-	o.reply(from, message.Request, "", 0)
+	o.reply(from, message.Request, "")
 }
 
 // beginPick hands a pick to a connected Map window, cancelling any pick it
@@ -232,7 +232,7 @@ func (o *Orchestrator) query(from *window, message protocol.Message) {
 	case err == nil && question.Question == protocol.QuestionRunners:
 		o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: o.runners(question.Document)}))
 	default:
-		o.reply(from, message.Request, "unknown question", 0)
+		o.reply(from, message.Request, "unknown question")
 	}
 }
 

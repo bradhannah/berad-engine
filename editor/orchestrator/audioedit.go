@@ -83,14 +83,14 @@ func newAudioEdits() *audioEdits {
 func (o *Orchestrator) handleAudioEdit(from *window, message protocol.Message) {
 	edit, err := protocol.DecodePayload[protocol.AudioEdit](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
 	o.queueAudio(audioJob{from: from, request: message.Request, kind: audioEditJob, edit: edit, step: noStep()})
 }
 
-func noStep() step { return step{gesture: "", actions: nil} }
+func noStep() step { return step{gesture: "", actions: nil, says: ""} }
 
 func noAudioEdit() protocol.AudioEdit { return protocol.AudioEdit{Edit: "", Gesture: "", Args: nil} }
 
@@ -148,7 +148,7 @@ func (o *Orchestrator) refuseAudio(job audioJob, reason string) {
 		o.history.pushRedo(job.from.group, job.step)
 	case audioEditJob:
 	}
-	o.reply(job.from, job.request, reason, 0)
+	o.reply(job.from, job.request, reason)
 }
 
 // audioFinished adopts a finished job: it records the undo step, replies,
@@ -170,7 +170,7 @@ func (o *Orchestrator) audioFinished(outcome audioOutcome) {
 			o.history.record(job.from.group, job.edit.Gesture, action{
 				document: model.AudioLibraryID(), edit: audioPatchEdit, backEdit: "", forward: outcome.change.forward,
 				back: outcome.change.back, touched: touched, covers: nil, seq: o.seq,
-			})
+			}, "Changed the sounds", false)
 		}
 	case audioUndoJob:
 		o.history.pushRedo(job.from.group, restamp(job.step, o.seq))
@@ -180,6 +180,7 @@ func (o *Orchestrator) audioFinished(outcome audioOutcome) {
 	o.history.noteWrite(job.from.group, model.AudioLibraryID(), touched, o.seq)
 	o.send(job.from, mustMessage(protocol.KindResult, job.request, protocol.Result{
 		OK: true, Reason: "", Revision: o.edits.revision + 1, Created: model.AudioLibraryID(), Item: outcome.created,
+		Said: job.step.says, Touched: job.step.touch(),
 	}))
 	o.audioChanged()
 	o.startAudio()
@@ -193,7 +194,7 @@ func restamp(applied step, seq uint64) step {
 		actions[index].seq = seq
 	}
 
-	return step{gesture: applied.gesture, actions: actions}
+	return step{gesture: applied.gesture, actions: actions, says: applied.says}
 }
 
 // audioChanged tells every window that the audio library changed.
@@ -225,7 +226,7 @@ func (o *Orchestrator) waitForAudio(deadline time.Time) {
 	select {
 	case outcome := <-o.edits.done:
 		o.edits.running = false
-		o.reply(outcome.job.from, outcome.job.request, "the editor is closing", 0)
+		o.reply(outcome.job.from, outcome.job.request, "the editor is closing")
 	case <-time.After(time.Until(deadline)):
 	}
 }

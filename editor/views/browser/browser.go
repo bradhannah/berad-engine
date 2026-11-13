@@ -205,8 +205,10 @@ type State struct {
 	// view being named, saved or deleted.
 	shown, total int
 	// constantsFound and linesFound count what a search found by its words.
-	constantsFound, linesFound                    int
-	naming                                        bool
+	constantsFound, linesFound int
+	naming                     bool
+	// quick is quick open's sheet (increment 38).
+	quick                                         *quickOpen
 	viewName                                      *ui.TextField
 	clearBn, saveViewBn, keepViewBn, deleteViewBn *ui.Button
 }
@@ -247,7 +249,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
 		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0, constantsFound: 0, linesFound: 0,
-		naming:   false,
+		naming: false, quick: newQuickOpen(theme),
 		viewName: ui.NewTextField("view-name", textedit.NewField("", false, viewsplugin.MaxNameLength), false, theme),
 		clearBn:  button("clear", "Clear"), saveViewBn: button("save-view", "Save as a view…"),
 		keepViewBn: button("keep-view", "Save"), deleteViewBn: button("delete-view", "Delete view"),
@@ -298,6 +300,9 @@ func (s *State) Title(frame.Docs) string { return "Project" }
 
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField {
+	if s.quick.open {
+		return s.quick.search
+	}
 	if s.zones != nil {
 		return s.zones.Focused()
 	}
@@ -480,6 +485,12 @@ func (s *State) zoneOf(docs frame.Docs, floorID ids.ULID) (ids.ULID, bool) {
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout(ctx.Docs)
+	if s.quick.open {
+		// Quick open takes every press and the pointer; this window goes on
+		// keeping up with the project underneath.
+		s.updateQuick(input, ctx)
+		input.Cursor = image.Pt(-quickAway, -quickAway)
+	}
 	if s.updateOverlay(input, ctx) {
 		return
 	}
@@ -839,7 +850,7 @@ func (s *State) command(ctx *frame.Context, document ids.ULID, edit, gesture str
 
 		return
 	}
-	ctx.Requests.Command(protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data},
+	ctx.Requests.Command(protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: ""},
 		func(result protocol.Result, err error) {
 			if err != nil {
 				ctx.Frame.Report("")(result, err)
@@ -1076,30 +1087,41 @@ func (s *State) openSelected(ctx *frame.Context) {
 	if !ok {
 		return
 	}
-	if view, own := documentView(entry.Format); own {
-		ctx.Requests.Open(view, entry.ID, false)
+	view, target, refusal := s.entryWindow(ctx.Docs, entry)
+	if refusal != "" {
+		ctx.Frame.Refuse(refusal)
 
 		return
 	}
+	ctx.Requests.Open(view, target, false)
+}
+
+// entryWindow is the window a document opens in and what it shows there: a
+// zone, or the zone of a floor, in a Map window, a workflow, or an NPC's
+// behaviour workflow, in a Workflow window, and a sprite, palette or template
+// in its own editor; or why it opens in none.
+func (s *State) entryWindow(docs frame.Docs, entry project.Entry) (string, ids.ULID, string) {
+	if view, own := documentView(entry.Format); own {
+		return view, entry.ID, ""
+	}
 	switch entry.Format {
 	case zone.FormatName:
-		ctx.Requests.Open(mapView, entry.ID, false)
+		return mapView, entry.ID, ""
 	case floor.FormatName:
-		zoneID, inZone := s.zoneOf(ctx.Docs, entry.ID)
-		if !inZone {
-			ctx.Frame.Status("This floor is in no zone, so no map shows it")
-
-			return
+		if zoneID, inZone := s.zoneOf(docs, entry.ID); inZone {
+			return mapView, zoneID, ""
 		}
-		ctx.Requests.Open(mapView, zoneID, false)
+
+		return "", ids.ULID{}, "This floor is in no zone, so no map shows it"
 	case npc.FormatName:
-		if found, loaded := s.npcOf(ctx.Docs, entry.ID); loaded && !found.Behaviour.IsZero() {
-			ctx.Requests.Open(workflowView, found.Behaviour, false)
-
-			return
+		if found, loaded := s.npcOf(docs, entry.ID); loaded && !found.Behaviour.IsZero() {
+			return workflowView, found.Behaviour, ""
 		}
-		ctx.Frame.Status("This NPC has no behaviour yet. Choose one in the inspector.")
+
+		return "", ids.ULID{}, "This NPC has no behaviour yet. Choose one in the inspector."
 	}
+
+	return "", ids.ULID{}, "Nothing opens " + entry.Name + " in a tab of its own"
 }
 
 // moveFloor moves the selected floor up or down in its zone.
@@ -1145,7 +1167,7 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 		return
 	}
 	if everyProjectHolds(entry.ID) {
-		ctx.Frame.Status("Every project holds “" + entry.Name + "”, so it cannot be deleted")
+		ctx.Frame.Refuse("Every project holds “" + entry.Name + "”, so it cannot be deleted")
 
 		return
 	}
@@ -1180,7 +1202,7 @@ func (s *State) deleteSelected(ctx *frame.Context) {
 func (s *State) askDelete(ctx *frame.Context, entry project.Entry, floors int, uses []protocol.Use) {
 	if entry.Format == art.PaletteFormatName && len(uses) > 0 {
 		ctx.Requests.OpenItem(paletteView, entry.ID, paletteview.ItemDelete)
-		ctx.Frame.Status("“" + entry.Name + "” is used. Its Palette Editor lists each use to remove first.")
+		ctx.Frame.Refuse("“" + entry.Name + "” is used. Its Palette Editor lists each use to remove first.")
 
 		return
 	}
@@ -1295,6 +1317,14 @@ func (s *State) deleteDocument(ctx *frame.Context, documentID ids.ULID) {
 // scrolled into view first, as an author scrolls to it.
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout(docs)
+	if name == "state:quick-open" {
+		return image.Pt(0, 0), s.quick.open
+	}
+	if s.quick.open {
+		if point, found := s.locateQuick(name, docs); found {
+			return point, true
+		}
+	}
 	kind, value, _ := strings.Cut(name, ":")
 	switch {
 	case s.guard.Active():

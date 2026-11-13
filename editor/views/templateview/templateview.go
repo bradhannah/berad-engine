@@ -586,7 +586,7 @@ func (s *State) send(ctx *frame.Context, changed artplugin.Template, done func(p
 		return
 	}
 	command := protocol.Command{
-		Document: s.template, Edit: artplugin.TemplateEdit, Gesture: s.gesture(), Args: data,
+		Document: s.template, Edit: artplugin.TemplateEdit, Gesture: s.gesture(), Args: data, Says: "",
 	}
 	ctx.Requests.Command(command, done)
 }

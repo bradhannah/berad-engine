@@ -43,6 +43,8 @@ type stroke struct {
 	count   int
 	last    image.Point
 	skipped int
+	// pixels counts the pixels the stroke has painted, for its sentence.
+	pixels int
 }
 
 // State is one Pixel editor window.
@@ -106,7 +108,7 @@ func New(window, sprite ids.ULID, theme *ui.Theme) *State {
 		palettes: []ids.ULID{art.DefaultPaletteID()}, first: nil, folds: map[ids.ULID]bool{},
 		tool: ToolPencil, color: clearColor(),
 		zoom: 0, pan: image.Pt(0, 0), wheel: 0,
-		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0), skipped: 0},
+		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0), skipped: 0, pixels: 0},
 		hover:  image.Pt(0, 0), hovering: false,
 		tools: nil, zoomOut: ui.NewButton("zoom-out", "−"), zoomIn: ui.NewButton("zoom-in", "+"),
 		zoomFit: ui.NewButton("zoom-fit", "Fit"),
@@ -144,14 +146,7 @@ func (s *State) Zoom() int { return s.zoom }
 
 // Title is the window title: the sprite's name.
 func (s *State) Title(docs frame.Docs) string {
-	name := "Sprite"
-	docs.View(project.IndexID(), func(document client.Document) {
-		if index, ok := document.Model.(*project.Index); ok {
-			name = index.Name(s.sprite, name)
-		}
-	})
-
-	return "Sprite: " + name + "  (view " + s.window.Short(shortID) + ")"
+	return "Sprite: " + s.spriteName(docs) + "  (view " + s.window.Short(shortID) + ")"
 }
 
 // Focused returns nil: the Pixel editor has no text fields.
@@ -325,13 +320,21 @@ func (s *State) gesture() string {
 // command sends an edit, reporting a refusal in the status bar; done runs
 // once it is applied.
 func (s *State) command(ctx *frame.Context, document ids.ULID, edit, gesture string, args any, done func()) {
+	s.commandSaying(ctx, document, edit, gesture, "", args, done)
+}
+
+// commandSaying sends an edit said in the Pixel editor's own words
+// (increment 51), as "Painted 6 pixels of gloomy / grey 3 on Lantern".
+func (s *State) commandSaying(
+	ctx *frame.Context, document ids.ULID, edit, gesture, says string, args any, done func(),
+) {
 	data, err := json.Marshal(args)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
 		return
 	}
-	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data}
+	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: says}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)
@@ -346,6 +349,7 @@ func (s *State) command(ctx *frame.Context, document ids.ULID, edit, gesture str
 
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
+	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.layout(ctx.Docs)

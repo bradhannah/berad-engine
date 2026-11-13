@@ -18,7 +18,7 @@ func (s *State) arrangeSelection(ctx *frame.Context) {
 	if !ok {
 		return
 	}
-	boxes := arrangeFrom(sub, s.noteHeight, firsts)
+	boxes := arrangeFrom(sub, s.heights(ctx.Docs), firsts)
 	if !s.isSelected(s.workflow.Start()) {
 		delete(boxes, s.workflow.Start())
 	}

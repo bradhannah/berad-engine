@@ -168,6 +168,7 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 		if from, ok := s.shapes[s.link.from].portOf(s.link.output); ok {
 			ui.Line(area, s.toScreen(from.at), s.toScreen(s.link.to), lineWidth, ui.ColorSelect())
 		}
+		s.drawReplacing(area)
 	}
 }
 
@@ -272,8 +273,10 @@ func (s *State) drawNode(area *ebiten.Image, drawn shape, docs frame.Docs) {
 		s.drawOutputRows(area, drawn)
 	case flow.KindCall:
 		s.drawCallNode(area, drawn, docs)
-	case flow.KindLog, flow.KindSay, flow.KindShowMessage:
+	case flow.KindLog:
 		s.drawLogNode(area, drawn, docs)
+	case flow.KindSay, flow.KindShowMessage:
+		s.drawMessageNode(area, drawn, docs)
 	case flow.KindReturn:
 		s.theme.DrawLabel(area, kind.Label, rect.Min.X+textPad, rect.Min.Y+labelDrop, ui.ColorMuted())
 		s.theme.DrawStrong(area, s.clip(wayLabel(drawn.node), drawn.rect.Dx()-ui.Half*textPad), rect.Min.X+textPad,
@@ -646,6 +649,12 @@ func (s *State) hasPartState(state string) (bool, bool) {
 	if found, handled := s.hasWarningState(state); handled {
 		return found, true
 	}
+	if found, handled := s.hasLinkState(state); handled {
+		return found, true
+	}
+	if found, handled := s.hasWrapState(state); handled {
+		return found, true
+	}
 	if found, handled := s.hasCrossingState(state); handled {
 		return found, true
 	}
@@ -806,6 +815,7 @@ func (s *State) drawControls(screen *ebiten.Image, docs frame.Docs, node flow.No
 	if s.form.call != nil {
 		s.drawCall(screen, docs, node, left)
 	}
+	s.drawLinks(screen, left, frame.Inspector(s.size).Dx()-ui.Half*ui.Inset)
 }
 
 // drawAnchor draws an anchor parameter: its place's box, the zone and floor
@@ -1026,6 +1036,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return s.locateMenuItem(value)
 	case localPrefix:
 		return s.locateLocal(value)
+	case strings.TrimSuffix(linkIDPrefix, ":"):
+		return s.locateLink(value)
 	default:
 		if at, found := s.locateOnCanvas(kind, value); found {
 			return s.onScreen(at), true
@@ -1199,7 +1211,7 @@ func (s *State) locateOnTop(kind, value string) (image.Point, bool, bool) {
 func (s *State) hasAnyState(state string, docs frame.Docs) bool {
 	for _, has := range []func(string, frame.Docs) (bool, bool){
 		s.hasRunsInState, s.hasPlaceState, s.hasValueState, s.hasLogState, s.hasPaletteState, s.hasUnsavedState,
-		s.hasSheetState, s.hasScrollState,
+		s.hasSheetState, s.hasScrollState, s.hasReplacingState,
 		func(state string, _ frame.Docs) (bool, bool) { return s.hasOthersState(state) },
 	} {
 		if found, handled := has(state, docs); handled {
@@ -1229,7 +1241,7 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 		return ui.Center(s.pal.search.Rect), true
 	}
 	for _, button := range slices.Concat([]*ui.Button{
-		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add, s.removeGroup,
+		s.arrange, s.recentre, s.legend, s.deleteLine, s.resetLine, s.pal.back, s.pal.add, s.removeGroup, s.foldBn,
 	}, s.zoomCard.buttons()) {
 		if widget == button.ID && !button.Rect.Empty() {
 			return ui.Center(button.Rect), true

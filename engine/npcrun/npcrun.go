@@ -25,6 +25,8 @@ package npcrun
 import (
 	"image"
 	"math/rand/v2"
+	"strconv"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/engine/clock"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -56,7 +58,9 @@ const (
 
 // Change is a move from one node to another: the output taken, the tick,
 // when the node it left could not do its work and carried on, why, and the
-// output of the Together's lane it was in, empty outside one.
+// output of the Together's lane it was in, empty outside one. Why says what
+// the node it left read or did that sent it this way, as "Read 9:15: 9:00
+// to 12:00 holds", or why it started again.
 type Change struct {
 	From   ids.ULID
 	Output string
@@ -64,6 +68,7 @@ type Change struct {
 	Tick   uint64
 	Status string
 	Lane   string
+	Why    string
 }
 
 // World is what an NPC needs on a tick: the zone's floors as they are now,
@@ -158,8 +163,10 @@ type NPC struct {
 type work struct {
 	started bool
 	waiting bool
-	// skipped says why the node is carrying on without doing its work.
+	// skipped says why the node is carrying on without doing its work, and
+	// why what it read or did that sends it on.
 	skipped string
+	why     string
 	// waitLeft and waitTotal are the seconds of a Wait, on its clock.
 	waitLeft, waitTotal float64
 	real                bool
@@ -181,8 +188,9 @@ type work struct {
 // idle is no work: a node not yet set up.
 func idle() work {
 	return work{
-		started: false, waiting: false, skipped: "", waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0, movesTotal: 0,
-		direction: image.Pt(0, 0), way: "", route: nil, climbs: nil, goal: "", target: image.Pt(0, 0), awaited: 0,
+		started: false, waiting: false, skipped: "", why: "", waitLeft: 0, waitTotal: 0, real: false, movesLeft: 0,
+		movesTotal: 0, direction: image.Pt(0, 0), way: "", route: nil, climbs: nil, goal: "", target: image.Pt(0, 0),
+		awaited: 0,
 	}
 }
 
@@ -218,7 +226,7 @@ func Start(placement tilefloor.Placement, floor ids.ULID, seed uint64) *NPC {
 	return &NPC{
 		Placement: placement.ID, NPC: placement.NPC, Floor: floor, Loop: ids.ULID{}, Cell: cell, To: cell, Progress: 0,
 		Facing: image.Pt(0, 1), Node: ids.ULID{}, Container: ids.ULID{},
-		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: ""},
+		Last:    Change{From: ids.ULID{}, Output: "", To: ids.ULID{}, Tick: 0, Status: "", Lane: "", Why: ""},
 		Changes: 0, Taken: nil, Sounds: nil, Lines: nil, Status: "", work: idle(), jumps: 0, locals: nil, calls: nil,
 		module: ids.ULID{}, speech: show.Speech{}, lanes: nil, Sent: nil, heard: nil, handling: nil,
 		//nolint:gosec // Random choices need a seed that repeats a run, not secrecy.
@@ -253,10 +261,39 @@ func (n *NPC) At() (float64, float64) {
 
 // Restart starts the NPC's workflow again from the start, where it stands,
 // as after a clock jump or an edit to its workflow, out of any calls. Its
-// local values clear.
-func (n *NPC) Restart() {
+// local values clear. Why says what started it again; the change to the
+// start says that and what was cleared.
+func (n *NPC) Restart(why string) {
+	cleared := n.clearing()
 	n.Node, n.Container, n.work, n.Status, n.locals = ids.ULID{}, ids.ULID{}, idle(), "", nil
 	n.calls, n.module, n.lanes, n.heard, n.handling = nil, ids.ULID{}, nil, nil, nil
+	n.work.why = why
+	if cleared != "" {
+		n.work.why += ", clearing " + cleared
+	}
+}
+
+// clearing says what a restart clears: what the NPC was part way through,
+// the calls it was in and its local values; "" for none of them.
+func (n *NPC) clearing() string {
+	var parts []string
+	if n.work.started {
+		parts = append(parts, "what it was doing")
+	}
+	if len(n.calls) > 0 {
+		parts = append(parts, "the calls it was in")
+	}
+	if len(n.locals) > 0 {
+		parts = append(parts, "its local values")
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	}
+
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
 }
 
 // Step runs the NPC for one tick: it finishes or continues a step between
@@ -272,10 +309,10 @@ func (n *NPC) Step(world World, tick uint64) {
 	}
 	if world.Clock.Jumps() != n.jumps {
 		n.jumps = world.Clock.Jumps()
-		n.Restart()
+		n.Restart("Started again: the clock moved to " + ClockText(world.Clock.MinuteOfDay()))
 	}
 	if n.Running(world) == nil {
-		n.Restart()
+		n.Restart("Started again: the workflow it was in is gone")
 	}
 	if running := n.Running(world); !hasNode(running, n.Node) {
 		n.enter(running, running.Start(), "", tick)
@@ -341,6 +378,7 @@ func (n *NPC) timeUp(world World, tick uint64) {
 		}
 		n.unwind(inside.depth)
 		n.Node, n.work = inside.container, idle()
+		n.work.why = "Its time, " + RangeText(bound) + ", was up at " + ClockText(world.Clock.MinuteOfDay())
 		n.take(world, flow.OutputExit, tick)
 
 		return
@@ -377,7 +415,7 @@ func (n *NPC) follow(world World, tick uint64) {
 	for range MaxInstant {
 		here := n.here(world)
 		if here.Workflow == nil {
-			n.Restart()
+			n.Restart("Started again: the workflow it was in is gone")
 			here = world
 		}
 		node, ok := here.Workflow.Node(n.Node)
@@ -414,7 +452,10 @@ func (n *NPC) follow(world World, tick uint64) {
 func (n *NPC) act(world World, node flow.Node) (string, bool) {
 	switch node.Kind {
 	case flow.KindTimeSwitch:
-		return timeSwitch(node, world.Clock.MinuteOfDay()), true
+		output, why := timeSwitch(node, world.Clock.MinuteOfDay())
+		n.work.why = why
+
+		return output, true
 	case flow.KindRandom:
 		return n.choose(world, node), true
 	case flow.KindContainer:
@@ -485,19 +526,20 @@ func (n *NPC) actPlaySound(world World, node flow.Node) (string, bool) {
 }
 
 // timeSwitch takes the output of the first time that holds the minute, or
-// "otherwise".
-func timeSwitch(node flow.Node, minute int) string {
+// "otherwise", and says what it read.
+func timeSwitch(node flow.Node, minute int) (string, string) {
+	read := "Read " + ClockText(minute) + ": "
 	ranges, err := node.TimeRanges("ranges")
 	if err != nil {
-		return flow.OutputOtherwise
+		return flow.OutputOtherwise, read + "it has no times"
 	}
 	for _, span := range ranges {
 		if span.Contains(minute) {
-			return span.Port
+			return span.Port, read + RangeText(span) + " holds"
 		}
 	}
 
-	return flow.OutputOtherwise
+	return flow.OutputOtherwise, read + "no time holds"
 }
 
 // choose picks one of a random choice's options, each its share of the
@@ -517,6 +559,7 @@ func (n *NPC) choose(world World, node flow.Node) string {
 		return options[0].Port
 	}
 	roll := n.rng.IntN(total)
+	n.work.why = "Rolled " + strconv.Itoa(roll+1) + " of " + strconv.Itoa(total)
 	for _, option := range options {
 		if roll < option.Share {
 			return option.Port
@@ -528,16 +571,26 @@ func (n *NPC) choose(world World, node flow.Node) string {
 }
 
 // enterContainer goes inside a container while its time holds, or straight
-// on by its exit.
+// on by its exit, and says what it read.
 func (n *NPC) enterContainer(node flow.Node, minute int) string {
 	bound, err := node.TimeRange("bound")
-	if err == nil && bound.Contains(minute) {
-		if _, has := node.Next[flow.OutputInside]; has {
-			return flow.OutputInside
-		}
+	if err != nil {
+		return flow.OutputExit
 	}
+	read := "Read " + ClockText(minute) + ": "
+	if !bound.Contains(minute) {
+		n.work.why = read + "outside " + RangeText(bound)
 
-	return flow.OutputExit
+		return flow.OutputExit
+	}
+	if _, has := node.Next[flow.OutputInside]; !has {
+		n.work.why = read + "within " + RangeText(bound) + ", but nothing is inside"
+
+		return flow.OutputExit
+	}
+	n.work.why = read + "within " + RangeText(bound)
+
+	return flow.OutputInside
 }
 
 // actWait starts or finishes a Wait, for its amount typed or the constant
@@ -556,6 +609,10 @@ func (n *NPC) actWait(world World, node flow.Node) (string, bool) {
 	if n.work.waitLeft > 0 {
 		return "", false
 	}
+	n.work.why = "Waited " + secondsText(n.work.waitTotal)
+	if n.work.real {
+		n.work.why += " of real time"
+	}
 
 	return flow.OutputNext, true
 }
@@ -573,10 +630,14 @@ func (n *NPC) actMove(world World, node flow.Node) (string, bool) {
 		n.work = moveWork(n.numberOf(world, tiles, low, high), direction)
 	}
 	if n.work.movesLeft <= 0 {
+		n.work.why = "Moved " + tilesText(n.work.movesTotal) + " " + n.work.way
+
 		return flow.OutputNext, true
 	}
 	if !n.step(world.Zone, n.work.direction) {
+		in := n.Cell.Add(n.work.direction)
 		n.work.skipped = StatusBlocked
+		n.work.why = "Something was in its way at " + strconv.Itoa(in.X) + ", " + strconv.Itoa(in.Y)
 
 		return flow.OutputNext, true
 	}
@@ -651,7 +712,9 @@ func (n *NPC) restartOf(workflow *flow.Workflow, from flow.Node, output string) 
 
 // enter moves the NPC onto a node, recording the change.
 func (n *NPC) enter(workflow *flow.Workflow, target ids.ULID, output string, tick uint64) {
-	n.Last = Change{From: n.Node, Output: output, To: target, Tick: tick, Status: n.work.skipped, Lane: ""}
+	n.Last = Change{
+		From: n.Node, Output: output, To: target, Tick: tick, Status: n.work.skipped, Lane: "", Why: n.work.why,
+	}
 	n.Taken = append(n.Taken, n.Last)
 	n.Changes++
 	n.Node, n.work, n.lanes = target, idle(), nil

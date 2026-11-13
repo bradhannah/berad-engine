@@ -127,7 +127,13 @@ func (s *State) layoutLog(docs frame.Docs) {
 	}
 	panel.watched.On, panel.all.On = !s.everyNPC(), s.everyNPC()
 	panel.watched.Disabled = s.state == nil || s.state.Watched.IsZero()
-	left := ui.Inset + s.theme.LabelWidth("LOG") + ui.Inset
+	panel.shown = panel.shown[:0]
+	if s.strip.part != partLog {
+		panel.watched.Rect, panel.all.Rect, panel.clear.Rect = ui.Zero(), ui.Zero(), ui.Zero()
+
+		return
+	}
+	left := s.stripLeft()
 	top := area.Min.Y + ui.Gap
 	for _, button := range []*ui.Button{panel.watched, panel.all, panel.clear} {
 		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
@@ -138,7 +144,6 @@ func (s *State) layoutLog(docs frame.Docs) {
 	panel.back = max(0, min(panel.back, len(lines)-logRows))
 	end := len(lines) - panel.back
 	shown := lines[max(0, end-logRows):end]
-	panel.shown = panel.shown[:0]
 	rowTop := area.Max.Y - ui.Gap - len(shown)*ui.LineHeight
 	for index, line := range shown {
 		label := s.lineSource(docs, line)
@@ -151,10 +156,12 @@ func (s *State) layoutLog(docs frame.Docs) {
 }
 
 // lineSource names the workflow and the node that wrote a line, as
-// "Customer shops · Log".
+// "Customer shops · Log". Until the workflow has arrived it names the
+// workflow alone; a node is called deleted only when its workflow, loaded,
+// no longer has it.
 func (s *State) lineSource(docs frame.Docs, line protocol.PreviewLine) string {
 	kind := "a deleted node"
-	docs.View(line.Workflow, func(document client.Document) {
+	loaded := docs.View(line.Workflow, func(document client.Document) {
 		if workflowDoc, ok := document.Model.(*workflowplugin.Document); ok {
 			if node, found := workflowDoc.Workflow.Node(line.Node); found {
 				declared, _ := flow.KindOf(node.Kind)
@@ -162,6 +169,9 @@ func (s *State) lineSource(docs frame.Docs, line protocol.PreviewLine) string {
 			}
 		}
 	})
+	if !loaded {
+		return s.name(docs, line.Workflow, "A deleted workflow")
+	}
 
 	return s.name(docs, line.Workflow, "A deleted workflow") + " · " + kind
 }
@@ -181,6 +191,9 @@ func (s *State) lineWho(docs frame.Docs, line protocol.PreviewLine) string {
 // through older lines.
 func (s *State) updateLog(input *ui.Input, ctx *frame.Context) {
 	panel := s.log
+	for _, line := range s.log.lines {
+		s.subscribe(line.Workflow, ctx)
+	}
 	s.layoutLog(ctx.Docs)
 	switch {
 	case panel.watched.Update(input):
@@ -197,7 +210,7 @@ func (s *State) updateLog(input *ui.Input, ctx *frame.Context) {
 			ctx.Requests.OpenItem(workflowview.ViewName, row.line.Workflow, workflowview.NodeItem+row.line.Node.String())
 		}
 	}
-	if input.Cursor.In(s.logArea()) && input.WheelY != 0 {
+	if s.strip.part == partLog && input.Cursor.In(s.logArea()) && input.WheelY != 0 {
 		step := 1
 		if input.WheelY < 0 {
 			step = -1
@@ -213,9 +226,6 @@ func (s *State) updateLog(input *ui.Input, ctx *frame.Context) {
 func (s *State) drawLog(screen *ebiten.Image, docs frame.Docs) {
 	area := s.logArea()
 	panel := s.log
-	ui.Divider(screen, area.Min, image.Pt(area.Max.X, area.Min.Y))
-	s.theme.DrawLabel(screen, "LOG", ui.Inset, panel.clear.Rect.Min.Y+(ui.ButtonH-ui.LabelSize)/ui.Half-1,
-		ui.ColorMuted())
 	for _, button := range []*ui.Button{panel.watched, panel.all, panel.clear} {
 		button.Draw(screen, s.theme)
 	}

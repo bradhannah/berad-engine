@@ -49,12 +49,46 @@ type shell struct {
 	dragging bool
 	// stats are the window's frame statistics, when they are asked for.
 	stats *frameStats
-	// lastTab is each kind's tab last in front.
-	lastTab map[string]*tab
+	// more lists the tabs that do not fit on the bar, while open, and used
+	// holds the tabs in the order they were last in front.
+	more ui.Menu
+	used []*tab
+	// trail is where the author has been, for Back and Forward.
+	trail trail
+	// beside is a window quick open asked for beside a tab, and quickImage
+	// what the project browser draws its sheet into.
+	beside     *besideAsk
+	quickImage *ebiten.Image
+	// statusImage is where a split's one status bar is drawn (increment 52).
+	statusImage *ebiten.Image
 	// onTop is whether the window is kept above other applications' windows,
-	// and folded whether every tab's inspector is folded to its strip.
-	onTop  bool
-	folded bool
+	// and folded and leftFolded which kinds of view have their inspector or
+	// their left panel folded (increment 43).
+	onTop      bool
+	folded     map[string]bool
+	leftFolded map[string]bool
+	// widths are each kind of view's panel widths, kept is the arrangement
+	// the orchestrator keeps for this person, and screen the size of the
+	// screen it is kept for (increment 53).
+	widths map[string]kindWidths
+	kept   protocol.Layout
+	screen string
+	// known are the arrangements this screen has, and keptArrived is set
+	// once the orchestrator gave the kept one; minWidth is the narrowest
+	// the window goes for the tab in front (increment 54).
+	known       map[string]bool
+	keptArrived bool
+	minWidth    int
+	// reopen is the tabs still being reopened as they were left; frameNow
+	// is the window's frame as kept, frameSeen and frameTicks how long it
+	// has been where it is now, and tabsKept the tabs as last kept
+	// (increment 55).
+	reopen     *reopening
+	frameNow   protocol.WindowFrame
+	frameSeen  protocol.WindowFrame
+	frameTicks int
+	tabsKept   string
+	quitting   bool
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -78,6 +112,9 @@ type pane struct {
 	image  *ebiten.Image
 	rect   image.Rectangle
 	failed error
+	// arrangedAs is the arrangement the pane's panels follow: its kind of
+	// view's, or a previewing Map's (increment 54).
+	arrangedAs string
 }
 
 // openedPane is a window connected for the shell, or why it could not be.
@@ -92,7 +129,13 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		args: args, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
 		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
-		lastTab: map[string]*tab{}, onTop: false, folded: false,
+		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
+		beside: nil, quickImage: nil, statusImage: nil,
+		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
+		widths: map[string]kindWidths{}, kept: protocol.Layout{Screens: nil}, screen: screenKey(),
+		known: map[string]bool{}, keptArrived: false, minWidth: 0, reopen: nil,
+		frameNow:  protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0},
+		frameSeen: protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0}, frameTicks: 0, tabsKept: "", quitting: false,
 	}
 }
 
@@ -117,14 +160,20 @@ func (s *shell) newPane(conn *client.Client, args Args) (*pane, error) {
 	shown := &pane{
 		host: newHost(conn, newView(args, conn.Window(), s.theme), args.View, s.theme, place),
 		view: args.View, target: args.Target, place: place, image: nil, rect: ui.Zero(), failed: nil,
+		arrangedAs: "",
 	}
 	shown.host.script = script
 	shown.host.saveShot = s.queueShot
 	shown.host.frame.OnTop.On = s.onTop
-	shown.host.frame.ShowInspector.On = !s.folded
+	shown.host.frame.ShowInspector.On = !s.folded[args.View]
+	shown.host.frame.ShowLeft.On = !s.leftFolded[args.View]
 	shown.host.tabs = func() int { return len(s.tabs) }
 	shown.host.tabTint = s.tintNamed
 	shown.host.tabUnsaved = s.unsavedNamed
+	shown.host.tabKeys, shown.host.tabFront = s.tabKeys, s.frontNamed
+	shown.host.arrangement = s.keepArrangement
+	shown.host.inspectorWidth = s.widths[args.View].inspector
+	shown.host.setLeft(s.widths[args.View].left)
 
 	return shown, nil
 }
@@ -177,9 +226,12 @@ func (s *shell) Update() error {
 	s.receiveOpened()
 	s.tintTabs()
 	s.layout()
+	s.placeQuick()
 	input := s.readInput(s.target(s.focused()))
-	s.updateBar(&input)
-	s.updateSplit(&input)
+	if !s.quickShowing() {
+		s.updateBar(&input)
+		s.updateSplit(&input)
+	}
 	s.layout()
 	focused := s.focused()
 	s.route(input, s.target(focused), focused)
@@ -187,10 +239,15 @@ func (s *shell) Update() error {
 	for _, shown := range s.panes() {
 		s.run(shown)
 	}
+	s.takeBeside()
 	s.attend()
+	s.noteUsed()
+	s.noteTrail()
 	s.followOnTop()
 	s.followInspector()
-	s.remember()
+	s.limitWindow()
+	s.reopenNext()
+	s.followFrame()
 	s.followClock()
 	s.retitle()
 	if len(s.tabs) == 0 {
@@ -206,15 +263,20 @@ func (s *shell) layout() {
 	for _, each := range s.tabs {
 		layoutTab(each, s.area())
 	}
+	s.shareStatus()
 	if s.clock != nil {
 		s.clock.rect = s.panelRect()
 	}
 }
 
-// target is the pane that takes the frame's input: the clock's panel while
-// the cursor is over it or its time field is being typed in, and otherwise
-// the focused pane of the tab in front.
+// target is the pane that takes the frame's input: the project browser's
+// while quick open shows, the clock's panel while the cursor is over it or
+// its time field is being typed in, and otherwise the focused pane of the
+// tab in front.
 func (s *shell) target(focused *pane) *pane {
+	if shown, quick, ok := s.browserPane(); ok && quick.QuickOpen() {
+		return shown
+	}
 	if !s.clockOpen || s.clock == nil {
 		return focused
 	}
@@ -296,6 +358,7 @@ func (s *shell) close(shown *pane, cause error) {
 			logLine("report a " + shown.view + " pane's crash: " + err.Error())
 		}
 	}
+	s.quitting = s.quitting || shown.host.shutdown
 	s.stats.addLatencies(shown.host.frame.Latencies())
 	if err := errors.Join(shown.host.sounds.Close(), shown.host.conn.Close()); err != nil {
 		logLine("close a " + shown.view + " pane: " + err.Error())
@@ -344,6 +407,12 @@ func (s *shell) attend() {
 			if !shown.place.attention && !shown.place.front {
 				continue
 			}
+			if beside, asked := s.besideFor(shown); asked && beside != each {
+				s.putBeside(shown, beside)
+				shown.place.attention, shown.place.front = false, false
+
+				return
+			}
 			s.active, each.focus = index, slot
 			if shown.place.attention && !ebiten.IsFocused() {
 				ebiten.RequestAttention()
@@ -371,25 +440,42 @@ func (s *shell) followOnTop() {
 	}
 }
 
-// followInspector shows or folds every tab's inspector together: any pane's
-// Inspector toggle, or a click on its folded strip, changes it for the whole
-// window, and every pane's toggle shows it. The clock's panel has no
-// inspector to fold.
+// followInspector keeps the inspector and the left panel of every pane of a
+// kind of view the same (increment 43): any pane's Inspector toggle, its
+// folded strip, Cmd+I, its left panel's fold button or Cmd+Shift+I changes
+// them for every pane of its kind, and leaves other kinds alone. The
+// clock's panel has neither to fold.
 func (s *shell) followInspector() {
 	var panes []*pane
 	for _, each := range s.tabs {
 		panes = append(panes, each.panes...)
 	}
-	for _, shown := range panes {
-		if shown.host.frame.ShowInspector.On == s.folded {
-			s.folded = !shown.host.frame.ShowInspector.On
+	switched := s.switchArrangements()
+	inspectors := follow(panes, s.folded, s.arrangement,
+		func(shown *pane) *ui.Toggle { return shown.host.frame.ShowInspector })
+	lefts := follow(panes, s.leftFolded, s.arrangement, func(shown *pane) *ui.Toggle { return shown.host.frame.ShowLeft })
+	if widths := s.followWidths(); switched || inspectors || lefts || widths {
+		s.publishArrangement()
+	}
+}
 
-			break
+// follow keeps a toggle the same across the panes of each arrangement,
+// folded meaning it is off: a pane whose toggle differs from its
+// arrangement's changes it, then every pane of the arrangement shows it. It
+// reports whether an arrangement changed.
+func follow(panes []*pane, folded map[string]bool, key func(*pane) string, toggle func(*pane) *ui.Toggle) bool {
+	changed := map[string]bool{}
+	for _, shown := range panes {
+		kind := key(shown)
+		if on := toggle(shown).On; on == folded[kind] && !changed[kind] {
+			folded[kind], changed[kind] = !on, true
 		}
 	}
 	for _, shown := range panes {
-		shown.host.frame.ShowInspector.On = !s.folded
+		toggle(shown).On = !folded[key(shown)]
 	}
+
+	return len(changed) > 0
 }
 
 // retitle names the window after its focused pane.
@@ -448,9 +534,12 @@ func (s *shell) Draw(screen *ebiten.Image) {
 			drawPane(screen, shown)
 		}
 		s.drawSplit(screen, front)
+		s.drawSharedStatus(screen, front)
 	}
 	s.drawClock(screen)
 	s.drawBar(screen)
+	s.drawQuick(screen)
+	s.drawMore(screen)
 	for _, path := range s.shots {
 		if err := saveScreenshot(screen, path); err != nil {
 			logLine(err.Error())

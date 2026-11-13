@@ -303,6 +303,11 @@ func (w *TextField) FitHeight(most int) int {
 	return max(ButtonH, rows*w.lineHeight()+Half*fieldPad)
 }
 
+// RowsHeight is how high the field is to show a number of rows.
+func (w *TextField) RowsHeight(rows int) int {
+	return max(ButtonH, rows*w.lineHeight()+Half*fieldPad)
+}
+
 // clampScroll keeps a field of many lines scrolled no further than its text
 // needs, as text taken away, or a field grown, needs less.
 func (w *TextField) clampScroll() {

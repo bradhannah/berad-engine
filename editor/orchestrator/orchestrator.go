@@ -204,6 +204,7 @@ func (o *Orchestrator) open() error {
 		return err
 	}
 	o.loadHome()
+	o.loadLayout()
 
 	return nil
 }

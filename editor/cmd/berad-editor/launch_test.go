@@ -67,3 +67,28 @@ func TestSampleRoutineShowsEachNode(t *testing.T) {
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestPlayFromHere right-clicks a cell of the sample's ground floor and
+// chooses Play from here: the Play tab launches with the player on that
+// cell, and Cmd+R launches again at the player start (increment 47).
+func TestPlayFromHere(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "play-from-here.png")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), doubleClick("row:Sample zone"), must("state:tabs:2", 600),
+		quitWhenAlone(),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(30), rightClick("cell:3,1"), must("menu:play-here", 60),
+		click("menu:play-here"), wait(1500), quit(),
+	)
+	playScript := script(
+		must("state:playing", 1800), must("state:player:3,1", 120), wait(30), shoot(shot), keys("Cmd+R"),
+		must("state:launches:2", 900), must("state:player:0,2", 120), quit(),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript}, "play": {playScript}})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}

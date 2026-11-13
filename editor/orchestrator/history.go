@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -20,10 +21,21 @@ type action struct {
 	seq     uint64
 }
 
-// step is one undo step: a single edit or a whole gesture.
+// step is one undo step: a single edit or a whole gesture, and the sentence
+// its first edit was said with.
 type step struct {
 	gesture string
 	actions []action
+	says    string
+}
+
+// touch is what a step's first change touched.
+func (s step) touch() protocol.Touch {
+	if len(s.actions) == 0 {
+		return protocol.Untouched()
+	}
+
+	return protocol.Touching(s.actions[0].document, s.actions[0].touched)
 }
 
 type undoList struct {
@@ -75,8 +87,10 @@ func (h *history) leave(group string) {
 }
 
 // record adds an action to the group's history, extending the latest step when
-// it belongs to the same gesture, and clears the redo list.
-func (h *history) record(group, gesture string, applied action) {
+// it belongs to the same gesture, and clears the redo list. A sentence the
+// view said itself, own, for the same kind of edit as the step's first,
+// replaces the step's, so a stroke is said as a whole (increment 51).
+func (h *history) record(group, gesture string, applied action, says string, own bool) {
 	list, ok := h.groups[group]
 	if !ok {
 		return
@@ -84,11 +98,14 @@ func (h *history) record(group, gesture string, applied action) {
 	list.redo = nil
 	last := len(list.undo) - 1
 	if gesture != "" && last >= 0 && list.undo[last].gesture == gesture {
+		if own && list.undo[last].actions[0].edit == applied.edit {
+			list.undo[last].says = says
+		}
 		list.undo[last].actions = append(list.undo[last].actions, applied)
 
 		return
 	}
-	list.undo = append(list.undo, step{gesture: gesture, actions: []action{applied}})
+	list.undo = append(list.undo, step{gesture: gesture, actions: []action{applied}, says: says})
 	if len(list.undo) > h.limit {
 		list.undo = list.undo[len(list.undo)-h.limit:]
 	}
@@ -150,11 +167,11 @@ func (h *history) pushRedo(group string, item step) {
 
 func pop(list *undoList, pick func(*undoList) *[]step) (step, bool) {
 	if list == nil {
-		return step{gesture: "", actions: nil}, false
+		return step{gesture: "", actions: nil, says: ""}, false
 	}
 	stack := pick(list)
 	if len(*stack) == 0 {
-		return step{gesture: "", actions: nil}, false
+		return step{gesture: "", actions: nil, says: ""}, false
 	}
 	last := (*stack)[len(*stack)-1]
 	*stack = (*stack)[:len(*stack)-1]

@@ -51,8 +51,8 @@ func TestRightClickDeletes(t *testing.T) {
 		t.Fatal("a right-click on a line selects it and offers to delete it")
 	}
 	f.click("menu:delete-line")
-	if len(f.nth(flow.KindStart, 1).Next) != 0 || !strings.Contains(f.status(), "Line removed") {
-		t.Fatalf("Delete line removes it: %+v", f.nth(flow.KindStart, 1).Next)
+	if len(f.nth(flow.KindStart, 1).Next) != 0 || !strings.Contains(f.status(), "Unlinked Start · next") {
+		t.Fatalf("Unlink removes it: %+v", f.nth(flow.KindStart, 1).Next)
 	}
 	f.rightClick("canvas:900,700")
 	if f.menuOffers("delete-node") || f.menuOffers("delete-line") || !f.state.Selected().IsZero() {

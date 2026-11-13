@@ -287,8 +287,10 @@ func TestPaletteClicksBuildASequence(t *testing.T) {
 	}
 }
 
-// Dragging from an output's port to a node connects them; dropping on empty
-// canvas disconnects; links back to the start are refused with a reason.
+// Dragging from an output's port to a node connects them; links back to the
+// start are refused with a reason. Dropping on empty canvas leaves the line
+// as it was and offers a node to join it to; Esc changes nothing, and
+// choosing a node adds it joined by that line (increment 40).
 func TestPortsConnectAndDisconnect(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -306,9 +308,23 @@ func TestPortsConnectAndDisconnect(t *testing.T) {
 	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != f.nth(flow.KindWait, 2).ID {
 		t.Fatal("dragging again moves the link")
 	}
+	waitTwo := f.nth(flow.KindWait, 2).ID
 	f.drag(f.at("port:start:1:next"), f.at("canvas:900,40"))
-	if len(f.nth(flow.KindStart, 1).Next) != 0 {
-		t.Fatal("dropping on empty canvas disconnects")
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != waitTwo {
+		t.Fatal("dropping on empty canvas leaves the line as it was")
+	}
+	if _, open := f.state.Locate("menu:node-menu", f.docs); !open {
+		t.Fatal("dropping on empty canvas offers a node")
+	}
+	f.keys("Escape")
+	if _, open := f.state.Locate("menu:node-menu", f.docs); open || f.nth(flow.KindStart, 1).Next[flow.OutputNext] != waitTwo {
+		t.Fatal("Esc closes the menu and changes nothing")
+	}
+	f.drag(f.at("port:start:1:next"), f.at("canvas:900,40"))
+	f.click("menu:node-group:" + flow.GroupAction)
+	f.click("menu:node-kind:" + flow.KindWait)
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != f.nth(flow.KindWait, 3).ID {
+		t.Fatal("choosing Wait adds one there, joined by the line")
 	}
 }
 
@@ -495,7 +511,7 @@ func TestLinesCanBeSelectedAndDeleted(t *testing.T) {
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.docs)
 	f.keys("Backspace")
-	if len(f.nth(flow.KindStart, 1).Next) != 0 || f.has("line-selected") || !strings.Contains(f.status(), "Line removed") {
+	if len(f.nth(flow.KindStart, 1).Next) != 0 || f.has("line-selected") || !strings.Contains(f.status(), "Unlinked Start · next") {
 		t.Fatalf("Backspace removes the selected line: %+v %q", f.nth(flow.KindStart, 1).Next, f.status())
 	}
 	if len(f.nth(flow.KindWait, 1).Next) != 0 {
@@ -589,8 +605,8 @@ func TestPickingUpALineByItsArrowEnd(t *testing.T) {
 		t.Fatalf("a line cannot go into the start: %q", f.status())
 	}
 	f.drag(f.at("entry:wait:2:1"), f.at("canvas:900,40"))
-	if len(f.nth(flow.KindStart, 1).Next) != 0 {
-		t.Fatal("dropping a line on empty canvas removes it")
+	if f.nth(flow.KindStart, 1).Next[flow.OutputNext] != second.ID {
+		t.Fatal("dropping a line on empty canvas leaves it as it was (increment 40)")
 	}
 }
 

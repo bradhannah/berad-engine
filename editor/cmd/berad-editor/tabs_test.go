@@ -45,9 +45,9 @@ func TestViewsOpenAsTabs(t *testing.T) {
 }
 
 // TestClockIsPinned previews the sample zone in a Map tab, then brings a
-// workflow's tab to the front (increment 10). The pinned clock reads
-// the preview out on the bar, its panel opens by itself, and its +1h moves
-// the hidden Map's preview on an hour.
+// workflow's tab to the front (increment 10). The pinned clock reads the
+// preview out on the bar, and its +1h moves the hidden Map's preview on an
+// hour. Since increment 41 its panel no longer opens by itself.
 func TestClockIsPinned(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -149,14 +149,14 @@ func TestFrameTimes(t *testing.T) {
 	t.Logf("the editor window:\n%s", stats[0])
 }
 
-// TestTabsGroupByKind opens two workflows, then a Map and two more
-// views of it (increment 10, settled after trying it): the bar files them
-// under their kinds, and with the Maps in front a second row lists the three.
-func TestTabsGroupByKind(t *testing.T) {
+// TestEveryDocumentHasATab opens two workflows, then a Map and two more
+// views of it: the bar shows each as a tab of its own, on one row
+// (increment 38).
+func TestEveryDocumentHasATab(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
-	shot := shotPath(t, "tabs-kinds.png")
+	shot := shotPath(t, "tabs-row.png")
 	browserScript := script(
 		must("row:Sample zone", 600), wait(5),
 		click("ui:new-workflow"), wait(30), click("ui:open"), wait(60),
@@ -167,6 +167,84 @@ func TestTabsGroupByKind(t *testing.T) {
 	mapScript := script(must("state:loaded", 600), wait(5), keys("Cmd+N"), wait(60), keys("Cmd+N"), wait(60))
 	idle := script(must("state:loaded", 600))
 	runEditor(t, binary, project, scripts{"browser": {browserScript}, "map": {mapScript, idle, idle}})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}
+
+// TestKeysMoveBetweenTabs opens a workflow and a Map, then moves between
+// the three tabs by key from the workflow's tab (increment 38): Cmd+1 to
+// the Project, Cmd+Shift+] to its neighbour, Ctrl+Tab back to the tab last
+// used, and Cmd+9, with no ninth tab, nowhere.
+func TestKeysMoveBetweenTabs(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Workflows"), wait(20), doubleClick("row:Clerk's day"),
+		must("state:tabs:2", 600), wait(30), click("row:Zones"), wait(20), doubleClick("row:Sample zone"),
+		must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	workflowScript := script(
+		must("state:tabs:3", 900), wait(30), keys("Cmd+1"), must("state:front:Project", 60),
+		keys("Cmd+Shift+]"), must("state:front:Clerk's day", 60), keys("Ctrl+Tab"), must("state:front:Project", 60),
+		keys("Cmd+9"), wait(5), must("state:front:Project", 5), keys("Cmd+3"), wait(30), keys("Cmd+W"), wait(30),
+	)
+	mapScript := script(must("state:loaded", 600), must("state:tabs:2", 1800), wait(5), keys("Cmd+W"), wait(30))
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}, "map": {mapScript}})
+	noCrashes(t, project)
+}
+
+// TestBackReturnsToANode selects two nodes of Clerk's day in turn, goes to
+// the Project's tab, then steps back with Cmd+[ to the workflow with the
+// second selected, back again to the first, and forward with Cmd+]
+// (increment 38).
+func TestBackReturnsToANode(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Workflows"), wait(20), doubleClick("row:Clerk's day"),
+		must("state:tabs:2", 600), must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5),
+		click("ui:quit"), wait(60),
+	)
+	workflowScript := script(
+		must("state:loaded", 600), wait(30), click("node:start:1"), must("state:selected:start", 60),
+		click("node:time-switch:1"), must("state:selected:time-switch", 60), wait(5), keys("Cmd+1"),
+		must("state:front:Project", 60), wait(5), keys("Cmd+["), must("state:front:Clerk's day", 60),
+		must("state:selected:time-switch", 60), wait(5), keys("Cmd+["), must("state:selected:start", 60), wait(5),
+		keys("Cmd+]"), must("state:selected:time-switch", 60), wait(5), keys("Cmd+W"), wait(30),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
+	noCrashes(t, project)
+}
+
+// TestQuickOpenFromAMap presses Cmd+P in a Map's tab, finds Clerk's day in
+// the sheet and opens it with Enter in a tab of its own; then finds Fetch
+// stock and opens it with Cmd+Enter beside the Map, in the Map's tab
+// (increment 38).
+func TestQuickOpenFromAMap(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "quick-open.png")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("row:Zones"), wait(20), doubleClick("row:Sample zone"),
+		must("state:tabs:2", 600), must("state:quick-open", 900), wait(5), typed("Clerk's"),
+		must("quick:Clerk's day", 120), step{Repeat: 2, Screenshot: shot, Front: false}, click("quick:Clerk's day"),
+		keys("Enter"), must("state:tabs:3", 600), must("state:quick-open", 1800), wait(5), typed("Fetch"),
+		must("quick:Fetch stock", 120), click("quick:Fetch stock"), keys("Cmd+Enter"),
+		must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
+	)
+	mapScript := script(
+		must("state:loaded", 600), wait(30), keys("Cmd+P"), must("state:tabs:3", 900),
+		must("state:front:Clerk's day", 60), must("state:tabs:2", 1800), wait(10), keys("Cmd+P"),
+		must("state:front:Fetch stock", 900), must("state:tabs:2", 5), wait(120), keys("Cmd+W"), wait(30),
+	)
+	clerkScript := script(must("state:loaded", 600), wait(30), keys("Cmd+W"), wait(30))
+	fetchScript := script(must("state:loaded", 600), wait(60), keys("Cmd+W"), wait(30))
+	runEditor(t, binary, project, scripts{
+		"browser": {browserScript}, "map": {mapScript}, "workflow": {clerkScript, fetchScript},
+	})
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }

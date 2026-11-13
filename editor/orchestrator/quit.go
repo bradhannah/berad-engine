@@ -34,11 +34,11 @@ func (o *Orchestrator) unsaved(from *window, message protocol.Message) {
 func (o *Orchestrator) quitEditor(from *window, message protocol.Message) {
 	quit, err := protocol.DecodePayload[protocol.Quit](message)
 	if err != nil {
-		o.reply(from, message.Request, err.Error(), 0)
+		o.reply(from, message.Request, err.Error())
 
 		return
 	}
-	o.reply(from, message.Request, "", 0)
+	o.reply(from, message.Request, "")
 	o.quitting = true
 	for _, open := range o.windows {
 		o.send(open, mustMessage(protocol.KindShutdown, 0, protocol.Shutdown{

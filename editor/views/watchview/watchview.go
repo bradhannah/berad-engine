@@ -88,8 +88,14 @@ type State struct {
 	chosen     int
 	chosenFlow ids.ULID
 	parts      []image.Rectangle
-	// log is what the Logs wrote in this preview.
-	log *logPanel
+	// log is what the Logs wrote in this preview, and strip the strip it
+	// shares with the trail and the values (increment 46).
+	log   *logPanel
+	strip *strip
+	// follow keeps the node being run in view while on, and followed is
+	// the node it last brought into view (increment 41).
+	follow   *ui.Toggle
+	followed ids.ULID
 }
 
 // New returns the Watch window for a zone.
@@ -99,7 +105,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		tick: 0, state: nil, flow: nil, shown: ids.ULID{},
 		pause: ui.NewButton("pause", "Pause NPCs"), step: ui.NewButton("step", textStep),
 		watchLoop: ui.NewButton("watch-loop", textWatchLoop), chosen: -1,
-		chosenFlow: ids.ULID{}, parts: nil, log: newLogPanel(),
+		chosenFlow: ids.ULID{}, parts: nil, log: newLogPanel(), strip: newStrip(),
+		follow: &ui.Toggle{ID: "follow", Label: "Follow", Rect: ui.Zero(), On: false}, followed: ids.ULID{},
 	}
 }
 
@@ -165,10 +172,12 @@ func (s *State) Changed(update client.Update, _ *frame.Context) {
 	case update.PreviewStart != nil:
 		s.run, s.tick, s.state = update.PreviewStart.Run, 0, nil
 		s.log.restart()
+		s.strip.restart()
 	case update.PreviewState != nil && update.PreviewState.Run == s.run && update.PreviewState.Tick > s.tick:
 		state := *update.PreviewState
 		s.tick, s.state = state.Tick, &state
 		s.log.keep(state.Log)
+		s.strip.keepTrail(state)
 	case update.PreviewStop != nil && update.PreviewStop.Run == s.run:
 		s.run, s.tick, s.state, s.flow, s.shown = ids.ULID{}, 0, nil, nil, ids.ULID{}
 	}
@@ -192,46 +201,10 @@ func (s *State) watched() (protocol.PreviewEntity, bool) {
 	return none, false
 }
 
-// canvas is where the workflow is drawn, between the header and the footer.
+// canvas is where the workflow is drawn, the window's width between the
+// header and the strip.
 func (s *State) canvas() image.Rectangle {
-	content := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
-	right := content.Max.X
-	if !s.valuesColumn().Empty() {
-		right -= valuesWidth
-	}
-
-	return image.Rect(0, headerHeight, right, s.logArea().Min.Y)
-}
-
-// valuesColumn is where the watched NPC's values are listed, beside its
-// workflow, while it has any.
-func (s *State) valuesColumn() image.Rectangle {
-	if s.state == nil || len(s.state.Values) == 0 {
-		return ui.Zero()
-	}
-
-	return image.Rect(s.size.X-valuesWidth, headerHeight, s.size.X, s.logArea().Min.Y)
-}
-
-// drawValues lists the watched NPC's values: its workflow's locals and its
-// own, its zone's and the world's.
-func (s *State) drawValues(screen *ebiten.Image) {
-	column := s.valuesColumn()
-	if column.Empty() {
-		return
-	}
-	ui.Divider(screen, column.Min, image.Pt(column.Min.X, column.Max.Y))
-	left := column.Min.X + ui.Inset
-	s.theme.DrawLabel(screen, "VALUES", left, column.Min.Y+ui.Inset, ui.ColorMuted())
-	top := column.Min.Y + ui.Inset + ui.LineHeight
-	for _, row := range s.valueRows() {
-		if top+ui.LineHeight > column.Max.Y {
-			break
-		}
-		s.theme.DrawMono(screen, row.path, left, top, ui.ColorInk())
-		s.theme.DrawText(screen, row.value, column.Max.X-ui.Inset-s.theme.TextWidth(row.value), top, ui.ColorLive())
-		top += ui.LineHeight
-	}
+	return image.Rect(0, headerHeight, s.size.X, s.logArea().Min.Y)
 }
 
 // valueRow is one value as written: its path at the left and what it is at
@@ -304,18 +277,23 @@ func (s *State) layout() {
 		place(s.watchLoop)
 		s.watchLoop.Disabled = s.state.Watched.String() == loop.ID
 	}
+	width := s.theme.TextWidth(s.follow.Label) + ui.Half*ui.Inset + ui.ButtonH
+	s.follow.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 }
 
 // Update follows the watched NPC's workflow and sends the buttons' controls.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.layout()
-	s.updateLog(input, ctx)
+	s.updateStrip(input, ctx)
 	entity, watching := s.watched()
 	if watching {
 		s.updatePath(input, entity)
 	}
 	shown, following := s.shownLevel(entity)
+	if s.follow.Update(input) {
+		s.followed = ids.ULID{}
+	}
 	switch {
 	case !watching || shown.workflow.IsZero():
 		s.flow, s.shown = nil, ids.ULID{}
@@ -335,6 +313,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			s.flow.SetLanes(nil)
 		}
 		s.flow.Update(input, ctx)
+		s.keepInView(ctx, entity.Node, following)
 	}
 	frame.CommonKeys(input, ctx)
 	if s.state == nil {
@@ -386,9 +365,8 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 		canvas := s.canvas()
 		s.theme.DrawText(screen, message, canvas.Min.X+ui.Inset, canvas.Min.Y+ui.Inset, ui.ColorMuted())
 	}
-	s.drawValues(screen)
-	s.layoutLog(docs)
-	s.drawLog(screen, docs)
+	s.layoutStrip(docs)
+	s.drawStrip(screen, docs)
 	s.drawHeader(screen, docs, entity, watching)
 	s.drawFooter(screen, docs, entity, watching)
 }
@@ -458,6 +436,7 @@ func (s *State) drawFooter(screen *ebiten.Image, docs frame.Docs, entity protoco
 	}
 	s.pause.Draw(screen, s.theme)
 	s.step.Draw(screen, s.theme)
+	s.drawFollow(screen)
 	if !s.watchLoop.Rect.Empty() {
 		s.watchLoop.Draw(screen, s.theme)
 	}
@@ -507,20 +486,28 @@ func (s *State) name(docs frame.Docs, id ids.ULID, fallback string) string {
 // hasState).
 func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	s.layout()
-	s.layoutLog(docs)
+	s.layoutStrip(docs)
 	kind, value, _ := strings.Cut(name, ":")
 	switch kind {
 	case strings.TrimSuffix(linePart, ":"):
 		return s.locateLine(value)
 	case "ui":
-		for _, button := range []*ui.Button{s.pause, s.step, s.watchLoop, s.log.watched, s.log.all, s.log.clear} {
+		if value == s.follow.ID {
+			return ui.Center(s.follow.Rect), !s.follow.Rect.Empty()
+		}
+		buttons := []*ui.Button{s.pause, s.step, s.watchLoop, s.log.watched, s.log.all, s.log.clear}
+		for _, button := range append(buttons, s.strip.tabs...) {
 			if button.ID == value {
-				return ui.Center(button.Rect), true
+				return ui.Center(button.Rect), !button.Rect.Empty()
 			}
 		}
 
 		return s.locatePart(value)
 	case "state":
+		if value == "following" {
+			return image.Pt(0, 0), s.follow.On
+		}
+
 		return image.Pt(0, 0), s.hasState(value, docs)
 	}
 
@@ -634,6 +621,9 @@ func hasLaneState(entity protocol.PreviewEntity, state string) bool {
 // hasPartState answers the log's states (see hasLogState) and the watched
 // NPC's lanes', and whether the state is one of them.
 func (s *State) hasPartState(state string) (bool, bool) {
+	if found, handled := s.hasStripState(state); handled {
+		return found, true
+	}
 	if found, handled := s.hasLogState(state); handled {
 		return found, true
 	}
@@ -700,4 +690,29 @@ func hasSignalState(entity protocol.PreviewEntity, state string) (bool, bool) {
 	}
 
 	return false, false
+}
+
+// keepInView brings the node being run into view while Follow is on, each
+// time it moves to another node. Panning by hand turns Follow off, and the
+// status bar says so (increment 41).
+func (s *State) keepInView(ctx *frame.Context, node ids.ULID, following bool) {
+	if s.flow.TakePanned() && s.follow.On {
+		s.follow.On = false
+		ctx.Frame.Status("Follow is off: you moved the view. Turn it on to follow the NPC again.")
+
+		return
+	}
+	if !s.follow.On || !following || node.IsZero() || node == s.followed {
+		return
+	}
+	s.flow.ShowNode(node)
+	s.followed = node
+}
+
+// drawFollow draws the Follow switch, on an orange wash while it is on.
+func (s *State) drawFollow(screen *ebiten.Image) {
+	if s.follow.On {
+		ui.FillRound(screen, s.follow.Rect, ui.Radius, ui.ColorLiveWash())
+	}
+	s.follow.Draw(screen, s.theme)
 }

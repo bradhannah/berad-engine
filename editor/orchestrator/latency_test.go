@@ -36,7 +36,7 @@ func TestStrictModeLatency(t *testing.T) {
 	latencies := make([]time.Duration, 0, count)
 	for index := range count {
 		args := paintArgs(t, tilefloor.Cell{Col: index % 16, Row: (index / 16) % 16, Layer: tilefloor.LayerGround, Tile: "t" + strconv.Itoa(index%3)})
-		request, err := view.Send(protocol.Command{Document: h.floor, Edit: tilefloor.PaintEdit, Gesture: "stroke", Args: args})
+		request, err := view.Send(protocol.Command{Document: h.floor, Edit: tilefloor.PaintEdit, Gesture: "stroke", Args: args, Says: ""})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +91,7 @@ func BenchmarkPaintRoundTrip(b *testing.B) {
 	h := start(b, dir, nil)
 	view := h.dial(b, "")
 	args := paintArgs(b, tilefloor.Cell{Col: 1, Row: 1, Layer: tilefloor.LayerGround, Tile: "wall"})
-	command := protocol.Command{Document: h.floor, Edit: tilefloor.PaintEdit, Gesture: "", Args: args}
+	command := protocol.Command{Document: h.floor, Edit: tilefloor.PaintEdit, Gesture: "", Args: args, Says: ""}
 	b.ResetTimer()
 	for b.Loop() {
 		if _, err := view.Command(b.Context(), command); err != nil {

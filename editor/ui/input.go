@@ -36,25 +36,29 @@ const (
 	KeyEqual     Key = "Equal"
 	KeyMinus     Key = "Minus"
 	KeySlash     Key = "Slash"
-	KeyA         Key = "A"
-	KeyC         Key = "C"
-	KeyD         Key = "D"
-	KeyF         Key = "F"
-	KeyJ         Key = "J"
-	KeyK         Key = "K"
-	KeyN         Key = "N"
-	KeyO         Key = "O"
-	KeyP         Key = "P"
-	KeyQ         Key = "Q"
-	KeyR         Key = "R"
-	KeyS         Key = "S"
-	KeyV         Key = "V"
-	KeyW         Key = "W"
-	KeyX         Key = "X"
-	KeyZ         Key = "Z"
-	Key0         Key = "0"
-	Key1         Key = "1"
-	Key9         Key = "9"
+	// KeyBracketLeft and KeyBracketRight are "[" and "]".
+	KeyBracketLeft  Key = "["
+	KeyBracketRight Key = "]"
+	KeyA            Key = "A"
+	KeyC            Key = "C"
+	KeyD            Key = "D"
+	KeyF            Key = "F"
+	KeyI            Key = "I"
+	KeyJ            Key = "J"
+	KeyK            Key = "K"
+	KeyN            Key = "N"
+	KeyO            Key = "O"
+	KeyP            Key = "P"
+	KeyQ            Key = "Q"
+	KeyR            Key = "R"
+	KeyS            Key = "S"
+	KeyV            Key = "V"
+	KeyW            Key = "W"
+	KeyX            Key = "X"
+	KeyZ            Key = "Z"
+	Key0            Key = "0"
+	Key1            Key = "1"
+	Key9            Key = "9"
 )
 
 // Mods are the modifier keys held with a key press.
@@ -182,6 +186,27 @@ func (input *Input) Has(key Key, mods Mods) bool {
 func (input *Input) Consume(key Key, mods Mods) bool {
 	index := slices.IndexFunc(input.Presses, func(press Press) bool {
 		return press.Key == key && press.Mods.Shortcut == mods.Shortcut && press.Mods.Shift == mods.Shift
+	})
+	if index < 0 {
+		return false
+	}
+	input.Presses = slices.Delete(input.Presses, index, index+1)
+
+	return true
+}
+
+// ConsumeExact removes a key press made with exactly the given modifiers:
+// Alt, and Control unless Shortcut is held, count as well as Shortcut and
+// Shift, so Ctrl+Tab is never taken for Tab. Control is not compared while
+// Shortcut is held, since away from macOS the shortcut modifier is Control.
+func (input *Input) ConsumeExact(key Key, mods Mods) bool {
+	index := slices.IndexFunc(input.Presses, func(press Press) bool {
+		held := press.Mods
+		if held.Shortcut {
+			held.Control = mods.Control
+		}
+
+		return press.Key == key && held == mods
 	})
 	if index < 0 {
 		return false

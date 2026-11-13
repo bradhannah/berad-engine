@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/bradhannah/berad-engine/engine/clock"
@@ -139,7 +140,19 @@ type Command struct {
 	// one undo step. Empty means the command is its own step.
 	Gesture string          `json:"gesture,omitempty"`
 	Args    json.RawMessage `json:"args"`
+	// Says is the change in the view's own words, as "Painted 6 cells of
+	// Road on Ground floor": the orchestrator says it in place of its own
+	// sentence, and one said by a later command of the same gesture
+	// replaces the step's (increment 51).
+	Says string `json:"says,omitempty"`
 }
+
+// The reasons an Undo or Redo gives when there is no step to take back or
+// put back. Windows say them as plain messages, not refusals (increment 39).
+const (
+	NothingToUndo = "nothing to undo"
+	NothingToRedo = "nothing to redo"
+)
 
 // Result answers a Command, Undo, Redo, Subscribe, Open, PickStart or
 // PreviewStart request.
@@ -152,7 +165,33 @@ type Result struct {
 	// created that has no ID of its own, such as a cue.
 	Created ids.ULID `json:"created,omitzero"`
 	Item    string   `json:"item,omitempty"`
+	// Said is the sentence the change an Undo or Redo took back or put back
+	// was said with, such as "Painted Ground floor" (increment 39).
+	Said string `json:"said,omitempty"`
+	// Touched is what the change said with Said touched, so a line in
+	// History can select what it names (increment 45).
+	Touched Touch `json:"touched,omitzero"`
 }
+
+// Touch is a change's document and the parts of it the change touched, in
+// the document's own words, as "node:<ID>" in a workflow. A Touch keeps the
+// first TouchedLength parts: enough to find something to select.
+type Touch struct {
+	Document ids.ULID `json:"document,omitzero"`
+	Items    []string `json:"items,omitempty"`
+}
+
+// TouchedLength is the most parts of a document a Touch keeps.
+const TouchedLength = 16
+
+// Touching is what a change to a document touched, keeping the first
+// TouchedLength parts.
+func Touching(document ids.ULID, items []string) Touch {
+	return Touch{Document: document, Items: slices.Clone(items[:min(len(items), TouchedLength)])}
+}
+
+// Untouched is the Touch of a result that changed nothing.
+func Untouched() Touch { return Touch{Document: ids.ULID{}, Items: nil} }
 
 // Event reports an applied edit. Windows apply the same edit with the same
 // arguments to their copy of the document.
@@ -229,6 +268,58 @@ type FolderChoice struct {
 type HomeKept struct {
 	Pins    []ids.ULID              `json:"pins"`
 	Folders map[string]FolderChoice `json:"folders"`
+}
+
+// TopicLayout is the session topic of how this person arranges the editor
+// window, a Layout (increment 53). The window sets it, and the orchestrator
+// keeps it, for this person alone, in the project's own state.
+const TopicLayout = "layout"
+
+// Layout is how the editor window is arranged on each size of screen, by the
+// screen's size, as "1512x982".
+type Layout struct {
+	Screens map[string]Arrangement `json:"screens"`
+}
+
+// Arrangement is the window's arrangement on one size of screen: each kind
+// of view's panels, by the view's name; and the window's frame, its tabs,
+// what sits beside what, and the tab in front, by its place in Tabs, to
+// reopen as it was left (increment 55).
+type Arrangement struct {
+	Kinds  map[string]KindLayout `json:"kinds"`
+	Frame  WindowFrame           `json:"frame,omitzero"`
+	Tabs   []TabLayout           `json:"tabs,omitempty"`
+	Active int                   `json:"active,omitempty"`
+}
+
+// WindowFrame is where the editor window is on the screen, and its size.
+type WindowFrame struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// TabLayout is one tab: its panes, side by side, and the share of the tab
+// the first takes when there are two.
+type TabLayout struct {
+	Panes []PaneLayout `json:"panes"`
+	Split float64      `json:"split,omitempty"`
+}
+
+// PaneLayout is one pane: its kind of view and what it shows.
+type PaneLayout struct {
+	View   string   `json:"view"`
+	Target ids.ULID `json:"target,omitzero"`
+}
+
+// KindLayout is one kind of view's panels: the inspector's and the left
+// panel's widths, 0 for the starting width, and whether each is folded.
+type KindLayout struct {
+	Inspector       int  `json:"inspector,omitempty"`
+	Left            int  `json:"left,omitempty"`
+	InspectorFolded bool `json:"inspectorFolded,omitempty"`
+	LeftFolded      bool `json:"leftFolded,omitempty"`
 }
 
 // NoticeWindowCrashed is the notice kind for a window that closed unexpectedly.
@@ -480,7 +571,23 @@ type PreviewChange struct {
 	Tick   uint64   `json:"tick,omitempty"`
 	Status string   `json:"status,omitempty"`
 	Lane   string   `json:"lane,omitempty"`
+	// Why says what the node it left read or did that sent it this way,
+	// or why it started again (increment 46).
+	Why string `json:"why,omitempty"`
 }
+
+// PreviewTrail is one change of node on the watched NPC's trail: its number
+// in the preview, from 1, the game time of day in seconds it was made at,
+// and the change (increment 46).
+type PreviewTrail struct {
+	Seq    uint64        `json:"seq"`
+	Clock  float64       `json:"clock"`
+	Change PreviewChange `json:"change"`
+}
+
+// TrailLength is how many of the watched NPC's latest changes a preview's
+// state holds.
+const TrailLength = 50
 
 // PreviewState is a preview's latest live state, sent at a limited rate; the
 // latest value wins (D7). Tick orders the states of one run, so a receiver
@@ -510,6 +617,10 @@ type PreviewState struct {
 	// oldest first, at most RecentLines, so a window keeps those it has not
 	// seen by their numbers.
 	Log []PreviewLine `json:"log,omitempty"`
+	// Trail is the watched NPC's latest changes of node, oldest first, at
+	// most TrailLength, so a window keeps those it has not seen by their
+	// numbers; it starts again when another NPC is watched.
+	Trail []PreviewTrail `json:"trail,omitempty"`
 	// Box is the message box shown now, if any, and ShakeX and ShakeY how
 	// far the world is shaken, in pixels of the game's scale.
 	Box    *PreviewBox `json:"box,omitempty"`

@@ -149,7 +149,7 @@ func (n *NPC) giveBack(world World, port string, tick uint64) {
 	n.module, n.locals, n.Node, n.Container = back.Workflow, back.locals, back.Call, back.container
 	calling := n.here(world)
 	if calling.Workflow == nil {
-		n.Restart()
+		n.Restart("Started again: the workflow that called it is gone")
 
 		return
 	}

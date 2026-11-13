@@ -312,7 +312,7 @@ func TestDefaultPaletteKeepsItsName(t *testing.T) {
 	}
 	f.click("ui:delete", false)
 	f.keys("Cmd+Backspace")
-	if len(f.whereUsed()) != 0 || !strings.HasPrefix(f.status(), "Every project holds “Default”") {
+	if len(f.whereUsed()) != 0 || !strings.HasPrefix(f.status(), "Refused: Every project holds “Default”") {
 		t.Fatalf("not deleted: %d %q", len(f.whereUsed()), f.status())
 	}
 	f.rightClick("row:Default")

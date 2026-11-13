@@ -52,7 +52,8 @@ func (s *State) lineLit(key routeKey) bool {
 // drawLine draws one line along its route, with an arrowhead into its entry
 // dot and a chevron along each long stretch. A loop, a line back to a node
 // already on the way, is dashed; a time switch's "otherwise" line is grey;
-// a line being moved is faint where it was.
+// a line being moved is faint where it was, and red and dashed while letting
+// go would replace it (increment 40).
 func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 	corners := s.routes[link.key]
 	if len(corners) < ui.Half {
@@ -65,7 +66,7 @@ func (s *State) drawLine(area *ebiten.Image, link line, lit bool) {
 	}
 	for index := 1; index < len(corners); index++ {
 		start, end := s.toScreen(corners[index-1]), s.toScreen(corners[index])
-		if s.loops[link.key] {
+		if s.loops[link.key] || s.replacingLine(link.key) {
 			dashedLine(area, start, end, width, ink)
 		} else {
 			ui.Line(area, start, end, width, ink)
@@ -193,6 +194,9 @@ func (s *State) lineInk(link line, lit bool) color.Color {
 	}
 	if s.lineFlashing(link.key) {
 		base = ui.ColorLive()
+	}
+	if s.replacingLine(link.key) {
+		return ui.ColorWarn()
 	}
 	if s.link != nil && s.link.from == link.key.from && s.link.output == link.key.output {
 		return color.NRGBA{R: base.R, G: base.G, B: base.B, A: movingAlpha}

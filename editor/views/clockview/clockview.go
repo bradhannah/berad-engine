@@ -73,7 +73,25 @@ type State struct {
 	rate  []*ui.Button
 	field *ui.TextField
 	focus ui.Focus
+	// asked is what the window bar's controls asked for, carried out on the
+	// next frame (increment 41).
+	asked string
 }
+
+// What the window bar's controls ask the clock for (increment 41).
+const (
+	AskHourBack  = "hour-back"
+	AskHourOn    = "hour-on"
+	AskStopStart = "stop-clock"
+)
+
+// Ask carries out a control pressed on the window bar on the next frame:
+// an hour back or on, or stopping or starting the preview's clock.
+func (s *State) Ask(action string) { s.asked = action }
+
+// Controls reports whether a preview runs, and whether its clock is stopped,
+// for the window bar's controls.
+func (s *State) Controls() (bool, bool) { return s.running(), s.running() && s.state.ClockStopped }
 
 // New returns the Clock window.
 func New(theme *ui.Theme) *State {
@@ -87,6 +105,7 @@ func New(theme *ui.Theme) *State {
 		back: ui.NewButton("hour-back", "−1h"), on: ui.NewButton("hour-on", "+1h"),
 		stop: ui.NewButton("stop-clock", "Stop clock"), apply: ui.NewButton("apply", "Set start"), rate: rateButtons,
 		field: ui.NewTextField("time", textedit.NewField("", false, fieldBytes), false, theme), focus: ui.Focus{},
+		asked: "",
 	}
 	view.field.Placeholder = "17:00"
 	view.focus.Register(view.field)
@@ -176,14 +195,16 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field == s.field && outcome == textedit.OutcomeCommit {
 		s.applyTime(ctx)
 	}
+	asked := s.asked
+	s.asked = ""
 	switch {
-	case s.back.Update(input):
+	case asked == AskHourBack || s.back.Update(input):
 		s.setTime(ctx, s.shown()-clock.Hour)
-	case s.on.Update(input):
+	case asked == AskHourOn || s.on.Update(input):
 		s.setTime(ctx, s.shown()+clock.Hour)
 	case s.apply.Update(input):
 		s.applyTime(ctx)
-	case s.stop.Update(input) && s.running():
+	case (asked == AskStopStart || s.stop.Update(input)) && s.running():
 		action := protocol.ControlStopClock
 		if s.state.ClockStopped {
 			action = protocol.ControlStartClock

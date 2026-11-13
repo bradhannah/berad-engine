@@ -11,6 +11,7 @@ import (
 	"image"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/model"
 	"github.com/bradhannah/berad-engine/editor/plugin"
@@ -457,8 +458,28 @@ func CellKey(layer string, col, row int) string {
 
 // AnchorKey names an anchor for undo-clash detection.
 func AnchorKey(id ids.ULID) string {
-	return "anchor:" + id.String()
+	return anchorPrefix + id.String()
 }
+
+// AnchorOfKey is the anchor an AnchorKey names.
+func AnchorOfKey(key string) (ids.ULID, bool) { return idOfKey(key, anchorPrefix) }
+
+// idOfKey is the ID a key with a prefix names.
+func idOfKey(key, prefix string) (ids.ULID, bool) {
+	text, ok := strings.CutPrefix(key, prefix)
+	if !ok {
+		return ids.ULID{}, false
+	}
+	id, err := ids.Parse(text)
+
+	return id, err == nil
+}
+
+// The prefixes of the keys of anchors and placements.
+const (
+	anchorPrefix    = "anchor:"
+	placementPrefix = "placement:"
+)
 
 // AddAnchorArgs adds an anchor at a position in the floor's anchor order. The
 // orchestrator assigns the ID when it is missing.

@@ -153,7 +153,7 @@ func (s *State) createFolder(ctx *frame.Context, format string) {
 func (s *State) deleteFolder(ctx *frame.Context, folder project.Folder) {
 	index := s.index(ctx.Docs)
 	if hasChildren(index.Folders(folder.Format), index.OfFormat(folder.Format), folder.Path) {
-		ctx.Frame.Status("Move what is in the folder out first; only an empty folder can be deleted")
+		ctx.Frame.Refuse("Move what is in the folder out first; only an empty folder can be deleted")
 
 		return
 	}

@@ -2,6 +2,7 @@ package watchview_test
 
 import (
 	"image"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -79,5 +80,21 @@ func TestTheLog(t *testing.T) {
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	if !f.has("log-lines=0") {
 		t.Fatal("a new preview starts the log afresh")
+	}
+}
+
+// TestALoggedLineNamesItsNode logs a line from a workflow Watch is not
+// showing: Watch loads that workflow too, so the line names its node rather
+// than calling it deleted.
+func TestALoggedLineNamesItsNode(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.state.Changed(client.Update{PreviewStart: &protocol.PreviewStart{Zone: zoneID, Run: runID, Window: ids.ULID{}}}, f.ctx)
+	other := frametest.ID(77)
+	logged := line(1, "Elsewhere", false)
+	logged.Workflow = other
+	f.sendLines(5, logged)
+	if !slices.Contains(f.requests.Subscribed, other) {
+		t.Fatalf("Watch loads the workflow a logged line came from: %v", f.requests.Subscribed)
 	}
 }

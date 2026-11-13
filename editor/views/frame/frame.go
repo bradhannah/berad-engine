@@ -12,6 +12,8 @@ import (
 	"image"
 	"slices"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -236,6 +238,14 @@ type Frame struct {
 	// folds it to a strip at the right edge, session state the editor
 	// window shares.
 	ShowInspector *ui.Toggle
+	// ShowLeft shows a view's left panel, or folds it to a rail or a strip,
+	// for the views that have one (increment 43). Like the inspector's, it
+	// belongs to the kind of view: the editor window keeps every pane of a
+	// kind the same.
+	ShowLeft *ui.Toggle
+	// history is every message the window was given, and the refusal shown
+	// until it is dismissed (increment 39).
+	history historyState
 }
 
 // NewFrame returns an empty frame.
@@ -245,28 +255,56 @@ func NewFrame(now func() time.Time) *Frame {
 		Crash: false, CrashKey: false,
 		OnTop:         &ui.Toggle{ID: "on-top", Label: "On top", Rect: ui.Zero(), On: false},
 		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
+		ShowLeft:      &ui.Toggle{ID: "left-panel", Label: "Left panel", Rect: ui.Zero(), On: true},
+		history:       newHistoryState(),
 	}
 }
 
 // Status shows a message in the status bar for a few seconds.
 func (f *Frame) Status(message string) {
+	if message != f.status || !f.now().Before(f.statusUntil) {
+		f.keep(message, false)
+	}
 	f.status = message
 	f.statusUntil = f.now().Add(statusDuration)
 }
 
 // Notice shows a lasting notice, such as another window crashing.
-func (f *Frame) Notice(message string) { f.notice = message }
+func (f *Frame) Notice(message string) {
+	if message != "" && message != f.notice {
+		f.keep("Notice: "+message, false)
+	}
+	f.notice = message
+}
+
+// Kinds of message the status bar shows.
+const (
+	shownReady = iota
+	shownStatus
+	shownRefusal
+	shownNotice
+)
+
+// shown returns what the status bar shows and what kind it is: a fresh
+// message, then a refusal until it is dismissed, then a notice.
+func (f *Frame) shown() (string, int) {
+	switch {
+	case f.status != "" && f.now().Before(f.statusUntil):
+		return f.status, shownStatus
+	case f.history.refusal != "":
+		return "Refused: " + f.history.refusal, shownRefusal
+	case f.notice != "":
+		return "Notice: " + f.notice, shownNotice
+	}
+
+	return "Ready. What goes in a field, typed or chosen, waits for Save; everything else saves as you go.", shownReady
+}
 
 // Message returns what the status bar shows, and whether it is a notice.
 func (f *Frame) Message() (string, bool) {
-	if f.status != "" && f.now().Before(f.statusUntil) {
-		return f.status, false
-	}
-	if f.notice != "" {
-		return "Notice: " + f.notice, true
-	}
+	text, kind := f.shown()
 
-	return "Ready. What goes in a field, typed or chosen, waits for Save; everything else saves as you go.", false
+	return text, kind == shownNotice
 }
 
 // Report shows the outcome of a request: its reason when refused.
@@ -274,11 +312,29 @@ func (f *Frame) Report(success string) func(protocol.Result, error) {
 	return func(result protocol.Result, err error) {
 		switch {
 		case err != nil && result.Reason != "":
-			f.Status(result.Reason)
+			f.Refuse(result.Reason)
 		case err != nil:
-			f.Status(err.Error())
+			f.Refuse(err.Error())
 		case success != "":
 			f.Status(success)
+		}
+	}
+}
+
+// ReportStep shows the outcome of an undo or redo: its reason when refused,
+// and otherwise what it did and the sentence of the change it took back or
+// put back, as "Undid: Painted Ground floor" (increment 39).
+func (f *Frame) ReportStep(did string) func(protocol.Result, error) {
+	return func(result protocol.Result, err error) {
+		switch {
+		case err != nil && (result.Reason == protocol.NothingToUndo || result.Reason == protocol.NothingToRedo):
+			f.Status(strings.ToUpper(result.Reason[:1]) + result.Reason[1:])
+		case err != nil:
+			f.Report("")(result, err)
+		case result.Said != "":
+			f.StatusAbout(did+": "+result.Said, result.Touched)
+		default:
+			f.Status(did)
 		}
 	}
 }
@@ -298,7 +354,7 @@ func (f *Frame) Latencies() []time.Duration { return f.latencies }
 // Content returns the area left for a view's own content: everything above
 // the status bar and left of the inspector.
 func Content(size image.Point) image.Rectangle {
-	return image.Rect(0, 0, size.X-InspectorWidth, size.Y-StatusHeight)
+	return image.Rect(0, 0, size.X-InspectorWide(), size.Y-StatusHeight)
 }
 
 // AboveStatus is a window's area above its status bar, which a menu opened
@@ -310,7 +366,25 @@ func AboveStatus(size image.Point) image.Rectangle {
 // Inspector returns the inspector panel's area (D13: embedded on the right of
 // every window).
 func Inspector(size image.Point) image.Rectangle {
-	return image.Rect(size.X-InspectorWidth, 0, size.X, size.Y-StatusHeight)
+	return image.Rect(size.X-InspectorWide(), 0, size.X, size.Y-StatusHeight)
+}
+
+// inspectorWide is the inspector's width for the view being run or drawn
+// now: the window sets its kind's before running or drawing each view, one
+// at a time (increment 53). Zero is InspectorWidth.
+var inspectorWide atomic.Int64 //nolint:gochecknoglobals // One view is laid out at a time.
+
+// SetInspectorWidth sets the inspector's width for the view about to be run
+// or drawn; zero is InspectorWidth.
+func SetInspectorWidth(width int) { inspectorWide.Store(int64(width)) }
+
+// InspectorWide is the inspector's width for the view being run or drawn.
+func InspectorWide() int {
+	if width := inspectorWide.Load(); width > 0 {
+		return int(width)
+	}
+
+	return InspectorWidth
 }
 
 // layoutStatus places the On top toggle at the right end of the status bar,
@@ -320,6 +394,7 @@ func (f *Frame) layoutStatus(size image.Point) {
 	f.OnTop.Rect = image.Rect(size.X-ui.Inset-onTopWidth, top, size.X-ui.Inset, size.Y)
 	right := f.OnTop.Rect.Min.X - statusGap/ui.Half
 	f.ShowInspector.Rect = image.Rect(right-inspectorToggleWidth, top, right, size.Y)
+	f.layoutHistory(size)
 }
 
 // UpdateStatus handles a click on the status bar's toggles.
@@ -327,13 +402,17 @@ func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 	f.layoutStatus(size)
 	f.OnTop.Update(input)
 	f.ShowInspector.Update(input)
+	f.updateHistoryButtons(input)
 }
 
 // LocateStatus finds the status bar's toggles, "ui:on-top" and
 // "ui:inspector", and reports "state:on-top" while the window is kept on
 // top and "state:inspector" while the inspector shows, for input scripts.
 func (f *Frame) LocateStatus(name string) (image.Point, bool) {
-	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector} {
+	if point, found, handled := f.locateHistory(name); handled {
+		return point, found
+	}
+	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector, f.ShowLeft} {
 		switch name {
 		case "ui:" + toggle.ID:
 			return ui.Center(toggle.Rect), !toggle.Rect.Empty()
@@ -381,18 +460,35 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
 	ui.FillRect(screen, bar, ui.ColorDesk())
 	ui.Divider(screen, image.Pt(0, bar.Min.Y), image.Pt(bar.Max.X, bar.Min.Y))
-	message, notice := f.Message()
+	message, kind := f.shown()
 	ink := ui.ColorInk()
-	if notice {
+	switch kind {
+	case shownNotice:
 		ink = ui.ColorSelect()
+	case shownRefusal:
+		ink = ui.ColorWarn()
 	}
 	textY := bar.Min.Y + (StatusHeight-ui.MonoSize)/ui.Half - 1
-	message = theme.FitText(message, f.ShowInspector.Rect.Min.X-statusGap-ui.Inset)
+	room := f.statusLeft() - statusGap - ui.Inset
+	if hand := f.history.hand; hand != "" {
+		hand = theme.FitText(hand, room/ui.Half)
+		handLeft := f.statusLeft() - statusGap - theme.TextWidth(hand)
+		theme.DrawText(screen, hand, handLeft, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ui.ColorInk())
+		room = handLeft - statusGap - ui.Inset
+	}
+	message = theme.FitText(message, room)
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
 	f.ShowInspector.Draw(screen, theme)
 	f.OnTop.Draw(screen, theme)
+	f.history.button.Draw(screen, theme)
+	if !f.history.dismiss.Rect.Empty() {
+		f.history.dismiss.Draw(screen, theme)
+	}
+	if f.history.hand != "" {
+		return
+	}
 	speed := "command to event: last " + formatLatency(f.last()) + ", median " + formatLatency(f.median())
-	speedLeft := f.ShowInspector.Rect.Min.X - statusGap - theme.MonoWidth(speed)
+	speedLeft := f.statusLeft() - statusGap - theme.MonoWidth(speed)
 	if speedLeft >= ui.Inset+theme.TextWidth(message)+statusGap {
 		theme.DrawMono(screen, speed, speedLeft, textY, ui.ColorMuted())
 	}
@@ -435,9 +531,9 @@ func DrawInspector(screen *ebiten.Image) {
 func CommonKeys(input *ui.Input, ctx *Context) bool {
 	switch {
 	case input.Consume(ui.KeyZ, ui.Cmd()):
-		ctx.Requests.Undo(ctx.Frame.Report("Undone"))
+		ctx.Requests.Undo(ctx.Frame.ReportStep("Undid"))
 	case input.Consume(ui.KeyZ, ui.CmdShift()):
-		ctx.Requests.Redo(ctx.Frame.Report("Redone"))
+		ctx.Requests.Redo(ctx.Frame.ReportStep("Redid"))
 	case input.Consume(ui.KeyW, ui.Cmd()):
 		ctx.Frame.Closing = true
 	case ctx.Frame.CrashKey && input.Consume(ui.KeyK, ui.CmdShift()):

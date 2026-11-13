@@ -101,6 +101,9 @@ func (l *loader) settings(project *game.Project) {
 			project.Settings = settings.Settings
 		}
 	})
+	if l.state.from != nil {
+		project.Settings.Start = *l.state.from
+	}
 }
 
 // zone reads the start's zone and its floors.

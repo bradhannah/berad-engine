@@ -29,7 +29,28 @@ func (s *State) helpTarget() (string, string) {
 		return "Add inside " + label, "Puts it inside the Together, as the first step of its first empty lane."
 	}
 
-	return "Add after " + label, "Puts it in the flow after " + label + ", as a drop on its line would."
+	if output, free := s.freeOutput(node); free {
+		return "Add after " + label + " · " + output, "Puts it in the flow after " + label + ", joined from its " +
+			output + " output."
+	}
+
+	return "Add beside " + label, label + " has no free output, so it goes beside it, joined to nothing."
+}
+
+// freeOutput is the first output of a node with no line from it, which Add
+// after joins a new node from (increment 40).
+func (s *State) freeOutput(node flow.Node) (string, bool) {
+	drawn, ok := s.shapes[node.ID]
+	if !ok {
+		return "", false
+	}
+	for _, candidate := range drawn.ports {
+		if _, used := node.Next[candidate.output.Name]; !used && !flow.IsInner(node, candidate.output.Name) {
+			return candidate.output.Name, true
+		}
+	}
+
+	return "", false
 }
 
 // layoutHelp places the help page's back link and Add after.

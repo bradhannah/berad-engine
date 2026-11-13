@@ -151,9 +151,22 @@ type State struct {
 	selectedLink routeKey
 	hoverMark    ids.ULID
 
-	drag    *nodeDrag
-	link    *linkDrag
-	adding  *paletteDrag
+	drag   *nodeDrag
+	link   *linkDrag
+	adding *paletteDrag
+	// nodeAdd is where the node menu adds a node, and the line that joins
+	// it (increment 40).
+	nodeAdd *nodeMenu
+	// paletteFolded is set while the palette is folded to its strip, and
+	// foldBn folds and unfolds it (increment 43).
+	paletteFolded bool
+	foldBn        *ui.Button
+	// links are the selected node's lines as the inspector writes them,
+	// each with its Unlink (increment 48).
+	links []linkRow
+	// left is the palette's width as dragged, zero for PaletteWidth
+	// (increment 53).
+	left    int
 	resize  *containerResize
 	bending *lineDrag
 	panning bool
@@ -165,8 +178,11 @@ type State struct {
 	zoom     int
 	zoomCard *zoomControl
 	panRest  [2]float64
-	wheel    float64
-	drawn    *ebiten.Image
+	// handPanned is set when the author pans the canvas by hand, for
+	// Watch's Follow (increment 41).
+	handPanned bool
+	wheel      float64
+	drawn      *ebiten.Image
 
 	palette []paletteEntry
 	// pal is the palette's search, its tooltip and the help it shows.
@@ -264,10 +280,10 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		showing: ids.ULID{}, cursor: image.Pt(0, 0), gestures: 0,
 		hoverLink: noRoute(), selectedLink: noRoute(), hoverMark: ids.ULID{},
 		drag: nil, link: nil, adding: nil, resize: nil, bending: nil, panning: false, lastPan: image.Pt(0, 0),
-		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, wheel: 0, drawn: nil,
+		zoom: defaultZoom, zoomCard: newZoomControl(), panRest: [2]float64{0, 0}, handPanned: false, wheel: 0, drawn: nil,
 		palette: nil, pal: newPalettePanel(theme), arrange: ui.NewButton("arrange", "Auto-arrange"),
 		recentre:   ui.NewButton("recentre", "Recentre"),
-		deleteLine: ui.NewButton("delete-line", "Delete line"), resetLine: ui.NewButton("reset-line", "Reset line"),
+		deleteLine: ui.NewButton("delete-line", "Unlink"), resetLine: ui.NewButton("reset-line", "Reset line"),
 		legend: ui.NewButton("legend", "Legend"), legendBox: ui.Zero(),
 		tints: flow.Tints{Nodes: nil, Outcomes: nil, Lines: nil}, colours: nil, values: nil, lastGroup: "", signalPick: nil,
 		others: nil,
@@ -277,7 +293,8 @@ func New(window, document ids.ULID, theme *ui.Theme) *State {
 		modules: map[ids.ULID]module{}, callsKey: "", missingWays: map[ids.ULID]map[string]bool{},
 		callers:     callers{names: nil, key: "", asking: false, wait: 0, known: false},
 		runs:        runners{uses: nil, key: "", asking: false, wait: 0, known: false},
-		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(),
+		contextMenu: ui.Menu{Items: nil, Width: 0}, context: noContextClick(), nodeAdd: nil,
+		paletteFolded: false, foldBn: ui.NewButton(foldID, "‹"), links: nil, left: 0,
 		zones: nil, zonesChose: nil, recentZones: nil, runsInBox: ui.Zero(), dialog: nil, dialogThen: nil, joining: "",
 		tied: false, lineSheet: nil, scrolled: inspectorScroll{offset: 0, most: 0, of: ids.ULID{}},
 	}
@@ -399,7 +416,7 @@ func (s *State) load(docs frame.Docs) {
 		return
 	}
 	if changed {
-		s.shapes = shapes(s.workflow, s.noteHeight)
+		s.shapes = shapes(s.workflow, s.heights(docs))
 		s.routes, s.loops = routes(s.workflow, s.shapes), loops(s.workflow)
 		s.tints = s.workflow.Tints()
 		s.laidOut, s.hasLayout, s.watchFloors = revision, true, true
@@ -423,7 +440,7 @@ func (s *State) Canvas() image.Rectangle {
 	}
 	content := frame.Content(s.size)
 
-	return image.Rect(PaletteWidth, toolbarHeight, content.Max.X, content.Max.Y)
+	return image.Rect(s.paletteWidth(), toolbarHeight, content.Max.X, content.Max.Y)
 }
 
 func (s *State) toScreen(point image.Point) image.Point {
@@ -506,7 +523,8 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.startFrame(input, ctx)
-	s.load(ctx.Docs)
+	// The status bar names what is in hand once the frame has moved it.
+	defer func() { ctx.Frame.SetHand(s.handLine(ctx.Docs)) }()
 	s.showNode()
 	s.ask(ctx)
 	if s.guard.Active() {
@@ -542,7 +560,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	}
 	s.updateToolbar(input, ctx)
 	s.updateZoom(input)
-	s.updatePalette(input, ctx)
+	if !s.updateFold(input, ctx) && !s.paletteFolded {
+		s.updatePalette(input, ctx)
+	}
 	s.updateCanvas(input, ctx)
 	s.settleSelection()
 	s.guardSelection(ctx)
@@ -550,14 +570,16 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 }
 
 // startFrame takes what a frame starts from: the window's size, the
-// pointer and the sounds; then fades what was lit, and counts a frame since
-// the last nudge.
+// pointer, the sounds and whether the palette is folded; then fades what
+// was lit, counts a frame since the last nudge, and loads the workflow.
 func (s *State) startFrame(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
 	s.cursor = input.Cursor
 	s.sounds = ctx.Sounds
+	s.paletteFolded = s.live == nil && !ctx.Frame.ShowLeft.On
 	s.fade()
 	s.nudges.idle++
+	s.load(ctx.Docs)
 }
 
 // updateTyping runs the palette's search, then the inspector's fields while
@@ -642,14 +664,11 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 		s.pal.help = ""
 	case input.Consume(ui.KeyEscape, plain):
 		s.selected, s.selectedLink, s.link, s.adding, s.group, s.box = ids.ULID{}, noRoute(), nil, nil, nil, nil
-	case input.Consume(ui.KeyEqual, ui.Cmd()):
-		s.zoomTo(s.zoom+1, s.zoomFocus(input.Cursor))
-	case input.Consume(ui.KeyMinus, ui.Cmd()):
-		s.zoomTo(s.zoom-1, s.zoomFocus(input.Cursor))
-	case input.Consume(ui.Key0, ui.Cmd()):
-		s.zoomTo(defaultZoom, s.zoomFocus(input.Cursor))
+	case s.zoomKeys(input):
 	case input.Consume(ui.KeyEnter, plain):
 		s.openFirstBox()
+	case input.ConsumeExact(ui.KeyTab, plain):
+		s.openNodeMenuAt(input.Cursor)
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		if s.lineSelected() {
 			s.removeLine(ctx)
@@ -666,15 +685,10 @@ func (s *State) lineSelected() bool {
 	return ok
 }
 
-// removeLine takes the selected line away; undo puts it back.
+// removeLine unlinks the selected line, saying what from what; undo joins
+// it again.
 func (s *State) removeLine(ctx *frame.Context) {
-	from, ok := s.workflow.Node(s.selectedLink.from)
-	if !ok {
-		return
-	}
-	output := s.selectedLink.output
-	s.selectedLink = noRoute()
-	s.replace(ctx, from.WithLink(output, ids.ULID{}), "Line removed. Undo puts it back.")
+	s.unlink(ctx, s.selectedLink)
 }
 
 // updateCanvas handles panning and the gestures on nodes and ports.
@@ -728,11 +742,13 @@ func (s *State) pan(input *ui.Input, canvas image.Rectangle) {
 			s.wheelZoom(input)
 		} else {
 			s.panBy(input.WheelPan())
+			s.handPanned = true
 		}
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
 	if dragPan && s.panning {
 		s.panBy(input.Cursor.Sub(s.lastPan))
+		s.handPanned = true
 	}
 	s.panning = dragPan && (s.panning || input.Cursor.In(canvas))
 	s.lastPan = input.Cursor
@@ -940,8 +956,8 @@ func sameBend(a, b flow.Bend) bool {
 
 // updateLink follows a connection being drawn from a port, or a line picked
 // up by its arrow end, then connects it to the node it is dropped on, or
-// clears it when dropped on empty canvas. Dropped back on the node it
-// already leads to, it changes nothing.
+// offers a node to join it to when dropped on empty canvas. Dropped back on
+// the node it already leads to, it changes nothing.
 func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Point) {
 	s.link.to = point
 	if input.Down {
@@ -955,9 +971,9 @@ func (s *State) updateLink(input *ui.Input, ctx *frame.Context, point image.Poin
 	}
 	target, dropped := s.dropTarget(point)
 	if !dropped {
-		if _, linked := from.Next[link.output]; linked {
-			s.replace(ctx, from.WithLink(link.output, ids.ULID{}), "Disconnected")
-		}
+		// A line dropped on empty canvas offers a node to join it to; the
+		// line stays as it was unless one is chosen (increment 40).
+		s.openNodeMenu(input.Cursor, point, &flow.Link{From: from.ID, Output: link.output, To: ids.ULID{}})
 
 		return
 	}
@@ -1214,7 +1230,7 @@ func (s *State) removeSelected(ctx *frame.Context) {
 // hand back where routing puts it, as one undo step. Notes already placed
 // keep their place, beside whatever they explain.
 func (s *State) autoArrange(ctx *frame.Context) {
-	boxes := arrange(s.workflow, s.noteHeight)
+	boxes := arrange(s.workflow, s.heights(ctx.Docs))
 	for _, node := range s.workflow.Nodes() {
 		if _, placed := s.workflow.Box(node.ID); placed && node.Kind == flow.KindNote {
 			delete(boxes, node.ID)
@@ -1259,6 +1275,16 @@ func (s *State) workflowBounds() (image.Rectangle, bool) {
 // NodeItem opens a workflow with one of its nodes selected and in the
 // middle of the canvas: NodeItem then the node's ID.
 const NodeItem = "node:"
+
+// Selection is the node selected, as the item that shows it, for Back and
+// Forward (increment 38); "" while no node is.
+func (s *State) Selection() string {
+	if s.selected.IsZero() {
+		return ""
+	}
+
+	return NodeItem + s.selected.String()
+}
 
 // showNode selects the node asked for with NodeItem, and centres on it, once
 // the workflow holding it has arrived.
@@ -1313,7 +1339,9 @@ func (s *State) command(ctx *frame.Context, edit, gesture string, args any, done
 	if gesture == "" {
 		gesture = s.joining
 	}
-	command := protocol.Command{Document: s.document, Edit: edit, Gesture: gesture, Args: data}
+	command := protocol.Command{
+		Document: s.document, Edit: edit, Gesture: gesture, Args: data, Says: s.sentenceOf(ctx.Docs, args),
+	}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)

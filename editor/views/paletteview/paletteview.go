@@ -288,7 +288,7 @@ func (s *State) command(
 
 		return
 	}
-	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data}
+	command := protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: ""}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			ctx.Frame.Report("")(result, err)

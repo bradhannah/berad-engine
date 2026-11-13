@@ -335,7 +335,7 @@ func (s *State) panel() image.Rectangle {
 		return edge
 	}
 
-	return image.Rect(listWidth, edge.Min.Y, listWidth+frame.InspectorWidth, edge.Max.Y)
+	return image.Rect(listWidth, edge.Min.Y, listWidth+frame.InspectorWide(), edge.Max.Y)
 }
 
 // listRight is where the list and the toolbar above it end.

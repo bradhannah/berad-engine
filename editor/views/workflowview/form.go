@@ -622,11 +622,22 @@ func (s *State) layoutForm(docs frame.Docs) {
 		}
 	}
 	s.layoutSlots()
-	if node, ok := s.selectedNode(); ok && s.form.call != nil {
+	s.form.bottom = s.layoutTail(left, width, top)
+}
+
+// layoutTail places what follows the node's fields, a Call's own part and
+// the node's links, and returns where the inspector's body ends.
+func (s *State) layoutTail(left, width, top int) int {
+	node, ok := s.selectedNode()
+	if !ok {
+		return top
+	}
+	if s.form.call != nil {
 		top = s.layoutCall(s.form.call, left, width, top)
 		s.form.call.hideRefControls(node)
 	}
-	s.form.bottom = top
+
+	return s.layoutLinks(node, left, width, top)
 }
 
 // layoutField places a number's or a text's field, and returns where the
@@ -707,6 +718,7 @@ func (s *State) updateForm(input *ui.Input, ctx *frame.Context) {
 	if s.form.call != nil {
 		s.updateCall(input, ctx, node)
 	}
+	s.updateLinks(input, ctx)
 }
 
 // updateFooter handles the save bar and Delete node, reporting whether one
@@ -894,13 +906,17 @@ func (s *State) Save(ctx *frame.Context) bool {
 	for _, slot := range slots {
 		slot.saving = true
 	}
-	data, err := json.Marshal(workflowplugin.ReplaceArgs{Node: changed})
+	args := workflowplugin.ReplaceArgs{Node: changed}
+	data, err := json.Marshal(args)
 	if err != nil {
 		ctx.Frame.Status(err.Error())
 
 		return false
 	}
-	command := protocol.Command{Document: s.document, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data}
+	command := protocol.Command{
+		Document: s.document, Edit: workflowplugin.ReplaceEdit, Gesture: "", Args: data,
+		Says: s.sentenceOf(ctx.Docs, args),
+	}
 	ctx.Requests.Command(command, func(result protocol.Result, err error) {
 		if err != nil {
 			for _, field := range saving {

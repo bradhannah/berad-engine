@@ -2,6 +2,7 @@ package pixelview
 
 import (
 	"image"
+	"strconv"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -65,7 +66,7 @@ func (s *State) paintable(ctx *frame.Context) bool {
 	if color := s.paintColor(); color.IsClear() || !color.Shade.IsZero() {
 		return true
 	}
-	ctx.Frame.Status("Choose a shade to paint with")
+	ctx.Frame.Refuse("Choose a shade to paint with")
 
 	return false
 }
@@ -79,7 +80,7 @@ func (s *State) updateStroke(input *ui.Input, ctx *frame.Context, pixel image.Po
 		if !s.paintable(ctx) {
 			return
 		}
-		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: pixel, skipped: 0}
+		s.stroke = stroke{active: true, count: s.stroke.count + 1, last: pixel, skipped: 0, pixels: 0}
 		s.paint(ctx, []image.Point{pixel})
 	case s.stroke.active && input.Down && pixel != s.stroke.last:
 		s.paint(ctx, linePixels(s.stroke.last, pixel)[1:])
@@ -119,7 +120,25 @@ func (s *State) paint(ctx *frame.Context, pixels []image.Point) {
 	if len(changed) == 0 {
 		return
 	}
-	s.command(ctx, tileID, artplugin.PaintEdit, s.gesture(), artplugin.PaintArgs{Pixels: changed}, nil)
+	s.stroke.pixels += len(changed)
+	says := s.paintSentence(ctx.Docs, "Painted", s.stroke.pixels)
+	s.commandSaying(ctx, tileID, artplugin.PaintEdit, s.gesture(), says, artplugin.PaintArgs{Pixels: changed}, nil)
+}
+
+// paintSentence says a stroke or a fill: how many pixels, in which colour,
+// on which sprite, or that they were erased (increment 51).
+func (s *State) paintSentence(docs frame.Docs, did string, pixels int) string {
+	counted := strconv.Itoa(pixels) + " pixels"
+	if pixels == 1 {
+		counted = "1 pixel"
+	}
+	color := s.paintColor()
+	if color.IsClear() {
+		return "Erased " + counted + " on " + s.spriteName(docs)
+	}
+	name, _ := s.colorName(docs, color)
+
+	return did + " " + counted + " of " + name + " on " + s.spriteName(docs)
 }
 
 // fill paints a pixel and every pixel joined to it, side by side, in its
@@ -134,7 +153,7 @@ func (s *State) fill(ctx *frame.Context, start image.Point) {
 	color := s.paintColor()
 	limits := s.barrier(ctx.Docs, size)
 	if limits.blocks(start) {
-		ctx.Frame.Status(s.templateName(ctx.Docs) + " does not allow painting there")
+		ctx.Frame.Refuse(s.templateName(ctx.Docs) + " does not allow painting there")
 
 		return
 	}
@@ -152,7 +171,8 @@ func (s *State) fill(ctx *frame.Context, start image.Point) {
 		pixels = append(pixels, artplugin.Pixel{Col: pixel.X, Row: pixel.Y, Color: color})
 	}
 	s.stroke.count++
-	s.command(ctx, tileID, artplugin.PaintEdit, s.gesture(), artplugin.PaintArgs{Pixels: pixels}, nil)
+	says := s.paintSentence(ctx.Docs, "Filled", len(pixels))
+	s.commandSaying(ctx, tileID, artplugin.PaintEdit, s.gesture(), says, artplugin.PaintArgs{Pixels: pixels}, nil)
 }
 
 // fillRegion returns the pixels a fill from start paints: start, and every
@@ -197,13 +217,13 @@ func (s *State) pick(ctx *frame.Context, pixel image.Point) {
 		return
 	}
 	if ref.IsLoose() {
-		ctx.Frame.Status("A loose colour, " + ref.Value.String() + ", names no palette: repaint it with a palette colour")
+		ctx.Frame.Refuse("A loose colour, " + ref.Value.String() + ", names no palette: repaint it with a palette colour")
 
 		return
 	}
 	name, named := s.colorName(ctx.Docs, ref)
 	if !named {
-		ctx.Frame.Status("That pixel's colour cannot be found in its palette")
+		ctx.Frame.Refuse("That pixel's colour cannot be found in its palette")
 
 		return
 	}

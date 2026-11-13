@@ -50,7 +50,7 @@ func command(t testing.TB, c *client.Client, document ids.ULID, edit, gesture st
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return c.Command(ctx, protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data})
+	return c.Command(ctx, protocol.Command{Document: document, Edit: edit, Gesture: gesture, Args: data, Says: ""})
 }
 
 func mustCommand(t testing.TB, c *client.Client, document ids.ULID, edit, gesture string, args any) protocol.Result {
