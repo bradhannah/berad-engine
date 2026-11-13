@@ -142,3 +142,28 @@ func TestDeletingAZoneNamesItsFloors(t *testing.T) {
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
 }
+
+// TestKeysInAFieldStayWithIt types a Wait's duration, presses Escape and
+// Cmd+Z: Escape leaves the field and keeps what was typed, and Cmd+Z stops
+// at the field once its typing is undone, saying so (increment 59).
+func TestKeysInAFieldStayWithIt(t *testing.T) {
+	requireGUI(t)
+	binary := buildEditor(t)
+	project := filepath.Join(t.TempDir(), "project")
+	shot := shotPath(t, "field-keys.png")
+	browserScript := script(
+		must("row:Sample zone", 600), wait(5), click("ui:new-workflow"), wait(30), click("ui:open"),
+		must("state:tabs:2", 600), quitWhenAlone(),
+	)
+	workflowScript := script(
+		must("state:loaded", 600), wait(30), click("node:start:1"), wait(5), addNode("wait"),
+		must("state:selected:wait", 300), wait(5), click("ui:param-duration"), keys("Cmd+A"), typed("45"), wait(5),
+		keys("Escape"), must("state:said:Left the field. What you typed waits for Save.", 60), wait(5),
+		click("ui:param-duration"), keys("Cmd+Z"), keys("Cmd+Z"), keys("Cmd+Z"), keys("Cmd+Z"),
+		must("state:said:Nothing more to undo in this field", 60), must("state:nodes:2", 60), wait(5), shoot(shot),
+		keys("Escape"), wait(5), click("ui:revert"), wait(10), quit(),
+	)
+	runEditor(t, binary, project, scripts{"browser": {browserScript}, "workflow": {workflowScript}})
+	noCrashes(t, project)
+	t.Logf("screenshot: %s", shot)
+}
