@@ -64,3 +64,4 @@ Chosen while building, for its author to check:
   `TestACrashedProjectTabReopensWhenTold`, which crashes the Project tab
   with the key only tests turn on: the Map's status bar offers Reopen, the
   Project tab comes back, and it quits the editor as before.
+- **The whole suite:** `make check` passes, and all 79 real-window walks pass on increment 60's commit, `60c74c9`, run from a frozen copy as `GOFLAGS=-timeout=40m make gui-test`.

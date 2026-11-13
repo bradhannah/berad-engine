@@ -67,3 +67,4 @@ Chosen while building, for its author to check:
   for Save.", then presses Cmd+Z until it says "Nothing more to undo in
   this field. Esc leaves it, to undo saved changes." with the Wait as it
   was. Tab and the clock's panel were left to their unit tests.
+- **The whole suite:** `make check` passes, and all 79 real-window walks pass on increment 60's commit, `60c74c9`, run from a frozen copy as `GOFLAGS=-timeout=40m make gui-test`.

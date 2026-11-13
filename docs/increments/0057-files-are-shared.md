@@ -105,3 +105,4 @@ Chosen while building, for its author to check:
   notice ended by its Dismiss, and the file never written over.
 - **Unknown fields:** `TestFieldsTheEditorDoesNotKnowAreToldAndKept`.
 - **Notices:** `TestNoticesWaitTheirTurn`.
+- **The whole suite:** `make check` passes, and all 79 real-window walks pass on increment 60's commit, `60c74c9`, run from a frozen copy as `GOFLAGS=-timeout=40m make gui-test`.

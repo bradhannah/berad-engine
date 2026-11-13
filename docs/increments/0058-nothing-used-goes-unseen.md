@@ -75,3 +75,4 @@ Chosen while building, for its author to check:
 - **Local values in use:** `TestALocalInUseIsRefused`. The real-window walk
   planned for it was not written: the unit test covers the refusal and the
   list of nodes.
+- **The whole suite:** `make check` passes, and all 79 real-window walks pass on increment 60's commit, `60c74c9`, run from a frozen copy as `GOFLAGS=-timeout=40m make gui-test`.
