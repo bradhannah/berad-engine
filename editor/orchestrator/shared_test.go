@@ -1,6 +1,7 @@
 package orchestrator_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -123,6 +124,11 @@ func TestAFileChangedOutsideIsTakenIn(t *testing.T) {
 	floor := createProject(t, dir)
 	h := start(t, dir, fast)
 	view := h.dial(t, "")
+	subscribe, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := view.Subscribe(subscribe, project.IndexID()); err != nil {
+		t.Fatal(err)
+	}
 	mustPaint(t, view, floor, 0, 0, "wall", "")
 	waitFor(t, "the paint to be saved", func() bool {
 		raw, err := os.ReadFile(floorPath(t, dir))
@@ -143,6 +149,17 @@ func TestAFileChangedOutsideIsTakenIn(t *testing.T) {
 	if _, err := undo(t, view); err == nil {
 		t.Fatal("the undo steps for the version replaced are gone")
 	}
+	waitFor(t, "the project index to name it", func() bool {
+		named := false
+		view.View(project.IndexID(), func(document client.Document) {
+			if index, ok := document.Model.(*project.Index); ok {
+				entry, found := index.Entry(floor)
+				named = found && entry.Name == "Cellar"
+			}
+		})
+		return named
+	})
+	mustPaint(t, view, floor, 1, 1, "wall", "")
 }
 
 // A file changed outside the editor while a window had typed changes for it

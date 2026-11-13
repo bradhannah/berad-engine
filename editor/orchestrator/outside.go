@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/model"
+	projectindex "github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -228,9 +229,25 @@ func (o *Orchestrator) takeIn(entry *documentEntry) error {
 		o.project.note(layoutPath(entry.info.Path), layoutRaw)
 	}
 	o.history.forget(entry.info.ID)
-	o.buildIndex()
+	o.refreshIndex()
 
 	return nil
+}
+
+// refreshIndex brings the live project index up to date with a document
+// changed other than by a command, as one taken in from its file is, and
+// sends it again, one revision on, to the windows showing it. Rebuilding it
+// from nothing would start its revisions again under those windows.
+func (o *Orchestrator) refreshIndex() {
+	entry, built := o.docs[projectindex.IndexID()]
+	if !built {
+		o.buildIndex()
+
+		return
+	}
+	entry.document = o.indexNow()
+	entry.info.Revision++
+	o.sendSnapshot(entry, "")
 }
 
 // readEnvelope reads a document file's envelope, upgraded to the current
