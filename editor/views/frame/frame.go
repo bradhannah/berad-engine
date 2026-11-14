@@ -247,6 +247,9 @@ type Frame struct {
 	// history is every message the window was given, and the refusal shown
 	// until it is dismissed (increment 39).
 	history historyState
+	// text is the status bar's Text button for the scale of text and
+	// controls (increment 56).
+	text textScaleState
 }
 
 // NewFrame returns an empty frame.
@@ -258,6 +261,7 @@ func NewFrame(now func() time.Time) *Frame {
 		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
 		ShowLeft:      &ui.Toggle{ID: "left-panel", Label: "Left panel", Rect: ui.Zero(), On: true},
 		history:       newHistoryState(),
+		text:          newTextScaleState(),
 	}
 }
 
@@ -389,11 +393,11 @@ func InspectorWide() int {
 }
 
 // layoutStatus places the On top toggle at the right end of the status bar,
-// and the Inspector toggle before it.
+// the Text button before it, and the Inspector toggle before that.
 func (f *Frame) layoutStatus(size image.Point) {
 	top := size.Y - StatusHeight
 	f.OnTop.Rect = image.Rect(size.X-ui.Inset-onTopWidth, top, size.X-ui.Inset, size.Y)
-	right := f.OnTop.Rect.Min.X - statusGap/ui.Half
+	right := f.layoutTextScale(size, f.OnTop.Rect.Min.X-statusGap/ui.Half)
 	f.ShowInspector.Rect = image.Rect(right-inspectorToggleWidth, top, right, size.Y)
 	f.layoutHistory(size)
 }
@@ -401,6 +405,9 @@ func (f *Frame) layoutStatus(size image.Point) {
 // UpdateStatus handles a click on the status bar's toggles.
 func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 	f.layoutStatus(size)
+	if f.updateTextScale(input, size) {
+		return
+	}
 	f.OnTop.Update(input)
 	f.ShowInspector.Update(input)
 	f.updateHistoryButtons(input)
@@ -411,6 +418,9 @@ func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 // top and "state:inspector" while the inspector shows, for input scripts.
 func (f *Frame) LocateStatus(name string) (image.Point, bool) {
 	if point, found, handled := f.locateHistory(name); handled {
+		return point, found
+	}
+	if point, found, handled := f.locateTextScale(name); handled {
 		return point, found
 	}
 	for _, toggle := range []*ui.Toggle{f.OnTop, f.ShowInspector, f.ShowLeft} {
@@ -480,6 +490,7 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	message = theme.FitText(message, room)
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
 	f.ShowInspector.Draw(screen, theme)
+	f.text.button.Draw(screen, theme)
 	f.OnTop.Draw(screen, theme)
 	f.history.button.Draw(screen, theme)
 	if !f.history.dismiss.Rect.Empty() {
