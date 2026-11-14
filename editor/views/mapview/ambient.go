@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -152,7 +152,7 @@ func (s *State) openCueMenu(cell Cell, current string) {
 	for _, cue := range cues {
 		items = append(items, menuItem(soundCueItem+cue.ID, cue.Name, cue.ID == current))
 	}
-	at := s.camera.cellRect(cell, s.Grid()).Max
+	at := pen.WindowRect(s.camera.cellRect(cell, s.stage())).Max
 	s.menu = &cellMenu{Menu: ui.Menu{Items: items, Width: ui.MenuWidth(items, s.theme)}, cell: cell}
 	s.menu.OpenAt(at, s.Grid())
 }
@@ -229,14 +229,14 @@ func (s *State) drawSounds(area *ebiten.Image, floorData *floor.Floor, grid imag
 		centreX, centreY := float32(rect.Min.X)+size/ui.Half, float32(rect.Min.Y)+size/ui.Half
 		if cue, ok := s.cueOf(sound.Cue); ok && cue.Ambient != nil && cue.Ambient.RadiusTiles > 0 {
 			ring := float32(cue.Ambient.RadiusTiles) * size
-			vector.StrokeCircle(area, centreX, centreY, ring, ui.Hairline, ui.HexAlpha(hexSound, ringAlpha), true)
+			pen.StrokeCircle(area, centreX, centreY, ring, ui.Hairline, ui.HexAlpha(hexSound, ringAlpha), true)
 		}
 		if !rect.Overlaps(grid) {
 			continue
 		}
 		radius := max(size*soundRadius, minAnchorRadius)
-		vector.FillCircle(area, centreX, centreY, radius, purple, true)
-		vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorReverse(), true)
+		pen.FillCircle(area, centreX, centreY, radius, purple, true)
+		pen.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorReverse(), true)
 		if rect.Dx() < minLabel {
 			continue
 		}

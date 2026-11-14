@@ -156,9 +156,8 @@ func (s *State) pickFloor(input *ui.Input, ctx *frame.Context) {
 
 // updatePickGrid pans and zooms the map and answers a click on an anchor.
 func (s *State) updatePickGrid(input *ui.Input, ctx *frame.Context, floorData *floor.Floor) {
-	grid := s.Grid()
-	s.panAndZoom(input, grid)
-	cell, inGrid := s.camera.cellAt(input.Cursor, grid)
+	s.panAndZoom(input, s.Grid())
+	cell, inGrid := s.camera.cellAt(onStage(input.Cursor), s.stage())
 	onFloor := inGrid && floorData.In(cell.X, cell.Y)
 	s.hover, s.hovering, s.outside = cell, onFloor, false
 	if anchor, found := floorData.AnchorAt(cell.X, cell.Y); onFloor && found {

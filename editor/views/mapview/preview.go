@@ -7,13 +7,13 @@ import (
 	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -290,7 +290,7 @@ func (s *State) floorName(docs frame.Docs, floorID ids.ULID) string {
 // follow pans the view to keep a walking player away from its edge.
 func (s *State) follow(player play.Player) {
 	size := s.camera.cellSize()
-	grid := s.Grid()
+	grid := s.stage()
 	x, y := player.At()
 	centre := grid.Min.Add(s.camera.offset).Add(image.Pt(
 		int(math.Round((x+cellCentre)*float64(size))), int(math.Round((y+cellCentre)*float64(size))),
@@ -446,13 +446,13 @@ func (s *State) drawDisc(area *ebiten.Image, grid image.Rectangle, x, y float64,
 	centreY := float64(origin.Y) + (y+cellCentre)*size
 	radius := size * playerRadius
 	blue := ui.HexAlpha(hexBlue, alpha)
-	vector.FillCircle(area, float32(centreX), float32(centreY), float32(radius), ui.HexAlpha(hexWhite, alpha), true)
-	vector.StrokeCircle(area, float32(centreX), float32(centreY), float32(radius), playerRing, blue, true)
+	pen.FillCircle(area, float32(centreX), float32(centreY), float32(radius), ui.HexAlpha(hexWhite, alpha), true)
+	pen.StrokeCircle(area, float32(centreX), float32(centreY), float32(radius), playerRing, blue, true)
 	faceX, faceY := float64(face[0]), float64(face[1])
 	if length := math.Hypot(faceX, faceY); length > 0 {
 		faceX, faceY = faceX/length*radius*faceOffset, faceY/length*radius*faceOffset
 	}
-	vector.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), blue, true)
+	pen.FillCircle(area, float32(centreX+faceX), float32(centreY+faceY), float32(radius*faceRadius), blue, true)
 }
 
 // hasPlayer answers "player:C,R" for this window's preview and
@@ -491,9 +491,9 @@ func (s *State) locatePlayer() (image.Point, bool) {
 		return image.Pt(0, 0), false
 	}
 	size := float64(s.camera.cellSize())
-	origin := s.Grid().Min.Add(s.camera.offset)
+	origin := s.stage().Min.Add(s.camera.offset)
 
-	return image.Pt(
+	return pen.WindowPoint(image.Pt(
 		origin.X+int(math.Round((player.X+cellCentre)*size)), origin.Y+int(math.Round((player.Y+cellCentre)*size)),
-	), true
+	)), true
 }

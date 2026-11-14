@@ -261,3 +261,19 @@ func Cursor(across, down int) image.Point {
 
 	return image.Pt(int(math.Floor(float64(across)/scale)), int(math.Floor(float64(down)/scale)))
 }
+
+// CanvasDelta is a distance moved in the window's points in a canvas's
+// points.
+func CanvasDelta(delta image.Point) image.Point {
+	author := Author()
+	if author == 1 {
+		return delta
+	}
+
+	return image.Pt(int(math.Round(float64(delta.X)*author)), int(math.Round(float64(delta.Y)*author)))
+}
+
+// WindowPoint is a canvas's point in the window's points.
+func WindowPoint(point image.Point) image.Point {
+	return WindowRect(image.Rectangle{Min: point, Max: point}).Min
+}

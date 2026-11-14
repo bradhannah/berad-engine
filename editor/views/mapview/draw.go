@@ -7,12 +7,12 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -52,15 +52,18 @@ const (
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layoutWidgets(docs)
 	s.sprites.refresh(docs, s.camera.tile, s.shownSprites(docs))
 	screen.Fill(ui.ColorPage())
 	grid := s.Grid()
-	area, ok := screen.SubImage(grid).(*ebiten.Image)
+	area, ok := pen.Clip(screen, grid)
 	if ok {
 		area.Fill(ui.ColorStage())
-		s.drawFloors(area, docs, grid)
+		// The floor is drawn at the canvas's own zoom, which the author's
+		// scale for text and controls does not change (increment 56).
+		pen.OnCanvas(func() { s.drawFloors(area, docs, s.stage()) })
+		s.drawStageMessages(area, docs, grid)
 		if !s.floor.IsZero() {
 			s.zoom.layout(grid, s.camera)
 			s.zoom.draw(area, s.theme)
@@ -83,11 +86,25 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.guard.Draw(screen, s.theme)
 }
 
-func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
+// drawStageMessages says over the stage that the zone has no floors, that
+// the floor is loading, or which way it lies when it is out of view.
+func (s *State) drawStageMessages(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
 	if s.floor.IsZero() {
 		s.theme.DrawText(area, "This zone has no floors yet. Add one in the project browser.",
 			grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
 
+		return
+	}
+	if !docs.View(s.floor, func(client.Document) {}) {
+		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
+	}
+	s.drawOffView(area, grid, docs)
+}
+
+// drawFloors draws the floor, the floor below it and what stands on them,
+// in the canvas's points.
+func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
+	if s.floor.IsZero() {
 		return
 	}
 	docs.View(s.floor, func(document client.Document) {
@@ -105,7 +122,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 	shown := s.shownState()
 	shake := s.shakeBy(shown)
 	s.camera.offset = s.camera.offset.Add(shake)
-	loaded := docs.View(s.floor, func(document client.Document) {
+	docs.View(s.floor, func(document client.Document) {
 		floorDoc, isFloor := document.Model.(*tilefloor.Document)
 		if !isFloor {
 			return
@@ -133,10 +150,6 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 	if shown != nil {
 		s.drawBox(area, grid, shown.Box)
 	}
-	if !loaded {
-		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
-	}
-	s.drawOffView(area, grid, docs)
 }
 
 // drawOutside fills the zone beyond the floor bounds with the stage, then
@@ -351,8 +364,8 @@ func (s *State) drawAnchors(area *ebiten.Image, floorData *floor.Floor, grid ima
 		if s.pick != nil {
 			s.drawPickCell(area, rect, anchor.ID)
 		}
-		vector.FillCircle(area, centreX, centreY, radius, fill, true)
-		vector.StrokeCircle(area, centreX, centreY, radius, anchorRing, blue, true)
+		pen.FillCircle(area, centreX, centreY, radius, fill, true)
+		pen.StrokeCircle(area, centreX, centreY, radius, anchorRing, blue, true)
 		if size >= minLabel {
 			s.drawAnchorName(area, rect, anchor)
 		}

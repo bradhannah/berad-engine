@@ -23,6 +23,7 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
@@ -514,6 +515,14 @@ func (s *State) Grid() image.Rectangle {
 	return image.Rect(s.panelWidth(), 0, content.Max.X, content.Max.Y)
 }
 
+// stage is the grid in the canvas's points, where the camera places cells:
+// the author's scale for text and controls does not change a cell's size
+// (increment 56).
+func (s *State) stage() image.Rectangle { return pen.CanvasRect(s.Grid()) }
+
+// onStage is a window point in the canvas's points.
+func onStage(point image.Point) image.Point { return pen.CanvasPoint(point) }
+
 // layoutWidgets places the panel widgets for the window size.
 func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
@@ -636,7 +645,7 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
-	s.cursor = input.Cursor
+	s.cursor = onStage(input.Cursor)
 	s.fold.folded = !ctx.Frame.ShowLeft.On
 	s.layoutWidgets(ctx.Docs)
 	// The status bar names what is in hand once the frame has moved it.
@@ -743,7 +752,7 @@ func (s *State) updateZoom(input *ui.Input, ctx *frame.Context) {
 		}
 	})
 	s.zoom.layout(s.Grid(), s.camera)
-	s.zoom.update(input, &s.camera, s.Grid(), bounds)
+	s.zoom.update(input, &s.camera, s.stage(), bounds)
 }
 
 // keys handles the window's own keys while no text field has focus.
@@ -757,9 +766,9 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case input.Consume(ui.KeyPageDown, plain):
 		s.stepFloor(-1, ctx)
 	case input.Consume(ui.KeyEqual, command):
-		s.camera.zoomBy(1, input.Cursor, s.Grid())
+		s.camera.zoomBy(1, onStage(input.Cursor), s.stage())
 	case input.Consume(ui.KeyMinus, command):
-		s.camera.zoomBy(-1, input.Cursor, s.Grid())
+		s.camera.zoomBy(-1, onStage(input.Cursor), s.stage())
 	case input.Consume(ui.Key0, command):
 		ctx.Docs.View(s.floor, func(document client.Document) {
 			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
@@ -881,9 +890,8 @@ func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 
 // updateGrid handles panning, zooming and the current tool on the floor.
 func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor.Floor) {
-	grid := s.Grid()
-	s.panAndZoom(input, grid)
-	cell, inGrid := s.camera.cellAt(input.Cursor, grid)
+	s.panAndZoom(input, s.Grid())
+	cell, inGrid := s.camera.cellAt(onStage(input.Cursor), s.stage())
 	onFloor := inGrid && floorData.In(cell.X, cell.Y)
 	s.hover, s.hovering, s.outside = cell, onFloor, inGrid && !onFloor && !s.zoom.contains(input.Cursor)
 	if s.panning || input.Space || s.updateGridMode(input, ctx, floorData, cell, inGrid) {
@@ -927,28 +935,30 @@ func (s *State) updateGridMode(
 	return true
 }
 
+// panAndZoom pans and zooms the camera, which works in the canvas's points.
 func (s *State) panAndZoom(input *ui.Input, grid image.Rectangle) {
+	cursor, stage := onStage(input.Cursor), s.stage()
 	if input.Cursor.In(grid) && (input.WheelX != 0 || input.WheelY != 0) {
 		if input.Held.Shortcut {
 			s.wheel += input.WheelY
 			for s.wheel >= 1 {
-				s.camera.zoomBy(1, input.Cursor, grid)
+				s.camera.zoomBy(1, cursor, stage)
 				s.wheel--
 			}
 			for s.wheel <= -1 {
-				s.camera.zoomBy(-1, input.Cursor, grid)
+				s.camera.zoomBy(-1, cursor, stage)
 				s.wheel++
 			}
 		} else {
-			s.camera.pan(input.WheelPan())
+			s.camera.pan(pen.CanvasDelta(input.WheelPan()))
 		}
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
 	if dragPan && s.panning {
-		s.camera.pan(input.Cursor.Sub(s.lastPan))
+		s.camera.pan(cursor.Sub(s.lastPan))
 	}
 	s.panning = dragPan && (s.panning || input.Cursor.In(grid))
-	s.lastPan = input.Cursor
+	s.lastPan = cursor
 }
 
 // paintValue returns the layer and tile the current tool paints.
@@ -1540,7 +1550,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		if _, err := fmt.Sscanf(value, "%d,%d", &col, &row); err != nil {
 			return image.Pt(0, 0), false
 		}
-		rect := s.camera.cellRect(Cell{X: col, Y: row}, s.Grid())
+		rect := pen.WindowRect(s.camera.cellRect(Cell{X: col, Y: row}, s.stage()))
 
 		return image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2), true
 	case "edge":

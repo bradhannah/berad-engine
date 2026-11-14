@@ -14,6 +14,7 @@ import (
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -253,11 +254,11 @@ func drawSprite(area, picture *ebiten.Image, rect image.Rectangle, alpha uint8) 
 	scale := float64(rect.Dx()) / float64(picture.Bounds().Dx())
 	place.GeoM.Scale(scale, scale)
 	place.GeoM.Translate(float64(rect.Min.X), float64(rect.Min.Y))
-	if scale < 1 {
+	if scale*pen.Scale() < 1 {
 		place.Filter = ebiten.FilterLinear
 	}
 	place.ColorScale.ScaleAlpha(float32(alpha) / fullAlpha)
-	area.DrawImage(picture, &place)
+	pen.DrawImage(area, picture, &place)
 }
 
 // hasArt answers input scripts waiting for the Map's art:

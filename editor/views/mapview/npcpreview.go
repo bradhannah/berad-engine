@@ -20,6 +20,7 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/showdraw"
@@ -1001,11 +1002,11 @@ func (s *State) npcsMoved(docs frame.Docs) bool {
 // locateLiveNPC finds a live NPC by name on screen, for input scripts.
 func (s *State) locateLiveNPC(name string) (image.Point, bool) {
 	size := float64(s.camera.cellSize())
-	origin := s.Grid().Min.Add(s.camera.offset)
+	origin := s.stage().Min.Add(s.camera.offset)
 	for _, entity := range s.liveNPCs() {
 		if entity.Floor == s.floor && s.names.Name(entity.NPC, "") == name {
-			return image.Pt(origin.X+int(math.Round((entity.X+cellCentre)*size)),
-				origin.Y+int(math.Round((entity.Y+cellCentre)*size))), true
+			return pen.WindowPoint(image.Pt(origin.X+int(math.Round((entity.X+cellCentre)*size)),
+				origin.Y+int(math.Round((entity.Y+cellCentre)*size)))), true
 		}
 	}
 
