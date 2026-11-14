@@ -141,7 +141,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		known: map[string]bool{}, keptArrived: false, minWidth: 0, reopen: nil,
 		frameNow:  protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0},
 		frameSeen: protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0}, frameTicks: 0, tabsKept: "", quitting: false,
-		textScale: 1,
+		textScale: scriptedTextScale(),
 	}
 }
 
@@ -250,6 +250,7 @@ func (s *shell) Update() error {
 	s.noteUsed()
 	s.noteTrail()
 	s.followOnTop()
+	s.followTextScale()
 	s.followInspector()
 	s.limitWindow()
 	s.reopenNext()

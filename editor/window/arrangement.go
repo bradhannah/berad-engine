@@ -46,6 +46,9 @@ func (s *shell) keepArrangement(value json.RawMessage) {
 		return
 	}
 	s.kept, s.keptArrived = layout, true
+	if scale := layout.Screens[s.screen].TextScale; scale > 0 {
+		s.textScale = scale
+	}
 	s.reopenAsLeft(layout.Screens[s.screen])
 	for kind, panels := range layout.Screens[s.screen].Kinds {
 		s.widths[kind] = kindWidths{inspector: panels.Inspector, left: panels.Left}
@@ -103,7 +106,7 @@ func (s *shell) publishArrangement() {
 		screens = map[string]protocol.Arrangement{}
 	}
 	screens[s.screen] = protocol.Arrangement{
-		Kinds: kinds, Frame: s.frameNow, Tabs: s.tabsNow(), Active: s.active,
+		Kinds: kinds, Frame: s.frameNow, Tabs: s.tabsNow(), Active: s.active, TextScale: s.textScale,
 	}
 	s.kept = protocol.Layout{Screens: screens}
 	for _, shown := range s.panes() {

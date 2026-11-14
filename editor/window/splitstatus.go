@@ -60,6 +60,7 @@ func (s *shell) drawSharedStatus(screen *ebiten.Image, front *tab) {
 	focused := front.panes[front.focus].host
 	focused.frame.DrawStatus(s.statusImage, focused.theme)
 	focused.frame.DrawHistory(s.statusImage, focused.theme)
+	focused.frame.DrawTextMenu(s.statusImage, focused.theme)
 	pen.DrawLayer(screen, s.statusImage, area)
 }
 

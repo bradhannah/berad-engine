@@ -648,6 +648,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 	if h.statusArea.Empty() {
 		h.frame.DrawStatus(screen, h.theme)
 		h.frame.DrawHistory(screen, h.theme)
+		h.frame.DrawTextMenu(screen, h.theme)
 	}
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
