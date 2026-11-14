@@ -1,6 +1,9 @@
 package window
 
 import (
+	"fmt"
+	"image"
+	"math"
 	"os"
 	"strconv"
 
@@ -25,6 +28,27 @@ func scriptedTextScale() float64 {
 	}
 
 	return float64(given) / percentage
+}
+
+// windowSizeEnv sets the size an input script's run opens its window at,
+// in the screen's points, as WIDTHxHEIGHT, so the real-window walks can be
+// seen in a small window at any scale. It is read only while input scripts
+// drive the editor.
+const windowSizeEnv = "BERAD_WINDOW_SIZE"
+
+// openingSize is the size the window opens at, in the screen's points:
+// 1200 by 832 at 100%, and as much larger as the scale makes text and
+// controls, so that a scripted run at another scale lays out as at 100%;
+// or the size BERAD_WINDOW_SIZE gives a scripted run.
+func openingSize(scale float64) image.Point {
+	if scripted() {
+		var width, height int
+		if _, err := fmt.Sscanf(os.Getenv(windowSizeEnv), "%dx%d", &width, &height); err == nil && width > 0 && height > 0 {
+			return image.Pt(width, height)
+		}
+	}
+
+	return image.Pt(int(math.Ceil(windowWidth*scale)), int(math.Ceil((windowHeight+rowHeight)*scale)))
 }
 
 // percentage is a whole scale as a percentage.

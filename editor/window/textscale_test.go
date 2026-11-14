@@ -2,6 +2,7 @@ package window
 
 import (
 	"encoding/json"
+	"image"
 	"strings"
 	"testing"
 
@@ -59,5 +60,25 @@ func TestTheTextScaleIsPutBack(t *testing.T) {
 	shown.followTextScale()
 	if shown.textScale != 1.5 || first.host.frame.TextScale() != 1.5 {
 		t.Fatalf("scale %v, pane %v", shown.textScale, first.host.frame.TextScale())
+	}
+}
+
+// TestAScriptedRunOpensAtTheSizeAskedFor opens a scripted run's window at
+// BERAD_WINDOW_SIZE, in the screen's points, so its walks can be seen in a
+// small window at any scale; without it, the window opens as much larger as
+// the scale makes text and controls, and an unscripted run never reads it.
+func TestAScriptedRunOpensAtTheSizeAskedFor(t *testing.T) {
+	t.Setenv(windowSizeEnv, "1200x832")
+	t.Setenv(scriptEnv, "")
+	if got := openingSize(1.5); got != image.Pt(1800, 1248) {
+		t.Fatalf("an unscripted run opened at %v, want 1800 × 1248", got)
+	}
+	t.Setenv(scriptEnv, "map=script.json")
+	if got := openingSize(1.5); got != image.Pt(1200, 832) {
+		t.Fatalf("a scripted run asking for 1200x832 opened at %v", got)
+	}
+	t.Setenv(windowSizeEnv, "wide")
+	if got := openingSize(1); got != image.Pt(1200, 832) {
+		t.Fatalf("a scripted run without a size opened at %v, want 1200 × 832", got)
 	}
 }
