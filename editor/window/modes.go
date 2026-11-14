@@ -3,6 +3,7 @@ package window
 import (
 	"fmt"
 	"image"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -143,8 +144,13 @@ func (s *shell) limitWindow() {
 		return
 	}
 	s.minWidth = need
-	ebiten.SetWindowSizeLimits(need, windowMinHeight, -1, -1)
+	ebiten.SetWindowSizeLimits(s.screenPoints(need), s.screenPoints(windowMinHeight), -1, -1)
 }
+
+// screenPoints is a length in the window's points in the screen's own
+// points, which the author's scale for text and controls makes larger or
+// smaller.
+func (s *shell) screenPoints(length int) int { return int(math.Ceil(float64(length) * s.textScale)) }
 
 // neededWidth is the narrowest a tab's panes go: each one's left panel,
 // inspector and the canvas's room, and the divider between two.

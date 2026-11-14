@@ -84,6 +84,17 @@ func (g *timedGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return g.game.Layout(outsideWidth, outsideHeight)
 }
 
+// LayoutF passes the window's size on, in the screen's own pixels where the
+// game answers in them.
+func (g *timedGame) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
+	if layout, ok := g.game.(ebiten.LayoutFer); ok {
+		return layout.LayoutF(outsideWidth, outsideHeight)
+	}
+	width, height := g.game.Layout(int(outsideWidth), int(outsideHeight))
+
+	return float64(width), float64(height)
+}
+
 // addLatencies keeps a view's command-to-event times.
 func (f *frameStats) addLatencies(latencies []time.Duration) {
 	if f != nil {

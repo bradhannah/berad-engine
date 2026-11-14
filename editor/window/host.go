@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -708,13 +709,7 @@ func (h *host) drawView(screen *ebiten.Image) {
 
 		return
 	}
-	size := h.viewSize()
-	if h.wide == nil || h.wide.Bounds().Size() != size {
-		if h.wide != nil {
-			h.wide.Deallocate()
-		}
-		h.wide = ebiten.NewImage(size.X, size.Y)
-	}
+	h.wide = pen.Layer(h.wide, image.Rectangle{Min: image.Pt(0, 0), Max: h.viewSize()})
 	h.wide.Clear()
 	h.view.Draw(h.wide, h.conn)
 	screen.DrawImage(h.wide, nil)

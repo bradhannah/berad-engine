@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 )
 
 // Key repeat, in ticks, and double-click limits.
@@ -90,8 +91,13 @@ func (r *inputReader) newSession() *textinput.SessionOptions {
 	caret, before, after := r.field.Session()
 	r.before, r.after = before, after
 
-	return &textinput.SessionOptions{CaretBounds: caret.Add(r.offset), TextBeforeCaret: before, TextAfterCaret: after}
+	return &textinput.SessionOptions{
+		CaretBounds: pen.PixelRect(caret.Add(r.offset)), TextBeforeCaret: before, TextAfterCaret: after,
+	}
 }
+
+// cursorPosition is where the pointer is, in the window's points.
+func cursorPosition() image.Point { return pen.Cursor(ebiten.CursorPosition()) }
 
 // commit queues committed text, or a replacement of the text around the
 // caret, as press-and-hold accents produce.
@@ -121,7 +127,7 @@ func (r *inputReader) flushText() {
 
 // read returns this frame's input. focused is the view's focused field.
 func (r *inputReader) read(focused *ui.TextField) ui.Input {
-	input := ui.NewInput(image.Pt(ebiten.CursorPosition()))
+	input := ui.NewInput(cursorPosition())
 	input.Down = ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 	input.Pressed = inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	input.Released = inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
