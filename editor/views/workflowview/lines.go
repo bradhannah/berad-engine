@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -234,7 +235,7 @@ func drawArrowhead(area *ebiten.Image, tip image.Point, ink color.Color) {
 	arrow.Close()
 	fill := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	fill.ColorScale.ScaleWithColor(ink)
-	vector.FillPath(area, &arrow, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, fill)
+	pen.FillPath(area, &arrow, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, fill)
 }
 
 // drawMark draws a node's problem mark: a small warning circle with "!".
@@ -243,7 +244,7 @@ func (s *State) drawMark(area *ebiten.Image, drawn shape) {
 		return
 	}
 	centre := s.toScreen(markCentre(drawn))
-	vector.FillCircle(area, float32(centre.X), float32(centre.Y), markRadius, ui.ColorWarn(), true)
+	pen.FillCircle(area, float32(centre.X), float32(centre.Y), markRadius, ui.ColorWarn(), true)
 	width := s.theme.SmallWidth("!")
 	s.theme.DrawSmall(area, "!", centre.X-width/ui.Half, centre.Y-ui.LabelSize/ui.Half-ui.Half, ui.ColorReverse())
 }

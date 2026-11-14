@@ -24,6 +24,7 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/picker"
@@ -443,13 +444,19 @@ func (s *State) Canvas() image.Rectangle {
 	return image.Rect(s.paletteWidth(), toolbarHeight, content.Max.X, content.Max.Y)
 }
 
+// toScreen is where a canvas point is drawn, in the drawing's points: the
+// canvas's own, which the author's scale for text and controls does not
+// change (increment 56).
 func (s *State) toScreen(point image.Point) image.Point {
-	return point.Add(s.Canvas().Min).Add(s.offset)
+	return point.Add(s.drawingOrigin()).Add(s.offset)
 }
+
+// drawingOrigin is the canvas's top-left corner in the drawing's points.
+func (s *State) drawingOrigin() image.Point { return pen.CanvasRect(s.Canvas()).Min }
 
 // toCanvas returns the canvas point under a screen point.
 func (s *State) toCanvas(point image.Point) image.Point {
-	from, scale := point.Sub(s.Canvas().Min), s.scale()
+	from, scale := point.Sub(s.Canvas().Min), s.windowScale()
 	at := image.Pt(int(math.Floor(float64(from.X)/scale)), int(math.Floor(float64(from.Y)/scale)))
 
 	return at.Sub(s.offset)

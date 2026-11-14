@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -64,7 +64,7 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.load(docs)
 	s.layoutWidgets(docs)
 	screen.Fill(ui.ColorPage())
@@ -123,14 +123,14 @@ const zoneLoopLacks = "Not in a zone loop: Go to, Move and Find NPC nearby. A zo
 // drawCanvas draws the dotted ground, then connections behind the nodes.
 func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	area.Fill(ui.ColorPage())
-	canvas := area.Bounds()
+	canvas := pen.Bounds(area)
 	origin := canvas.Min.Add(s.offset)
 	dot := ui.ColorRule()
 	startX := canvas.Min.X + mod(origin.X-canvas.Min.X, dotSpacing)
 	startY := canvas.Min.Y + mod(origin.Y-canvas.Min.Y, dotSpacing)
 	for y := startY; y < canvas.Max.Y; y += dotSpacing {
 		for x := startX; x < canvas.Max.X; x += dotSpacing {
-			vector.FillRect(area, float32(x), float32(y), 1, 1, dot, false)
+			pen.FillRect(area, float32(x), float32(y), 1, 1, dot, false)
 		}
 	}
 	if s.workflow == nil {
@@ -172,8 +172,9 @@ func (s *State) drawCanvas(area *ebiten.Image, docs frame.Docs) {
 	}
 }
 
+// screenRect is where a canvas rectangle is drawn, in the drawing's points.
 func (s *State) screenRect(rect image.Rectangle) image.Rectangle {
-	return rect.Add(s.Canvas().Min).Add(s.offset)
+	return rect.Add(s.drawingOrigin()).Add(s.offset)
 }
 
 // drawEntries draws a node's entry dots: filled for each link coming in, and
@@ -189,7 +190,7 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 		if s.lineLit(routeKey{from: in.from, output: in.output}) {
 			fill = ui.ColorSelect()
 		}
-		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
+		pen.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
 	}
 	centre := s.toScreen(drawn.spare)
 	fill, ring := ui.ColorField(), ui.ColorInk()
@@ -199,8 +200,8 @@ func (s *State) drawEntries(area *ebiten.Image, drawn shape) {
 	if s.link != nil && s.linkTarget() == drawn.node.ID {
 		fill, ring = ui.ColorSelectWash(), ui.ColorSelect()
 	}
-	vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
-	vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
+	pen.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
+	pen.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
 }
 
 // drawPorts draws each output's port: filled when connected, hollow with
@@ -222,8 +223,8 @@ func (s *State) drawPorts(area *ebiten.Image, from shape) {
 		case s.loose(from):
 			ring, label = ui.ColorWarn(), ui.ColorWarn()
 		}
-		vector.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
-		vector.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
+		pen.FillCircle(area, float32(centre.X), float32(centre.Y), portRadius, fill, true)
+		pen.StrokeCircle(area, float32(centre.X), float32(centre.Y), portRadius, ui.Border, ring, true)
 		if linked || flow.IsInner(from.node, out.output.Name) {
 			continue
 		}

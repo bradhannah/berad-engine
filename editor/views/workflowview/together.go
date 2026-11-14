@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -206,7 +206,7 @@ func (s *State) drawTogether(area *ebiten.Image, drawn shape) {
 			continue
 		}
 		centre := image.Pt(band.Min.X+textPad+laneBadge, band.Min.Y+bandPad+entryTop)
-		vector.FillCircle(area, float32(centre.X), float32(centre.Y), laneBadge, ui.ColorInk(), true)
+		pen.FillCircle(area, float32(centre.X), float32(centre.Y), laneBadge, ui.ColorInk(), true)
 		number := strconv.Itoa(index + 1)
 		s.theme.DrawSmall(area, number, centre.X-s.theme.SmallWidth(number)/ui.Half, centre.Y-ui.LabelSize/ui.Half-1,
 			ui.ColorReverse())
@@ -490,7 +490,7 @@ func layoutLanes(made *control, left, width, top int) int {
 func (s *State) drawLanes(screen *ebiten.Image, made *control) {
 	for index, row := range made.options {
 		centre := image.Pt(row.label.Rect.Min.X-rowSpace-laneBadge, (row.label.Rect.Min.Y+row.label.Rect.Max.Y)/ui.Half)
-		vector.FillCircle(screen, float32(centre.X), float32(centre.Y), laneBadge, ui.ColorInk(), true)
+		pen.FillCircle(screen, float32(centre.X), float32(centre.Y), laneBadge, ui.ColorInk(), true)
 		number := strconv.Itoa(index + 1)
 		s.theme.DrawSmall(screen, number, centre.X-s.theme.SmallWidth(number)/ui.Half, centre.Y-ui.LabelSize/ui.Half-1,
 			ui.ColorReverse())

@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -105,7 +106,7 @@ func (s *State) drawFormBody(screen *ebiten.Image, docs frame.Docs, node flow.No
 // formImage is the screen clipped to the node inspector's body, for drawing
 // what scrolls.
 func (s *State) formImage(screen *ebiten.Image) *ebiten.Image {
-	if body, ok := screen.SubImage(s.formBody()).(*ebiten.Image); ok {
+	if body, ok := pen.Clip(screen, s.formBody()); ok {
 		return body
 	}
 

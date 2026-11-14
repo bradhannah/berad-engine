@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -277,7 +278,7 @@ func (s *State) drawPalette(screen *ebiten.Image) {
 	edge := s.paletteFull() - ui.Outline
 	ui.Divider(screen, image.Pt(edge, toolbarHeight), image.Pt(edge, content.Max.Y))
 	s.pal.search.Draw(screen)
-	area, ok := screen.SubImage(s.paletteArea()).(*ebiten.Image)
+	area, ok := pen.Clip(screen, s.paletteArea())
 	if !ok {
 		return
 	}

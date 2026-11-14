@@ -9,6 +9,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
@@ -206,8 +207,8 @@ func (s *State) updateLive(input *ui.Input, ctx *frame.Context) {
 // drawLive draws a live view's canvas into its area.
 func (s *State) drawLive(screen *ebiten.Image, docs frame.Docs) {
 	s.load(docs)
-	if area, ok := screen.SubImage(s.Canvas()).(*ebiten.Image); ok {
-		s.drawCanvas(area, docs)
+	if area, ok := pen.Clip(screen, s.Canvas()); ok {
+		pen.OnCanvas(func() { s.drawCanvas(area, docs) })
 	}
 }
 

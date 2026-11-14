@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -88,8 +89,8 @@ func (z *zoomControl) draw(screen *ebiten.Image, theme *ui.Theme) {
 	}
 }
 
-// scale is how many screen pixels one canvas pixel takes. A live view in
-// the Watch window is never zoomed.
+// scale is the canvas's zoom: how many of the drawing's points one canvas
+// point takes. A live view in the Watch window is never zoomed.
 func (s *State) scale() float64 {
 	if s.live != nil {
 		return 1
@@ -98,10 +99,15 @@ func (s *State) scale() float64 {
 	return float64(zoomLevels()[s.zoom]) / zoomPercent
 }
 
+// windowScale is how many of the window's points one canvas point takes:
+// the zoom, less the author's scale for text and controls, which leaves the
+// canvas alone (increment 56).
+func (s *State) windowScale() float64 { return s.scale() / pen.Author() }
+
 // drawnArea is the part of the canvas on screen, in unscaled drawing
-// pixels: the canvas itself at 100%, larger zoomed out, smaller zoomed in.
+// points: the canvas itself at 100%, larger zoomed out, smaller zoomed in.
 func (s *State) drawnArea() image.Rectangle {
-	canvas := s.Canvas()
+	canvas := pen.CanvasRect(s.Canvas())
 	size := scaledSize(canvas.Size(), s.scale())
 
 	return image.Rectangle{Min: canvas.Min, Max: canvas.Min.Add(size)}
@@ -113,9 +119,12 @@ func scaledSize(size image.Point, scale float64) image.Point {
 	return image.Pt(int(math.Ceil(float64(size.X)/scale)), int(math.Ceil(float64(size.Y)/scale)))
 }
 
-// lowestZoom is the furthest out the canvas can be zoomed at its size.
+// lowestZoom is the furthest out the canvas can be zoomed at its size: the
+// image it is drawn into at that zoom, in the screen's pixels, is no larger
+// than maxDrawn.
 func (s *State) lowestZoom() int {
-	size := s.Canvas().Size()
+	room, device := pen.CanvasRect(s.Canvas()).Size(), pen.Device()
+	size := image.Pt(int(math.Ceil(float64(room.X)*device)), int(math.Ceil(float64(room.Y)*device)))
 	for level := range zoomLevels() {
 		drawn := scaledSize(size, float64(zoomLevels()[level])/zoomPercent)
 		if drawn.X <= maxDrawn && drawn.Y <= maxDrawn {
@@ -126,10 +135,10 @@ func (s *State) lowestZoom() int {
 	return defaultZoom
 }
 
-// onScreen returns where a canvas point is on screen.
+// onScreen returns where a canvas point is in the window.
 func (s *State) onScreen(point image.Point) image.Point {
-	canvas, scale := s.Canvas(), s.scale()
-	drawn := s.toScreen(point).Sub(canvas.Min)
+	canvas, scale := s.Canvas(), s.windowScale()
+	drawn := point.Add(s.offset)
 
 	return canvas.Min.Add(image.Pt(int(math.Round(float64(drawn.X)*scale)), int(math.Round(float64(drawn.Y)*scale))))
 }
@@ -137,7 +146,7 @@ func (s *State) onScreen(point image.Point) image.Point {
 // panBy moves the canvas by a distance in screen pixels, keeping the part
 // of a canvas pixel that a slow drag at a high zoom moves.
 func (s *State) panBy(delta image.Point) {
-	scale := s.scale()
+	scale := s.windowScale()
 	x, y := s.panRest[0]+float64(delta.X)/scale, s.panRest[1]+float64(delta.Y)/scale
 	whole := image.Pt(int(x), int(y))
 	s.offset = s.offset.Add(whole)
@@ -151,12 +160,12 @@ func (s *State) zoomTo(level int, focus image.Point) {
 	if level == s.zoom {
 		return
 	}
-	canvas, before := s.Canvas(), s.scale()
+	canvas, before := s.Canvas(), s.windowScale()
 	from := focus.Sub(canvas.Min)
 	underX := float64(from.X)/before - float64(s.offset.X)
 	underY := float64(from.Y)/before - float64(s.offset.Y)
 	s.zoom = level
-	after := s.scale()
+	after := s.windowScale()
 	s.offset = image.Pt(int(math.Round(float64(from.X)/after-underX)), int(math.Round(float64(from.Y)/after-underY)))
 	s.panRest = [2]float64{0, 0}
 }
@@ -211,7 +220,7 @@ func (s *State) fitView() {
 		return
 	}
 	wanted := bounds.Size().Add(image.Pt(ui.Half*ui.Inset, ui.Half*ui.Inset))
-	room := s.Canvas().Size()
+	room := pen.CanvasRect(s.Canvas()).Size()
 	level := s.lowestZoom()
 	for candidate := defaultZoom; candidate > level; candidate-- {
 		shown := scaledSize(room, float64(zoomLevels()[candidate])/zoomPercent)
@@ -228,30 +237,35 @@ func (s *State) fitView() {
 // drawZoomed draws the canvas onto the screen at the current zoom.
 func (s *State) drawZoomed(screen *ebiten.Image, docs frame.Docs) {
 	canvas := s.Canvas()
-	target, ok := screen.SubImage(canvas).(*ebiten.Image)
+	target, ok := pen.Clip(screen, canvas)
 	if !ok {
 		return
 	}
+	// The canvas is drawn at its own zoom, without the author's scale for
+	// text and controls (increment 56).
 	scale := s.scale()
 	if scale == 1 {
-		s.drawCanvas(target, docs)
+		pen.OnCanvas(func() { s.drawCanvas(target, docs) })
 
 		return
 	}
-	area := s.drawnArea()
-	if s.drawn == nil || s.drawn.Bounds() != area {
-		if s.drawn != nil {
-			s.drawn.Deallocate()
+	pen.OnCanvas(func() {
+		area := pen.PixelRect(s.drawnArea())
+		if s.drawn == nil || s.drawn.Bounds() != area {
+			if s.drawn != nil {
+				s.drawn.Deallocate()
+			}
+			s.drawn = ebiten.NewImageWithOptions(area, nil)
 		}
-		s.drawn = ebiten.NewImageWithOptions(area, nil)
-	}
-	s.drawn.Clear()
-	s.drawCanvas(s.drawn, docs)
+		s.drawn.Clear()
+		s.drawCanvas(s.drawn, docs)
+	})
 	// Ebiten draws an image from its own top-left corner, wherever its
 	// bounds start, onto the screen's own coordinates.
 	options := &ebiten.DrawImageOptions{}
 	options.GeoM.Scale(scale, scale)
-	options.GeoM.Translate(float64(canvas.Min.X), float64(canvas.Min.Y))
+	at := pen.PixelRect(canvas).Min
+	options.GeoM.Translate(float64(at.X), float64(at.Y))
 	options.Filter = ebiten.FilterLinear
 	if zoomLevels()[s.zoom]%zoomPercent == 0 {
 		options.Filter = ebiten.FilterNearest

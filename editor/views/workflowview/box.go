@@ -6,9 +6,9 @@ import (
 	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 )
@@ -76,9 +76,9 @@ func (s *State) drawBox(area *ebiten.Image) {
 	}
 	rect := s.screenRect(s.box.rect())
 	blue := ui.ColorSelect()
-	vector.FillRect(area, float32(rect.Min.X), float32(rect.Min.Y), float32(rect.Dx()), float32(rect.Dy()),
+	pen.FillRect(area, float32(rect.Min.X), float32(rect.Min.Y), float32(rect.Dx()), float32(rect.Dy()),
 		washOf(blue), false)
-	vector.StrokeRect(area, float32(rect.Min.X), float32(rect.Min.Y), float32(rect.Dx()), float32(rect.Dy()), 1, blue,
+	pen.StrokeRect(area, float32(rect.Min.X), float32(rect.Min.Y), float32(rect.Dx()), float32(rect.Dy()), 1, blue,
 		false)
 }
 
