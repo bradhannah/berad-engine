@@ -21,6 +21,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/clock"
@@ -300,7 +301,7 @@ func (s *State) stateLine() string {
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout()
 	screen.Fill(ui.ColorPage())
 	left, top := ui.Inset, ui.Inset
