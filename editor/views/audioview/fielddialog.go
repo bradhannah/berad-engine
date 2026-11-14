@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
@@ -85,8 +86,8 @@ func (s *State) updatePrompt(input *ui.Input, ctx *frame.Context) {
 
 // draw draws the dialog over a shaded window.
 func (d *fieldDialog) draw(screen *ebiten.Image, theme *ui.Theme) {
-	d.layout(screen.Bounds())
-	ui.FillRect(screen, screen.Bounds(), ui.ColorShade())
+	d.layout(pen.Bounds(screen))
+	ui.FillRect(screen, pen.Bounds(screen), ui.ColorShade())
 	ui.Float(screen, d.rect, dialogRadius)
 	ui.FillRound(screen, d.rect, dialogRadius, ui.ColorPage())
 	ui.StrokeRound(screen, d.rect, dialogRadius, ui.Border, ui.ColorInk())

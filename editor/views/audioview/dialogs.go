@@ -10,6 +10,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
@@ -428,8 +429,8 @@ func validID(id string) bool {
 // drawDialog draws the sound dialog over a shaded window.
 func (s *State) drawDialog(screen *ebiten.Image) {
 	dlg := s.dialog
-	dlg.layout(screen.Bounds())
-	ui.FillRect(screen, screen.Bounds(), ui.ColorShade())
+	dlg.layout(pen.Bounds(screen))
+	ui.FillRect(screen, pen.Bounds(screen), ui.ColorShade())
 	ui.Float(screen, dlg.rect, dialogRadius)
 	ui.FillRound(screen, dlg.rect, dialogRadius, ui.ColorPage())
 	ui.StrokeRound(screen, dlg.rect, dialogRadius, ui.Border, ui.ColorInk())

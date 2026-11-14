@@ -11,6 +11,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -372,7 +373,7 @@ func appliedWindow(recording protocol.AudioRecording) *protocol.AudioWindow {
 // scrolled.
 func (s *State) drawPanel(window *ebiten.Image) {
 	area := s.panelArea()
-	screen, clipped := window.SubImage(area).(*ebiten.Image)
+	screen, clipped := pen.Clip(window, area)
 	if !clipped {
 		return
 	}

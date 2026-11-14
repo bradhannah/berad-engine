@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -28,7 +29,7 @@ func (s *State) summary() string {
 // Draw renders the window: the toolbar, the list, the panel, the inspector
 // and anything showing over them.
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout()
 	screen.Fill(ui.ColorPage())
 	content := frame.Content(s.size)
