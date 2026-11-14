@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
@@ -146,7 +147,7 @@ func (p *Picker) drawGround(screen *ebiten.Image, drawn *ebiten.Image, frame ima
 		float64(frame.Min.Y)+(float64(frame.Dy())-scale*float64(size.Y))/ui.Half,
 	)
 	options.Filter = ebiten.FilterNearest
-	screen.DrawImage(drawn, options)
+	pen.DrawImage(screen, drawn, options)
 }
 
 // lookLines are the look's lines: a label and what it says.
