@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"time"
 
@@ -79,7 +80,10 @@ func Run(args Args, registry *plugin.Registry) error {
 	// The pinned clock is a Clock window, always running.
 	project.host.Open(clockview.ViewName, args.Target, false)
 	ebiten.SetWindowTitle(project.host.view.Title(conn))
-	ebiten.SetWindowSize(windowWidth, windowHeight+rowHeight)
+	// An input script's run at another scale of text and controls opens a
+	// window that much larger, so its walks lay out as they do at 100%.
+	scale := shown.textScale
+	ebiten.SetWindowSize(int(math.Ceil(windowWidth*scale)), int(math.Ceil((windowHeight+rowHeight)*scale)))
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	// Closing the editor window quits the editor, asking first.
 	ebiten.SetWindowClosingHandled(true)
