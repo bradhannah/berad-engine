@@ -5,8 +5,8 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 // Slider geometry, in screen pixels: the track's thickness and the handle's
@@ -94,6 +94,6 @@ func (s *Slider) Draw(screen *ebiten.Image) {
 		ColorRule())
 	FillRound(screen, image.Rect(low, middle-sliderTrack/Half, handle, middle+sliderTrack/Half), sliderTrack/Half,
 		ColorSelect())
-	vector.FillCircle(screen, float32(handle), float32(middle), sliderHandle, ColorField(), true)
-	vector.StrokeCircle(screen, float32(handle), float32(middle), sliderHandle, Hairline, ColorInk(), true)
+	pen.FillCircle(screen, float32(handle), float32(middle), sliderHandle, ColorField(), true)
+	pen.StrokeCircle(screen, float32(handle), float32(middle), sliderHandle, Hairline, ColorInk(), true)
 }

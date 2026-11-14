@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -86,7 +87,7 @@ func (k *KeySheet) Draw(screen *ebiten.Image, theme *Theme) {
 	if !k.open {
 		return
 	}
-	FillRect(screen, screen.Bounds(), ColorShade())
+	FillRect(screen, pen.Bounds(screen), ColorShade())
 	FillRound(screen, k.rect.Add(image.Pt(0, shadowDrop)), dialogRadius, HexAlpha(hexInk, shadowAlpha))
 	Float(screen, k.rect, dialogRadius)
 	FillRound(screen, k.rect, dialogRadius, ColorPage())
