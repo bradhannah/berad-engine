@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	tilefloorplugin "github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -124,7 +124,7 @@ func (s *State) syncCards(ctx *frame.Context) {
 
 // drawCards draws Cards' tiles and its groups' headings.
 func (s *State) drawCards(screen *ebiten.Image, docs frame.Docs) {
-	area, ok := screen.SubImage(s.grid.rect).(*ebiten.Image)
+	area, ok := pen.Clip(screen, s.grid.rect)
 	if !ok {
 		return
 	}
@@ -309,13 +309,13 @@ func drawMiniature(screen *ebiten.Image, workflow *flow.Workflow, box image.Rect
 		for _, next := range node.Next {
 			if to, ok := boxes[next]; ok {
 				toX, toY := place(to)
-				vector.StrokeLine(screen, fromX+miniNodeW/ui.Half, fromY+miniNodeH/ui.Half, toX+miniNodeW/ui.Half,
+				pen.StrokeLine(screen, fromX+miniNodeW/ui.Half, fromY+miniNodeH/ui.Half, toX+miniNodeW/ui.Half,
 					toY+miniNodeH/ui.Half, miniStroke, ui.ColorSubdued(), true)
 			}
 		}
 	}
 	for _, placed := range boxes {
 		left, top := place(placed)
-		vector.FillRect(screen, left, top, miniNodeW, miniNodeH, ink, true)
+		pen.FillRect(screen, left, top, miniNodeW, miniNodeH, ink, true)
 	}
 }

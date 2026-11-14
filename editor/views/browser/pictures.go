@@ -9,6 +9,7 @@ import (
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -129,8 +130,10 @@ func (s *State) spritePicture(docs frame.Docs, spriteID ids.ULID) (*ebiten.Image
 }
 
 // drawScaled draws a picture as large as fits a square, whole pixels when
-// it grows, smoothed when it shrinks.
+// it grows, smoothed when it shrinks. It fits the square's pixels on the
+// screen, so a picture grows by whole screen pixels at any scale.
 func drawScaled(screen, picture *ebiten.Image, box image.Rectangle) {
+	box = pen.PixelRect(box)
 	side := max(picture.Bounds().Dx(), picture.Bounds().Dy(), 1)
 	scale := float64(min(box.Dx(), box.Dy())) / float64(side)
 	if scale >= 1 {
@@ -149,7 +152,7 @@ func drawScaled(screen, picture *ebiten.Image, box image.Rectangle) {
 
 // drawPictures draws Pictures' tiles and its groups' headings.
 func (s *State) drawPictures(screen *ebiten.Image, docs frame.Docs) {
-	area, ok := screen.SubImage(s.grid.rect).(*ebiten.Image)
+	area, ok := pen.Clip(screen, s.grid.rect)
 	if !ok {
 		return
 	}

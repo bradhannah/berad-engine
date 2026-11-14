@@ -10,6 +10,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/audioview"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
@@ -281,7 +282,7 @@ func (s *State) drawSounds(screen *ebiten.Image) {
 	if kindOfPlace(s.place) != sectionAudio || s.viewShown() != viewRows {
 		return
 	}
-	area, ok := screen.SubImage(s.list.Rect).(*ebiten.Image)
+	area, ok := pen.Clip(screen, s.list.Rect)
 	if !ok {
 		return
 	}
@@ -320,7 +321,7 @@ func (s *State) drawWave(screen *ebiten.Image, rect image.Rectangle, recording p
 		peak := float32(peaks[column*len(peaks)/max(rect.Dx(), 1)]) / peakTop
 		height := max(peak*reach, 1)
 		x := float32(rect.Min.X + column)
-		vector.StrokeLine(screen, x, middle-height, x, middle+height, 1, ui.ColorSound(), true)
+		pen.StrokeLine(screen, x, middle-height, x, middle+height, 1, ui.ColorSound(), true)
 	}
 }
 
@@ -334,7 +335,7 @@ func (s *State) drawSoundLoudness(screen *ebiten.Image, rect image.Rectangle, re
 	across := func(db float64) float32 {
 		return float32(meter.Min.X) + float32((db-soundQuietest)/(soundLoudest-soundQuietest))*float32(meter.Dx())
 	}
-	vector.StrokeLine(screen, across(0), float32(meter.Min.Y-ui.Gap), across(0), float32(meter.Max.Y+ui.Gap), 1,
+	pen.StrokeLine(screen, across(0), float32(meter.Min.Y-ui.Gap), across(0), float32(meter.Max.Y+ui.Gap), 1,
 		ui.ColorInk(), true)
 	ink, textInk := ui.ColorSound(), ui.ColorSubdued()
 	if warn {
@@ -342,7 +343,7 @@ func (s *State) drawSoundLoudness(screen *ebiten.Image, rect image.Rectangle, re
 	}
 	if known {
 		dot := across(min(max(evened, soundQuietest), soundLoudest))
-		vector.FillCircle(screen, dot, float32(meter.Min.Y+meter.Dy()/ui.Half), soundMeterH/ui.Half+1, ink, true)
+		pen.FillCircle(screen, dot, float32(meter.Min.Y+meter.Dy()/ui.Half), soundMeterH/ui.Half+1, ink, true)
 	}
 	s.theme.DrawText(screen, s.theme.FitText(said, rect.Dx()-soundMeterWidth-ui.Inset), meter.Max.X+ui.Inset,
 		rect.Min.Y+ui.Gap, textInk)
@@ -352,9 +353,9 @@ func (s *State) drawSoundLoudness(screen *ebiten.Image, rect image.Rectangle, re
 func drawPlay(screen *ebiten.Image, rect image.Rectangle, playing bool) {
 	centre := ui.Center(rect)
 	centreX, centreY := float32(centre.X), float32(centre.Y)
-	vector.StrokeCircle(screen, centreX, centreY, playRadius, 1, ui.ColorRule(), true)
+	pen.StrokeCircle(screen, centreX, centreY, playRadius, 1, ui.ColorRule(), true)
 	if playing {
-		vector.FillRect(screen, centreX-playRadius/waveRise, centreY-playRadius/waveRise, playRadius*ui.Half/waveRise,
+		pen.FillRect(screen, centreX-playRadius/waveRise, centreY-playRadius/waveRise, playRadius*ui.Half/waveRise,
 			playRadius*ui.Half/waveRise, ui.ColorInk(), true)
 
 		return
@@ -366,5 +367,5 @@ func drawPlay(screen *ebiten.Image, rect image.Rectangle, playing bool) {
 	triangle.Close()
 	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	options.ColorScale.ScaleWithColor(ui.ColorInk())
-	vector.FillPath(screen, &triangle, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
+	pen.FillPath(screen, &triangle, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
 }

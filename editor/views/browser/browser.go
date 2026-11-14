@@ -27,6 +27,7 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
@@ -1509,7 +1510,7 @@ func (s *State) locateInDialog(kind, value string) (image.Point, bool) {
 // Draw renders the window: the toolbar, the list, the inspector and anything
 // showing over them.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout(docs)
 	screen.Fill(ui.ColorPage())
 	width := frame.Content(s.size).Max.X

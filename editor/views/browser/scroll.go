@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -82,7 +83,7 @@ func (s *State) scrolledTo(
 // bodyImage is the screen clipped to the inspector's body, for drawing
 // what scrolls.
 func (s *State) bodyImage(screen *ebiten.Image) *ebiten.Image {
-	if body, ok := screen.SubImage(s.inspectorBody()).(*ebiten.Image); ok {
+	if body, ok := pen.Clip(screen, s.inspectorBody()); ok {
 		return body
 	}
 
