@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/pixelview"
@@ -115,7 +116,7 @@ func newFixture(t *testing.T) *fixture {
 	ctx := frametest.Context(docs, requests, image.Pt(1200, 800))
 	state := pixelview.New(frametest.ID(99), spriteID, theme)
 	state.Start(ctx)
-	f := &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx, screen: ebiten.NewImage(1200, 800)}
+	f := &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx, screen: pen.Layer(nil, image.Rect(0, 0, 1200, 800))}
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	f.click("palette:gloomy")
 

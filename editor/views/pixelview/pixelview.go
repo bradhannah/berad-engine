@@ -20,6 +20,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -418,7 +419,7 @@ func (s *State) setTool(tool Tool) {
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout(docs)
 	screen.Fill(ui.ColorPage())
 	s.drawCanvas(screen, docs)

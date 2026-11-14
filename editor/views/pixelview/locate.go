@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -36,7 +37,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 			return image.Pt(0, 0), false
 		}
 
-		return ui.Center(s.pixelRect(pixel, size)), true
+		return ui.Center(pen.WindowRect(s.pixelRect(pixel, size))), true
 	case "state":
 		return image.Pt(0, 0), s.hasState(value, docs)
 	}
