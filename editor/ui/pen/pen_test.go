@@ -113,3 +113,20 @@ func TestALayerIsThePixelsUnderIt(t *testing.T) {
 		t.Fatal("a layer of the same size was made again")
 	}
 }
+
+// A picture drawn in its own pixels is drawn at one pixel to a point, and
+// the window's scale comes back after it.
+//
+//nolint:paralleltest // It sets the window's scale.
+func TestAPictureIsDrawnInItsOwnPixels(t *testing.T) {
+	scaled(t, 2, 1.5)
+	var drawn float64
+	pen.InPixels(func() { drawn = pen.Scale() })
+	if drawn != 1 || pen.Scale() != 3 {
+		t.Fatalf("in pixels %v, after %v", drawn, pen.Scale())
+	}
+	pen.OnCanvas(func() { pen.InPixels(func() { drawn = pen.Scale() }) })
+	if drawn != 1 || pen.Scale() != 3 {
+		t.Fatalf("in pixels on a canvas %v, after %v", drawn, pen.Scale())
+	}
+}

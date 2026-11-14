@@ -102,8 +102,12 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	shakeX, shakeY := s.game.Stage().Offset()
 	shaken.Left -= shakeX / float64(s.tile)
 	shaken.Top -= shakeY / float64(s.tile)
-	s.drawCells(shaken)
-	s.drawCharacters(shaken)
+	// The game's picture is drawn in its own pixels, then placed on the
+	// screen (increment 56).
+	pen.InPixels(func() {
+		s.drawCells(shaken)
+		s.drawCharacters(shaken)
+	})
 	s.present(screen, width, height)
 	// What the game shows is part of the game, drawn without the author's
 	// scale for text and controls (increment 56).

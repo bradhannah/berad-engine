@@ -24,12 +24,13 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-// scaling is the screen's pixels to a point, the author's scale, and whether
-// a canvas's content is being drawn.
+// scaling is the screen's pixels to a point, the author's scale, whether
+// a canvas's content is being drawn, and whether an image's own pixels are.
 type scaling struct {
 	device float64
 	author float64
 	canvas bool
+	pixels bool
 }
 
 // current is the window's scaling, set once a frame and read by every view.
@@ -44,24 +45,27 @@ func loadScaling() scaling {
 		return *now
 	}
 
-	return scaling{device: 1, author: 1, canvas: false}
+	return scaling{device: 1, author: 1, canvas: false, pixels: false}
 }
 
 // SetScale sets the screen's pixels to a point and the author's scale, once a
 // frame.
 func SetScale(device, author float64) {
 	now := loadScaling()
-	if now.device == device && now.author == author && !now.canvas {
+	if now.device == device && now.author == author && !now.canvas && !now.pixels {
 		return
 	}
-	current.Store(&scaling{device: device, author: author, canvas: false})
+	current.Store(&scaling{device: device, author: author, canvas: false, pixels: false})
 }
 
 // Scale is how many of the screen's pixels a point drawn now takes: the
 // device scale times the author's, or the device scale alone on a canvas.
 func Scale() float64 {
 	now := loadScaling()
-	if now.canvas {
+	switch {
+	case now.pixels:
+		return 1
+	case now.canvas:
 		return now.device
 	}
 
@@ -86,6 +90,22 @@ func OnCanvas(draw func()) {
 	onCanvas := before
 	onCanvas.canvas = true
 	current.Store(&onCanvas)
+	defer current.Store(&before)
+	draw()
+}
+
+// InPixels runs draw for a picture drawn in its own pixels, such as the
+// game's picture in Play before it is placed on the screen.
+func InPixels(draw func()) {
+	before := loadScaling()
+	if before.pixels || before.device*before.author == 1 && !before.canvas {
+		draw()
+
+		return
+	}
+	inPixels := before
+	inPixels.pixels = true
+	current.Store(&inPixels)
 	defer current.Store(&before)
 	draw()
 }
