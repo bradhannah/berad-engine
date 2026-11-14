@@ -11,6 +11,7 @@ import (
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -462,7 +463,7 @@ func (s *State) drawRows(screen *ebiten.Image, palette *art.Palette) {
 	content := frame.Content(s.size)
 	ui.FillRect(screen, image.Rect(content.Min.X, s.rows.area.Min.Y-ui.Inset, content.Max.X, content.Max.Y),
 		ui.ColorPage())
-	area, clipped := screen.SubImage(s.rows.area).(*ebiten.Image)
+	area, clipped := pen.Clip(screen, s.rows.area)
 	if !clipped {
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -791,7 +792,7 @@ func (s *State) drawCopying(screen *ebiten.Image, panel image.Rectangle) {
 	s.theme.DrawText(screen, "From", left, copier.sourceButton.Rect.Min.Y+text, ui.ColorMuted())
 	s.theme.DrawText(screen, "Click a colour, Shift-click a run, Cmd-click to add more; a ramp's name takes it all.",
 		copier.sourceButton.Rect.Max.X+ui.Inset, copier.sourceButton.Rect.Min.Y+text, ui.ColorMuted())
-	area, clipped := screen.SubImage(copier.area).(*ebiten.Image)
+	area, clipped := pen.Clip(screen, copier.area)
 	if clipped {
 		for _, label := range copier.ramps {
 			s.theme.DrawText(area, s.theme.FitText(label.ramp.Name, label.rect.Dx()), label.rect.Min.X,
