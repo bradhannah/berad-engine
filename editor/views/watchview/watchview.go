@@ -23,6 +23,7 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/clock"
@@ -339,10 +340,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 // Draw renders the window: the header, the workflow and the footer.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout()
 	screen.Fill(ui.ColorPage())
-	if area, ok := screen.SubImage(s.canvas()).(*ebiten.Image); ok {
+	if area, ok := pen.Clip(screen, s.canvas()); ok {
 		area.Fill(ui.ColorPage())
 	}
 	entity, watching := s.watched()
