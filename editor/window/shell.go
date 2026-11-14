@@ -553,6 +553,9 @@ func (s *shell) Draw(screen *ebiten.Image) {
 		}
 	}
 	s.shots = nil
+	for _, shown := range s.panes() {
+		shown.host.shotWaiting = false
+	}
 }
 
 // queueShot saves a pane's screenshot as one of the whole window, once the
