@@ -22,6 +22,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -433,7 +434,7 @@ func Folded(size image.Point) image.Rectangle {
 // DrawFolded draws a folded inspector's strip: an arrow to open it, and its
 // name down the strip.
 func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
-	strip := Folded(screen.Bounds().Size())
+	strip := Folded(pen.Bounds(screen).Size())
 	fill := ui.ColorDesk()
 	if hover {
 		fill = ui.ColorSelectWash()
@@ -455,7 +456,7 @@ func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
 // right end. The
 // speed readout is left out when the window is too narrow for it.
 func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
-	bounds := screen.Bounds()
+	bounds := pen.Bounds(screen)
 	f.layoutStatus(bounds.Size())
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
 	ui.FillRect(screen, bar, ui.ColorDesk())
@@ -522,7 +523,7 @@ func formatLatency(latency time.Duration) string {
 
 // DrawInspector draws the inspector panel's divider.
 func DrawInspector(screen *ebiten.Image) {
-	panel := Inspector(screen.Bounds().Size())
+	panel := Inspector(pen.Bounds(screen).Size())
 	ui.Divider(screen, panel.Min, image.Pt(panel.Min.X, panel.Max.Y))
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 )
 
 // A history that can be read (increment 39): every message a window is
@@ -282,7 +283,7 @@ func (f *Frame) DrawHistory(screen *ebiten.Image, theme *ui.Theme) {
 	if !f.history.open {
 		return
 	}
-	f.layoutStatus(screen.Bounds().Size())
+	f.layoutStatus(pen.Bounds(screen).Size())
 	f.history.list.Rows = f.historyRows()
 	panel := f.history.panel
 	ui.FloatBox(screen, panel, ui.ColorPage())
