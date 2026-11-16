@@ -60,6 +60,11 @@ type gradientPanel struct {
 	picker                  *ui.ColorPicker
 	pickRight               bool
 	leftSwatch, rightSwatch image.Rectangle
+	// about is what the panel says it does, in lines, and taller how much
+	// taller than one line of each its rows and about are, as last laid out:
+	// in a narrow window they carry on below (increment 61).
+	about  []string
+	taller int
 }
 
 func newGradientPanel(theme *ui.Theme) *gradientPanel {
@@ -76,7 +81,7 @@ func newGradientPanel(theme *ui.Theme) *gradientPanel {
 		useLeft: ui.NewButton("use-left", "Use chosen"), useRight: ui.NewButton("use-right", "Use chosen"),
 		intoButton: ui.NewButton("gradient-target", newRampLabel), apply: ui.NewButton("apply-gradient", "Apply"),
 		close: ui.NewButton("close-gradient", "×"), previewTop: 0, picker: ui.NewColorPicker("gradient-picker"),
-		pickRight: false, leftSwatch: ui.Zero(), rightSwatch: ui.Zero(),
+		pickRight: false, leftSwatch: ui.Zero(), rightSwatch: ui.Zero(), about: nil, taller: 0,
 	}
 	panel.intoButton.Caret = true
 	panel.apply.Primary = true
@@ -149,9 +154,9 @@ func (s *State) panelRect() image.Rectangle {
 	height := 0
 	switch {
 	case s.gradient.open && s.gradientPickerBelow():
-		height = gradientHeight + pickerBelow + ui.Inset + ui.LineHeight
+		height = gradientHeight + s.gradient.taller + pickerBelow + ui.Inset + ui.LineHeight
 	case s.gradient.open:
-		height = gradientHeight
+		height = gradientHeight + s.gradient.taller
 	case s.copying.open:
 		height = copyHeight
 	}
@@ -226,7 +231,11 @@ func (s *State) layoutPanels(docs frame.Docs) {
 	}
 	s.place(s.closeButton(), panel.Max.X-ui.Inset-ui.ButtonH, panel.Min.Y+ui.Inset)
 	if s.gradient.open {
+		taller := s.gradient.taller
 		s.layoutGradient(docs, panel)
+		if s.gradient.taller != taller {
+			s.layoutPanels(docs)
+		}
 
 		return
 	}
@@ -245,27 +254,20 @@ func (s *State) closeButton() *ui.Button {
 // and steps; then its preview, where it goes and Apply.
 func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	grad := s.gradient
-	left, top := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset+ui.LineHeight
-	grad.mixColor.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
-	across := grad.mixColor.Rect.Max.X + ui.Inset
-	grad.leftSwatch = image.Rect(across, top, across+ui.ButtonH, top+ui.ButtonH)
-	across = grad.leftSwatch.Max.X + ui.Gap
-	grad.left.Rect = image.Rect(across, top, across+colorWidth, top+ui.ButtonH)
-	across = s.place(grad.useLeft, grad.left.Rect.Max.X+ui.Gap, top) + ui.Inset
-	grad.rightSwatch = image.Rect(across, top, across+ui.ButtonH, top+ui.ButtonH)
-	across = grad.rightSwatch.Max.X + ui.Gap
-	grad.right.Rect = image.Rect(across, top, across+colorWidth, top+ui.ButtonH)
-	across = s.place(grad.useRight, grad.right.Rect.Max.X+ui.Gap, top) + ui.Inset
-	stepsLeft := across + s.theme.TextWidth("Steps") + ui.Gap
-	grad.steps.Rect = image.Rect(stepsLeft, top, stepsLeft+stepsWidth, top+ui.ButtonH)
-	top += ui.ButtonH + ui.Gap
-	grad.mixOpacity.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
-	grad.leftOpacity.Rect = image.Rect(grad.left.Rect.Min.X, top, grad.left.Rect.Min.X+opacityWidth, top+ui.ButtonH)
-	grad.rightOpacity.Rect = image.Rect(grad.right.Rect.Min.X, top, grad.right.Rect.Min.X+opacityWidth, top+ui.ButtonH)
-	top += ui.ButtonH + ui.Inset
+	left := panel.Min.X + ui.Inset
+	about := left + s.theme.StrongWidth("Gradient") + ui.Inset
+	grad.about = s.theme.Wrap(gradientAbout, grad.close.Rect.Min.X-ui.Inset-about)
+	right := panel.Max.X - ui.Inset
+	if !s.gradientPickerBelow() {
+		right = grad.close.Rect.Min.X - ui.Inset - gradientPicker - ui.Inset
+	}
+	top := panel.Min.Y + ui.Inset + len(grad.about)*ui.LineHeight
+	bottom := s.layoutGradientRows(left, right, top)
+	grad.taller = (len(grad.about)-1)*ui.LineHeight + bottom - (top + ui.Half*ui.ButtonH + ui.Gap)
+	top = bottom + ui.Inset
 	grad.previewTop = top
 	top += previewSize + ui.Inset
-	across = s.place(grad.intoButton, left+s.theme.TextWidth("Into")+ui.Gap, top)
+	across := s.place(grad.intoButton, left+s.theme.TextWidth("Into")+ui.Gap, top)
 	grad.intoButton.Label = newRampLabel
 	if palette, ok := s.palette(docs); ok {
 		if ramp, found := palette.Ramp(grad.into); found {
@@ -279,7 +281,7 @@ func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	s.place(grad.apply, across, top)
 	grad.leftOpacity.Rect = gate(grad.leftOpacity.Rect, grad.mixOpacity.On)
 	grad.rightOpacity.Rect = gate(grad.rightOpacity.Rect, grad.mixOpacity.On)
-	pickerTop := panel.Min.Y + ui.Inset + ui.LineHeight
+	pickerTop := panel.Min.Y + ui.Inset + len(grad.about)*ui.LineHeight
 	pickerLeft := s.gradient.close.Rect.Min.X - ui.Inset - gradientPicker
 	if s.gradientPickerBelow() {
 		pickerTop, pickerLeft = grad.apply.Rect.Max.Y+ui.Inset+ui.LineHeight, left
@@ -287,6 +289,46 @@ func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	grad.picker.Rect = image.Rect(pickerLeft, pickerTop, pickerLeft+gradientPicker, panel.Max.Y-ui.Inset)
 	grad.picker.NoOpacity = !grad.mixOpacity.On
 	s.syncGradientPicker()
+}
+
+// gradientAbout says what the gradient does, beside its name.
+const gradientAbout = "fills a ramp from a left colour to a right one, in steps that look evenly spaced"
+
+// layoutGradientRows places the gradient's first rows from a top edge:
+// what it mixes, each end's swatch, field and Use chosen, and Steps; then,
+// under each end's field, its opacity. When they do not fit across, the
+// right end and Steps carry on below the left end, and each end's opacity
+// is still under its field (increment 61). It returns where they end.
+func (s *State) layoutGradientRows(left, right, top int) int {
+	grad := s.gradient
+	end := ui.ButtonH + ui.Gap + colorWidth + ui.Gap + s.buttonWidth(grad.useLeft)
+	steps := s.theme.TextWidth("Steps") + ui.Gap + stepsWidth
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top), []int{toggleWidth, end, end, steps}, nil,
+		ui.Inset)
+	grad.mixColor.Rect = placed[0]
+	grad.leftSwatch, grad.left.Rect = s.placeEnd(placed[1], grad.useLeft)
+	grad.rightSwatch, grad.right.Rect = s.placeEnd(placed[2], grad.useRight)
+	grad.steps.Rect = image.Rect(placed[3].Max.X-stepsWidth, placed[3].Min.Y, placed[3].Max.X, placed[3].Max.Y)
+	top = bottom + ui.Gap
+	grad.mixOpacity.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
+	for _, end := range []struct{ opacity, color *ui.TextField }{
+		{grad.leftOpacity, grad.left}, {grad.rightOpacity, grad.right},
+	} {
+		at := top + end.color.Rect.Min.Y - placed[1].Min.Y
+		end.opacity.Rect = image.Rect(end.color.Rect.Min.X, at, end.color.Rect.Min.X+opacityWidth, at+ui.ButtonH)
+	}
+
+	return max(grad.mixOpacity.Rect.Max.Y, grad.rightOpacity.Rect.Max.Y)
+}
+
+// placeEnd places a gradient end's swatch, field and Use chosen across a
+// piece of a row, and returns the swatch's and the field's places.
+func (s *State) placeEnd(piece image.Rectangle, use *ui.Button) (image.Rectangle, image.Rectangle) {
+	swatch := image.Rect(piece.Min.X, piece.Min.Y, piece.Min.X+ui.ButtonH, piece.Max.Y)
+	field := image.Rect(swatch.Max.X+ui.Gap, piece.Min.Y, swatch.Max.X+ui.Gap+colorWidth, piece.Max.Y)
+	s.place(use, field.Max.X+ui.Gap, piece.Min.Y)
+
+	return swatch, field
 }
 
 // gradientPickerBelow reports whether the window is too narrow for the
@@ -754,8 +796,10 @@ func (s *State) drawGradient(screen *ebiten.Image, panel image.Rectangle) {
 	grad := s.gradient
 	left := panel.Min.X + ui.Inset
 	s.theme.DrawStrong(screen, "Gradient", left, panel.Min.Y+ui.Inset, ui.ColorInk())
-	s.theme.DrawText(screen, "fills a ramp from a left colour to a right one, in steps that look evenly spaced",
-		left+s.theme.StrongWidth("Gradient")+ui.Inset, panel.Min.Y+ui.Inset, ui.ColorMuted())
+	for index, line := range grad.about {
+		s.theme.DrawText(screen, line, left+s.theme.StrongWidth("Gradient")+ui.Inset,
+			panel.Min.Y+ui.Inset+index*ui.LineHeight, ui.ColorMuted())
+	}
 	grad.mixColor.Draw(screen, s.theme)
 	grad.mixOpacity.Draw(screen, s.theme)
 	s.drawGradientEnds(screen)

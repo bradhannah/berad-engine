@@ -792,3 +792,20 @@ func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
 		t.Fatalf("Remove ramp is scrolled into view when found: %v in %v", point, body)
 	}
 }
+
+// TestTheGradientWrapsInASmallWindow opens the gradient at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: its ends and Steps do not fit on one
+// line, so the right end and Steps carry on below the left, each end's
+// opacity under its field, all inside the panel and none over another
+// (increment 61).
+func TestTheGradientWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.resize(image.Pt(800, 555))
+	f.click("ui:gradient")
+	f.click("ui:mix-opacity")
+	panel, parts := f.state.GradientParts()
+	if wrong := frametest.Apart(panel, parts...); wrong != "" {
+		t.Fatal(wrong)
+	}
+}

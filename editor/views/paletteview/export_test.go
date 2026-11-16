@@ -28,3 +28,22 @@ func (s *State) Toolbar() []frametest.Part {
 func (s *State) InspectorParts() (image.Rectangle, int, int, frametest.Part) {
 	return s.body.Body, s.body.Offset, s.body.Most, frametest.Part{Name: "save bar", Rect: s.save.Rect}
 }
+
+// GradientParts names the open gradient panel's parts, as laid out, and the
+// panel.
+func (s *State) GradientParts() (image.Rectangle, []frametest.Part) {
+	grad := s.gradient
+	parts := []frametest.Part{
+		{Name: "Colour", Rect: grad.mixColor.Rect}, {Name: "Opacity", Rect: grad.mixOpacity.Rect},
+		{Name: "left swatch", Rect: grad.leftSwatch}, {Name: "right swatch", Rect: grad.rightSwatch},
+		{Name: "picker", Rect: grad.picker.Rect},
+	}
+	for _, field := range grad.fields() {
+		parts = append(parts, frametest.Part{Name: field.ID, Rect: field.Rect})
+	}
+	for _, button := range grad.buttons() {
+		parts = append(parts, frametest.Part{Name: button.ID, Rect: button.Rect})
+	}
+
+	return s.panelRect(), parts
+}
