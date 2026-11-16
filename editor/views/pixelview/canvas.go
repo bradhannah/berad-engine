@@ -50,37 +50,50 @@ func toolbarTop() int { return ui.Inset }
 
 // layoutToolbar places the tool buttons at the left of the toolbar, and the
 // zoom, the template toggle, while the sprite has a template, and the grid
-// toggle at its right.
+// toggle at its right. When they do not fit on one line, the zoom and the
+// toggles go on a line of their own below, and the canvas starts below that
+// (increment 61).
 func (s *State) layoutToolbar(docs frame.Docs) {
-	top := toolbarTop()
-	left := ui.Inset
+	content := frame.Content(s.size)
+	widths := make([]int, len(s.tools))
+	for index := range s.tools {
+		widths[index] = toolWidth
+	}
+	_, templated := s.templateID(docs)
+	trail := []int{zoomStep + zoomLabel + zoomStep, zoomFitW}
+	if templated {
+		trail = append(trail, templateWidth)
+	}
+	trail = append(trail, gridApart+gridWidth)
+	row := image.Rect(ui.Inset, toolbarTop(), content.Max.X-ui.Inset, toolbarTop())
+	leads, trails, bottom := ui.WrapRow(row, widths, trail, ui.Gap)
 	for index, button := range s.tools {
-		button.Rect = image.Rect(left, top, left+toolWidth, top+ui.ButtonH)
+		button.Rect = leads[index]
 		button.On = tools()[index].tool == s.tool
-		left += toolWidth + ui.Gap
 	}
-	right := frame.Content(s.size).Max.X - ui.Inset
-	s.grid.Rect = image.Rect(right-gridWidth, top, right, top+ui.ButtonH)
-	right = s.grid.Rect.Min.X - ui.Inset
+	zoom := trails[0]
+	s.zoomOut.Rect = image.Rect(zoom.Min.X, zoom.Min.Y, zoom.Min.X+zoomStep, zoom.Max.Y)
+	s.zoomIn.Rect = image.Rect(zoom.Max.X-zoomStep, zoom.Min.Y, zoom.Max.X, zoom.Max.Y)
+	s.zoomFit.Rect = trails[1]
 	s.overlay.Rect = ui.Zero()
-	if _, drawn := s.templateID(docs); drawn {
-		s.overlay.Rect = image.Rect(right-templateWidth, top, right, top+ui.ButtonH)
-		right = s.overlay.Rect.Min.X - ui.Gap
+	if templated {
+		s.overlay.Rect = trails[2]
 	}
-	s.zoomFit.Rect = image.Rect(right-zoomFitW, top, right, top+ui.ButtonH)
-	right = s.zoomFit.Rect.Min.X - ui.Gap
-	s.zoomIn.Rect = image.Rect(right-zoomStep, top, right, top+ui.ButtonH)
-	right = s.zoomIn.Rect.Min.X - zoomLabel
-	s.zoomOut.Rect = image.Rect(right-zoomStep, top, right, top+ui.ButtonH)
+	grid := trails[len(trails)-1]
+	s.grid.Rect = image.Rect(grid.Max.X-gridWidth, grid.Min.Y, grid.Max.X, grid.Max.Y)
+	s.toolbarBottom = bottom
 	s.zoomOut.Disabled = s.zoom <= 1
 	s.zoomIn.Disabled = s.zoom >= maxZoom
 }
+
+// gridApart is the further room kept before the grid toggle.
+const gridApart = ui.Inset - ui.Gap
 
 // canvas is the area that shows the tile, between the toolbar and the
 // readout.
 func (s *State) canvas() image.Rectangle {
 	content := frame.Content(s.size)
-	top := toolbarTop() + ui.ButtonH + ui.Inset
+	top := max(s.toolbarBottom, toolbarTop()+ui.ButtonH) + ui.Inset
 
 	return image.Rect(0, top, content.Max.X, max(top, content.Max.Y-readoutSpace))
 }
