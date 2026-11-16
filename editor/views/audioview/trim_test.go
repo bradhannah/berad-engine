@@ -276,3 +276,35 @@ func TestRowsWrapInASmallWindow(t *testing.T) {
 		t.Fatal(wrong)
 	}
 }
+
+// TestTheInspectorScrollsInASmallWindow selects a cue at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: its fields need more height than the
+// inspector has, so they scroll above Delete cue, which is never drawn over
+// them; the wheel scrolls them, and a press on Delete cue starts deleting
+// it, though a field lies behind it (increment 61).
+func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := withWaveform(t)
+	f.ctx.Size = image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	body, _, most, remove := f.state.InspectorParts()
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), remove, frametest.Part{Name: "fields", Rect: body}); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("a cue's fields need more height than the inspector has")
+	}
+	wheel := ui.NewInput(body.Min.Add(image.Pt(ui.Inset, ui.Inset)))
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if _, offset, _, _ := f.state.InspectorParts(); offset == 0 {
+		t.Fatal("the wheel scrolls the fields")
+	}
+	wheel.WheelY = 100
+	f.frame(wheel)
+	f.requests.Uses = nil
+	f.click("ui:delete-cue")
+	if len(f.requests.Uses) != 1 {
+		t.Fatal("Delete cue asks where the cue is used, though a field is scrolled behind it")
+	}
+}

@@ -109,10 +109,24 @@ func (s *State) Locate(name string, _ frame.Docs) (image.Point, bool) {
 	case "wave":
 		return s.trim.wave.Locate(value)
 	case "ui":
-		return s.locateWidget(value)
+		return s.locateRevealed(value)
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateRevealed finds a widget for an input script, scrolling the
+// inspector's fields to one hidden above or below them, as an author would;
+// Delete stays where it is (increment 61).
+func (s *State) locateRevealed(widget string) (image.Point, bool) {
+	insp := s.inspector
+	point, found := s.locateWidget(widget)
+	if !found || widget == insp.removeCue.ID || widget == insp.removeRec.ID || !insp.body.Reveal(point) {
+		return point, found
+	}
+	s.layout()
+
+	return s.locateWidget(widget)
 }
 
 // shownMenu is the menu open in the window, or nil.

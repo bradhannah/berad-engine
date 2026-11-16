@@ -151,6 +151,9 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	view.focus.Register(view.search, view.trim.start, view.trim.end)
 	view.focus.Register(view.inspector.fields()...)
 
+	// Tab brings a field scrolled out of the inspector into view.
+	view.focus.SetReveal(view.inspector.body.RevealField)
+
 	return view
 }
 

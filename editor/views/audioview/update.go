@@ -113,6 +113,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.askTrim(ctx)
 	s.askFile(ctx)
 	s.syncRegionFields()
+	if s.updateInspectorFoot(input, ctx) {
+		return
+	}
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
 		s.keys(input, ctx)

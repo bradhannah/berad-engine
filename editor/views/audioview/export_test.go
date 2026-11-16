@@ -43,3 +43,12 @@ func named(buttons ...*ui.Button) []frametest.Part {
 
 	return parts
 }
+
+// InspectorParts returns where the inspector's fields scroll, how far and
+// the furthest, and Delete at its foot.
+func (s *State) InspectorParts() (image.Rectangle, int, int, frametest.Part) {
+	s.layout()
+	insp := s.inspector
+
+	return insp.body.Body, insp.body.Offset, insp.body.Most, frametest.Part{Name: "Delete cue", Rect: insp.removeCue.Rect}
+}
