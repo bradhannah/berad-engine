@@ -61,3 +61,31 @@ func TestTabRevealsAFieldOfTheBody(t *testing.T) {
 		t.Fatalf("a field at 430 to 456 scrolls to the body's middle, 200: %d", scroll.Offset)
 	}
 }
+
+// TestAKeySheetFitsAShortWindow opens a sheet of thirty keys in a window
+// 555 points high: the card stays inside the window and its rows scroll
+// with the wheel under its title (increment 61).
+func TestAKeySheetFitsAShortWindow(t *testing.T) {
+	t.Parallel()
+	theme, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(theme.Close)
+	sheet := ui.KeySheet{Rows: make([]ui.KeyRow, 30)}
+	for index := range sheet.Rows {
+		sheet.Rows[index] = ui.KeyRow{Label: "Something", Keys: []string{"Cmd+K"}}
+	}
+	window := image.Rect(0, 0, 800, 555)
+	sheet.Open(window, theme)
+	card, _, most := sheet.SheetRect()
+	if !card.In(window) || most == 0 {
+		t.Fatalf("the card %v is not inside the window %v, or its rows do not scroll: %d", card, window, most)
+	}
+	wheel := ui.NewInput(ui.Center(card))
+	wheel.WheelY = -2
+	sheet.Update(&wheel)
+	if _, offset, _ := sheet.SheetRect(); offset == 0 || !sheet.IsOpen() {
+		t.Fatal("the wheel scrolls the sheet's rows and leaves it open")
+	}
+}

@@ -26,13 +26,17 @@ type KeyRow struct {
 
 // KeySheet lists a window's keys in a card over the window, titled "Keys",
 // each key drawn as a cap. While open it takes all input; Escape or a click
-// outside the card closes it.
+// outside the card closes it. In a window too short for every row, the card
+// is as tall as the window allows and its rows scroll under its title
+// (increment 61).
 type KeySheet struct {
 	Rows []KeyRow
 	open bool
 	rect image.Rectangle
 	// labelWidth is the width of the label column.
 	labelWidth int
+	// rows is how far the rows are scrolled under the title.
+	rows Scroll
 }
 
 // Open shows the sheet in the middle of the window.
@@ -44,9 +48,13 @@ func (k *KeySheet) Open(window image.Rectangle, theme *Theme) {
 		keysWidth = max(keysWidth, capsWidth(row.Keys, theme))
 	}
 	width := Half*Inset + k.labelWidth + columnGap + keysWidth
-	height := Half*Inset + LineHeight + len(k.Rows)*(capHeight+rowGap)
+	full := Half*Inset + LineHeight + len(k.Rows)*(capHeight+rowGap)
+	height := max(min(full, window.Dy()-Half*Inset), Half*Inset+LineHeight+rowGap+capHeight)
 	middle := Center(window)
 	k.rect = image.Rect(middle.X-width/Half, middle.Y-height/Half, middle.X-width/Half+width, middle.Y-height/Half+height)
+	k.rows = NewScroll()
+	k.rows.Body = image.Rect(k.rect.Min.X, k.rect.Min.Y+Inset+LineHeight+rowGap, k.rect.Max.X, k.rect.Max.Y-Inset)
+	k.rows.Fit(k.rows.Body.Min.Y + len(k.Rows)*(capHeight+rowGap) - rowGap)
 	k.open = true
 }
 
@@ -76,6 +84,7 @@ func (k *KeySheet) Update(input *Input) {
 		return
 	}
 	defer input.ClearAll()
+	k.rows.Wheel(input, k.rect)
 	if input.Consume(KeyEscape, Plain()) || ((input.Pressed || input.Secondary) && !input.Cursor.In(k.rect)) {
 		k.open = false
 	}
@@ -96,18 +105,23 @@ func (k *KeySheet) Draw(screen *ebiten.Image, theme *Theme) {
 	theme.DrawStrong(screen, "Keys", left, top, ColorInk())
 	hint := "Escape closes"
 	theme.DrawSmall(screen, hint, k.rect.Max.X-Inset-theme.SmallWidth(hint), top+Half, ColorSubdued())
-	top += LineHeight + rowGap
+	body, shown := k.rows.Clip(screen)
+	if !shown {
+		return
+	}
+	top = k.rows.Body.Min.Y - k.rows.Offset
 	for _, row := range k.Rows {
-		theme.DrawText(screen, row.Label, left, top+(capHeight-TextSize)/Half-1, ColorMuted())
+		theme.DrawText(body, row.Label, left, top+(capHeight-TextSize)/Half-1, ColorMuted())
 		capLeft := left + k.labelWidth + columnGap
 		for _, key := range row.Keys {
 			width := theme.MonoWidth(key) + Half*capPad
 			keyCap := image.Rect(capLeft, top, capLeft+width, top+capHeight)
-			FillRound(screen, keyCap, capRadius, ColorDesk())
-			StrokeRound(screen, keyCap, capRadius, Hairline, ColorRule())
-			theme.DrawMono(screen, key, capLeft+capPad, top+(capHeight-MonoSize)/Half-1, ColorInk())
+			FillRound(body, keyCap, capRadius, ColorDesk())
+			StrokeRound(body, keyCap, capRadius, Hairline, ColorRule())
+			theme.DrawMono(body, key, capLeft+capPad, top+(capHeight-MonoSize)/Half-1, ColorInk())
 			capLeft += width + capGap
 		}
 		top += capHeight + rowGap
 	}
+	k.rows.DrawThumb(screen)
 }
