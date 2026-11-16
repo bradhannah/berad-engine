@@ -764,3 +764,31 @@ func (f *fixture) resize(size image.Point) {
 	f.screen = ebiten.NewImage(size.X, size.Y)
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 }
+
+// TestTheInspectorScrollsInASmallWindow chooses a colour at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: its fields, picker and its ramp's need
+// more height than the inspector has, so they scroll above the save bar,
+// which is never drawn over them; the wheel scrolls them, and Remove ramp,
+// below, is scrolled to when found (increment 61).
+func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.resize(image.Pt(800, 555))
+	f.click("swatch:smoke 2")
+	body, _, most, save := f.state.InspectorParts()
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), save, frametest.Part{Name: "fields", Rect: body}); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("a colour's fields need more height than the inspector has")
+	}
+	wheel := ui.NewInput(body.Min.Add(image.Pt(ui.Inset, ui.Inset)))
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if _, offset, _, _ := f.state.InspectorParts(); offset == 0 {
+		t.Fatal("the wheel scrolls the fields")
+	}
+	if point := f.at("ui:remove-ramp"); !point.In(body) {
+		t.Fatalf("Remove ramp is scrolled into view when found: %v in %v", point, body)
+	}
+}

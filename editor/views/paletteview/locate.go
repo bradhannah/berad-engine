@@ -34,9 +34,9 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case kind == "menu":
 		return s.menu.Locate(value)
 	case kind == "ui":
-		return s.locateWidget(value)
+		return s.revealed(func() (image.Point, bool) { return s.locateWidget(value) }, docs)
 	case kind == "picker":
-		return s.picker.Locate(value)
+		return s.revealed(func() (image.Point, bool) { return s.picker.Locate(value) }, docs)
 	case kind == "gradient-picker":
 		return s.gradient.picker.Locate(value)
 	case kind == "end" && (value == "left" || value == "right"):
@@ -47,10 +47,23 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 
 		return ui.Center(end), !end.Empty()
 	case kind == "slider":
-		return s.slider.Locate(value)
+		return s.revealed(func() (image.Point, bool) { return s.slider.Locate(value) }, docs)
 	}
 
 	return s.locateRows(kind, value)
+}
+
+// revealed finds a part for an input script, scrolling the inspector's
+// fields to one hidden above or below them, as an author would; the save
+// bar stays where it is (increment 61).
+func (s *State) revealed(locate func() (image.Point, bool), docs frame.Docs) (image.Point, bool) {
+	point, found := locate()
+	if !found || point.In(s.save.Rect) || !s.body.Reveal(point) {
+		return point, found
+	}
+	s.layout(docs)
+
+	return locate()
 }
 
 // locateRows finds a colour, a ramp's name or a place to drop on.

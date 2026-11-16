@@ -41,3 +41,23 @@ func TestABodyScrollsBetweenHeadingAndFoot(t *testing.T) {
 		t.Fatal("something else shown starts at the top")
 	}
 }
+
+// TestTabRevealsAFieldOfTheBody scrolls a field below the body into its
+// middle as Tab moves to it, and leaves a field elsewhere in the window
+// alone (increment 61).
+func TestTabRevealsAFieldOfTheBody(t *testing.T) {
+	t.Parallel()
+	scroll := ui.NewScroll()
+	scroll.Body = image.Rect(800, 100, 1080, 300)
+	scroll.Fit(600)
+	below := &ui.TextField{ID: "below", Rect: image.Rect(814, 430, 1066, 456)}
+	elsewhere := &ui.TextField{ID: "elsewhere", Rect: image.Rect(14, 430, 300, 456)}
+	scroll.RevealField(elsewhere)
+	if scroll.Offset != 0 {
+		t.Fatalf("a field outside the body's column scrolled it to %d", scroll.Offset)
+	}
+	scroll.RevealField(below)
+	if scroll.Offset != 243 {
+		t.Fatalf("a field at 430 to 456 scrolls to the body's middle, 200: %d", scroll.Offset)
+	}
+}

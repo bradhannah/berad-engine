@@ -523,14 +523,23 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	s.slider.Rect = ui.Zero()
 	bottom := panel.Max.Y - ui.Inset
 	s.save.Rect = ui.Zero()
+	foot := bottom - len(readOnlyLines())*ui.LineHeight - ui.Inset
 	if !s.ReadOnly() {
 		s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
+		foot = s.save.Rect.Min.Y - ui.Inset
 	}
+	s.body.For(s.chosen.ramp.String() + s.chosen.shade.String())
+	s.body.Body = image.Rect(panel.Min.X, bodyTop, panel.Max.X, max(bodyTop, foot))
 	ramp, found := palette.Ramp(s.chosen.ramp)
-	if !found || s.ReadOnly() {
+	if !found {
 		return
 	}
-	top := ui.Inset + ui.LineHeight + preview + ui.Inset
+	top := bodyTop - s.body.Offset + preview + ui.Inset
+	if s.ReadOnly() {
+		s.fitInspector(palette, top+ui.LineHeight+ui.Inset)
+
+		return
+	}
 	if shade, _, has := palette.Lookup(ramp.ID, s.chosen.shade); has {
 		top = s.layoutColor(palette, shade, left, width, top)
 	}
@@ -542,6 +551,44 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	s.inspect.gradientInto.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
 	s.inspect.removeRamp.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
 	s.save.Unsaved = frame.UnsavedFields(s.fields()...)
+	s.fitInspector(palette, s.inspect.removeRamp.Rect.Max.Y+ui.Inset)
+}
+
+// bodyTop is where the inspector's fields start, under its heading.
+const bodyTop = ui.Inset + ui.LineHeight
+
+// fitInspector keeps the inspector scrolled no further than its fields,
+// ending at bottom, need, and lays it out again when that moved it.
+func (s *State) fitInspector(palette *art.Palette, bottom int) {
+	if s.body.Fit(bottom) {
+		s.layoutInspector(palette)
+	}
+}
+
+// updateFoot scrolls the inspector's fields with the wheel over it, and
+// gives a press beside them, on the save bar or the heading, to those
+// alone, never to a field scrolled behind them (increment 61). It reports
+// whether the press did something.
+func (s *State) updateFoot(input *ui.Input, ctx *frame.Context) bool {
+	if s.body.Wheel(input, frame.Inspector(s.size)) {
+		s.layout(ctx.Docs)
+	}
+	if !s.body.Hidden(input.Cursor) {
+		return false
+	}
+	defer input.ClearPointer()
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+
+		return true
+	case ui.RevertID:
+		s.discard()
+
+		return true
+	}
+
+	return false
 }
 
 // layoutColor places the chosen colour's fields, slider, picker and buttons
@@ -588,25 +635,28 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs, palette *ar
 		name = ramp.Name
 	}
 	s.theme.Heading(screen, "COLOUR · "+strings.ToUpper(name), left, ui.Inset)
-	if has {
-		s.drawChosen(screen, docs, shade, left, width)
-	}
-	if !s.ReadOnly() {
-		s.theme.Heading(screen, "RAMP", left, s.rampTop)
-		s.rampName.Draw(screen)
-		count := strconv.Itoa(len(ramp.Shades)) + " colours"
-		s.theme.DrawText(screen, s.theme.FitText(count, width), left, s.rampName.Rect.Max.Y+ui.Gap, ui.ColorMuted())
-		s.inspect.gradientInto.Draw(screen, s.theme)
-		s.inspect.removeRamp.Draw(screen, s.theme)
+	if body, ok := s.body.Clip(screen); ok {
+		if has {
+			s.drawChosen(body, docs, shade, left, width)
+		}
+		if !s.ReadOnly() {
+			s.theme.Heading(body, "RAMP", left, s.rampTop)
+			s.rampName.Draw(body)
+			count := strconv.Itoa(len(ramp.Shades)) + " colours"
+			s.theme.DrawText(body, s.theme.FitText(count, width), left, s.rampName.Rect.Max.Y+ui.Gap, ui.ColorMuted())
+			s.inspect.gradientInto.Draw(body, s.theme)
+			s.inspect.removeRamp.Draw(body, s.theme)
+		}
 	}
 	s.drawReadOnlyNote(screen, left, width)
 	s.save.Draw(screen, s.theme)
+	s.body.DrawThumb(screen)
 }
 
 // drawChosen draws the chosen colour: its swatch and name, then its fields,
 // or for Default its value, and where it is used.
 func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shade, left, width int) {
-	top := ui.Inset + ui.LineHeight
+	top := bodyTop - s.body.Offset
 	box := image.Rect(left, top, left+preview, top+preview)
 	drawSwatch(screen, box, shade, false)
 	if after := s.typedShade(shade); after != shade {
@@ -640,6 +690,16 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shad
 		s.inspect.removeColor.Draw(screen, s.theme)
 	}
 	s.theme.DrawText(screen, s.theme.FitText(s.usedLine(docs, shade.ID), width), left, usedTop, ui.ColorMuted())
+}
+
+// readOnlyLines say, at the inspector's foot, why Default can't be changed.
+func readOnlyLines() []string {
+	return []string{
+		"Default can't be changed.",
+		"It is the engine's own palette, the same",
+		"in every game. To change a colour, copy it",
+		"into a palette of your own and edit the copy.",
+	}
 }
 
 // typedShade is the chosen colour with the value and opacity its fields
@@ -680,12 +740,7 @@ func (s *State) drawReadOnlyNote(screen *ebiten.Image, left, width int) {
 		return
 	}
 	bottom := frame.Inspector(s.size).Max.Y - ui.Inset
-	lines := []string{
-		"Default can't be changed.",
-		"It is the engine's own palette, the same",
-		"in every game. To change a colour, copy it",
-		"into a palette of your own and edit the copy.",
-	}
+	lines := readOnlyLines()
 	top := bottom - len(lines)*ui.LineHeight
 	for at, line := range lines {
 		ink := ui.ColorMuted()

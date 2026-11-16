@@ -1,6 +1,10 @@
 package paletteview
 
-import "github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+import (
+	"image"
+
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+)
 
 // Chosen returns the chosen ramp and shade, for tests.
 func (s *State) Chosen() (string, string) { return s.chosen.ramp.String(), s.chosen.shade.String() }
@@ -17,4 +21,10 @@ func (s *State) Toolbar() []frametest.Part {
 		{Name: "Copy to palette", Rect: s.bar.copyTo.Rect}, {Name: "New palette from these", Rect: s.bar.newPalette.Rect},
 		{Name: "ramps", Rect: s.rowsArea()},
 	}
+}
+
+// InspectorParts returns where the inspector's fields scroll, how far and
+// the furthest, and the save bar at its foot.
+func (s *State) InspectorParts() (image.Rectangle, int, int, frametest.Part) {
+	return s.body.Body, s.body.Offset, s.body.Most, frametest.Part{Name: "save bar", Rect: s.save.Rect}
 }

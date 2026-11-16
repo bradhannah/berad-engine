@@ -82,12 +82,13 @@ func (s *Scroll) Reveal(point image.Point) bool {
 	return s.Offset != before
 }
 
-// RevealField scrolls a field that is not wholly inside the body into its
-// middle, as Tab moving to it does (increments 59 and 61); the next frame
-// lays it out there. It suits Focus.SetReveal.
+// RevealField scrolls a field of the body's column that is not wholly
+// inside the body into its middle, as Tab moving to it does (increments 59
+// and 61); the next frame lays it out there. A field elsewhere in the
+// window is left alone. It suits Focus.SetReveal.
 func (s *Scroll) RevealField(field *TextField) {
 	rect := field.Rect
-	if s.Most == 0 || rect.Empty() || rect.In(s.Body) {
+	if s.Most == 0 || rect.Empty() || rect.In(s.Body) || rect.Min.X < s.Body.Min.X || rect.Max.X > s.Body.Max.X {
 		return
 	}
 	middle := (rect.Min.Y + rect.Max.Y) / Half
