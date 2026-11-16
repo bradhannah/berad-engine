@@ -147,9 +147,11 @@ type State struct {
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
 	// body is how far the inspector's parts are scrolled between its heading
-	// and the preview's lines, Clock, Watch and Keys at its foot (increment
-	// 61).
+	// and the preview's lines, Clock, Watch and Keys at its foot, and lists
+	// how far the left panel's lists are, above Show floor below and Preview
+	// at its foot, in a window too short for them (increment 61).
 	body   ui.Scroll
+	lists  ui.Scroll
 	theme  *ui.Theme
 	floors []ids.ULID
 	floor  ids.ULID
@@ -281,7 +283,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
 		previewBn: ui.NewButton("preview", "Preview"),
 		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
-		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0, body: ui.NewScroll(),
+		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0, body: ui.NewScroll(), lists: ui.NewScroll(),
 		openBn:   ui.NewButton("open-behaviour", "Open behaviour"),
 		removeBn: ui.NewButton("remove-npc", "Remove"),
 		clockBn:  ui.NewButton("clock", "Clock"), watchBn: ui.NewButton("watch", "Watch"),
@@ -534,7 +536,7 @@ func onStage(point image.Point) image.Point { return pen.CanvasPoint(point) }
 func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
-	rowY := ui.Inset + headingSpace
+	rowY := ui.Inset + headingSpace - s.lists.Offset
 	s.toolList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
 	s.tileList.Rows = s.tileRows()
@@ -556,6 +558,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, s.panelFull()-ui.Inset, rowY+ui.RowHeight)
 	rowY = s.below.Rect.Max.Y + panelGap
 	s.previewBn.Rect = image.Rect(ui.Inset, rowY, s.panelFull()-ui.Inset, rowY+ui.ButtonH)
+	s.fitLists()
 	switch {
 	case s.preview != nil:
 		s.previewBn.Label = "Stop preview (P)"
@@ -875,6 +878,32 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 	if s.updateFold(input, ctx) {
 		return
 	}
+	if s.lists.Wheel(input, s.lists.Body) {
+		s.layoutWidgets(ctx.Docs)
+	}
+	s.updateLists(s.listsInput(input), ctx)
+	s.below.Update(input)
+	if s.previewBn.Update(input) {
+		s.togglePreview(ctx)
+	}
+	s.updateInspectorButtons(input, ctx)
+}
+
+// listsInput is the input the left panel's lists take: none of the pointer
+// while it is beside them, on Show floor below or Preview, which take it
+// alone (increment 61).
+func (s *State) listsInput(input *ui.Input) *ui.Input {
+	if !s.lists.Hidden(input.Cursor) {
+		return input
+	}
+	beside := *input
+	beside.ClearPointer()
+
+	return &beside
+}
+
+// updateLists handles the tools, tiles and floors.
+func (s *State) updateLists(input *ui.Input, ctx *frame.Context) {
 	if s.toolList.Update(input).Changed {
 		s.setTool(Tool(s.toolList.Selected))
 	}
@@ -889,11 +918,6 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 			s.switchFloor(id, ctx)
 		}
 	}
-	s.below.Update(input)
-	if s.previewBn.Update(input) {
-		s.togglePreview(ctx)
-	}
-	s.updateInspectorButtons(input, ctx)
 }
 
 // updateInspectorFoot scrolls the inspector's parts with the wheel over it,
@@ -1600,14 +1624,8 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		return image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2), true
 	case "edge":
 		return s.locateEdge(value, docs)
-	case "tool":
-		return s.toolList.Locate(value)
-	case "tile":
-		return s.tileList.Locate(value)
-	case "npc":
-		return s.locateNPC(value)
-	case "floor":
-		return s.locateFloor(value)
+	case "tool", "tile", "npc", "floor":
+		return s.locateInLists(kind, value, docs)
 	case "ui":
 		return s.locateInspector(name, value, docs)
 	case "live-npc":
@@ -1617,6 +1635,31 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateInLists finds a tool, a tile, an NPC to place or a floor for an
+// input script, scrolling the left panel's lists to one hidden below them,
+// as an author would (increment 61).
+func (s *State) locateInLists(kind, value string, docs frame.Docs) (image.Point, bool) {
+	find := func() (image.Point, bool) {
+		switch kind {
+		case "tool":
+			return s.toolList.Locate(value)
+		case "tile":
+			return s.tileList.Locate(value)
+		case "npc":
+			return s.locateNPC(value)
+		}
+
+		return s.locateFloor(value)
+	}
+	point, found := find()
+	if !found || !s.lists.Reveal(point) {
+		return point, found
+	}
+	s.layoutWidgets(docs)
+
+	return find()
 }
 
 // locateInspector finds a widget for an input script, scrolling the

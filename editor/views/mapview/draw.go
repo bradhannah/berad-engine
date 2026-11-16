@@ -443,6 +443,10 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	height := s.size.Y - frame.StatusHeight
 	ui.FillRect(screen, image.Rect(0, 0, s.panelFull(), height), ui.ColorPage())
 	ui.Divider(screen, image.Pt(s.panelFull()-ui.Outline, 0), image.Pt(s.panelFull()-ui.Outline, height))
+	window := screen
+	if lists, shown := s.lists.Clip(screen); shown {
+		screen = lists
+	}
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}
@@ -467,8 +471,9 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	s.tileList.Draw(screen, s.theme)
 	heading(floorsHeading, s.floorList)
 	s.floorList.Draw(screen, s.theme)
-	s.below.Draw(screen, s.theme)
-	s.previewBn.Draw(screen, s.theme)
+	s.below.Draw(window, s.theme)
+	s.previewBn.Draw(window, s.theme)
+	s.lists.DrawThumb(window)
 	_ = docs
 }
 

@@ -58,3 +58,11 @@ func (s *State) InspectorParts(docs frame.Docs) (image.Rectangle, int, int, []fr
 		{Name: "Keys", Rect: s.keysBn.Rect},
 	}
 }
+
+// LeftParts returns where the left panel's lists scroll, the furthest they
+// go, and what stays at its foot.
+func (s *State) LeftParts() (image.Rectangle, int, []frametest.Part) {
+	return s.lists.Body, s.lists.Most, []frametest.Part{
+		{Name: "Show floor below", Rect: s.below.Rect}, {Name: "Preview", Rect: s.previewBn.Rect},
+	}
+}

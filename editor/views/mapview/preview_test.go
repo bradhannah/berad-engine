@@ -11,6 +11,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/pen"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
@@ -260,5 +261,28 @@ func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
 	f.frame(wheel)
 	if _, offset, _, _ := f.state.InspectorParts(f.ctx.Docs); offset == 0 {
 		t.Fatal("the wheel scrolls the inspector's lines")
+	}
+}
+
+// TestTheLeftPanelScrollsInASmallWindow lays a Map out at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: the tools, tiles and floors need more
+// height than the left panel has, so Show floor below and Preview stay at
+// its foot, above the status bar, and the lists scroll above them; the
+// ground floor, last, is scrolled to when found (increment 61).
+func TestTheLeftPanelScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.ctx.Size = image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	lists, most, foot := f.state.LeftParts()
+	panel := image.Rect(0, 0, lists.Max.X, 555-frame.StatusHeight)
+	if wrong := frametest.Apart(panel, append(foot, frametest.Part{Name: "lists", Rect: lists})...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("the tools, tiles and floors need more height than the left panel has")
+	}
+	if point := f.at("floor:1"); !point.In(lists) {
+		t.Fatalf("the ground floor is scrolled into view when found: %v in %v", point, lists)
 	}
 }
