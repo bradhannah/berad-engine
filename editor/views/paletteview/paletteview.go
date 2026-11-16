@@ -23,6 +23,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -89,10 +90,13 @@ type State struct {
 	rampName *ui.TextField
 	// picker chooses the colour by eye, into the hex and opacity fields,
 	// and slider the opacity.
-	picker   *ui.ColorPicker
-	slider   *ui.Slider
-	focus    ui.Focus
-	save     *ui.SaveBar
+	picker *ui.ColorPicker
+	slider *ui.Slider
+	focus  ui.Focus
+	save   *ui.SaveBar
+	// body is how far the inspector's fields are scrolled between its
+	// heading and the save bar at its foot (increment 61).
+	body     ui.Scroll
 	guard    frame.Guard
 	bar      toolbar
 	inspect  inspectorButtons
@@ -111,6 +115,10 @@ type State struct {
 // toolbar is the row of buttons above the ramps.
 type toolbar struct {
 	addRamp, gradient, copyFrom, remove, copyTo, newPalette *ui.Button
+	// title is where Default's name and note are written, and bottom where
+	// the toolbar's last line ends, as last laid out.
+	title  image.Rectangle
+	bottom int
 }
 
 // inspectorButtons are the inspector's buttons.
@@ -131,12 +139,12 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 		hex:   field("colour", colorBytes), opacity: field("opacity", opacityBytes),
 		rampName: field("ramp-name", art.MaxNameLength), picker: ui.NewColorPicker("picker"),
 		slider: ui.NewSlider("opacity-slider", art.MinOpacity, art.MaxOpacity), focus: ui.Focus{},
-		save: ui.NewSaveBar(), guard: frame.Guard{},
+		save: ui.NewSaveBar(), body: ui.NewScroll(), guard: frame.Guard{},
 		bar: toolbar{
 			addRamp: ui.NewButton("add-ramp", "+ Ramp"), gradient: ui.NewButton("gradient", "Gradient…"),
 			copyFrom: ui.NewButton("copy-from", "Copy colours from…"), remove: ui.NewButton("delete", "Delete palette…"),
 			copyTo:     ui.NewButton("copy-to", "Copy to palette"),
-			newPalette: ui.NewButton("new-palette", "New palette from these"),
+			newPalette: ui.NewButton("new-palette", "New palette from these"), title: ui.Zero(), bottom: 0,
 		},
 		inspect: inspectorButtons{
 			duplicate: ui.NewButton("duplicate-colour", "Duplicate colour"), moveTo: ui.NewButton("move-to", "Move to ramp"),
@@ -159,6 +167,9 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 		field.Unmarked = true
 	}
 	view.focus.Register(view.copying.name)
+
+	// Tab brings a field scrolled out of the inspector into view.
+	view.focus.SetReveal(view.body.RevealField)
 
 	return view
 }
@@ -336,6 +347,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	case s.deleting != nil:
 		s.updateDeleting(input, ctx)
 	default:
+		if s.updateFoot(input, ctx) {
+			break
+		}
 		s.updateFields(input, ctx)
 		s.updatePicker(input)
 		frame.CommonKeys(input, ctx)
@@ -349,7 +363,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout(docs)
 	screen.Fill(ui.ColorPage())
 	palette, loaded := s.palette(docs)

@@ -23,8 +23,9 @@ const (
 
 // windowKeys handles what every window does the same way, before its view
 // sees the input: Cmd+Q asks to quit the editor, Cmd+S saves, Cmd+R launches
-// the game in the Play tab, the keys that move between tabs move, and the
-// close button asks to close the window.
+// the game in the Play tab, Cmd+Shift+=, Cmd+Shift+- and Cmd+Shift+0 change
+// the scale of text and controls, the keys that move between tabs move, and
+// the close button asks to close the window.
 func (h *host) windowKeys(input *ui.Input) {
 	switch h.surface.Closing() {
 	case closeQuit:
@@ -44,6 +45,12 @@ func (h *host) windowKeys(input *ui.Input) {
 		h.frame.ShowInspector.On = !h.frame.ShowInspector.On
 	case input.ConsumeExact(ui.KeyI, ui.CmdShift()):
 		h.frame.ShowLeft.On = !h.frame.ShowLeft.On
+	case input.ConsumeExact(ui.KeyEqual, ui.CmdShift()):
+		h.frame.StepTextScale(1)
+	case input.ConsumeExact(ui.KeyMinus, ui.CmdShift()):
+		h.frame.StepTextScale(-1)
+	case input.ConsumeExact(ui.Key0, ui.CmdShift()):
+		h.frame.AskTextScale(1)
 	}
 	if h.tabKeys != nil {
 		h.tabKeys(input, h.frame.Status)

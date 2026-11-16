@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -54,19 +55,13 @@ func (s *shell) drawSharedStatus(screen *ebiten.Image, front *tab) {
 		return
 	}
 	area := s.area()
-	if s.statusImage == nil || s.statusImage.Bounds().Size() != area.Size() {
-		if s.statusImage != nil {
-			s.statusImage.Deallocate()
-		}
-		s.statusImage = ebiten.NewImage(area.Dx(), area.Dy())
-	}
+	s.statusImage = pen.Layer(s.statusImage, area)
 	s.statusImage.Clear()
 	focused := front.panes[front.focus].host
 	focused.frame.DrawStatus(s.statusImage, focused.theme)
 	focused.frame.DrawHistory(s.statusImage, focused.theme)
-	var options ebiten.DrawImageOptions
-	options.GeoM.Translate(float64(area.Min.X), float64(area.Min.Y))
-	screen.DrawImage(s.statusImage, &options)
+	focused.frame.DrawTextMenu(s.statusImage, focused.theme)
+	pen.DrawLayer(screen, s.statusImage, area)
 }
 
 // abovePanesStatus is a split's area above its shared status bar, where the

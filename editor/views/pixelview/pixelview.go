@@ -20,6 +20,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/paletteview"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -84,7 +85,10 @@ type State struct {
 	zoomOut *ui.Button
 	zoomIn  *ui.Button
 	zoomFit *ui.Button
-	grid    *ui.Toggle
+	// toolbarBottom is where the toolbar's last line ends, as last laid out:
+	// the canvas starts below it.
+	toolbarBottom int
+	grid          *ui.Toggle
 	// marks outlines the pixels the readout warns about.
 	marks *ui.Toggle
 	panel panelLayout
@@ -117,10 +121,10 @@ func New(window, sprite ids.ULID, theme *ui.Theme) *State {
 		stroke: stroke{active: false, count: 0, last: image.Pt(0, 0), skipped: 0, pixels: 0},
 		hover:  image.Pt(0, 0), hovering: false,
 		tools: nil, zoomOut: ui.NewButton("zoom-out", "−"), zoomIn: ui.NewButton("zoom-in", "+"),
-		zoomFit: ui.NewButton("zoom-fit", "Fit"),
-		grid:    &ui.Toggle{ID: "grid", Label: "Grid", Rect: ui.Zero(), On: true},
-		marks:   &ui.Toggle{ID: "show-them", Label: "Show them", Rect: ui.Zero(), On: false},
-		panel:   newPanelLayout(), scroll: 0, edit: ui.NewButton("edit-palette", "Edit palette…"),
+		zoomFit: ui.NewButton("zoom-fit", "Fit"), toolbarBottom: 0,
+		grid:  &ui.Toggle{ID: "grid", Label: "Grid", Rect: ui.Zero(), On: true},
+		marks: &ui.Toggle{ID: "show-them", Label: "Show them", Rect: ui.Zero(), On: false},
+		panel: newPanelLayout(), scroll: 0, edit: ui.NewButton("edit-palette", "Edit palette…"),
 		shows: ui.NewButton("shows", "Nothing"), showsMenu: ui.Menu{Items: nil, Width: 0},
 		templateChoice: ui.NewButton("template-choice", "None"), templateMenu: ui.Menu{Items: nil, Width: 0},
 		overlay:   &ui.Toggle{ID: "template", Label: "Template", Rect: ui.Zero(), On: true},
@@ -426,7 +430,7 @@ func (s *State) setTool(tool Tool) {
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout(docs)
 	screen.Fill(ui.ColorPage())
 	s.drawCanvas(screen, docs)

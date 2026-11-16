@@ -23,6 +23,7 @@ import (
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/workflowview"
 	"github.com/bradhannah/berad-engine/engine/clock"
@@ -251,6 +252,11 @@ func (s *State) fitMono(text string, width int) string {
 	return ""
 }
 
+// HasInspector reports that Watch has no inspector: its canvas and strip
+// take its pane's whole width, so a window needs no room for one beside its
+// Map (increment 61).
+func (s *State) HasInspector() bool { return false }
+
 // layout places the buttons in the footer, each as wide as its label
 // needs, Watch zone loop only while the preview runs one.
 func (s *State) layout() {
@@ -339,10 +345,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 // Draw renders the window: the header, the workflow and the footer.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout()
 	screen.Fill(ui.ColorPage())
-	if area, ok := screen.SubImage(s.canvas()).(*ebiten.Image); ok {
+	if area, ok := pen.Clip(screen, s.canvas()); ok {
 		area.Fill(ui.ColorPage())
 	}
 	entity, watching := s.watched()

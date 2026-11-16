@@ -18,7 +18,7 @@ import (
 // floorOffView reports which way the floor lies when none of it is in view:
 // "to the left", "to the right", "above" or "below".
 func (s *State) floorOffView(docs frame.Docs) (string, bool) {
-	grid := s.Grid()
+	grid := s.stage()
 	var floorRect image.Rectangle
 	loaded := docs.View(s.floor, func(document client.Document) {
 		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {

@@ -4,6 +4,7 @@ import (
 	"image"
 
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 )
 
 // PanelScroll returns how far the palette panel's swatches are scrolled.
@@ -27,3 +28,16 @@ func (s *State) Note(docs frame.Docs) string { return s.templateNote(docs) }
 
 // EditTemplateItem is the Template menu's Edit template… item.
 func EditTemplateItem() string { return editTemplateItem }
+
+// Toolbar names the toolbar's controls' places, and the canvas's.
+func (s *State) Toolbar() []frametest.Part {
+	parts := make([]frametest.Part, 0, len(s.tools)+5)
+	for _, button := range s.tools {
+		parts = append(parts, frametest.Part{Name: button.Label, Rect: button.Rect})
+	}
+	zoom := image.Rect(s.zoomOut.Rect.Min.X, s.zoomOut.Rect.Min.Y, s.zoomIn.Rect.Max.X, s.zoomIn.Rect.Max.Y)
+
+	return append(parts, frametest.Part{Name: "zoom", Rect: zoom}, frametest.Part{Name: "Fit", Rect: s.zoomFit.Rect},
+		frametest.Part{Name: "template", Rect: s.overlay.Rect}, frametest.Part{Name: "Grid", Rect: s.grid.Rect},
+		frametest.Part{Name: "canvas", Rect: s.canvas()})
+}

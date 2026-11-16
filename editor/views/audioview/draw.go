@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -28,15 +29,15 @@ func (s *State) summary() string {
 // Draw renders the window: the toolbar, the list, the panel, the inspector
 // and anything showing over them.
 func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layout()
 	screen.Fill(ui.ColorPage())
 	content := frame.Content(s.size)
 	s.theme.DrawTitle(screen, "Audio", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	s.theme.DrawMono(screen, s.summary(), ui.Inset+s.theme.TextWidth("Audio")+ui.Inset*ui.Half,
 		(toolbarHeight-ui.MonoSize)/ui.Half, ui.ColorSubdued())
-	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
-	ui.Divider(screen, image.Pt(listWidth, toolbarHeight), image.Pt(listWidth, content.Max.Y))
+	ui.Divider(screen, image.Pt(0, s.barBottom-ui.Outline), image.Pt(content.Max.X, s.barBottom-ui.Outline))
+	ui.Divider(screen, image.Pt(listWidth, s.barBottom), image.Pt(listWidth, content.Max.Y))
 	s.drawButtons(screen, s.addSound, s.newCue, s.checkFiles, s.loud.toggle, s.soundscape.toggle, s.stopAll)
 	s.drawButtons(screen, s.tabs...)
 	s.drawButtons(screen, s.filters...)
@@ -108,10 +109,24 @@ func (s *State) Locate(name string, _ frame.Docs) (image.Point, bool) {
 	case "wave":
 		return s.trim.wave.Locate(value)
 	case "ui":
-		return s.locateWidget(value)
+		return s.locateRevealed(value)
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateRevealed finds a widget for an input script, scrolling the
+// inspector's fields to one hidden above or below them, as an author would;
+// Delete stays where it is (increment 61).
+func (s *State) locateRevealed(widget string) (image.Point, bool) {
+	insp := s.inspector
+	point, found := s.locateWidget(widget)
+	if !found || widget == insp.removeCue.ID || widget == insp.removeRec.ID || !insp.body.Reveal(point) {
+		return point, found
+	}
+	s.layout()
+
+	return s.locateWidget(widget)
 }
 
 // shownMenu is the menu open in the window, or nil.

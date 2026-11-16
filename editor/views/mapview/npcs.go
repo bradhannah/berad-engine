@@ -8,7 +8,6 @@ import (
 	"unicode"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
@@ -16,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -409,7 +409,7 @@ func (s *State) drawNPC(area *ebiten.Image, rect image.Rectangle, npcID ids.ULID
 		if name == "" {
 			label, fill = "?", ui.Hex(hexBroken)
 		}
-		vector.FillCircle(area, centreX, centreY, radius, fill, true)
+		pen.FillCircle(area, centreX, centreY, radius, fill, true)
 		if size >= minLabel {
 			width := s.theme.SmallWidth(label)
 			s.theme.DrawSmall(area, label, int(centreX)-width/ui.Half, int(centreY)-ui.LabelSize/ui.Half-ui.Half,
@@ -417,7 +417,7 @@ func (s *State) drawNPC(area *ebiten.Image, rect image.Rectangle, npcID ids.ULID
 		}
 	}
 	if ringed {
-		vector.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorSelect(), true)
+		pen.StrokeCircle(area, centreX, centreY, radius+tokenRing, tokenRing, ui.ColorSelect(), true)
 	}
 }
 
@@ -456,7 +456,7 @@ func (s *State) drawPlacementInspector(screen *ebiten.Image, floorData *floor.Fl
 	default:
 		s.theme.DrawText(screen, "None yet. Choose one in the project browser.", textX, *textY, ui.ColorMuted())
 	}
-	*textY = placementButtonsTop
+	*textY = s.down(placementButtonsTop)
 	s.openBn.Disabled = !has
 	s.openBn.Draw(screen, s.theme)
 	s.removeBn.Draw(screen, s.theme)

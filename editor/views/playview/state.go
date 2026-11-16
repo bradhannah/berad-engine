@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/showdraw"
 	"github.com/bradhannah/berad-engine/engine/show"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -39,7 +40,7 @@ func (s *State) hasState(state string) bool {
 	case "layer":
 		return s.sound.playing(value)
 	case "scale":
-		return strconv.FormatFloat(s.scale, 'f', 2, 64) == value
+		return strconv.FormatFloat(s.scale/pen.Scale(), 'f', 2, 64) == value
 	case "launches":
 		return strconv.Itoa(s.launches) == value
 	case "box":

@@ -20,6 +20,7 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/showdraw"
@@ -898,11 +899,7 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, left, foot in
 	if s.preview != nil || s.remote != nil {
 		ink = ui.ColorLive()
 	}
-	height := (len(groups) - 1) * ui.Gap
-	for _, group := range groups {
-		height += (len(group.lines) + 1) * ui.LineHeight
-	}
-	top := foot - ui.ButtonH - ui.Inset - height
+	top := foot - ui.ButtonH - ui.Inset - s.previewHeight(docs)
 	for _, group := range groups {
 		s.theme.DrawLabel(screen, group.label, left, top, ink)
 		top += ui.LineHeight
@@ -914,6 +911,17 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, left, foot in
 	}
 	s.clockBn.Draw(screen, s.theme)
 	s.watchBn.Draw(screen, s.theme)
+}
+
+// previewHeight is how tall the preview's lines at the inspector's foot are.
+func (s *State) previewHeight(docs frame.Docs) int {
+	groups := s.previewGroups(docs)
+	height := (len(groups) - 1) * ui.Gap
+	for _, group := range groups {
+		height += (len(group.lines) + 1) * ui.LineHeight
+	}
+
+	return height
 }
 
 // clockShows reports whether this window's preview clock reads a time that
@@ -1001,11 +1009,11 @@ func (s *State) npcsMoved(docs frame.Docs) bool {
 // locateLiveNPC finds a live NPC by name on screen, for input scripts.
 func (s *State) locateLiveNPC(name string) (image.Point, bool) {
 	size := float64(s.camera.cellSize())
-	origin := s.Grid().Min.Add(s.camera.offset)
+	origin := s.stage().Min.Add(s.camera.offset)
 	for _, entity := range s.liveNPCs() {
 		if entity.Floor == s.floor && s.names.Name(entity.NPC, "") == name {
-			return image.Pt(origin.X+int(math.Round((entity.X+cellCentre)*size)),
-				origin.Y+int(math.Round((entity.Y+cellCentre)*size))), true
+			return pen.WindowPoint(image.Pt(origin.X+int(math.Round((entity.X+cellCentre)*size)),
+				origin.Y+int(math.Round((entity.Y+cellCentre)*size)))), true
 		}
 	}
 

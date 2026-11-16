@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/pixelview"
@@ -115,7 +116,7 @@ func newFixture(t *testing.T) *fixture {
 	ctx := frametest.Context(docs, requests, image.Pt(1200, 800))
 	state := pixelview.New(frametest.ID(99), spriteID, theme)
 	state.Start(ctx)
-	f := &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx, screen: ebiten.NewImage(1200, 800)}
+	f := &fixture{t: t, state: state, docs: docs, requests: requests, ctx: ctx, screen: pen.Layer(nil, image.Rect(0, 0, 1200, 800))}
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 	f.click("palette:gloomy")
 
@@ -557,4 +558,33 @@ func TestALongPaletteScrolls(t *testing.T) {
 // fixture's.
 func longID(number int) ids.ULID {
 	return ids.MustParse(fmt.Sprintf("01ARZ3NDEKTSV4RRFFQ69G%04d", number))
+}
+
+// TestTheToolbarWrapsInASmallWindow lays the Pixel editor out at 800 × 555
+// points, as a 1200 × 832 window is at 150%: the tools and the zoom do not
+// fit on one line, so the zoom and Grid go on a line below, and the canvas
+// starts under both, nothing drawn over anything else (increment 61).
+func TestTheToolbarWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.resize(image.Pt(800, 555))
+	parts := f.state.Toolbar()
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), parts...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if parts[0].Rect.Min.Y == parts[len(parts)-2].Rect.Min.Y {
+		t.Fatalf("the toolbar did not wrap: %v", parts)
+	}
+	f.resize(image.Pt(1200, 800))
+	parts = f.state.Toolbar()
+	if parts[0].Rect.Min.Y != parts[len(parts)-2].Rect.Min.Y {
+		t.Fatalf("a wide toolbar wrapped: %v", parts)
+	}
+}
+
+// resize lays the window out at another size, as a frame does.
+func (f *fixture) resize(size image.Point) {
+	f.ctx.Size = size
+	f.screen = pen.Layer(nil, image.Rectangle{Min: image.Point{}, Max: size})
+	f.frame(ui.NewInput(image.Pt(0, 0)))
 }

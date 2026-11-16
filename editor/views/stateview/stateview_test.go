@@ -46,6 +46,8 @@ type fixture struct {
 	registry *plugin.Registry
 	applied  int
 	nextID   byte
+	// size is the window's, at which each frame is drawn.
+	size image.Point
 }
 
 // in puts a declaration inside a group or template.
@@ -112,7 +114,7 @@ func fixtureOf(t *testing.T, open func(window, document ids.ULID, theme *ui.Them
 	}))
 	ctx := frametest.Context(docs, requests, image.Pt(1400, 900))
 	f := &fixture{t: t, state: open(frametest.ID(99), worldstate.ID(), theme), docs: docs,
-		requests: requests, ctx: ctx, registry: registry, applied: 0, nextID: 60}
+		requests: requests, ctx: ctx, registry: registry, applied: 0, nextID: 60, size: image.Pt(1400, 900)}
 	f.state.Start(ctx)
 	f.frame(ui.NewInput(image.Pt(0, 0)))
 
@@ -124,7 +126,7 @@ func fixtureOf(t *testing.T, open func(window, document ids.ULID, theme *ui.Them
 func (f *fixture) frame(input ui.Input) {
 	f.t.Helper()
 	f.state.Update(&input, f.ctx)
-	f.state.Draw(ebiten.NewImage(1400, 900), f.ctx.Docs)
+	f.state.Draw(ebiten.NewImage(f.size.X, f.size.Y), f.ctx.Docs)
 	for f.applied < len(f.requests.Commands) {
 		command := f.requests.Commands[f.applied]
 		f.applied++
@@ -430,5 +432,59 @@ func TestPathNames(t *testing.T) {
 	f.docs.View(marketID, func(document client.Document) { path = document.Model.(*zoneplugin.Document).Zone.Path })
 	if path != "town_square" || !f.has("selected=zone.town_square") {
 		t.Fatalf("the zone is renamed: %q", path)
+	}
+}
+
+// TestTheInspectorScrollsInASmallWindow shows the mood, a value with
+// choices, at 800 × 555 points, as a 1200 × 832 window is at 150%: its fields
+// need more height than the inspector has, so they scroll between its
+// heading and the save bar and Delete, which are never drawn over a field.
+// The wheel scrolls them, a field below is scrolled to when an input script
+// finds it, and a press on Delete deletes, though a field lies behind it
+// (increment 61).
+func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.size, f.ctx.Size = image.Pt(800, 555), image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	f.click("row:world.mood")
+	body, foot := f.state.InspectorParts()
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), append(foot, frametest.Part{Name: "fields", Rect: body})...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if _, most := f.state.InspectorScroll(); most == 0 {
+		t.Fatal("a value with choices needs more height than the inspector has")
+	}
+	wheel := ui.NewInput(body.Min.Add(image.Pt(ui.Inset, ui.Inset)))
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if offset, _ := f.state.InspectorScroll(); offset == 0 {
+		t.Fatal("the wheel scrolls the fields")
+	}
+	wheel.WheelY = 100
+	f.frame(wheel)
+	if point := f.at("ui:value-description"); !point.In(body) {
+		t.Fatalf("the description, below, is scrolled into view when found: %v in %v", point, body)
+	}
+	wheel.WheelY = 100
+	f.frame(wheel)
+	f.click("ui:value-delete")
+	f.answerUses(nil)
+	if _, found := f.world().Value(moodID); found {
+		t.Fatal("Delete deletes, though a field is scrolled behind it")
+	}
+}
+
+// TestTheHeaderWrapsInASmallWindow lays World state out at 800 × 555
+// points, as a 1200 × 832 window is at 150%: Find a value does not fit
+// beside the Add buttons, so it goes on a line below them and the list
+// starts under it (increment 61).
+func TestTheHeaderWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.size, f.ctx.Size = image.Pt(800, 555), image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), f.state.HeaderParts()...); wrong != "" {
+		t.Fatal(wrong)
 	}
 }

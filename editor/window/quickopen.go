@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -170,12 +171,7 @@ func (s *shell) drawQuick(screen *ebiten.Image) {
 	if size.X <= 0 || size.Y <= 0 {
 		return
 	}
-	if s.quickImage == nil || s.quickImage.Bounds().Size() != size {
-		if s.quickImage != nil {
-			s.quickImage.Deallocate()
-		}
-		s.quickImage = ebiten.NewImage(size.X, size.Y)
-	}
+	s.quickImage = pen.Layer(s.quickImage, shown.rect)
 	s.quickImage.Clear()
 	if err := safely(func() error {
 		quick.DrawQuick(s.quickImage, shown.host.conn)
@@ -188,12 +184,9 @@ func (s *shell) drawQuick(screen *ebiten.Image) {
 	}
 	sheet := s.quickRect().Sub(shown.rect.Min)
 	sheet.Max.Y += ui.FloatDrop
-	part, isImage := s.quickImage.SubImage(sheet).(*ebiten.Image)
+	part, isImage := pen.Clip(s.quickImage, sheet)
 	if !isImage {
 		return
 	}
-	var options ebiten.DrawImageOptions
-	at := shown.rect.Min.Add(sheet.Min)
-	options.GeoM.Translate(float64(at.X), float64(at.Y))
-	screen.DrawImage(part, &options)
+	pen.DrawLayer(screen, part, sheet.Add(shown.rect.Min))
 }

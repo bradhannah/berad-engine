@@ -42,6 +42,9 @@ type inspector struct {
 	// they belong to.
 	uses    []protocol.Use
 	usesFor string
+	// body is how far the fields are scrolled between the inspector's label
+	// and Delete at its foot (increment 61).
+	body ui.Scroll
 }
 
 func newInspector(theme *ui.Theme) *inspector {
@@ -57,7 +60,7 @@ func newInspector(theme *ui.Theme) *inspector {
 		category: nil, quieter: ui.NewButton("quieter", "−"), louder: ui.NewButton("louder", "+"),
 		removeCue: ui.NewButton("delete-cue", "Delete cue"), removeRec: ui.NewButton("delete-recording", "Delete recording"),
 		ambient: newAmbientSection(theme), classes: newClassifier(),
-		shown: "", subject: "", usesTop: 0, uses: nil, usesFor: "",
+		shown: "", subject: "", usesTop: 0, uses: nil, usesFor: "", body: ui.NewScroll(),
 	}
 	for _, category := range categories() {
 		made.category = append(made.category, ui.NewButton("category-"+category, categoryLabel(category)))
@@ -153,41 +156,116 @@ func (s *State) layoutInspector() {
 	}
 	s.soundscape.hide()
 	left, right := area.Min.X+ui.Inset, area.Max.X-ui.Inset
-	top := area.Min.Y + ui.Inset + ui.LineHeight
-	place := func(field *ui.TextField) {
-		top += ui.LineHeight
-		field.Rect = image.Rect(left, top, right, top+ui.ButtonH)
-		top += ui.ButtonH + ui.Inset
-	}
+	insp.body.For(s.list.Selected)
+	insp.body.Body = ui.Zero()
+	foot := area.Max.Y - ui.Inset - ui.ButtonH
+	footed := image.Rect(left, foot, right, area.Max.Y-ui.Inset)
+	insp.body.Body = image.Rect(area.Min.X, bodyTop(area), area.Max.X, max(bodyTop(area), foot-ui.Inset))
 	if cue, ok := s.selectedCue(); ok {
-		place(insp.name)
-		top += ui.LineHeight + ui.Inset
-		s.layoutCategories(cue, left, right, top+ui.LineHeight)
-		top += ui.LineHeight + ui.ButtonH + ui.Inset + ui.LineHeight
-		insp.quieter.Rect = image.Rect(left, top, left+gainWidth, top+ui.ButtonH)
-		insp.louder.Rect = image.Rect(right-gainWidth, top, right, top+ui.ButtonH)
-		_, quieter := s.nextStep(cue, -1)
-		_, louder := s.nextStep(cue, 1)
-		insp.quieter.Disabled, insp.louder.Disabled = !quieter, !louder
-		top += ui.ButtonH + ui.LineHeight + ui.Inset
-		if showsAmbient(cue) {
-			top = s.layoutAmbient(cue, left, right, top)
-		}
-		place(insp.how)
-		place(insp.terms)
-		insp.usesTop = s.layoutProfile(cue, left, right, top)
-		insp.removeCue.Rect = image.Rect(left, area.Max.Y-ui.Inset-ui.ButtonH, right, area.Max.Y-ui.Inset)
+		insp.removeCue.Rect = footed
+		s.fitInspector(s.layoutCueFields(cue, left, right, bodyTop(area)-insp.body.Offset))
 
 		return
 	}
 	if recording, ok := s.selectedRecording(); ok {
-		top = factsTop(area) + ui.LineHeight*recordingFacts + ui.Gap
-		place(insp.note)
-		s.layoutFamily(recording, left, right, top)
-		insp.removeRec.Rect = image.Rect(left, area.Max.Y-ui.Inset-ui.ButtonH, right, area.Max.Y-ui.Inset)
+		insp.removeRec.Rect = footed
 		insp.removeRec.Disabled = len(s.usedBy(recording.ID)) > 0
+		if insp.removeRec.Disabled {
+			insp.body.Body.Max.Y = max(insp.body.Body.Min.Y, foot-ui.LineHeight-ui.Inset)
+		}
+		top := factsTop(area) - insp.body.Offset + ui.LineHeight*recordingFacts + ui.Gap
+		top = s.placeField(insp.note, left, right, top)
+		s.fitInspector(s.layoutFamily(recording, left, right, top))
 	}
 }
+
+// placeField places a field under its label from a top edge, and returns
+// where the next part goes.
+func (s *State) placeField(field *ui.TextField, left, right, top int) int {
+	top += ui.LineHeight
+	field.Rect = image.Rect(left, top, right, top+ui.ButtonH)
+
+	return top + ui.ButtonH + ui.Inset
+}
+
+// layoutCueFields places a cue's fields and buttons from a top edge, and
+// returns where its uses end.
+func (s *State) layoutCueFields(cue protocol.AudioCue, left, right, top int) int {
+	insp := s.inspector
+	top = s.placeField(insp.name, left, right, top)
+	top += ui.LineHeight + ui.Inset
+	s.layoutCategories(cue, left, right, top+ui.LineHeight)
+	top += ui.LineHeight + ui.ButtonH + ui.Inset + ui.LineHeight
+	insp.quieter.Rect = image.Rect(left, top, left+gainWidth, top+ui.ButtonH)
+	insp.louder.Rect = image.Rect(right-gainWidth, top, right, top+ui.ButtonH)
+	_, quieter := s.nextStep(cue, -1)
+	_, louder := s.nextStep(cue, 1)
+	insp.quieter.Disabled, insp.louder.Disabled = !quieter, !louder
+	top += ui.ButtonH + ui.LineHeight + ui.Inset
+	if showsAmbient(cue) {
+		top = s.layoutAmbient(cue, left, right, top)
+	}
+	top = s.placeField(insp.how, left, right, top)
+	top = s.placeField(insp.terms, left, right, top)
+	insp.usesTop = s.layoutProfile(cue, left, right, top)
+
+	return insp.usesTop + (len(s.usesShown())+1)*ui.LineHeight + ui.Inset
+}
+
+// bodyTop is where the inspector's fields start, under its label.
+func bodyTop(area image.Rectangle) int { return area.Min.Y + ui.Inset + ui.LineHeight }
+
+// fitInspector keeps the inspector scrolled no further than its fields,
+// ending at bottom, need, and lays it out again when that moved it.
+func (s *State) fitInspector(bottom int) {
+	if s.inspector.body.Fit(bottom) {
+		s.layoutInspector()
+	}
+}
+
+// updateInspectorFoot scrolls the inspector's fields with the wheel over it,
+// and gives a press beside them, on Delete or the label, to those alone,
+// never to a field scrolled behind them (increment 61). It reports whether
+// the press did something.
+func (s *State) updateInspectorFoot(input *ui.Input, ctx *frame.Context) bool {
+	insp := s.inspector
+	if s.soundscape.shown || s.loud.shown {
+		return false
+	}
+	if insp.body.Wheel(input, s.inspectorArea()) {
+		s.layout()
+	}
+	if !insp.body.Hidden(input.Cursor) {
+		return false
+	}
+	defer input.ClearPointer()
+	if cue, ok := s.selectedCue(); ok && insp.removeCue.Update(input) {
+		s.confirmDeleteCue(ctx, cue)
+
+		return true
+	}
+	if recording, ok := s.selectedRecording(); ok && insp.removeRec.Update(input) {
+		s.confirmDeleteRecording(recording)
+
+		return true
+	}
+
+	return false
+}
+
+// usesShown are the uses the inspector lists, at most usesListed; the rest
+// it counts.
+func (s *State) usesShown() []protocol.Use {
+	uses := s.inspector.uses
+	if len(uses) > usesListed {
+		uses = uses[:usesListed-1]
+	}
+
+	return uses
+}
+
+// usesListed is how many uses the inspector lists before counting the rest.
+const usesListed = 8
 
 // hide leaves the inspector's fields and buttons with no place.
 func (insp *inspector) hide() {
@@ -395,35 +473,49 @@ func (s *State) drawInspector(screen *ebiten.Image) {
 	switch {
 	case isCue:
 		s.theme.DrawLabel(screen, "INSPECTOR · CUE", left, top, ui.ColorMuted())
-		s.drawFieldLabel(screen, insp.name, "NAME")
-		s.theme.DrawLabel(screen, "ID", left, insp.name.Rect.Max.Y+ui.Inset, ui.ColorMuted())
-		s.theme.DrawMono(screen, cue.ID, left+ui.Half*ui.Inset, insp.name.Rect.Max.Y+ui.Inset, ui.ColorSubdued())
-		s.theme.DrawLabel(screen, "CATEGORY", left, insp.category[0].Rect.Min.Y-ui.LineHeight+ui.Gap, ui.ColorMuted())
-		s.drawMeantToSound(screen, cue)
-		s.drawFieldLabel(screen, insp.how, "HOW TO HEAR IT")
-		s.drawFieldLabel(screen, insp.terms, "SEARCH TERMS")
-		s.drawUses(screen, left, insp.usesTop, insp.removeCue.Rect.Min.Y-ui.Inset)
-		s.drawButtons(screen, insp.quieter, insp.louder, insp.removeCue)
-		s.drawButtons(screen, insp.category...)
-		s.drawFields(screen, insp.name, insp.how, insp.terms)
-		if showsAmbient(cue) {
-			s.drawAmbient(screen, cue, left)
+		if body, ok := insp.body.Clip(screen); ok {
+			s.drawCueBody(body, cue, left)
 		}
-		s.drawProfile(screen, cue)
+		s.drawButtons(screen, insp.removeCue)
+		insp.body.DrawThumb(screen)
 	case isRecording:
 		s.theme.DrawLabel(screen, "INSPECTOR · RECORDING", left, top, ui.ColorMuted())
-		s.drawFacts(screen, recording, left, factsTop(s.inspectorArea()))
-		s.drawFieldLabel(screen, insp.note, "NOTE")
+		if body, ok := insp.body.Clip(screen); ok {
+			s.drawFacts(body, recording, left, factsTop(s.inspectorArea())-insp.body.Offset)
+			s.drawFieldLabel(body, insp.note, "NOTE")
+			s.drawFields(body, insp.note)
+			s.drawFamily(body)
+		}
 		if insp.removeRec.Disabled {
 			s.theme.DrawText(screen, "Only a recording no cue plays can be deleted.", left,
 				insp.removeRec.Rect.Min.Y-ui.LineHeight, ui.ColorMuted())
 		}
 		s.drawButtons(screen, insp.removeRec)
-		s.drawFields(screen, insp.note)
-		s.drawFamily(screen)
+		insp.body.DrawThumb(screen)
 	default:
 		s.theme.DrawLabel(screen, "INSPECTOR", left, top, ui.ColorMuted())
 	}
+}
+
+// drawCueBody draws a cue's fields, which scroll between the inspector's
+// label and Delete cue.
+func (s *State) drawCueBody(body *ebiten.Image, cue protocol.AudioCue, left int) {
+	insp := s.inspector
+	s.drawFieldLabel(body, insp.name, "NAME")
+	s.theme.DrawLabel(body, "ID", left, insp.name.Rect.Max.Y+ui.Inset, ui.ColorMuted())
+	s.theme.DrawMono(body, cue.ID, left+ui.Half*ui.Inset, insp.name.Rect.Max.Y+ui.Inset, ui.ColorSubdued())
+	s.theme.DrawLabel(body, "CATEGORY", left, insp.category[0].Rect.Min.Y-ui.LineHeight+ui.Gap, ui.ColorMuted())
+	s.drawMeantToSound(body, cue)
+	s.drawFieldLabel(body, insp.how, "HOW TO HEAR IT")
+	s.drawFieldLabel(body, insp.terms, "SEARCH TERMS")
+	s.drawUses(body, left, insp.usesTop)
+	s.drawButtons(body, insp.quieter, insp.louder)
+	s.drawButtons(body, insp.category...)
+	s.drawFields(body, insp.name, insp.how, insp.terms)
+	if showsAmbient(cue) {
+		s.drawAmbient(body, cue, left)
+	}
+	s.drawProfile(body, cue)
 }
 
 func (s *State) drawFieldLabel(screen *ebiten.Image, field *ui.TextField, label string) {
@@ -438,20 +530,16 @@ func (s *State) drawFields(screen *ebiten.Image, fields ...*ui.TextField) {
 
 // drawUses lists the workflows that play the cue, as many as fit above
 // bottom, then how many more there are.
-func (s *State) drawUses(screen *ebiten.Image, left, top, bottom int) {
+func (s *State) drawUses(screen *ebiten.Image, left, top int) {
 	s.theme.DrawLabel(screen, "USED BY", left, top, ui.ColorMuted())
 	top += ui.LineHeight
-	uses := s.inspector.uses
+	uses := s.usesShown()
 	if len(uses) == 0 {
 		s.theme.DrawText(screen, "Nothing uses this cue yet.", left, top, ui.ColorSubdued())
 
 		return
 	}
 	width := s.inspectorArea().Dx() - ui.Half*ui.Inset
-	fit := max((bottom-top)/ui.LineHeight, 1)
-	if len(uses) > fit {
-		uses = uses[:fit-1]
-	}
 	for _, use := range uses {
 		s.theme.DrawText(screen, s.theme.FitText(use.Name+" · "+use.Label, width), left, top, ui.ColorInk())
 		top += ui.LineHeight

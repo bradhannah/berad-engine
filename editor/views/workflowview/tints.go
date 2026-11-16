@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -267,18 +267,18 @@ func (s *State) drawSwatch(screen *ebiten.Image, row colourRow, choice swatch) {
 	if coloured, ok := tintNamed(choice.label); ok {
 		fill, ring = coloured.wash, coloured.ink
 	}
-	vector.FillCircle(screen, centreX, centreY, swatchSize/ui.Half, fill, true)
-	vector.StrokeCircle(screen, centreX, centreY, swatchSize/ui.Half, ui.Border, ring, true)
+	pen.FillCircle(screen, centreX, centreY, swatchSize/ui.Half, fill, true)
+	pen.StrokeCircle(screen, centreX, centreY, swatchSize/ui.Half, ui.Border, ring, true)
 	if choice.label == swatchInherit {
 		dot := ui.ColorRule()
 		_, output, _ := flow.SplitLineKey(row.key)
 		if from, ok := s.outcomeTint(routeKey{from: row.node, output: output}); ok {
 			dot = from.ink
 		}
-		vector.FillCircle(screen, centreX, centreY, swatchDot, dot, true)
+		pen.FillCircle(screen, centreX, centreY, swatchDot, dot, true)
 	}
 	if choice.label == row.current {
-		vector.StrokeCircle(screen, centreX, centreY, swatchSize/ui.Half+swatchRing, ui.Border, ui.ColorSelect(), true)
+		pen.StrokeCircle(screen, centreX, centreY, swatchSize/ui.Half+swatchRing, ui.Border, ui.ColorSelect(), true)
 	}
 }
 

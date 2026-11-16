@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"strings"
+	"sync"
 
 	berad "github.com/bradhannah/berad-sdk/modules/berad-text"
 	"github.com/hajimehoshi/ebiten/v2"
 	etext "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 )
 
 // Sizes, in screen pixels.
@@ -273,6 +277,34 @@ type Theme struct {
 	Font *berad.Font
 	// Text draws laid-out editable text.
 	Text *berad.Renderer
+	// fonts are Font opened at each scale it is drawn at (increment 56).
+	fonts *scaledFonts
+}
+
+// scaledFonts holds the text font opened at each scale it is drawn at.
+type scaledFonts struct {
+	sync.Mutex
+
+	sized map[float64]*berad.Font
+}
+
+// fontAt is the font editable text is laid out and drawn in at a scale.
+func (t *Theme) fontAt(scale float64) *berad.Font {
+	if scale == 1 || t.fonts == nil {
+		return t.Font
+	}
+	t.fonts.Lock()
+	defer t.fonts.Unlock()
+	if font, ok := t.fonts.sized[scale]; ok {
+		return font
+	}
+	font, err := t.Font.WithSize(TextSize * scale)
+	if err != nil {
+		return t.Font
+	}
+	t.fonts.sized[scale] = font
+
+	return font
 }
 
 // NewTheme loads the editor fonts. Text rendering needs a running game loop,
@@ -316,6 +348,7 @@ func NewTheme() (*Theme, error) {
 		StrongItalic: face("sans-bold-italic", TextSize), Small: face("sans-bold", LabelSize),
 		Title: face("sans-bold", TitleSize), Mono: face("mono", MonoSize), MonoStrong: face("mono-bold", MonoSize),
 		Display: face("mono-bold", DisplaySize), Font: font, Text: renderer,
+		fonts: &scaledFonts{Mutex: sync.Mutex{}, sized: map[float64]*berad.Font{}},
 	}, nil
 }
 
@@ -327,13 +360,20 @@ func (t *Theme) TextWidth(value string) int { return measure(value, t.Face) }
 
 // Wrap breaks text into lines that fit a width, keeping its own line
 // breaks.
-func (t *Theme) Wrap(text string, width int) []string {
+func (t *Theme) Wrap(text string, width int) []string { return wrap(text, width, t.TextWidth) }
+
+// WrapLabel breaks a label drawn with DrawLabel into lines that fit a width,
+// as Wrap does for ordinary text (increment 61).
+func (t *Theme) WrapLabel(text string, width int) []string { return wrap(text, width, t.LabelWidth) }
+
+// wrap breaks text into lines that fit a width as a face measures it.
+func wrap(text string, width int, measured func(string) int) []string {
 	var lines []string
 	for _, paragraph := range strings.Split(text, "\n") {
 		line := ""
 		for _, word := range strings.Fields(paragraph) {
 			candidate := strings.TrimSpace(line + " " + word)
-			if line != "" && t.TextWidth(candidate) > width {
+			if line != "" && measured(candidate) > width {
 				lines = append(lines, line)
 				candidate = word
 			}
@@ -375,10 +415,16 @@ func (t *Theme) StrongWidth(value string) int { return measure(value, t.Strong) 
 // MonoWidth measures text in the monospaced face.
 func (t *Theme) MonoWidth(value string) int { return measure(value, t.Mono) }
 
-func measure(value string, face *etext.GoTextFace) int {
-	width, _ := etext.Measure(value, face, LineHeight)
+// measure measures text in a face, in points, at the scale it is drawn at.
+func measure(value string, face *etext.GoTextFace) int { return int(advance(value, face)) }
 
-	return int(width)
+// advance is how far text in a face reaches, in points, unrounded, measured
+// at the scale it is drawn at.
+func advance(value string, face *etext.GoTextFace) float64 {
+	scale := pen.Scale()
+	width, _ := etext.Measure(value, faceAt(face, scale), LineHeight*scale)
+
+	return width / scale
 }
 
 // DrawText draws text with its top-left corner at a point.
@@ -427,8 +473,7 @@ func (t *Theme) DrawLabel(screen *ebiten.Image, value string, x, y int, ink colo
 	left := float64(x)
 	for _, letter := range strings.ToUpper(value) {
 		draw(screen, string(letter), t.Small, left, float64(y), ink)
-		width, _ := etext.Measure(string(letter), t.Small, LineHeight)
-		left += width + letterSpacing
+		left += advance(string(letter), t.Small) + letterSpacing
 	}
 }
 
@@ -436,24 +481,26 @@ func (t *Theme) DrawLabel(screen *ebiten.Image, value string, x, y int, ink colo
 func (t *Theme) LabelWidth(value string) int {
 	width := 0.0
 	for _, letter := range strings.ToUpper(value) {
-		advance, _ := etext.Measure(string(letter), t.Small, LineHeight)
-		width += advance + letterSpacing
+		width += advance(string(letter), t.Small) + letterSpacing
 	}
 
 	return int(width)
 }
 
+// draw draws text from its top-left corner in points, in its face opened at
+// the scale, its top on a whole pixel.
 func draw(screen *ebiten.Image, value string, face *etext.GoTextFace, x, y float64, ink color.Color) {
+	scale := pen.Scale()
 	options := &etext.DrawOptions{}
-	options.GeoM.Translate(x, y)
+	options.GeoM.Translate(x*scale, math.Round(y*scale))
 	options.ColorScale.ScaleWithColor(ink)
-	etext.Draw(screen, value, face, options)
+	etext.Draw(screen, value, faceAt(face, scale), options)
 }
 
 // DrawTextIn draws text vertically centred in a rectangle, inset from its
 // left edge, clipped to it.
 func (t *Theme) DrawTextIn(screen *ebiten.Image, value string, rect image.Rectangle, ink color.Color) {
-	clipped, ok := screen.SubImage(rect).(*ebiten.Image)
+	clipped, ok := pen.Clip(screen, rect)
 	if !ok {
 		return
 	}
@@ -471,8 +518,7 @@ func (t *Theme) DrawSection(screen *ebiten.Image, value string, x, y int) {
 	left := float64(x)
 	for _, letter := range strings.ToUpper(value) {
 		draw(screen, string(letter), t.Strong, left, float64(y), ColorInk())
-		width, _ := etext.Measure(string(letter), t.Strong, LineHeight)
-		left += width + letterSpacing
+		left += advance(string(letter), t.Strong) + letterSpacing
 	}
 }
 
@@ -480,8 +526,7 @@ func (t *Theme) DrawSection(screen *ebiten.Image, value string, x, y int) {
 func (t *Theme) SectionWidth(value string) int {
 	width := 0.0
 	for _, letter := range strings.ToUpper(value) {
-		advance, _ := etext.Measure(string(letter), t.Strong, LineHeight)
-		width += advance + letterSpacing
+		width += advance(string(letter), t.Strong) + letterSpacing
 	}
 
 	return int(width)
@@ -489,14 +534,14 @@ func (t *Theme) SectionWidth(value string) int {
 
 // FillRect fills a rectangle.
 func FillRect(screen *ebiten.Image, rect image.Rectangle, fill color.Color) {
-	minX, minY := float32(rect.Min.X), float32(rect.Min.Y)
-	vector.FillRect(screen, minX, minY, float32(rect.Dx()), float32(rect.Dy()), fill, false)
+	minX, minY, maxX, maxY := pen.Edge(rect.Min.X), pen.Edge(rect.Min.Y), pen.Edge(rect.Max.X), pen.Edge(rect.Max.Y)
+	vector.FillRect(screen, minX, minY, maxX-minX, maxY-minY, fill, false)
 }
 
 // StrokeRect outlines a rectangle.
 func StrokeRect(screen *ebiten.Image, rect image.Rectangle, width float32, stroke color.Color) {
-	minX, minY := float32(rect.Min.X), float32(rect.Min.Y)
-	vector.StrokeRect(screen, minX, minY, float32(rect.Dx()), float32(rect.Dy()), width, stroke, false)
+	minX, minY, maxX, maxY := pen.Edge(rect.Min.X), pen.Edge(rect.Min.Y), pen.Edge(rect.Max.X), pen.Edge(rect.Max.Y)
+	vector.StrokeRect(screen, minX, minY, maxX-minX, maxY-minY, pen.Line(width), stroke, false)
 }
 
 // FillRound fills a rectangle with rounded corners.
@@ -518,7 +563,7 @@ func StrokeRound(screen *ebiten.Image, rect image.Rectangle, radius, width float
 	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	options.ColorScale.ScaleWithColor(stroke)
 	var line vector.StrokeOptions
-	line.Width = width
+	line.Width = pen.Px(width)
 	vector.StrokePath(screen, rounded(rect, radius, width/Half), &line, options)
 }
 
@@ -545,10 +590,12 @@ func FloatBox(screen *ebiten.Image, rect image.Rectangle, fill color.Color) {
 	Box(screen, rect, fill)
 }
 
-// rounded returns the path of a rounded rectangle, inset by inset pixels.
+// rounded returns the path of a rounded rectangle, inset by inset points, in
+// the screen's pixels.
 func rounded(rect image.Rectangle, radius, inset float32) *vector.Path {
-	left, top := float32(rect.Min.X)+inset, float32(rect.Min.Y)+inset
-	right, bottom := float32(rect.Max.X)-inset, float32(rect.Max.Y)-inset
+	inset, radius = pen.Px(inset), pen.Px(radius)
+	left, top := pen.Edge(rect.Min.X)+inset, pen.Edge(rect.Min.Y)+inset
+	right, bottom := pen.Edge(rect.Max.X)-inset, pen.Edge(rect.Max.Y)-inset
 	radius = max(min(radius, (right-left)/Half, (bottom-top)/Half), 0)
 	var path vector.Path
 	path.MoveTo(left+radius, top)
@@ -568,12 +615,14 @@ func rounded(rect image.Rectangle, radius, inset float32) *vector.Path {
 // Divider draws the hairline where two regions meet, such as a window's
 // panes or a panel and a canvas.
 func Divider(screen *ebiten.Image, from, to image.Point) {
-	const middle = float32(Hairline) / Half
-	vector.StrokeLine(screen, float32(from.X)+middle, float32(from.Y)+middle, float32(to.X)+middle,
-		float32(to.Y)+middle, Hairline, ColorEdge(), false)
+	width := pen.Line(Hairline)
+	middle := width / Half
+	vector.StrokeLine(screen, pen.Edge(from.X)+middle, pen.Edge(from.Y)+middle, pen.Edge(to.X)+middle,
+		pen.Edge(to.Y)+middle, width, ColorEdge(), false)
 }
 
 // Line draws a straight line.
 func Line(screen *ebiten.Image, from, to image.Point, width float32, ink color.Color) {
-	vector.StrokeLine(screen, float32(from.X), float32(from.Y), float32(to.X), float32(to.Y), width, ink, false)
+	vector.StrokeLine(screen, pen.Edge(from.X), pen.Edge(from.Y), pen.Edge(to.X), pen.Edge(to.Y), pen.Line(width), ink,
+		false)
 }

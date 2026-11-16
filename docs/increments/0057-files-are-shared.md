@@ -106,3 +106,16 @@ Chosen while building, for its author to check:
 - **Unknown fields:** `TestFieldsTheEditorDoesNotKnowAreToldAndKept`.
 - **Notices:** `TestNoticesWaitTheirTurn`.
 - **The whole suite:** `make check` passes, and all 79 real-window walks pass on increment 60's commit, `60c74c9`, run from a frozen copy as `GOFLAGS=-timeout=40m make gui-test`.
+
+## Fixed after it was merged
+
+- **A change from outside just after a save was taken for the editor's
+  own** (found on 2026-11-16, when `TestAFileChangedOutsideIsTakenIn`
+  failed 2 times in 300 runs). The editor looked at a file's size and time
+  just after writing it; a change from outside landing in between was
+  recorded as the editor's own version, and the next save wrote over it
+  unseen. The editor now reads the file back and keeps its size and time
+  only while the file holds what the editor wrote; otherwise the file is
+  judged by its bytes. `TestAnOutsideWriteJustAfterASaveIsSeen` writes
+  over the file at the same size before the editor looks; with the fix,
+  it and `TestAFileChangedOutsideIsTakenIn` pass 200 runs each.

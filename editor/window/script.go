@@ -77,6 +77,10 @@ func (s *inputScript) takeFront() bool {
 	return front
 }
 
+// idle is a frame of input that does nothing, the pointer resting where
+// the script left it.
+func (s *inputScript) idle() ui.Input { return ui.NewInput(s.cursor) }
+
 // takeScreenshot returns a screenshot path a step asked for, once.
 func (s *inputScript) takeScreenshot() string {
 	shot := s.shot

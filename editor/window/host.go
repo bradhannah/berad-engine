@@ -16,6 +16,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -57,9 +58,12 @@ type host struct {
 	pending    map[uint64]func(protocol.Result, error)
 	screenshot string
 	shot       string
-	frames     int
-	title      string
-	started    bool
+	// shotWaiting is set while a screenshot a script asked for waits to be
+	// drawn (increment 56).
+	shotWaiting bool
+	frames      int
+	title       string
+	started     bool
 	// quitDialog asks whether the author is done, while quitAsking waits
 	// for the orchestrator to say what quitting would close; quitSaving is
 	// set while the window saves before closing for a quit. reported is the
@@ -129,7 +133,8 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		outbox:     nil,
 		pending:    map[uint64]func(protocol.Result, error){},
 		screenshot: strings.ReplaceAll(os.Getenv(screenshotEnv), "{view}", viewName),
-		shot:       "", frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil, stripHover: false,
+		shot:       "", shotWaiting: false, frames: 0, title: "", started: false, visible: image.Pt(0, 0), wide: nil,
+		stripHover: false,
 		quitDialog: nil, openingDialog: nil, quitAsking: false, quitSaving: false,
 		reported:    protocol.Unsaved{Count: 0, Name: ""},
 		saidGesture: "", saidEdit: "", statusArea: ui.Zero(), inspectorWidth: 0, leftWidth: 0, dragging: dragNone,
@@ -167,12 +172,7 @@ func (h *host) Update() error {
 	if h.quitSaving && h.savedForQuit() {
 		return ebiten.Termination
 	}
-	var input ui.Input
-	if h.script != nil {
-		input = h.script.next(h, h.conn)
-	} else {
-		input = h.surface.Input(h.view.Focused())
-	}
+	input := h.readInput()
 	if quick, ok := h.view.(quickOpener); !ok || !quick.QuickOpen() {
 		// Quick open's sheet takes every press while it shows, so none
 		// reaches the status bar, the folded strip or the window's keys; the
@@ -189,12 +189,7 @@ func (h *host) Update() error {
 	h.close()
 	h.reportUnsaved()
 	h.flush()
-	if h.script != nil {
-		h.surface.front = h.surface.front || h.script.takeFront()
-		if shot := h.script.takeScreenshot(); shot != "" {
-			h.shot = shot
-		}
-	}
+	h.followScript()
 	if h.frame.Crash {
 		panic("simulated window crash (debug key)")
 	}
@@ -687,6 +682,35 @@ func (h *host) PreviewControl(control protocol.PreviewControl) {
 	}
 }
 
+// readInput is the frame's input: the input script's, or else the
+// window's.
+func (h *host) readInput() ui.Input {
+	switch {
+	case h.script != nil && h.shotWaiting:
+		// A script waits for the screenshot it asked for to be drawn: a
+		// slow frame, such as one saving a screenshot, is followed by
+		// several updates without drawing, which would run the next steps
+		// before it (increment 56).
+		return h.script.idle()
+	case h.script != nil:
+		return h.script.next(h, h.conn)
+	default:
+		return h.surface.Input(h.view.Focused())
+	}
+}
+
+// followScript brings the pane's tab to the front, or asks for a
+// screenshot, when the input script's step asked.
+func (h *host) followScript() {
+	if h.script == nil {
+		return
+	}
+	h.surface.front = h.surface.front || h.script.takeFront()
+	if shot := h.script.takeScreenshot(); shot != "" {
+		h.shot, h.shotWaiting = shot, true
+	}
+}
+
 // Draw renders the view, its inspector or the folded strip, the status bar
 // and, once, a screenshot if asked for.
 func (h *host) Draw(screen *ebiten.Image) {
@@ -695,6 +719,7 @@ func (h *host) Draw(screen *ebiten.Image) {
 	if h.statusArea.Empty() {
 		h.frame.DrawStatus(screen, h.theme)
 		h.frame.DrawHistory(screen, h.theme)
+		h.frame.DrawTextMenu(screen, h.theme)
 	}
 	if h.quitDialog != nil {
 		h.quitDialog.Draw(screen, h.theme)
@@ -759,13 +784,7 @@ func (h *host) drawView(screen *ebiten.Image) {
 
 		return
 	}
-	size := h.viewSize()
-	if h.wide == nil || h.wide.Bounds().Size() != size {
-		if h.wide != nil {
-			h.wide.Deallocate()
-		}
-		h.wide = ebiten.NewImage(size.X, size.Y)
-	}
+	h.wide = pen.Layer(h.wide, image.Rectangle{Min: image.Pt(0, 0), Max: h.viewSize()})
 	h.wide.Clear()
 	h.view.Draw(h.wide, h.conn)
 	screen.DrawImage(h.wide, nil)

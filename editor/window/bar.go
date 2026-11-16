@@ -5,9 +5,9 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 )
 
 // The window bar is one row of tabs (increment 38): every open document has
@@ -347,6 +347,6 @@ func (s *shell) drawBarTab(screen *ebiten.Image, shown barTab) {
 func drawClose(screen *ebiten.Image, rect image.Rectangle) {
 	left, top := float32(rect.Min.X+ui.Gap), float32(rect.Min.Y+ui.Gap)
 	right, bottom := float32(rect.Max.X-ui.Gap), float32(rect.Max.Y-ui.Gap)
-	vector.StrokeLine(screen, left, top, right, bottom, ui.Outline, ui.ColorMuted(), true)
-	vector.StrokeLine(screen, left, bottom, right, top, ui.Outline, ui.ColorMuted(), true)
+	pen.StrokeLine(screen, left, top, right, bottom, ui.Outline, ui.ColorMuted(), true)
+	pen.StrokeLine(screen, left, bottom, right, top, ui.Outline, ui.ColorMuted(), true)
 }

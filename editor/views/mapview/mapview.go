@@ -23,6 +23,7 @@ import (
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/zonepalettes"
@@ -145,13 +146,19 @@ type State struct {
 	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
-	theme        *ui.Theme
-	floors       []ids.ULID
-	floor        ids.ULID
-	subs         map[ids.ULID]bool
-	tool         Tool
-	tile         map[Tool]string
-	camera       camera
+	// body is how far the inspector's parts are scrolled between its heading
+	// and the preview's lines, Clock, Watch and Keys at its foot, and lists
+	// how far the left panel's lists are, above Show floor below and Preview
+	// at its foot, in a window too short for them (increment 61).
+	body   ui.Scroll
+	lists  ui.Scroll
+	theme  *ui.Theme
+	floors []ids.ULID
+	floor  ids.ULID
+	subs   map[ids.ULID]bool
+	tool   Tool
+	tile   map[Tool]string
+	camera camera
 	// sprites is the art drawn for stand-ins that sprites show.
 	sprites *spriteArt
 	size    image.Point
@@ -276,7 +283,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
 		previewBn: ui.NewButton("preview", "Preview"),
 		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
-		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0,
+		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0, body: ui.NewScroll(), lists: ui.NewScroll(),
 		openBn:   ui.NewButton("open-behaviour", "Open behaviour"),
 		removeBn: ui.NewButton("remove-npc", "Remove"),
 		clockBn:  ui.NewButton("clock", "Clock"), watchBn: ui.NewButton("watch", "Watch"),
@@ -517,11 +524,19 @@ func (s *State) Grid() image.Rectangle {
 	return image.Rect(s.panelWidth(), 0, content.Max.X, content.Max.Y)
 }
 
+// stage is the grid in the canvas's points, where the camera places cells:
+// the author's scale for text and controls does not change a cell's size
+// (increment 56).
+func (s *State) stage() image.Rectangle { return pen.CanvasRect(s.Grid()) }
+
+// onStage is a window point in the canvas's points.
+func onStage(point image.Point) image.Point { return pen.CanvasPoint(point) }
+
 // layoutWidgets places the panel widgets for the window size.
 func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
-	rowY := ui.Inset + headingSpace
+	rowY := ui.Inset + headingSpace - s.lists.Offset
 	s.toolList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
 	s.tileList.Rows = s.tileRows()
@@ -543,6 +558,7 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.below.Rect = image.Rect(ui.Inset/ui.Half+ui.Half, rowY, s.panelFull()-ui.Inset, rowY+ui.RowHeight)
 	rowY = s.below.Rect.Max.Y + panelGap
 	s.previewBn.Rect = image.Rect(ui.Inset, rowY, s.panelFull()-ui.Inset, rowY+ui.ButtonH)
+	s.fitLists()
 	switch {
 	case s.preview != nil:
 		s.previewBn.Label = "Stop preview (P)"
@@ -553,6 +569,10 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	}
 
 	s.layoutFold()
+	inspector := frame.Inspector(s.size)
+	s.body.For(s.inspecting())
+	s.body.Body = image.Rect(inspector.Min.X, bodyTop(inspector), inspector.Max.X,
+		max(bodyTop(inspector), footTop(inspector)-ui.ButtonH-ui.Inset-s.previewHeight(docs)-ui.Gap))
 	s.layoutInspector()
 	s.layoutZonePalettes(docs)
 }
@@ -564,26 +584,41 @@ func (s *State) layoutInspector() {
 	s.nameField.Rect, s.deleteBtn.Rect, s.replace.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	s.openBn.Rect, s.removeBn.Rect = ui.Zero(), ui.Zero()
 	if !s.placement.IsZero() {
-		half := (width - ui.Gap) / ui.Half
-		s.openBn.Rect = image.Rect(left, placementButtonsTop, left+half, placementButtonsTop+ui.ButtonH)
-		s.removeBn.Rect = image.Rect(left+half+ui.Gap, placementButtonsTop, left+width, placementButtonsTop+ui.ButtonH)
+		half, top := (width-ui.Gap)/ui.Half, s.down(placementButtonsTop)
+		s.openBn.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
+		s.removeBn.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
 	}
 	s.save.Rect = ui.Zero()
 	if !s.anchor.IsZero() {
-		s.nameField.Rect = image.Rect(left, inspectorFieldTop, left+width, inspectorFieldTop+ui.ButtonH)
-		saveTop := inspectorFieldTop + ui.ButtonH + anchorRows*ui.LineHeight
+		top := s.down(inspectorFieldTop)
+		s.nameField.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
+		saveTop := top + ui.ButtonH + anchorRows*ui.LineHeight
 		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
 		deleteTop := s.save.Rect.Max.Y + ui.Half*ui.Gap
 		s.deleteBtn.Rect = image.Rect(left, deleteTop, left+width, deleteTop+ui.ButtonH)
 	}
 	if len(s.selected) > 0 {
-		s.replace.Rect = image.Rect(left, replaceTop, left+width, replaceTop+ui.ButtonH)
+		s.replace.Rect = image.Rect(left, s.down(replaceTop), left+width, s.down(replaceTop)+ui.ButtonH)
 	}
 	s.keysBn.Rect = image.Rect(left+width-keysWidth, inspector.Max.Y-ui.Inset-ui.ButtonH, left+width,
 		inspector.Max.Y-ui.Inset)
 	s.layoutPreview(left, width, footTop(inspector))
 	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero() &&
 		s.placement.IsZero())
+}
+
+// down is where a part of the inspector laid out at a height from its top
+// is, as far as its parts are scrolled (increment 61).
+func (s *State) down(top int) int { return top - s.body.Offset }
+
+// bodyTop is where the inspector's parts that scroll start, under its
+// heading.
+func bodyTop(inspector image.Rectangle) int { return inspector.Min.Y + ui.Inset + ui.LineHeight }
+
+// inspecting names what the inspector shows, so another thing starts at its
+// top: the anchor or NPC selected, the walls selected, or the tool.
+func (s *State) inspecting() string {
+	return s.anchor.String() + s.placement.String() + strconv.Itoa(len(s.selected)) + string(s.tool)
 }
 
 // footTop is where the inspector's sections at its foot end, above the
@@ -639,7 +674,7 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 // Update handles one frame of input.
 func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.size = ctx.Size
-	s.cursor = input.Cursor
+	s.cursor = onStage(input.Cursor)
 	s.fold.folded = !ctx.Frame.ShowLeft.On
 	s.layoutWidgets(ctx.Docs)
 	// The status bar names what is in hand once the frame has moved it.
@@ -653,6 +688,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.guardAnchor()
+	s.updateInspectorFoot(input, ctx)
 	s.updateZoom(input, ctx)
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
@@ -747,7 +783,7 @@ func (s *State) updateZoom(input *ui.Input, ctx *frame.Context) {
 		}
 	})
 	s.zoom.layout(s.Grid(), s.camera)
-	s.zoom.update(input, &s.camera, s.Grid(), bounds)
+	s.zoom.update(input, &s.camera, s.stage(), bounds)
 }
 
 // keys handles the window's own keys while no text field has focus.
@@ -761,9 +797,9 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case input.Consume(ui.KeyPageDown, plain):
 		s.stepFloor(-1, ctx)
 	case input.Consume(ui.KeyEqual, command):
-		s.camera.zoomBy(1, input.Cursor, s.Grid())
+		s.camera.zoomBy(1, onStage(input.Cursor), s.stage())
 	case input.Consume(ui.KeyMinus, command):
-		s.camera.zoomBy(-1, input.Cursor, s.Grid())
+		s.camera.zoomBy(-1, onStage(input.Cursor), s.stage())
 	case input.Consume(ui.Key0, command):
 		ctx.Docs.View(s.floor, func(document client.Document) {
 			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
@@ -842,6 +878,32 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 	if s.updateFold(input, ctx) {
 		return
 	}
+	if s.lists.Wheel(input, s.lists.Body) {
+		s.layoutWidgets(ctx.Docs)
+	}
+	s.updateLists(s.listsInput(input), ctx)
+	s.below.Update(input)
+	if s.previewBn.Update(input) {
+		s.togglePreview(ctx)
+	}
+	s.updateInspectorButtons(input, ctx)
+}
+
+// listsInput is the input the left panel's lists take: none of the pointer
+// while it is beside them, on Show floor below or Preview, which take it
+// alone (increment 61).
+func (s *State) listsInput(input *ui.Input) *ui.Input {
+	if !s.lists.Hidden(input.Cursor) {
+		return input
+	}
+	beside := *input
+	beside.ClearPointer()
+
+	return &beside
+}
+
+// updateLists handles the tools, tiles and floors.
+func (s *State) updateLists(input *ui.Input, ctx *frame.Context) {
 	if s.toolList.Update(input).Changed {
 		s.setTool(Tool(s.toolList.Selected))
 	}
@@ -856,11 +918,23 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 			s.switchFloor(id, ctx)
 		}
 	}
-	s.below.Update(input)
-	if s.previewBn.Update(input) {
-		s.togglePreview(ctx)
+}
+
+// updateInspectorFoot scrolls the inspector's parts with the wheel over it,
+// and gives a press beside them, on Clock, Watch, Keys or the heading, to
+// those alone, never to a part scrolled behind them (increment 61).
+func (s *State) updateInspectorFoot(input *ui.Input, ctx *frame.Context) {
+	if s.body.Wheel(input, frame.Inspector(s.size)) {
+		s.layoutWidgets(ctx.Docs)
 	}
-	s.updateInspectorButtons(input, ctx)
+	if !s.body.Hidden(input.Cursor) {
+		return
+	}
+	defer input.ClearPointer()
+	s.updatePreviewControls(input, ctx)
+	if s.keysBn.Update(input) {
+		s.keySheet.Open(image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, s.theme)
+	}
 }
 
 // updateInspectorButtons handles the buttons for what is selected.
@@ -885,9 +959,8 @@ func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 
 // updateGrid handles panning, zooming and the current tool on the floor.
 func (s *State) updateGrid(input *ui.Input, ctx *frame.Context, floorData *floor.Floor) {
-	grid := s.Grid()
-	s.panAndZoom(input, grid)
-	cell, inGrid := s.camera.cellAt(input.Cursor, grid)
+	s.panAndZoom(input, s.Grid())
+	cell, inGrid := s.camera.cellAt(onStage(input.Cursor), s.stage())
 	onFloor := inGrid && floorData.In(cell.X, cell.Y)
 	s.hover, s.hovering, s.outside = cell, onFloor, inGrid && !onFloor && !s.zoom.contains(input.Cursor)
 	if s.panning || input.Space || s.updateGridMode(input, ctx, floorData, cell, inGrid) {
@@ -931,28 +1004,30 @@ func (s *State) updateGridMode(
 	return true
 }
 
+// panAndZoom pans and zooms the camera, which works in the canvas's points.
 func (s *State) panAndZoom(input *ui.Input, grid image.Rectangle) {
+	cursor, stage := onStage(input.Cursor), s.stage()
 	if input.Cursor.In(grid) && (input.WheelX != 0 || input.WheelY != 0) {
 		if input.Held.Shortcut {
 			s.wheel += input.WheelY
 			for s.wheel >= 1 {
-				s.camera.zoomBy(1, input.Cursor, grid)
+				s.camera.zoomBy(1, cursor, stage)
 				s.wheel--
 			}
 			for s.wheel <= -1 {
-				s.camera.zoomBy(-1, input.Cursor, grid)
+				s.camera.zoomBy(-1, cursor, stage)
 				s.wheel++
 			}
 		} else {
-			s.camera.pan(input.WheelPan())
+			s.camera.pan(pen.CanvasDelta(input.WheelPan()))
 		}
 	}
 	dragPan := input.PanDown || (input.Space && input.Down)
 	if dragPan && s.panning {
-		s.camera.pan(input.Cursor.Sub(s.lastPan))
+		s.camera.pan(cursor.Sub(s.lastPan))
 	}
 	s.panning = dragPan && (s.panning || input.Cursor.In(grid))
-	s.lastPan = input.Cursor
+	s.lastPan = cursor
 }
 
 // paintValue returns the layer and tile the current tool paints.
@@ -1544,25 +1619,15 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 		if _, err := fmt.Sscanf(value, "%d,%d", &col, &row); err != nil {
 			return image.Pt(0, 0), false
 		}
-		rect := s.camera.cellRect(Cell{X: col, Y: row}, s.Grid())
+		rect := pen.WindowRect(s.camera.cellRect(Cell{X: col, Y: row}, s.stage()))
 
 		return image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2), true
 	case "edge":
 		return s.locateEdge(value, docs)
-	case "tool":
-		return s.toolList.Locate(value)
-	case "tile":
-		return s.tileList.Locate(value)
-	case "npc":
-		return s.locateNPC(value)
-	case "floor":
-		return s.locateFloor(value)
+	case "tool", "tile", "npc", "floor":
+		return s.locateInLists(kind, value, docs)
 	case "ui":
-		if at, found := s.locateSides(name); found {
-			return at, true
-		}
-
-		return s.locateWidget(value)
+		return s.locateInspector(name, value, docs)
 	case "live-npc":
 		return s.locateLiveNPC(value)
 	case "player":
@@ -1570,6 +1635,54 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateInLists finds a tool, a tile, an NPC to place or a floor for an
+// input script, scrolling the left panel's lists to one hidden below them,
+// as an author would (increment 61).
+func (s *State) locateInLists(kind, value string, docs frame.Docs) (image.Point, bool) {
+	find := func() (image.Point, bool) {
+		switch kind {
+		case "tool":
+			return s.toolList.Locate(value)
+		case "tile":
+			return s.tileList.Locate(value)
+		case "npc":
+			return s.locateNPC(value)
+		}
+
+		return s.locateFloor(value)
+	}
+	point, found := find()
+	if !found || !s.lists.Reveal(point) {
+		return point, found
+	}
+	s.layoutWidgets(docs)
+
+	return find()
+}
+
+// locateInspector finds a widget for an input script, scrolling the
+// inspector's parts to one hidden above or below them, as an author would;
+// Clock, Watch and Keys stay where they are (increment 61).
+func (s *State) locateInspector(name, value string, docs frame.Docs) (image.Point, bool) {
+	point, found := s.locateLaidOut(name, value)
+	foot := value == s.keysBn.ID || value == s.clockBn.ID || value == s.watchBn.ID
+	if !found || foot || !s.body.Reveal(point) {
+		return point, found
+	}
+	s.layoutWidgets(docs)
+
+	return s.locateLaidOut(name, value)
+}
+
+// locateLaidOut finds a widget, a side's buttons among them, as laid out.
+func (s *State) locateLaidOut(name, value string) (image.Point, bool) {
+	if at, found := s.locateSides(name); found {
+		return at, true
+	}
+
+	return s.locateWidget(value)
 }
 
 // hasState answers input scripts waiting for the window: "loaded" once the

@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -577,7 +578,7 @@ func addRect(rect image.Rectangle) image.Rectangle {
 
 // Draw renders the list.
 func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
-	area, ok := screen.SubImage(l.Rect).(*ebiten.Image)
+	area, ok := pen.Clip(screen, l.Rect)
 	if !ok {
 		return
 	}

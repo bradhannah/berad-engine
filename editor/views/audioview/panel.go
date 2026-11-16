@@ -11,6 +11,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -62,16 +63,23 @@ func newPanel() *panel {
 func (s *State) panelArea() image.Rectangle {
 	content := frame.Content(s.size)
 
-	return image.Rect(listWidth, toolbarHeight, content.Max.X, content.Max.Y)
+	return image.Rect(listWidth, s.barBottom, content.Max.X, content.Max.Y)
 }
 
 // headerLines counts the lines above the panel's buttons: the name, the ID,
 // what it is, and its problems.
-func headerLines(found []string) int {
+func (s *State) headerLines(found []string) int {
 	const fixed = 3
+	lines := fixed
+	for _, problem := range found {
+		lines += len(s.theme.Wrap("! "+sentence(problem), s.panelWidth()))
+	}
 
-	return fixed + len(found)
+	return lines
 }
+
+// panelWidth is the room for text across the panel, inside its insets.
+func (s *State) panelWidth() int { return s.panelArea().Dx() - ui.Half*ui.Inset }
 
 // panelTop is where the panel's content starts, as far as it is scrolled.
 func (s *State) panelTop() int { return s.panelArea().Min.Y + ui.Inset - s.panel.scroll }
@@ -107,7 +115,7 @@ func (s *State) layoutPanelContent() int {
 		return s.layoutCue(cue, left, area)
 	}
 	if file, ok := s.selectedFile(); ok {
-		top := s.layoutFile(file, left, right, s.panelTop()+headerLines(s.fileProblemsOf(file))*ui.LineHeight+ui.Gap)
+		top := s.layoutFile(file, left, right, s.panelTop()+s.headerLines(s.fileProblemsOf(file))*ui.LineHeight+ui.Gap)
 		s.layoutTrim(left, right, top)
 
 		return s.layoutAttribution(left, right, top)
@@ -119,35 +127,33 @@ func (s *State) layoutPanelContent() int {
 
 		return area.Min.Y
 	}
-	top := s.panelTop() + headerLines(s.problems(recording))*ui.LineHeight + ui.Gap
-	s.row(left, top, pane.replace)
+	top := s.panelTop() + s.headerLines(s.problems(recording))*ui.LineHeight + ui.Gap
+	buttons := []*ui.Button{pane.replace}
 	if recording.File != "" {
-		s.row(pane.replace.Rect.Max.X+panelButtonGap, top, pane.openFile)
+		buttons = append(buttons, pane.openFile)
 	}
-	top = s.layoutTrim(left, right, top+ui.ButtonH+ui.Inset)
+	top = s.layoutTrim(left, right, s.row(left, right, top, buttons...)+ui.Inset)
 	pane.listTop = s.layoutAttribution(left, right, top) + ui.LineHeight
 	pane.cues = pane.cues[:0]
-	for index, cue := range s.usedBy(recording.ID) {
-		hear := pane.hearButton(cue.ID)
-		rowTop := pane.listTop + index*(ui.ButtonH+ui.Gap)
-		s.row(left, rowTop, hear)
+	rowTop := pane.listTop
+	for _, cue := range s.usedBy(recording.ID) {
 		button := ui.NewButton(cuePrefix+cue.ID, cue.Name)
-		button.Rect = image.Rect(hear.Rect.Max.X+panelButtonGap, rowTop,
-			hear.Rect.Max.X+panelButtonGap+s.theme.TextWidth(cue.Name)+ui.Half*ui.Inset, rowTop+ui.ButtonH)
+		rowTop = s.row(left, right, rowTop, pane.hearButton(cue.ID), button) + ui.Gap
 		pane.cues = append(pane.cues, button)
 	}
 
-	return pane.listTop + max(len(pane.cues)*(ui.ButtonH+ui.Gap), ui.LineHeight) + ui.Inset
+	return max(rowTop, pane.listTop+ui.LineHeight) + ui.Inset
 }
 
 // layoutCue places a cue's buttons and its recordings, and returns where
 // they end.
 func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle) int {
 	pane := s.panel
-	top := s.panelTop() + headerLines(s.cueProblems(cue))*ui.LineHeight + ui.Gap
-	s.row(left, top, pane.play, pane.addRecording, pane.addLayer)
+	right := area.Max.X - ui.Inset
+	top := s.panelTop() + s.headerLines(s.cueProblems(cue))*ui.LineHeight + ui.Gap
+	top = s.row(left, right, top, pane.play, pane.addRecording, pane.addLayer)
 	pane.addRecording.Disabled = cue.Ambient != nil
-	pane.listTop = top + ui.ButtonH + ui.Inset + ui.LineHeight
+	pane.listTop = top + ui.Inset + ui.LineHeight
 	rows := make([]ui.Row, 0, len(cue.Recordings))
 	for index, recording := range cue.Recordings {
 		row := ui.NewRow(playedPrefix+recording.ID, strconv.Itoa(index+1)+"  "+recording.ID)
@@ -173,25 +179,39 @@ func (s *State) layoutCue(cue protocol.AudioCue, left int, area image.Rectangle)
 	}
 	shown := min(max(len(rows), 1), playedRows)
 	s.played.Rect = image.Rect(left, pane.listTop, area.Max.X-ui.Inset, pane.listTop+shown*ui.RowHeight)
-	s.row(left, s.played.Rect.Max.Y+ui.Gap, pane.up, pane.down, pane.takeOut, pane.replace, pane.openRecording)
+	below := s.row(left, right, s.played.Rect.Max.Y+ui.Gap, pane.up, pane.down, pane.takeOut, pane.replace,
+		pane.openRecording)
 	index, _ := s.playedIndex(cue)
 	pane.up.Disabled, pane.down.Disabled = index <= 0, index < 0 || index >= len(cue.Recordings)-1
 	pane.takeOut.Disabled = len(cue.Recordings) < minRecordings
-	top = s.layoutTrim(left, area.Max.X-ui.Inset, pane.up.Rect.Max.Y+ui.Inset)
-	top = s.layoutAttribution(left, area.Max.X-ui.Inset, top)
+	top = s.layoutTrim(left, right, below+ui.Inset)
+	top = s.layoutAttribution(left, right, top)
 	pane.loudTop = top + ui.LineHeight
 	pane.chainTop = pane.loudTop + len(cue.Recordings)*(ui.RowHeight+loudRowGap) + ui.Inset
 
 	return pane.chainTop + chainHeight + ui.Inset
 }
 
-// row lays buttons out in a row, each as wide as its label.
-func (s *State) row(left, top int, buttons ...*ui.Button) {
-	for _, button := range buttons {
-		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
-		button.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-		left += width + panelButtonGap
+// row lays buttons out in a row from left, each as wide as its label,
+// carrying on below when they reach right (increment 61), and returns where
+// the last line ends.
+func (s *State) row(left, right, top int, buttons ...*ui.Button) int {
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top), s.widths(buttons...), nil, panelButtonGap)
+	for index, button := range buttons {
+		button.Rect = placed[index]
 	}
+
+	return bottom
+}
+
+// widths are how wide buttons are for their labels.
+func (s *State) widths(buttons ...*ui.Button) []int {
+	widths := make([]int, len(buttons))
+	for index, button := range buttons {
+		widths[index] = s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
+	}
+
+	return widths
 }
 
 // panelButtons counts the panel's own buttons, before the Plays beside cues.
@@ -372,7 +392,7 @@ func appliedWindow(recording protocol.AudioRecording) *protocol.AudioWindow {
 // scrolled.
 func (s *State) drawPanel(window *ebiten.Image) {
 	area := s.panelArea()
-	screen, clipped := window.SubImage(area).(*ebiten.Image)
+	screen, clipped := pen.Clip(window, area)
 	if !clipped {
 		return
 	}
@@ -511,8 +531,10 @@ func (s *State) drawHeader(screen *ebiten.Image, left, top int, name, id, what s
 	top += ui.LineHeight
 	s.theme.DrawText(screen, what, left, top, ui.ColorMuted())
 	for _, problem := range found {
-		top += ui.LineHeight
-		s.theme.DrawText(screen, "! "+sentence(problem), left, top, ui.ColorWarn())
+		for _, line := range s.theme.Wrap("! "+sentence(problem), s.panelWidth()) {
+			top += ui.LineHeight
+			s.theme.DrawText(screen, line, left, top, ui.ColorWarn())
+		}
 	}
 }
 

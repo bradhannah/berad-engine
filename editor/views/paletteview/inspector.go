@@ -73,44 +73,50 @@ func (s *State) place(button *ui.Button, left, top int) int {
 
 // layoutToolbar places the palette's name and the buttons above the ramps:
 // for Default, only copying out; for any other palette, its name, + Ramp,
-// Gradient…, Copy colours from… and Delete palette….
+// Gradient…, Copy colours from… and, at the right, Delete palette…. When
+// they do not fit on one line, the rest carry on below and the ramps start
+// under them (increment 61).
 func (s *State) layoutToolbar() {
 	for _, button := range []*ui.Button{
 		s.bar.addRamp, s.bar.gradient, s.bar.copyFrom, s.bar.remove, s.bar.copyTo, s.bar.newPalette,
 	} {
 		button.Rect = ui.Zero()
 	}
-	s.name.Rect = ui.Zero()
-	top, left := ui.Inset, ui.Inset
+	s.name.Rect, s.bar.title = ui.Zero(), ui.Zero()
+	row := image.Rect(ui.Inset, ui.Inset, frame.Content(s.size).Max.X-ui.Inset, ui.Inset)
 	if s.ReadOnly() {
-		left += s.theme.StrongWidth(art.DefaultPaletteName) + ui.Inset + s.theme.TextWidth(readOnlyNote) + ui.Inset
-		left = s.place(s.bar.copyTo, left, top)
-		s.place(s.bar.newPalette, left, top)
+		title := s.theme.StrongWidth(art.DefaultPaletteName) + ui.Inset + s.theme.TextWidth(readOnlyNote)
+		leads, _, bottom := ui.WrapRow(row, []int{title + nameApart, s.buttonWidth(s.bar.copyTo),
+			s.buttonWidth(s.bar.newPalette)}, nil, ui.Gap)
+		s.bar.title, s.bar.copyTo.Rect, s.bar.newPalette.Rect, s.bar.bottom = leads[0], leads[1], leads[2], bottom
 		s.bar.copyTo.Disabled = len(s.picked) == 0
 		s.bar.newPalette.Disabled = len(s.picked) == 0
 
 		return
 	}
-	s.name.Rect = image.Rect(left, top, left+nameWidth, top+ui.ButtonH)
-	left = s.name.Rect.Max.X + ui.Inset
-	left = s.place(s.bar.addRamp, left, top)
-	left = s.place(s.bar.gradient, left, top)
-	s.place(s.bar.copyFrom, left, top)
+	leads, trails, bottom := ui.WrapRow(row, []int{
+		nameWidth + nameApart, s.buttonWidth(s.bar.addRamp), s.buttonWidth(s.bar.gradient), s.buttonWidth(s.bar.copyFrom),
+	}, []int{s.buttonWidth(s.bar.remove)}, ui.Gap)
+	s.name.Rect = image.Rect(leads[0].Min.X, leads[0].Min.Y, min(leads[0].Min.X+nameWidth, leads[0].Max.X), leads[0].Max.Y)
+	s.bar.addRamp.Rect, s.bar.gradient.Rect, s.bar.copyFrom.Rect = leads[1], leads[2], leads[3]
+	s.bar.remove.Rect, s.bar.bottom = trails[0], bottom
 	s.bar.gradient.On = s.gradient.open
 	s.bar.copyFrom.On = s.copying.open
-	right := frame.Content(s.size).Max.X - ui.Inset
-	s.place(s.bar.remove, right-s.buttonWidth(s.bar.remove), top)
 }
+
+// nameApart is the further room kept after the palette's name.
+const nameApart = ui.Inset - ui.Gap
 
 // readOnlyNote follows Default's name in its toolbar.
 const readOnlyNote = "built in · read only · the same in every game"
 
 // drawToolbar draws the palette's name and the toolbar's buttons.
 func (s *State) drawToolbar(screen *ebiten.Image) {
-	text := ui.Inset + (ui.ButtonH-ui.TextSize)/ui.Half
 	if s.ReadOnly() {
-		s.theme.DrawStrong(screen, art.DefaultPaletteName, ui.Inset, text, ui.ColorInk())
-		s.theme.DrawText(screen, readOnlyNote, ui.Inset+s.theme.StrongWidth(art.DefaultPaletteName)+ui.Inset, text,
+		title := s.bar.title
+		text := title.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half
+		s.theme.DrawStrong(screen, art.DefaultPaletteName, title.Min.X, text, ui.ColorInk())
+		s.theme.DrawText(screen, readOnlyNote, title.Min.X+s.theme.StrongWidth(art.DefaultPaletteName)+ui.Inset, text,
 			ui.ColorMuted())
 	} else {
 		s.name.Draw(screen)
@@ -517,14 +523,23 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	s.slider.Rect = ui.Zero()
 	bottom := panel.Max.Y - ui.Inset
 	s.save.Rect = ui.Zero()
+	foot := bottom - len(readOnlyLines())*ui.LineHeight - ui.Inset
 	if !s.ReadOnly() {
 		s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
+		foot = s.save.Rect.Min.Y - ui.Inset
 	}
+	s.body.For(s.chosen.ramp.String() + s.chosen.shade.String())
+	s.body.Body = image.Rect(panel.Min.X, bodyTop, panel.Max.X, max(bodyTop, foot))
 	ramp, found := palette.Ramp(s.chosen.ramp)
-	if !found || s.ReadOnly() {
+	if !found {
 		return
 	}
-	top := ui.Inset + ui.LineHeight + preview + ui.Inset
+	top := bodyTop - s.body.Offset + preview + ui.Inset
+	if s.ReadOnly() {
+		s.fitInspector(palette, top+ui.LineHeight+ui.Inset)
+
+		return
+	}
 	if shade, _, has := palette.Lookup(ramp.ID, s.chosen.shade); has {
 		top = s.layoutColor(palette, shade, left, width, top)
 	}
@@ -536,6 +551,44 @@ func (s *State) layoutInspector(palette *art.Palette) {
 	s.inspect.gradientInto.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
 	s.inspect.removeRamp.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
 	s.save.Unsaved = frame.UnsavedFields(s.fields()...)
+	s.fitInspector(palette, s.inspect.removeRamp.Rect.Max.Y+ui.Inset)
+}
+
+// bodyTop is where the inspector's fields start, under its heading.
+const bodyTop = ui.Inset + ui.LineHeight
+
+// fitInspector keeps the inspector scrolled no further than its fields,
+// ending at bottom, need, and lays it out again when that moved it.
+func (s *State) fitInspector(palette *art.Palette, bottom int) {
+	if s.body.Fit(bottom) {
+		s.layoutInspector(palette)
+	}
+}
+
+// updateFoot scrolls the inspector's fields with the wheel over it, and
+// gives a press beside them, on the save bar or the heading, to those
+// alone, never to a field scrolled behind them (increment 61). It reports
+// whether the press did something.
+func (s *State) updateFoot(input *ui.Input, ctx *frame.Context) bool {
+	if s.body.Wheel(input, frame.Inspector(s.size)) {
+		s.layout(ctx.Docs)
+	}
+	if !s.body.Hidden(input.Cursor) {
+		return false
+	}
+	defer input.ClearPointer()
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+
+		return true
+	case ui.RevertID:
+		s.discard()
+
+		return true
+	}
+
+	return false
 }
 
 // layoutColor places the chosen colour's fields, slider, picker and buttons
@@ -582,25 +635,28 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs, palette *ar
 		name = ramp.Name
 	}
 	s.theme.Heading(screen, "COLOUR · "+strings.ToUpper(name), left, ui.Inset)
-	if has {
-		s.drawChosen(screen, docs, shade, left, width)
-	}
-	if !s.ReadOnly() {
-		s.theme.Heading(screen, "RAMP", left, s.rampTop)
-		s.rampName.Draw(screen)
-		count := strconv.Itoa(len(ramp.Shades)) + " colours"
-		s.theme.DrawText(screen, s.theme.FitText(count, width), left, s.rampName.Rect.Max.Y+ui.Gap, ui.ColorMuted())
-		s.inspect.gradientInto.Draw(screen, s.theme)
-		s.inspect.removeRamp.Draw(screen, s.theme)
+	if body, ok := s.body.Clip(screen); ok {
+		if has {
+			s.drawChosen(body, docs, shade, left, width)
+		}
+		if !s.ReadOnly() {
+			s.theme.Heading(body, "RAMP", left, s.rampTop)
+			s.rampName.Draw(body)
+			count := strconv.Itoa(len(ramp.Shades)) + " colours"
+			s.theme.DrawText(body, s.theme.FitText(count, width), left, s.rampName.Rect.Max.Y+ui.Gap, ui.ColorMuted())
+			s.inspect.gradientInto.Draw(body, s.theme)
+			s.inspect.removeRamp.Draw(body, s.theme)
+		}
 	}
 	s.drawReadOnlyNote(screen, left, width)
 	s.save.Draw(screen, s.theme)
+	s.body.DrawThumb(screen)
 }
 
 // drawChosen draws the chosen colour: its swatch and name, then its fields,
 // or for Default its value, and where it is used.
 func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shade, left, width int) {
-	top := ui.Inset + ui.LineHeight
+	top := bodyTop - s.body.Offset
 	box := image.Rect(left, top, left+preview, top+preview)
 	drawSwatch(screen, box, shade, false)
 	if after := s.typedShade(shade); after != shade {
@@ -634,6 +690,16 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, shade art.Shad
 		s.inspect.removeColor.Draw(screen, s.theme)
 	}
 	s.theme.DrawText(screen, s.theme.FitText(s.usedLine(docs, shade.ID), width), left, usedTop, ui.ColorMuted())
+}
+
+// readOnlyLines say, at the inspector's foot, why Default can't be changed.
+func readOnlyLines() []string {
+	return []string{
+		"Default can't be changed.",
+		"It is the engine's own palette, the same",
+		"in every game. To change a colour, copy it",
+		"into a palette of your own and edit the copy.",
+	}
 }
 
 // typedShade is the chosen colour with the value and opacity its fields
@@ -674,12 +740,7 @@ func (s *State) drawReadOnlyNote(screen *ebiten.Image, left, width int) {
 		return
 	}
 	bottom := frame.Inspector(s.size).Max.Y - ui.Inset
-	lines := []string{
-		"Default can't be changed.",
-		"It is the engine's own palette, the same",
-		"in every game. To change a colour, copy it",
-		"into a palette of your own and edit the copy.",
-	}
+	lines := readOnlyLines()
 	top := bottom - len(lines)*ui.LineHeight
 	for at, line := range lines {
 		ink := ui.ColorMuted()

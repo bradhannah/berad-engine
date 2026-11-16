@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"math"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/rivo/uniseg"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 )
 
@@ -62,7 +64,8 @@ type TextField struct {
 type layoutCache struct {
 	text   string
 	width  float64
-	layout *berad.Layout
+	scale  float64
+	layout *textLayout
 }
 
 // NewTextField returns a field widget.
@@ -70,7 +73,7 @@ func NewTextField(id string, field *textedit.Field, multiline bool, theme *Theme
 	return &TextField{
 		ID: id, Rect: image.Rect(0, 0, 0, 0), Field: field, Placeholder: "", Multiline: multiline, Unmarked: false,
 		Paints: nil, theme: theme, focused: false, dragging: false, composition: "", scroll: image.Pt(0, 0),
-		cache: layoutCache{text: "", width: -1, layout: nil},
+		cache: layoutCache{text: "", width: -1, scale: 0, layout: nil},
 	}
 }
 
@@ -216,27 +219,30 @@ func (w *TextField) textWidth() float64 {
 }
 
 // layout returns the layout of the field's current text.
-func (w *TextField) layout() *berad.Layout {
+func (w *TextField) layout() *textLayout {
 	return w.layoutOf(w.Field.Value())
 }
 
-func (w *TextField) layoutOf(value string) *berad.Layout {
-	width := w.textWidth()
-	if w.cache.layout != nil && w.cache.text == value && w.cache.width == width {
+// layoutOf lays text out with the font at the scale it is drawn at.
+func (w *TextField) layoutOf(value string) *textLayout {
+	width, scale := w.textWidth(), pen.Scale()
+	if w.cache.layout != nil && w.cache.text == value && w.cache.width == width && w.cache.scale == scale {
 		return w.cache.layout
 	}
-	content, err := berad.NewContent(w.spans(value))
+	font := w.theme.fontAt(scale)
+	content, err := berad.NewContent(w.spans(value, font))
 	if err != nil {
 		return nil
 	}
 	var options berad.LayoutOptions
-	options.Width = width
-	options.DefaultFont = w.theme.Font
-	layout, err := berad.NewLayout(content, options)
+	options.Width = width * scale
+	options.DefaultFont = font
+	drawn, err := berad.NewLayout(content, options)
 	if err != nil {
 		return nil
 	}
-	w.cache = layoutCache{text: value, width: width, layout: layout}
+	layout := &textLayout{drawn: drawn, scale: scale}
+	w.cache = layoutCache{text: value, width: width, scale: scale, layout: layout}
 
 	return layout
 }
@@ -244,8 +250,8 @@ func (w *TextField) layoutOf(value string) *berad.Layout {
 // spans splits a text into what is drawn: its stretches in their paints,
 // in order, and the rest in ink. A stretch out of order or out of the text
 // is left out.
-func (w *TextField) spans(value string) []berad.Span {
-	ink := func(text string) berad.Span { return berad.Span{Text: text, Font: w.theme.Font, Paint: paintInk} }
+func (w *TextField) spans(value string, font *berad.Font) []berad.Span {
+	ink := func(text string) berad.Span { return berad.Span{Text: text, Font: font, Paint: paintInk} }
 	if w.Paints == nil {
 		return []berad.Span{ink(value)}
 	}
@@ -258,7 +264,7 @@ func (w *TextField) spans(value string) []berad.Span {
 		if tint.Start > offset {
 			spans = append(spans, ink(value[offset:tint.Start]))
 		}
-		spans = append(spans, berad.Span{Text: value[tint.Start:tint.End], Font: w.theme.Font, Paint: tint.Paint})
+		spans = append(spans, berad.Span{Text: value[tint.Start:tint.End], Font: font, Paint: tint.Paint})
 		offset = tint.End
 	}
 	if offset < len(value) || len(spans) == 0 {
@@ -402,7 +408,7 @@ func (w *TextField) hit(point image.Point) int {
 }
 
 // nearestInLine returns the offset in a visual line closest to x.
-func (w *TextField) nearestInLine(layout *berad.Layout, lines []berad.Line, index int, targetX float64) int {
+func (w *TextField) nearestInLine(layout *textLayout, lines []berad.Line, index int, targetX float64) int {
 	line := lines[index]
 	text := layout.Content().Text()
 	best, bestDistance := line.Start, math.Inf(1)
@@ -500,7 +506,7 @@ func (w *TextField) Draw(screen *ebiten.Image) {
 		width = Waiting
 	}
 	StrokeRound(screen, w.Rect, Radius, width, edge)
-	area, ok := screen.SubImage(w.Rect.Inset(Hairline)).(*ebiten.Image)
+	area, ok := pen.Clip(screen, w.Rect.Inset(Hairline))
 	if !ok {
 		return
 	}
@@ -543,13 +549,13 @@ func (w *TextField) drawText(area *ebiten.Image, value string) {
 		w.drawSelection(area, layout, origin, buffer)
 	}
 	var options berad.DrawOptions
-	options.GeoM.Translate(float64(origin.X), float64(origin.Y))
+	options.GeoM.Translate(float64(pen.Edge(origin.X)), float64(pen.Edge(origin.Y)))
 	options.Filter = ebiten.FilterNearest
 	palette := berad.Palette{
 		paintInk: ColorInk(), paintMuted: ColorMuted(), PaintConstant: ColorConstant(), PaintValue: ColorValue(),
 		PaintTag: ColorSubdued(),
 	}
-	if err := w.theme.Text.Draw(area, layout, palette, options); err != nil {
+	if err := w.theme.Text.Draw(area, layout.drawn, palette, options); err != nil {
 		return
 	}
 	switch {
@@ -562,7 +568,7 @@ func (w *TextField) drawText(area *ebiten.Image, value string) {
 
 // drawSelection washes the selected text.
 func (w *TextField) drawSelection(
-	area *ebiten.Image, layout *berad.Layout, origin image.Point, buffer *textedit.Buffer,
+	area *ebiten.Image, layout *textLayout, origin image.Point, buffer *textedit.Buffer,
 ) {
 	start, end := buffer.Selection()
 	coverage, err := layout.RangeRects(start, end)
@@ -575,7 +581,7 @@ func (w *TextField) drawSelection(
 }
 
 // drawCaret draws the caret when nothing is selected.
-func (w *TextField) drawCaret(area *ebiten.Image, layout *berad.Layout, origin image.Point, buffer *textedit.Buffer) {
+func (w *TextField) drawCaret(area *ebiten.Image, layout *textLayout, origin image.Point, buffer *textedit.Buffer) {
 	if buffer.HasSelection() {
 		return
 	}
@@ -588,7 +594,7 @@ func (w *TextField) drawCaret(area *ebiten.Image, layout *berad.Layout, origin i
 	Line(area, image.Pt(x, y), image.Pt(x, y+int(position.Height)), caretWidth, ColorInk())
 }
 
-func (w *TextField) underline(area *ebiten.Image, layout *berad.Layout, origin image.Point, start, end int) {
+func (w *TextField) underline(area *ebiten.Image, layout *textLayout, origin image.Point, start, end int) {
 	coverage, err := layout.RangeRects(start, end)
 	if err != nil {
 		return
@@ -604,4 +610,61 @@ func toScreen(rect berad.Rect, origin image.Point) image.Rectangle {
 		origin.X+int(math.Floor(rect.Min.X)), origin.Y+int(math.Floor(rect.Min.Y)),
 		origin.X+int(math.Ceil(rect.Max.X)), origin.Y+int(math.Ceil(rect.Max.Y)),
 	)
+}
+
+// textLayout is a field's text laid out with the font at the scale it is
+// drawn at, answering in points (increment 56).
+type textLayout struct {
+	drawn *berad.Layout
+	scale float64
+}
+
+// Content is the text laid out.
+func (l *textLayout) Content() *berad.Content { return l.drawn.Content() }
+
+// Lines are the visual lines, their bounds in points.
+func (l *textLayout) Lines() []berad.Line {
+	lines := l.drawn.Lines()
+	if l.scale == 1 {
+		return lines
+	}
+	for index := range lines {
+		lines[index].Bounds = l.points(lines[index].Bounds)
+		lines[index].Baseline /= l.scale
+	}
+
+	return lines
+}
+
+// CaretAt is where the caret is drawn at an offset, in points.
+func (l *textLayout) CaretAt(offset int, upstream bool) (berad.Caret, error) {
+	caret, err := l.drawn.CaretAt(offset, upstream)
+	if err != nil {
+		return caret, fmt.Errorf("caret: %w", err)
+	}
+	caret.Position = berad.Point{X: caret.Position.X / l.scale, Y: caret.Position.Y / l.scale}
+	caret.Height /= l.scale
+
+	return caret, nil
+}
+
+// RangeRects covers a range of the text, in points.
+func (l *textLayout) RangeRects(start, end int) (berad.Coverage, error) {
+	coverage, err := l.drawn.RangeRects(start, end)
+	if err != nil {
+		return coverage, fmt.Errorf("range: %w", err)
+	}
+	for index, rect := range coverage.Rects {
+		coverage.Rects[index] = l.points(rect)
+	}
+
+	return coverage, nil
+}
+
+// points is a rectangle of the drawn layout in points.
+func (l *textLayout) points(rect berad.Rect) berad.Rect {
+	return berad.Rect{
+		Min: berad.Point{X: rect.Min.X / l.scale, Y: rect.Min.Y / l.scale},
+		Max: berad.Point{X: rect.Max.X / l.scale, Y: rect.Max.Y / l.scale},
+	}
 }

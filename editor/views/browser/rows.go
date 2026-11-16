@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -421,7 +422,7 @@ func drawSortMark(screen *ebiten.Image, centre image.Point, descending bool) {
 	path.Close()
 	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	options.ColorScale.ScaleWithColor(ui.ColorMuted())
-	vector.FillPath(screen, &path, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
+	pen.FillPath(screen, &path, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
 }
 
 // folderOpen reports whether a folder in the main pane is open in place.

@@ -13,6 +13,7 @@ import (
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -59,6 +60,11 @@ type gradientPanel struct {
 	picker                  *ui.ColorPicker
 	pickRight               bool
 	leftSwatch, rightSwatch image.Rectangle
+	// about is what the panel says it does, in lines, and taller how much
+	// taller than one line of each its rows and about are, as last laid out:
+	// in a narrow window they carry on below (increment 61).
+	about  []string
+	taller int
 }
 
 func newGradientPanel(theme *ui.Theme) *gradientPanel {
@@ -75,7 +81,7 @@ func newGradientPanel(theme *ui.Theme) *gradientPanel {
 		useLeft: ui.NewButton("use-left", "Use chosen"), useRight: ui.NewButton("use-right", "Use chosen"),
 		intoButton: ui.NewButton("gradient-target", newRampLabel), apply: ui.NewButton("apply-gradient", "Apply"),
 		close: ui.NewButton("close-gradient", "×"), previewTop: 0, picker: ui.NewColorPicker("gradient-picker"),
-		pickRight: false, leftSwatch: ui.Zero(), rightSwatch: ui.Zero(),
+		pickRight: false, leftSwatch: ui.Zero(), rightSwatch: ui.Zero(), about: nil, taller: 0,
 	}
 	panel.intoButton.Caret = true
 	panel.apply.Primary = true
@@ -106,6 +112,9 @@ type copyPanel struct {
 	swatches                 []sourceSwatch
 	ramps                    []sourceRamp
 	scroll                   int
+	// how is what the panel says to do, in lines before its close button
+	// (increment 61).
+	how []string
 }
 
 // sourceSwatch is one of the source palette's colours in the copy panel.
@@ -129,7 +138,7 @@ func newCopyPanel(theme *ui.Theme) *copyPanel {
 		intoButton:   ui.NewButton("copy-target", newRampLabel), copyButton: ui.NewButton("copy", "Copy"),
 		close: ui.NewButton("close-copy", "×"),
 		name:  ui.NewTextField("copy-name", textedit.NewField("", false, nameBytes), false, theme),
-		area:  ui.Zero(), swatches: nil, ramps: nil, scroll: 0,
+		area:  ui.Zero(), swatches: nil, ramps: nil, scroll: 0, how: nil,
 	}
 	panel.sourceButton.Caret = true
 	panel.intoButton.Caret = true
@@ -148,17 +157,20 @@ func (s *State) panelRect() image.Rectangle {
 	height := 0
 	switch {
 	case s.gradient.open && s.gradientPickerBelow():
-		height = gradientHeight + pickerBelow + ui.Inset + ui.LineHeight
+		height = gradientHeight + s.gradient.taller + pickerBelow + ui.Inset + ui.LineHeight
 	case s.gradient.open:
-		height = gradientHeight
+		height = gradientHeight + s.gradient.taller
 	case s.copying.open:
 		height = copyHeight
 	}
 	if height == 0 {
 		return ui.Zero()
 	}
+	// In a short window the panel stops under the toolbar, and the ramps
+	// give it their room (increment 61).
+	top := max(content.Max.Y-ui.Inset-height, max(s.bar.bottom, ui.Inset+ui.ButtonH)+ui.Inset)
 
-	return image.Rect(ui.Inset, content.Max.Y-ui.Inset-height, content.Max.X-ui.Inset, content.Max.Y-ui.Inset)
+	return image.Rect(ui.Inset, top, content.Max.X-ui.Inset, max(top, content.Max.Y-ui.Inset))
 }
 
 // toggleGradient opens the gradient, filling a ramp or, with none, a new
@@ -225,7 +237,11 @@ func (s *State) layoutPanels(docs frame.Docs) {
 	}
 	s.place(s.closeButton(), panel.Max.X-ui.Inset-ui.ButtonH, panel.Min.Y+ui.Inset)
 	if s.gradient.open {
+		taller := s.gradient.taller
 		s.layoutGradient(docs, panel)
+		if s.gradient.taller != taller {
+			s.layoutPanels(docs)
+		}
 
 		return
 	}
@@ -244,27 +260,20 @@ func (s *State) closeButton() *ui.Button {
 // and steps; then its preview, where it goes and Apply.
 func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	grad := s.gradient
-	left, top := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset+ui.LineHeight
-	grad.mixColor.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
-	across := grad.mixColor.Rect.Max.X + ui.Inset
-	grad.leftSwatch = image.Rect(across, top, across+ui.ButtonH, top+ui.ButtonH)
-	across = grad.leftSwatch.Max.X + ui.Gap
-	grad.left.Rect = image.Rect(across, top, across+colorWidth, top+ui.ButtonH)
-	across = s.place(grad.useLeft, grad.left.Rect.Max.X+ui.Gap, top) + ui.Inset
-	grad.rightSwatch = image.Rect(across, top, across+ui.ButtonH, top+ui.ButtonH)
-	across = grad.rightSwatch.Max.X + ui.Gap
-	grad.right.Rect = image.Rect(across, top, across+colorWidth, top+ui.ButtonH)
-	across = s.place(grad.useRight, grad.right.Rect.Max.X+ui.Gap, top) + ui.Inset
-	stepsLeft := across + s.theme.TextWidth("Steps") + ui.Gap
-	grad.steps.Rect = image.Rect(stepsLeft, top, stepsLeft+stepsWidth, top+ui.ButtonH)
-	top += ui.ButtonH + ui.Gap
-	grad.mixOpacity.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
-	grad.leftOpacity.Rect = image.Rect(grad.left.Rect.Min.X, top, grad.left.Rect.Min.X+opacityWidth, top+ui.ButtonH)
-	grad.rightOpacity.Rect = image.Rect(grad.right.Rect.Min.X, top, grad.right.Rect.Min.X+opacityWidth, top+ui.ButtonH)
-	top += ui.ButtonH + ui.Inset
+	left := panel.Min.X + ui.Inset
+	about := left + s.theme.StrongWidth("Gradient") + ui.Inset
+	grad.about = s.theme.Wrap(gradientAbout, grad.close.Rect.Min.X-ui.Inset-about)
+	right := panel.Max.X - ui.Inset
+	if !s.gradientPickerBelow() {
+		right = grad.close.Rect.Min.X - ui.Inset - gradientPicker - ui.Inset
+	}
+	top := panel.Min.Y + ui.Inset + len(grad.about)*ui.LineHeight
+	bottom := s.layoutGradientRows(left, right, top)
+	grad.taller = (len(grad.about)-1)*ui.LineHeight + bottom - (top + ui.Half*ui.ButtonH + ui.Gap)
+	top = bottom + ui.Inset
 	grad.previewTop = top
 	top += previewSize + ui.Inset
-	across = s.place(grad.intoButton, left+s.theme.TextWidth("Into")+ui.Gap, top)
+	across := s.place(grad.intoButton, left+s.theme.TextWidth("Into")+ui.Gap, top)
 	grad.intoButton.Label = newRampLabel
 	if palette, ok := s.palette(docs); ok {
 		if ramp, found := palette.Ramp(grad.into); found {
@@ -278,7 +287,7 @@ func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	s.place(grad.apply, across, top)
 	grad.leftOpacity.Rect = gate(grad.leftOpacity.Rect, grad.mixOpacity.On)
 	grad.rightOpacity.Rect = gate(grad.rightOpacity.Rect, grad.mixOpacity.On)
-	pickerTop := panel.Min.Y + ui.Inset + ui.LineHeight
+	pickerTop := panel.Min.Y + ui.Inset + len(grad.about)*ui.LineHeight
 	pickerLeft := s.gradient.close.Rect.Min.X - ui.Inset - gradientPicker
 	if s.gradientPickerBelow() {
 		pickerTop, pickerLeft = grad.apply.Rect.Max.Y+ui.Inset+ui.LineHeight, left
@@ -286,6 +295,46 @@ func (s *State) layoutGradient(docs frame.Docs, panel image.Rectangle) {
 	grad.picker.Rect = image.Rect(pickerLeft, pickerTop, pickerLeft+gradientPicker, panel.Max.Y-ui.Inset)
 	grad.picker.NoOpacity = !grad.mixOpacity.On
 	s.syncGradientPicker()
+}
+
+// gradientAbout says what the gradient does, beside its name.
+const gradientAbout = "fills a ramp from a left colour to a right one, in steps that look evenly spaced"
+
+// layoutGradientRows places the gradient's first rows from a top edge:
+// what it mixes, each end's swatch, field and Use chosen, and Steps; then,
+// under each end's field, its opacity. When they do not fit across, the
+// right end and Steps carry on below the left end, and each end's opacity
+// is still under its field (increment 61). It returns where they end.
+func (s *State) layoutGradientRows(left, right, top int) int {
+	grad := s.gradient
+	end := ui.ButtonH + ui.Gap + colorWidth + ui.Gap + s.buttonWidth(grad.useLeft)
+	steps := s.theme.TextWidth("Steps") + ui.Gap + stepsWidth
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top), []int{toggleWidth, end, end, steps}, nil,
+		ui.Inset)
+	grad.mixColor.Rect = placed[0]
+	grad.leftSwatch, grad.left.Rect = s.placeEnd(placed[1], grad.useLeft)
+	grad.rightSwatch, grad.right.Rect = s.placeEnd(placed[2], grad.useRight)
+	grad.steps.Rect = image.Rect(placed[3].Max.X-stepsWidth, placed[3].Min.Y, placed[3].Max.X, placed[3].Max.Y)
+	top = bottom + ui.Gap
+	grad.mixOpacity.Rect = image.Rect(left, top, left+toggleWidth, top+ui.ButtonH)
+	for _, end := range []struct{ opacity, color *ui.TextField }{
+		{grad.leftOpacity, grad.left}, {grad.rightOpacity, grad.right},
+	} {
+		at := top + end.color.Rect.Min.Y - placed[1].Min.Y
+		end.opacity.Rect = image.Rect(end.color.Rect.Min.X, at, end.color.Rect.Min.X+opacityWidth, at+ui.ButtonH)
+	}
+
+	return max(grad.mixOpacity.Rect.Max.Y, grad.rightOpacity.Rect.Max.Y)
+}
+
+// placeEnd places a gradient end's swatch, field and Use chosen across a
+// piece of a row, and returns the swatch's and the field's places.
+func (s *State) placeEnd(piece image.Rectangle, use *ui.Button) (image.Rectangle, image.Rectangle) {
+	swatch := image.Rect(piece.Min.X, piece.Min.Y, piece.Min.X+ui.ButtonH, piece.Max.Y)
+	field := image.Rect(swatch.Max.X+ui.Gap, piece.Min.Y, swatch.Max.X+ui.Gap+colorWidth, piece.Max.Y)
+	s.place(use, field.Max.X+ui.Gap, piece.Min.Y)
+
+	return swatch, field
 }
 
 // gradientPickerBelow reports whether the window is too narrow for the
@@ -472,8 +521,11 @@ func (s *State) layoutCopying(docs frame.Docs, panel image.Rectangle) {
 	left, top := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset
 	copier.sourceButton.Label = documentName(docs, copier.source, art.DefaultPaletteName)
 	s.place(copier.sourceButton, left+s.theme.TextWidth("From")+ui.Gap, top)
+	how := copier.sourceButton.Rect.Max.X + ui.Inset
+	copier.how = s.theme.Wrap(copyHow, copier.close.Rect.Min.X-ui.Inset-how)
 	bottom := panel.Max.Y - ui.Inset - ui.ButtonH - ui.Inset
-	copier.area = image.Rect(left, top+ui.ButtonH+ui.Gap, panel.Max.X-ui.Inset, bottom)
+	areaTop := max(top+ui.ButtonH, top+(ui.ButtonH-ui.TextSize)/ui.Half+len(copier.how)*ui.LineHeight) + ui.Gap
+	copier.area = image.Rect(left, areaTop, panel.Max.X-ui.Inset, max(areaTop, bottom))
 	source, ok := paletteOf(docs, copier.source)
 	if ok {
 		s.layoutSource(source)
@@ -494,6 +546,9 @@ func (s *State) layoutCopying(docs frame.Docs, panel image.Rectangle) {
 	copier.copyButton.Disabled = len(copier.picked) == 0
 	s.place(copier.copyButton, across, row)
 }
+
+// copyHow says how to pick the colours to copy.
+const copyHow = "Click a colour, Shift-click a run, Cmd-click to add more; a ramp's name takes it all."
 
 // layoutSource places the source palette's ramps and colours, scrolled.
 func (s *State) layoutSource(source *art.Palette) {
@@ -753,8 +808,10 @@ func (s *State) drawGradient(screen *ebiten.Image, panel image.Rectangle) {
 	grad := s.gradient
 	left := panel.Min.X + ui.Inset
 	s.theme.DrawStrong(screen, "Gradient", left, panel.Min.Y+ui.Inset, ui.ColorInk())
-	s.theme.DrawText(screen, "fills a ramp from a left colour to a right one, in steps that look evenly spaced",
-		left+s.theme.StrongWidth("Gradient")+ui.Inset, panel.Min.Y+ui.Inset, ui.ColorMuted())
+	for index, line := range grad.about {
+		s.theme.DrawText(screen, line, left+s.theme.StrongWidth("Gradient")+ui.Inset,
+			panel.Min.Y+ui.Inset+index*ui.LineHeight, ui.ColorMuted())
+	}
 	grad.mixColor.Draw(screen, s.theme)
 	grad.mixOpacity.Draw(screen, s.theme)
 	s.drawGradientEnds(screen)
@@ -789,9 +846,11 @@ func (s *State) drawCopying(screen *ebiten.Image, panel image.Rectangle) {
 	left := panel.Min.X + ui.Inset
 	text := (ui.ButtonH - ui.TextSize) / ui.Half
 	s.theme.DrawText(screen, "From", left, copier.sourceButton.Rect.Min.Y+text, ui.ColorMuted())
-	s.theme.DrawText(screen, "Click a colour, Shift-click a run, Cmd-click to add more; a ramp's name takes it all.",
-		copier.sourceButton.Rect.Max.X+ui.Inset, copier.sourceButton.Rect.Min.Y+text, ui.ColorMuted())
-	area, clipped := screen.SubImage(copier.area).(*ebiten.Image)
+	for index, line := range copier.how {
+		s.theme.DrawText(screen, line, copier.sourceButton.Rect.Max.X+ui.Inset,
+			copier.sourceButton.Rect.Min.Y+text+index*ui.LineHeight, ui.ColorMuted())
+	}
+	area, clipped := pen.Clip(screen, copier.area)
 	if clipped {
 		for _, label := range copier.ramps {
 			s.theme.DrawText(area, s.theme.FitText(label.ramp.Name, label.rect.Dx()), label.rect.Min.X,

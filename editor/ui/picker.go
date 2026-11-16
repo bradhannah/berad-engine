@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 // Colour picker geometry, in screen pixels: the height of the hue and
@@ -244,13 +244,13 @@ func (p *ColorPicker) Draw(screen *ebiten.Image) {
 		}
 		options := &ebiten.DrawImageOptions{}
 		options.GeoM.Translate(float64(part.rect.Min.X), float64(part.rect.Min.Y))
-		screen.DrawImage(part.image, options)
+		pen.DrawImage(screen, part.image, options)
 		StrokeRect(screen, part.rect, Hairline, ColorRule())
 	}
 	ringX := float32(atFraction(p.saturation, square.Min.X, square.Dx()))
 	ringY := float32(atFraction(1-p.bright, square.Min.Y, square.Dy()))
-	vector.StrokeCircle(screen, ringX, ringY, pickerRing+1, Hairline, ColorInk(), true)
-	vector.StrokeCircle(screen, ringX, ringY, pickerRing, Hairline+1, ColorReverse(), true)
+	pen.StrokeCircle(screen, ringX, ringY, pickerRing+1, Hairline, ColorInk(), true)
+	pen.StrokeCircle(screen, ringX, ringY, pickerRing, Hairline+1, ColorReverse(), true)
 	p.drawMark(screen, hues, p.hue)
 	if !opacities.Empty() {
 		p.drawMark(screen, opacities, p.opacity)

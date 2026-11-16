@@ -15,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -356,7 +357,7 @@ func (s *State) drawChosen(screen *ebiten.Image, docs frame.Docs, left, width in
 // of every palette not folded, clipped to their area, with a scroll bar when
 // they do not fit, and the name of the swatch under the cursor.
 func (s *State) drawSwatches(screen *ebiten.Image, docs frame.Docs) {
-	area, clipped := screen.SubImage(s.panel.area).(*ebiten.Image)
+	area, clipped := pen.Clip(screen, s.panel.area)
 	if !clipped || len(s.panel.swatches) == 0 {
 		return
 	}

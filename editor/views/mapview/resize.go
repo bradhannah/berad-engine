@@ -11,6 +11,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -94,7 +95,7 @@ func (s *State) layoutSides(left int, shown bool) {
 		if !shown {
 			continue
 		}
-		top := sidesTop + index*(ui.ButtonH+ui.Gap)
+		top := s.down(sidesTop) + index*(ui.ButtonH+ui.Gap)
 		shrinkLeft := left + sideLabelWidth
 		side.shrink.Rect = image.Rect(shrinkLeft, top, shrinkLeft+sideButtonWidth, top+ui.ButtonH)
 		growLeft := side.shrink.Rect.Max.X + ui.Gap
@@ -150,7 +151,7 @@ func moveSide(bounds image.Rectangle, side string, delta int) image.Rectangle {
 func (s *State) updateResize(input *ui.Input, ctx *frame.Context, floorData *floor.Floor) {
 	bounds := floorData.Bounds()
 	if input.Pressed && input.Cursor.In(s.Grid()) {
-		grabbed := s.edgesAt(input.Cursor, bounds)
+		grabbed := s.edgesAt(onStage(input.Cursor), bounds)
 		if !grabbed.any() {
 			ctx.Frame.Status("Drag an edge or corner of the floor to resize it")
 
@@ -162,7 +163,7 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, floorData *flo
 		return
 	}
 	if input.Down {
-		s.resizing.to = s.dragBounds(input.Cursor)
+		s.resizing.to = s.dragBounds(onStage(input.Cursor))
 
 		return
 	}
@@ -173,10 +174,10 @@ func (s *State) updateResize(input *ui.Input, ctx *frame.Context, floorData *flo
 	}
 }
 
-// edgesAt returns the edges of the floor within reach of a screen point;
-// near a corner, both of its edges.
+// edgesAt returns the edges of the floor within reach of a point in the
+// canvas's points; near a corner, both of its edges.
 func (s *State) edgesAt(point image.Point, bounds image.Rectangle) edges {
-	rect := s.camera.rectOf(bounds, s.Grid())
+	rect := s.camera.rectOf(bounds, s.stage())
 	alongX := point.X >= rect.Min.X-edgeGrab && point.X <= rect.Max.X+edgeGrab
 	alongY := point.Y >= rect.Min.Y-edgeGrab && point.Y <= rect.Max.Y+edgeGrab
 	toLeft, toRight := abs(point.X-rect.Min.X), abs(point.X-rect.Max.X)
@@ -193,7 +194,7 @@ func (s *State) edgesAt(point image.Point, bounds image.Rectangle) edges {
 // floor.MaxSide on each side.
 func (s *State) dragBounds(cursor image.Point) image.Rectangle {
 	drag := s.resizing
-	nearest := s.camera.boundary(cursor, s.Grid())
+	nearest := s.camera.boundary(cursor, s.stage())
 	next := drag.from
 	if drag.edges.left {
 		next.Min.X = min(max(nearest.X, next.Max.X-floor.MaxSide), next.Max.X-1)
@@ -339,7 +340,7 @@ func (s *State) locateEdge(side string, docs frame.Docs) (image.Point, bool) {
 	var rect image.Rectangle
 	loaded := docs.View(s.floor, func(document client.Document) {
 		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
-			rect = s.camera.rectOf(floorDoc.Floor.Bounds(), s.Grid())
+			rect = pen.WindowRect(s.camera.rectOf(floorDoc.Floor.Bounds(), s.stage()))
 		}
 	})
 	if !loaded {
@@ -466,7 +467,7 @@ func (s *State) drawResizeInspector(screen *ebiten.Image, floorData *floor.Floor
 	}
 	line("Resize floor", false)
 	line("Drag an edge or corner, or use the buttons.", true)
-	*textY = sidesTop - 2*ui.LineHeight - ui.Gap
+	*textY = s.down(sidesTop) - 2*ui.LineHeight - ui.Gap
 	line(fmt.Sprintf("%d × %d: columns %d to %d, rows %d to %d",
 		bounds.Dx(), bounds.Dy(), bounds.Min.X, bounds.Max.X-1, bounds.Min.Y, bounds.Max.Y-1), false)
 	line("0,0 is the zone origin; every floor shares it.", true)
@@ -476,5 +477,5 @@ func (s *State) drawResizeInspector(screen *ebiten.Image, floorData *floor.Floor
 		side.shrink.Draw(screen, s.theme)
 		side.grow.Draw(screen, s.theme)
 	}
-	*textY = sidesTop + len(s.sides)*(ui.ButtonH+ui.Gap) + ui.LineHeight/ui.Half
+	*textY = s.down(sidesTop) + len(s.sides)*(ui.ButtonH+ui.Gap) + ui.LineHeight/ui.Half
 }

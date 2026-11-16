@@ -22,6 +22,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/sound"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -249,6 +250,9 @@ type Frame struct {
 	// history is every message the window was given, and the refusal shown
 	// until it is dismissed (increment 39).
 	history historyState
+	// text is the status bar's Text button for the scale of text and
+	// controls (increment 56).
+	text textScaleState
 	// notices is the notice's buttons and how many others last (increment
 	// 57).
 	notices noticeState
@@ -263,6 +267,7 @@ func NewFrame(now func() time.Time) *Frame {
 		ShowInspector: &ui.Toggle{ID: "inspector", Label: "Inspector", Rect: ui.Zero(), On: true},
 		ShowLeft:      &ui.Toggle{ID: "left-panel", Label: "Left panel", Rect: ui.Zero(), On: true},
 		history:       newHistoryState(),
+		text:          newTextScaleState(),
 		notices:       newNoticeState(),
 	}
 }
@@ -395,11 +400,11 @@ func InspectorWide() int {
 }
 
 // layoutStatus places the On top toggle at the right end of the status bar,
-// and the Inspector toggle before it.
+// the Text button before it, and the Inspector toggle before that.
 func (f *Frame) layoutStatus(size image.Point) {
 	top := size.Y - StatusHeight
 	f.OnTop.Rect = image.Rect(size.X-ui.Inset-onTopWidth, top, size.X-ui.Inset, size.Y)
-	right := f.OnTop.Rect.Min.X - statusGap/ui.Half
+	right := f.layoutTextScale(size, f.OnTop.Rect.Min.X-statusGap/ui.Half)
 	f.ShowInspector.Rect = image.Rect(right-inspectorToggleWidth, top, right, size.Y)
 	f.layoutHistory(size)
 }
@@ -407,6 +412,9 @@ func (f *Frame) layoutStatus(size image.Point) {
 // UpdateStatus handles a click on the status bar's toggles.
 func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 	f.layoutStatus(size)
+	if f.updateTextScale(input, size) {
+		return
+	}
 	f.OnTop.Update(input)
 	f.ShowInspector.Update(input)
 	f.updateHistoryButtons(input)
@@ -417,6 +425,9 @@ func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 // top and "state:inspector" while the inspector shows, for input scripts.
 func (f *Frame) LocateStatus(name string) (image.Point, bool) {
 	if point, found, handled := f.locateHistory(name); handled {
+		return point, found
+	}
+	if point, found, handled := f.locateTextScale(name); handled {
 		return point, found
 	}
 	if point, found, handled := f.locateNotice(name); handled {
@@ -443,7 +454,7 @@ func Folded(size image.Point) image.Rectangle {
 // DrawFolded draws a folded inspector's strip: an arrow to open it, and its
 // name down the strip.
 func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
-	strip := Folded(screen.Bounds().Size())
+	strip := Folded(pen.Bounds(screen).Size())
 	fill := ui.ColorDesk()
 	if hover {
 		fill = ui.ColorSelectWash()
@@ -465,7 +476,7 @@ func DrawFolded(screen *ebiten.Image, theme *ui.Theme, hover bool) {
 // right end. The
 // speed readout is left out when the window is too narrow for it.
 func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
-	bounds := screen.Bounds()
+	bounds := pen.Bounds(screen)
 	f.layoutStatus(bounds.Size())
 	bar := image.Rect(0, bounds.Max.Y-StatusHeight, bounds.Max.X, bounds.Max.Y)
 	ui.FillRect(screen, bar, ui.ColorDesk())
@@ -489,6 +500,7 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	message = theme.FitText(message, room)
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
 	f.ShowInspector.Draw(screen, theme)
+	f.text.button.Draw(screen, theme)
 	f.OnTop.Draw(screen, theme)
 	f.history.button.Draw(screen, theme)
 	if !f.history.dismiss.Rect.Empty() {
@@ -533,7 +545,7 @@ func formatLatency(latency time.Duration) string {
 
 // DrawInspector draws the inspector panel's divider.
 func DrawInspector(screen *ebiten.Image) {
-	panel := Inspector(screen.Bounds().Size())
+	panel := Inspector(pen.Bounds(screen).Size())
 	ui.Divider(screen, panel.Min, image.Pt(panel.Min.X, panel.Max.Y))
 }
 

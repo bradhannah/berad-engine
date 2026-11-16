@@ -291,12 +291,14 @@ type Layout struct {
 // Arrangement is the window's arrangement on one size of screen: each kind
 // of view's panels, by the view's name; and the window's frame, its tabs,
 // what sits beside what, and the tab in front, by its place in Tabs, to
-// reopen as it was left (increment 55).
+// reopen as it was left (increment 55); and the scale of text and controls,
+// 1 for 100% and 0 for none chosen (increment 56).
 type Arrangement struct {
-	Kinds  map[string]KindLayout `json:"kinds"`
-	Frame  WindowFrame           `json:"frame,omitzero"`
-	Tabs   []TabLayout           `json:"tabs,omitempty"`
-	Active int                   `json:"active,omitempty"`
+	Kinds     map[string]KindLayout `json:"kinds"`
+	Frame     WindowFrame           `json:"frame,omitzero"`
+	Tabs      []TabLayout           `json:"tabs,omitempty"`
+	Active    int                   `json:"active,omitempty"`
+	TextScale float64               `json:"textScale,omitempty"`
 }
 
 // WindowFrame is where the editor window is on the screen, and its size.

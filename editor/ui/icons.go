@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -155,8 +156,8 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 	case IconZone:
 		// A square in four: the cells of a map.
 		StrokeRound(screen, box, iconRadius, iconStroke, ink)
-		vector.StrokeLine(screen, left+IconSize/Half, top+1, left+IconSize/Half, top+IconSize-1, iconStroke, ink, true)
-		vector.StrokeLine(screen, left+1, top+IconSize/Half, left+IconSize-1, top+IconSize/Half, iconStroke, ink, true)
+		pen.StrokeLine(screen, left+IconSize/Half, top+1, left+IconSize/Half, top+IconSize-1, iconStroke, ink, true)
+		pen.StrokeLine(screen, left+1, top+IconSize/Half, left+IconSize-1, top+IconSize/Half, iconStroke, ink, true)
 	case IconFloor:
 		// A flat slab seen from above at an angle.
 		var slab vector.Path
@@ -169,16 +170,16 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 	case IconWorkflow:
 		// One step leading to two.
 		start, end := left+iconDot, left+IconSize-iconDot
-		vector.StrokeLine(screen, start, top+IconSize/Half, end, top+iconDot, iconStroke, ink, true)
-		vector.StrokeLine(screen, start, top+IconSize/Half, end, top+IconSize-iconDot, iconStroke, ink, true)
+		pen.StrokeLine(screen, start, top+IconSize/Half, end, top+iconDot, iconStroke, ink, true)
+		pen.StrokeLine(screen, start, top+IconSize/Half, end, top+IconSize-iconDot, iconStroke, ink, true)
 		for _, dot := range [][2]float32{{iconDot, IconSize / Half}, {IconSize - iconDot, iconDot}, {
 			IconSize - iconDot, IconSize - iconDot,
 		}} {
-			vector.FillCircle(screen, left+dot[0], top+dot[1], iconDot, ink, true)
+			pen.FillCircle(screen, left+dot[0], top+dot[1], iconDot, ink, true)
 		}
 	case IconNPC:
 		// A head and shoulders.
-		vector.FillCircle(screen, left+IconSize/Half, top+iconHead+1, iconHead, ink, true)
+		pen.FillCircle(screen, left+IconSize/Half, top+iconHead+1, iconHead, ink, true)
 		shoulders := image.Rect(corner.X+1, corner.Y+IconSize/Half+1, corner.X+IconSize-1, corner.Y+IconSize)
 		FillRound(screen, shoulders, IconSize/Half, ink)
 	case IconFolder:
@@ -249,7 +250,7 @@ func drawLoop(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 // from it to the right.
 func drawWaves(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	centreX, centreY := left+iconDot, top+IconSize/Half
-	vector.FillCircle(screen, centreX, centreY, iconDot, ink, true)
+	pen.FillCircle(screen, centreX, centreY, iconDot, ink, true)
 	for _, radius := range []float32{IconSize/Half - 1, IconSize/Half + iconDot} {
 		var wave vector.Path
 		wave.Arc(centreX, centreY, radius, -quarterTurn, quarterTurn, vector.Clockwise)
@@ -286,9 +287,9 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 // drawHouse draws a house: a roof over a body.
 func drawHouse(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	middle, eaves := left+IconSize/Half, top+IconSize/Half
-	vector.StrokeLine(screen, left+1, eaves, middle, top+1, iconStroke, ink, true)
-	vector.StrokeLine(screen, middle, top+1, left+IconSize-1, eaves, iconStroke, ink, true)
-	vector.StrokeRect(screen, left+iconDot+1, eaves-1, IconSize-Half*(iconDot+1), IconSize/Half, iconStroke, ink, true)
+	pen.StrokeLine(screen, left+1, eaves, middle, top+1, iconStroke, ink, true)
+	pen.StrokeLine(screen, middle, top+1, left+IconSize-1, eaves, iconStroke, ink, true)
+	pen.StrokeRect(screen, left+iconDot+1, eaves-1, IconSize-Half*(iconDot+1), IconSize/Half, iconStroke, ink, true)
 }
 
 // drawArtIcon draws the icon of a sprite, a palette, the settings or a
@@ -319,17 +320,17 @@ const (
 func DrawRing(screen *ebiten.Image, centre image.Point, ink color.RGBA, filled bool) {
 	x, y := float32(centre.X), float32(centre.Y)
 	if filled {
-		vector.FillCircle(screen, x, y, ringRadius, ink, true)
+		pen.FillCircle(screen, x, y, ringRadius, ink, true)
 	}
-	vector.StrokeCircle(screen, x, y, ringRadius, ringStroke, ink, true)
+	pen.StrokeCircle(screen, x, y, ringRadius, ringStroke, ink, true)
 }
 
 // drawFrame draws a template: a square frame round a clear middle, with a
 // fainter frame inside it.
 func drawFrame(screen *ebiten.Image, left, top float32, ink color.RGBA) {
-	vector.StrokeRect(screen, left+1, top+1, IconSize-Half, IconSize-Half, iconStroke, ink, false)
+	pen.StrokeRect(screen, left+1, top+1, IconSize-Half, IconSize-Half, iconStroke, ink, false)
 	inner := float32(iconFrame)
-	vector.StrokeRect(screen, left+inner, top+inner, IconSize-Half*inner, IconSize-Half*inner, 1, fade(ink, frameFade),
+	pen.StrokeRect(screen, left+inner, top+inner, IconSize-Half*inner, IconSize-Half*inner, 1, fade(ink, frameFade),
 		false)
 }
 
@@ -346,7 +347,7 @@ func drawHeart(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 		for col := range len(pixels) {
 			if pixels[col] == 'X' {
 				pixelX, pixelY := left+float32(col*iconPixel), top+float32(row*iconPixel)
-				vector.FillRect(screen, pixelX, pixelY, iconPixel, iconPixel, ink, false)
+				pen.FillRect(screen, pixelX, pixelY, iconPixel, iconPixel, ink, false)
 			}
 		}
 	}
@@ -357,7 +358,7 @@ func drawRamp(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	for swatch := range 3 {
 		alpha := uint8(opaque - swatch*fadeStep) //nolint:gosec // At most 255 by construction.
 		swatchLeft := left + float32(swatch*(iconSwatch+1))
-		vector.FillRect(screen, swatchLeft, top+iconPixel+1, iconSwatch, IconSize-iconPixel*Half-Half, fade(ink, alpha),
+		pen.FillRect(screen, swatchLeft, top+iconPixel+1, iconSwatch, IconSize-iconPixel*Half-Half, fade(ink, alpha),
 			false)
 	}
 }
@@ -375,8 +376,8 @@ func fade(ink color.RGBA, alpha uint8) color.RGBA {
 func drawSliders(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	for slider, knob := range []float32{iconKnob, IconSize - iconKnob} {
 		lineY := top + float32(iconKnob+slider*(IconSize-iconKnob*Half))
-		vector.StrokeLine(screen, left+1, lineY, left+IconSize-1, lineY, iconStroke, ink, true)
-		vector.FillCircle(screen, left+knob, lineY, iconDot, ink, true)
+		pen.StrokeLine(screen, left+1, lineY, left+IconSize-1, lineY, iconStroke, ink, true)
+		pen.FillCircle(screen, left+knob, lineY, iconDot, ink, true)
 	}
 }
 
@@ -384,17 +385,17 @@ func drawSliders(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 func drawList(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	for row := range iconRows {
 		rowY := top + float32(row*iconRowGap) + iconRowGap/Half
-		vector.FillCircle(screen, left+iconDot/Half+1, rowY, iconDot/Half, ink, true)
-		vector.StrokeLine(screen, left+iconDot+iconLineGap, rowY, left+IconSize-1, rowY, iconStroke, ink, true)
+		pen.FillCircle(screen, left+iconDot/Half+1, rowY, iconDot/Half, ink, true)
+		pen.StrokeLine(screen, left+iconDot+iconLineGap, rowY, left+IconSize-1, rowY, iconStroke, ink, true)
 	}
 }
 
 // drawClock draws a clock face with its hands at three o'clock.
 func drawClock(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	centreX, centreY := left+IconSize/Half, top+IconSize/Half
-	vector.StrokeCircle(screen, centreX, centreY, IconSize/Half-1, iconStroke, ink, true)
-	vector.StrokeLine(screen, centreX, centreY, centreX, top+iconHand, iconStroke, ink, true)
-	vector.StrokeLine(screen, centreX, centreY, left+IconSize-iconHand, centreY, iconStroke, ink, true)
+	pen.StrokeCircle(screen, centreX, centreY, IconSize/Half-1, iconStroke, ink, true)
+	pen.StrokeLine(screen, centreX, centreY, centreX, top+iconHand, iconStroke, ink, true)
+	pen.StrokeLine(screen, centreX, centreY, left+IconSize-iconHand, centreY, iconStroke, ink, true)
 }
 
 // drawEye draws an eye: two lids around its pupil.
@@ -406,7 +407,7 @@ func drawEye(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 	lids.QuadTo(left+IconSize/Half, middle+iconLid, left, middle)
 	lids.Close()
 	strokePath(screen, &lids, ink)
-	vector.FillCircle(screen, left+IconSize/Half, middle, iconDot, ink, true)
+	pen.FillCircle(screen, left+IconSize/Half, middle, iconDot, ink, true)
 }
 
 // drawFolder draws a folder: a tab on the back of its body.
@@ -438,7 +439,7 @@ func drawSpeaker(screen *ebiten.Image, left, top float32, ink color.RGBA) {
 func strokePath(screen *ebiten.Image, path *vector.Path, ink color.Color) {
 	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	options.ColorScale.ScaleWithColor(ink)
-	vector.StrokePath(screen, path, &vector.StrokeOptions{
+	pen.StrokePath(screen, path, &vector.StrokeOptions{
 		Width: iconStroke, LineCap: vector.LineCapRound, LineJoin: vector.LineJoinRound, MiterLimit: 0,
 	}, options)
 }
@@ -446,5 +447,5 @@ func strokePath(screen *ebiten.Image, path *vector.Path, ink color.Color) {
 func fillPath(screen *ebiten.Image, path *vector.Path, fill color.Color) {
 	options := &vector.DrawPathOptions{AntiAlias: true, ColorScale: ebiten.ColorScale{}, Blend: ebiten.BlendSourceOver}
 	options.ColorScale.ScaleWithColor(fill)
-	vector.FillPath(screen, path, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
+	pen.FillPath(screen, path, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
 }

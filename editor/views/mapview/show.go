@@ -10,6 +10,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/showdraw"
 	"github.com/bradhannah/berad-engine/engine/art"
 )
@@ -109,21 +110,21 @@ func (s *State) closeBox(input *ui.Input) bool {
 
 // locateShown finds a speaker's bubble, "speech:<NPC>", or the box, "box".
 func (s *State) locateShown(kind, value string) (image.Point, bool) {
-	state, grid := s.shownState(), s.Grid()
+	state, grid := s.shownState(), s.stage()
 	switch kind {
 	case speechPart:
 		for _, entity := range s.speakers(grid) {
 			if s.names.Name(entity.NPC, "") == value {
 				rect, _ := showdraw.BubbleRect(s.theme, s.headOf(grid, entity), entity.Saying)
 
-				return ui.Center(rect), true
+				return ui.Center(pen.WindowRect(rect)), true
 			}
 		}
 	case boxPart:
 		if state != nil && state.Box != nil {
 			rect, _ := showdraw.BoxRect(s.theme, boxArea(grid), state.Box)
 
-			return ui.Center(rect), true
+			return ui.Center(pen.WindowRect(rect)), true
 		}
 	}
 

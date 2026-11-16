@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 )
 
@@ -124,8 +125,8 @@ func (d *Dialog) Draw(screen *ebiten.Image, theme *Theme) {
 	for _, button := range d.Buttons {
 		d.wide = append(d.wide, theme.TextWidth(button.Label)+Inset)
 	}
-	d.layout(screen.Bounds())
-	FillRect(screen, screen.Bounds(), ColorShade())
+	d.layout(pen.Bounds(screen))
+	FillRect(screen, pen.Bounds(screen), ColorShade())
 	FillRound(screen, d.rect.Add(image.Pt(0, shadowDrop)), dialogRadius, HexAlpha(hexInk, shadowAlpha))
 	Float(screen, d.rect, dialogRadius)
 	FillRound(screen, d.rect, dialogRadius, ColorPage())

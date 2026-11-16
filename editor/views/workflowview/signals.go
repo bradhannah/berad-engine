@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/signals"
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -295,7 +295,7 @@ func (s *State) drawWarningMark(area *ebiten.Image, drawn shape) {
 		return
 	}
 	centre := s.toScreen(markCentre(drawn))
-	vector.FillCircle(area, float32(centre.X), float32(centre.Y), markRadius, ui.ColorCaution(), true)
+	pen.FillCircle(area, float32(centre.X), float32(centre.Y), markRadius, ui.ColorCaution(), true)
 	width := s.theme.SmallWidth("!")
 	s.theme.DrawSmall(area, "!", centre.X-width/ui.Half, centre.Y-ui.LabelSize/ui.Half-ui.Half, ui.ColorReverse())
 }

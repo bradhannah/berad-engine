@@ -741,3 +741,90 @@ func TestGradientPicksItsEnds(t *testing.T) {
 		t.Fatal("the gradient's settings never wait for Save")
 	}
 }
+
+// TestTheToolbarWrapsInASmallWindow lays the Palette Editor out at 800 ×
+// 555 points, as a 1200 × 832 window is at 150%: a palette's name and
+// buttons do not fit on one line with Delete palette…, which goes on a line
+// below, and the ramps start under it, nothing drawn over anything else;
+// Default's toolbar likewise (increment 61).
+func TestTheToolbarWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	for _, target := range []ids.ULID{gloomyID, art.DefaultPaletteID()} {
+		f := newFixture(t, target)
+		f.resize(image.Pt(800, 555))
+		if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), f.state.Toolbar()...); wrong != "" {
+			t.Fatal(wrong)
+		}
+	}
+}
+
+// resize lays the window out at another size, as a frame does.
+func (f *fixture) resize(size image.Point) {
+	f.ctx.Size = size
+	f.screen = ebiten.NewImage(size.X, size.Y)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+}
+
+// TestTheInspectorScrollsInASmallWindow chooses a colour at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: its fields, picker and its ramp's need
+// more height than the inspector has, so they scroll above the save bar,
+// which is never drawn over them; the wheel scrolls them, and Remove ramp,
+// below, is scrolled to when found (increment 61).
+func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.resize(image.Pt(800, 555))
+	f.click("swatch:smoke 2")
+	body, _, most, save := f.state.InspectorParts()
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), save, frametest.Part{Name: "fields", Rect: body}); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("a colour's fields need more height than the inspector has")
+	}
+	wheel := ui.NewInput(body.Min.Add(image.Pt(ui.Inset, ui.Inset)))
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if _, offset, _, _ := f.state.InspectorParts(); offset == 0 {
+		t.Fatal("the wheel scrolls the fields")
+	}
+	if point := f.at("ui:remove-ramp"); !point.In(body) {
+		t.Fatalf("Remove ramp is scrolled into view when found: %v in %v", point, body)
+	}
+}
+
+// TestTheGradientWrapsInASmallWindow opens the gradient at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: its ends and Steps do not fit on one
+// line, so the right end and Steps carry on below the left, each end's
+// opacity under its field, all inside the panel and none over another
+// (increment 61).
+func TestTheGradientWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.resize(image.Pt(800, 555))
+	f.click("ui:gradient")
+	f.click("ui:mix-opacity")
+	panel, parts := f.state.GradientParts()
+	if wrong := frametest.Apart(panel, parts...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	for _, part := range f.state.Toolbar() {
+		if part.Name != "ramps" && part.Rect.Overlaps(panel) {
+			t.Fatalf("the gradient's panel %v lies over the toolbar's %s %v", panel, part.Name, part.Rect)
+		}
+	}
+}
+
+// TestTheCopyPanelWrapsInASmallWindow opens Copy colours from… at 800 ×
+// 555 points: what it says to do takes further lines before its close
+// button, and nothing in it lies over anything else (increment 61).
+func TestTheCopyPanelWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.resize(image.Pt(800, 555))
+	f.click("ui:copy-from")
+	panel, parts := f.state.CopyParts()
+	if wrong := frametest.Apart(panel, parts...); wrong != "" {
+		t.Fatal(wrong)
+	}
+}

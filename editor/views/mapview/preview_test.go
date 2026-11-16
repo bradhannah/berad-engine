@@ -10,6 +10,8 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
@@ -232,5 +234,55 @@ func TestTheMapFollowsTheWatchedNPC(t *testing.T) {
 	at(2, upperID)
 	if f.state.Floor() != upperID || !strings.Contains(f.status(), "took the stairs to Upper") {
 		t.Fatalf("the map follows the watched NPC upstairs: %q", f.status())
+	}
+}
+
+// TestTheInspectorScrollsInASmallWindow previews the Map at 800 × 555
+// points, as a 1200 × 832 window is at 150%: the preview's lines, Clock,
+// Watch and Keys stay at the inspector's foot, and the zone's, the floor's
+// and the tool's lines above them scroll rather than lie under them; the
+// wheel scrolls them (increment 61).
+func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.ctx.Size = image.Pt(800, 555)
+	f.startPreview("cell:3,3")
+	screen := pen.Layer(nil, image.Rect(0, 0, 800, 555))
+	f.state.Draw(screen, f.ctx.Docs)
+	body, _, most, foot := f.state.InspectorParts(f.ctx.Docs)
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), append(foot, frametest.Part{Name: "body", Rect: body})...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("while previewing, the inspector's lines need more height than it has above its foot")
+	}
+	wheel := ui.NewInput(body.Min.Add(image.Pt(ui.Inset, ui.Inset)))
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if _, offset, _, _ := f.state.InspectorParts(f.ctx.Docs); offset == 0 {
+		t.Fatal("the wheel scrolls the inspector's lines")
+	}
+}
+
+// TestTheLeftPanelScrollsInASmallWindow lays a Map out at 800 × 555 points,
+// as a 1200 × 832 window is at 150%: the tools, tiles and floors need more
+// height than the left panel has, so Show floor below and Preview stay at
+// its foot, above the status bar, and the lists scroll above them; the
+// ground floor, last, is scrolled to when found (increment 61).
+func TestTheLeftPanelScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.ctx.Size = image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	lists, most, foot := f.state.LeftParts()
+	panel := image.Rect(0, 0, lists.Max.X, 555-frame.StatusHeight)
+	if wrong := frametest.Apart(panel, append(foot, frametest.Part{Name: "lists", Rect: lists})...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("the tools, tiles and floors need more height than the left panel has")
+	}
+	if point := f.at("floor:1"); !point.In(lists) {
+		t.Fatalf("the ground floor is scrolled into view when found: %v in %v", point, lists)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"math"
 	"os"
 	"runtime/debug"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/clockview"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
@@ -50,6 +52,9 @@ type shell struct {
 	clockLive bool
 	// dragging is set while the divider of a split tab is dragged.
 	dragging bool
+	// squeezed is set while a split's divider is dragged past where a pane
+	// keeps its panels and the canvas's room (increment 61).
+	squeezed bool
 	// stats are the window's frame statistics, when they are asked for.
 	stats *frameStats
 	// more lists the tabs that do not fit on the bar, while open, and used
@@ -92,6 +97,9 @@ type shell struct {
 	frameTicks int
 	tabsKept   string
 	quitting   bool
+	// textScale is the author's scale for text and controls, 1 for 100%,
+	// kept for each size of screen (increment 56).
+	textScale float64
 }
 
 // tab is one tab of the window bar: one pane, or two side by side, the left
@@ -131,7 +139,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
 		args: args, hosting: nil, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
-		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
+		clock: nil, clockOpen: false, clockLive: false, dragging: false, squeezed: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
 		beside: nil, quickImage: nil, statusImage: nil,
 		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},
@@ -139,6 +147,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 		known: map[string]bool{}, keptArrived: false, minWidth: 0, reopen: nil,
 		frameNow:  protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0},
 		frameSeen: protocol.WindowFrame{X: 0, Y: 0, Width: 0, Height: 0}, frameTicks: 0, tabsKept: "", quitting: false,
+		textScale: scriptedTextScale(),
 	}
 }
 
@@ -258,6 +267,7 @@ func (s *shell) Update() error {
 	s.noteUsed()
 	s.noteTrail()
 	s.followOnTop()
+	s.followTextScale()
 	s.followInspector()
 	s.limitWindow()
 	s.reopenNext()
@@ -298,7 +308,7 @@ func (s *shell) target(focused *pane, keys bool) *pane {
 	if s.clock.host.view.Focused() != nil {
 		return s.clock
 	}
-	if !keys && image.Pt(ebiten.CursorPosition()).In(s.clock.rect) {
+	if !keys && cursorPosition().In(s.clock.rect) {
 		return s.clock
 	}
 
@@ -581,6 +591,9 @@ func (s *shell) Draw(screen *ebiten.Image) {
 		}
 	}
 	s.shots = nil
+	for _, shown := range s.panes() {
+		shown.host.shotWaiting = false
+	}
 }
 
 // queueShot saves a pane's screenshot as one of the whole window, once the
@@ -598,28 +611,48 @@ func drawPane(screen *ebiten.Image, shown *pane) {
 	if size.X <= 0 || size.Y <= 0 || shown.failed != nil {
 		return
 	}
-	if shown.image == nil || shown.image.Bounds().Size() != size {
-		if shown.image != nil {
-			shown.image.Deallocate()
-		}
-		shown.image = ebiten.NewImage(size.X, size.Y)
-	}
+	shown.image = pen.Layer(shown.image, shown.rect)
 	shown.image.Clear()
 	shown.failed = safely(func() error {
 		shown.host.Draw(shown.image)
 
 		return nil
 	})
-	var options ebiten.DrawImageOptions
-	options.GeoM.Translate(float64(shown.rect.Min.X), float64(shown.rect.Min.Y))
-	screen.DrawImage(shown.image, &options)
+	pen.DrawLayer(screen, shown.image, shown.rect)
 }
 
-// Layout uses the window's real size, one screen pixel per pixel.
+// Layout is not used: Ebitengine asks LayoutF.
 func (s *shell) Layout(outsideWidth, outsideHeight int) (int, int) {
-	s.size = image.Pt(outsideWidth, outsideHeight)
+	width, height := s.LayoutF(float64(outsideWidth), float64(outsideHeight))
 
-	return outsideWidth, outsideHeight
+	return int(width), int(height)
+}
+
+// LayoutF answers the window's size in the screen's own pixels, so the
+// editor draws at the screen's resolution, and lays the window out in
+// points: the screen's pixels to a point times the author's scale
+// (increment 56).
+func (s *shell) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
+	device := deviceScale()
+	pen.SetScale(device, s.textScale)
+	width, height := math.Ceil(outsideWidth*device), math.Ceil(outsideHeight*device)
+	s.size = pen.Cursor(int(width), int(height))
+
+	return width, height
+}
+
+// deviceScale is the screen's pixels to a point, one where it cannot be
+// read.
+func deviceScale() float64 {
+	monitor := ebiten.Monitor()
+	if monitor == nil {
+		return 1
+	}
+	if scale := monitor.DeviceScaleFactor(); scale > 0 {
+		return scale
+	}
+
+	return 1
 }
 
 // closeAll closes the panes still open when the window closes.

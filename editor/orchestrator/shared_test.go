@@ -115,6 +115,21 @@ func renameOnDisk(t *testing.T, dir, name string) []byte {
 // fast flushes every few milliseconds.
 func fast(cfg *orchestrator.Config) { cfg.FlushInterval = 20 * time.Millisecond }
 
+// A change from outside that lands just after the editor writes a file,
+// before the editor notes what it wrote, still counts as a change, even at
+// the same size: the editor does not take the file's size and time for its
+// own unless the file holds its bytes (found on 2026-11-16).
+func TestAnOutsideWriteJustAfterASaveIsSeen(t *testing.T) {
+	t.Parallel()
+	changed, err := orchestrator.OutsideAfterNote(t.TempDir(), []byte(`{"name": "Ground"}`), []byte(`{"name": "Cellar"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("the change from outside is seen")
+	}
+}
+
 // A file changed outside the editor, while nothing for it waits in the
 // editor, is taken in: windows showing it are sent it again and say so,
 // and its undo steps go, since they were for the version it replaces.

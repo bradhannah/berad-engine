@@ -10,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
@@ -132,7 +133,7 @@ func (s *State) stepPreview(delta int) {
 func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs) {
 	index := s.index(docs)
 	ui.Divider(screen, image.Pt(s.grid.rect.Min.X, s.grid.rect.Min.Y), image.Pt(s.grid.rect.Max.X, s.grid.rect.Min.Y))
-	if area, ok := screen.SubImage(s.grid.rect).(*ebiten.Image); ok {
+	if area, ok := pen.Clip(screen, s.grid.rect); ok {
 		for _, cell := range s.grid.cells {
 			rect := s.grid.onScreen(cell)
 			if !rect.Overlaps(s.grid.rect) {

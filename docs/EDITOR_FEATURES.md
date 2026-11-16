@@ -194,6 +194,17 @@ under consideration), **open** (undecided).
   every tab's inspector. This is not the layout fitted to the window's
   width rejected on 2026-11-04: there is one layout, and only its author
   moves it.)
+- **Agreed (2026-11-16):** **what does not fit a small window wraps,
+  scrolls or is refused.** A row of buttons too wide for its room carries
+  on below; an inspector's fields scroll between its heading and its foot,
+  where the save bar and Delete stay and take their own presses; and a tab
+  that would need more than the window has is refused, saying why and what
+  makes room: a pane opens in a tab of its own, and a larger scale of text
+  and controls is not taken. (Rejected: a More button for what does not
+  fit; headings that fold their sections; the window stopping narrowing or
+  shortening where every row and field fits; the window widening; a Map's
+  panels folding to make room for Watch.) [Increment
+  61](increments/0061-views-fit-a-small-window.md) builds it.
 - **Agreed (2026-11-04):** on a wide window **a list keeps a readable
   width,** each row's detail in a column close to its name, and the
   inspector stands beside the list instead of at the far edge. World

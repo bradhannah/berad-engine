@@ -5,9 +5,9 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 )
 
 // Look is how a place box shows what it holds.
@@ -72,7 +72,7 @@ func DrawBox(screen *ebiten.Image, theme *ui.Theme, box image.Rectangle, label s
 // dashed outlines a box with a dashed line.
 func dashed(screen *ebiten.Image, box image.Rectangle, ink color.Color) {
 	line := func(x0, y0, x1, y1 int) {
-		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x1), float32(y1), ui.Border, ink, true)
+		pen.StrokeLine(screen, float32(x0), float32(y0), float32(x1), float32(y1), ui.Border, ink, true)
 	}
 	for x := box.Min.X; x < box.Max.X; x += ui.Half * dash {
 		end := min(x+dash, box.Max.X)

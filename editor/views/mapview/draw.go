@@ -7,12 +7,12 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -52,15 +52,18 @@ const (
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	s.layoutWidgets(docs)
 	s.sprites.refresh(docs, s.camera.tile, s.shownSprites(docs))
 	screen.Fill(ui.ColorPage())
 	grid := s.Grid()
-	area, ok := screen.SubImage(grid).(*ebiten.Image)
+	area, ok := pen.Clip(screen, grid)
 	if ok {
 		area.Fill(ui.ColorStage())
-		s.drawFloors(area, docs, grid)
+		// The floor is drawn at the canvas's own zoom, which the author's
+		// scale for text and controls does not change (increment 56).
+		pen.OnCanvas(func() { s.drawFloors(area, docs, s.stage()) })
+		s.drawStageMessages(area, docs, grid)
 		if !s.floor.IsZero() {
 			s.zoom.layout(grid, s.camera)
 			s.zoom.draw(area, s.theme)
@@ -83,11 +86,25 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	s.guard.Draw(screen, s.theme)
 }
 
-func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
+// drawStageMessages says over the stage that the zone has no floors, that
+// the floor is loading, or which way it lies when it is out of view.
+func (s *State) drawStageMessages(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
 	if s.floor.IsZero() {
 		s.theme.DrawText(area, "This zone has no floors yet. Add one in the project browser.",
 			grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
 
+		return
+	}
+	if !docs.View(s.floor, func(client.Document) {}) {
+		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
+	}
+	s.drawOffView(area, grid, docs)
+}
+
+// drawFloors draws the floor, the floor below it and what stands on them,
+// in the canvas's points.
+func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Rectangle) {
+	if s.floor.IsZero() {
 		return
 	}
 	docs.View(s.floor, func(document client.Document) {
@@ -105,7 +122,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 	shown := s.shownState()
 	shake := s.shakeBy(shown)
 	s.camera.offset = s.camera.offset.Add(shake)
-	loaded := docs.View(s.floor, func(document client.Document) {
+	docs.View(s.floor, func(document client.Document) {
 		floorDoc, isFloor := document.Model.(*tilefloor.Document)
 		if !isFloor {
 			return
@@ -133,10 +150,6 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 	if shown != nil {
 		s.drawBox(area, grid, shown.Box)
 	}
-	if !loaded {
-		s.theme.DrawText(area, "Loading the floor…", grid.Min.X+ui.Inset, grid.Min.Y+ui.Inset, ui.ColorStageInk())
-	}
-	s.drawOffView(area, grid, docs)
 }
 
 // drawOutside fills the zone beyond the floor bounds with the stage, then
@@ -351,8 +364,8 @@ func (s *State) drawAnchors(area *ebiten.Image, floorData *floor.Floor, grid ima
 		if s.pick != nil {
 			s.drawPickCell(area, rect, anchor.ID)
 		}
-		vector.FillCircle(area, centreX, centreY, radius, fill, true)
-		vector.StrokeCircle(area, centreX, centreY, radius, anchorRing, blue, true)
+		pen.FillCircle(area, centreX, centreY, radius, fill, true)
+		pen.StrokeCircle(area, centreX, centreY, radius, anchorRing, blue, true)
 		if size >= minLabel {
 			s.drawAnchorName(area, rect, anchor)
 		}
@@ -430,6 +443,10 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	height := s.size.Y - frame.StatusHeight
 	ui.FillRect(screen, image.Rect(0, 0, s.panelFull(), height), ui.ColorPage())
 	ui.Divider(screen, image.Pt(s.panelFull()-ui.Outline, 0), image.Pt(s.panelFull()-ui.Outline, height))
+	window := screen
+	if lists, shown := s.lists.Clip(screen); shown {
+		screen = lists
+	}
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}
@@ -454,8 +471,9 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	s.tileList.Draw(screen, s.theme)
 	heading(floorsHeading, s.floorList)
 	s.floorList.Draw(screen, s.theme)
-	s.below.Draw(screen, s.theme)
-	s.previewBn.Draw(screen, s.theme)
+	s.below.Draw(window, s.theme)
+	s.previewBn.Draw(window, s.theme)
+	s.lists.DrawThumb(window)
 	_ = docs
 }
 
@@ -470,7 +488,17 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	}
 	panel := frame.Inspector(s.size)
 	textX := panel.Min.X + ui.Inset
-	textY := panel.Min.Y + ui.Inset
+	s.theme.Heading(screen, "INSPECTOR", textX, panel.Min.Y+ui.Inset)
+	if body, shown := s.body.Clip(screen); shown {
+		s.body.Fit(max(s.drawBody(body, docs, textX, s.down(bodyTop(panel))), s.deleteBtn.Rect.Max.Y,
+			s.removeBn.Rect.Max.Y, s.replace.Rect.Max.Y) + ui.Inset)
+	}
+	s.drawFoot(screen, docs, textX, panel)
+}
+
+// drawBody draws the inspector's parts that scroll, from the zone's name
+// down, and returns where they end.
+func (s *State) drawBody(screen *ebiten.Image, docs frame.Docs, textX, textY int) int {
 	line := func(text string, ink color.Color) {
 		s.theme.DrawText(screen, text, textX, textY, ink)
 		textY += ui.LineHeight
@@ -481,8 +509,6 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			zoneName, floorName = index.Name(s.zone, ""), index.Name(s.floor, "")
 		}
 	})
-	s.theme.Heading(screen, "INSPECTOR", textX, textY)
-	textY += ui.LineHeight
 	line("Zone: "+zoneName, ui.ColorInk())
 	if s.zonePalettesShown() {
 		s.zonePalettes.Draw(screen)
@@ -498,28 +524,43 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		zoom := strconv.Itoa(s.camera.cellSize())
 		line("revision "+strconv.FormatUint(document.Revision, 10)+"  zoom "+zoom+" px", ui.ColorSubdued())
 		textY += ui.LineHeight / ui.Half
-		switch {
-		case !s.anchor.IsZero():
-			s.drawAnchorInspector(screen, floorData, textX, &textY)
-		case !s.placement.IsZero():
-			s.drawPlacementInspector(screen, floorData, textX, &textY)
-		case len(s.selected) > 0:
-			line(fmt.Sprintf("%d walls selected", len(s.selected)), ui.ColorInk())
-			s.replace.Draw(screen, s.theme)
-			textY = familyListTop
-			line("Pick a family on the left to change them.", ui.ColorMuted())
-		case s.tool == ToolResize:
-			s.drawResizeInspector(screen, floorData, textX, &textY)
-			s.drawHover(screen, floorData, textX, &textY)
-		default:
-			s.drawCellInspector(screen, floorData, textX, &textY)
-		}
+		s.drawSelected(screen, floorData, textX, &textY)
 	})
 	if !loaded {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
+
+	return textY
+}
+
+// drawSelected draws the inspector's part for what is selected, or the tool
+// in hand.
+func (s *State) drawSelected(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
+	switch {
+	case !s.anchor.IsZero():
+		s.drawAnchorInspector(screen, floorData, textX, textY)
+	case !s.placement.IsZero():
+		s.drawPlacementInspector(screen, floorData, textX, textY)
+	case len(s.selected) > 0:
+		s.theme.DrawText(screen, fmt.Sprintf("%d walls selected", len(s.selected)), textX, *textY, ui.ColorInk())
+		s.replace.Draw(screen, s.theme)
+		*textY = s.down(familyListTop)
+		s.theme.DrawText(screen, "Pick a family on the left to change them.", textX, *textY, ui.ColorMuted())
+		*textY += ui.LineHeight
+	case s.tool == ToolResize:
+		s.drawResizeInspector(screen, floorData, textX, textY)
+		s.drawHover(screen, floorData, textX, textY)
+	default:
+		s.drawCellInspector(screen, floorData, textX, textY)
+	}
+}
+
+// drawFoot draws what stays at the inspector's foot: the preview's lines,
+// Clock and Watch, and Keys, and the thumb while its parts scroll.
+func (s *State) drawFoot(screen *ebiten.Image, docs frame.Docs, textX int, panel image.Rectangle) {
 	s.drawPreview(screen, docs, textX, footTop(panel))
 	s.keysBn.Draw(screen, s.theme)
+	s.body.DrawThumb(screen)
 }
 
 func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
@@ -527,9 +568,9 @@ func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor
 	if !ok {
 		return
 	}
-	s.theme.Heading(screen, "ANCHOR NAME", textX, inspectorFieldTop-ui.LineHeight)
+	s.theme.Heading(screen, "ANCHOR NAME", textX, s.down(inspectorFieldTop)-ui.LineHeight)
 	s.nameField.Draw(screen)
-	top := inspectorFieldTop + ui.ButtonH + ui.Gap
+	top := s.down(inspectorFieldTop) + ui.ButtonH + ui.Gap
 	s.theme.DrawText(screen, fmt.Sprintf("at %d, %d", anchor.Col, anchor.Row), textX, top, ui.ColorInk())
 	s.theme.DrawText(screen, "ID "+anchor.ID.String(), textX, top+ui.LineHeight, ui.ColorSubdued())
 	s.save.Draw(screen, s.theme)

@@ -12,6 +12,7 @@ import (
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/valueform"
@@ -376,7 +377,7 @@ func (s *State) drawLocals(screen *ebiten.Image, docs frame.Docs) {
 
 		return
 	}
-	if shown, ok := screen.SubImage(panel.shown).(*ebiten.Image); ok && !panel.shown.Empty() {
+	if shown, ok := pen.Clip(screen, panel.shown); ok && !panel.shown.Empty() {
 		panel.form.Draw(shown)
 	}
 	s.save.Draw(screen, s.theme)

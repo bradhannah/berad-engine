@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 )
 
 // The list's columns, right-aligned in from its right edge, and how far a
@@ -178,7 +179,7 @@ func (p *Picker) drawList(screen *ebiten.Image) {
 		return
 	}
 	p.list.Draw(screen, p.theme)
-	area, ok := screen.SubImage(p.list.Rect).(*ebiten.Image)
+	area, ok := pen.Clip(screen, p.list.Rect)
 	if !ok {
 		return
 	}

@@ -6,9 +6,9 @@ import (
 	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/showdraw"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
@@ -83,7 +83,7 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 		if s.problem != "" {
 			message = s.problem
 		}
-		bounds := screen.Bounds()
+		bounds := pen.Bounds(screen)
 		width := s.theme.TextWidth(message)
 		s.theme.DrawText(screen, message, (bounds.Dx()-width)/ui.Half, bounds.Dy()/ui.Half, ui.Hex(hexMessage))
 
@@ -102,25 +102,36 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	shakeX, shakeY := s.game.Stage().Offset()
 	shaken.Left -= shakeX / float64(s.tile)
 	shaken.Top -= shakeY / float64(s.tile)
-	s.drawCells(shaken)
-	s.drawCharacters(shaken)
+	// The game's picture is drawn in its own pixels, then placed on the
+	// screen (increment 56).
+	pen.InPixels(func() {
+		s.drawCells(shaken)
+		s.drawCharacters(shaken)
+	})
 	s.present(screen, width, height)
-	s.drawShown(screen, view)
+	// What the game shows is part of the game, drawn without the author's
+	// scale for text and controls (increment 56).
+	pen.OnCanvas(func() { s.drawShown(screen, view) })
 }
 
 // drawShown draws over the game what its workflows show: each line said by
 // an NPC in view, in a bubble over its head, and the box at the foot. A
-// speaker off screen speaks unseen.
+// speaker off screen speaks unseen. The game is placed in the screen's
+// pixels, and what it shows in the canvas's points.
 func (s *State) drawShown(screen *ebiten.Image, view game.View) {
-	shown := image.Rectangle{Min: s.origin, Max: s.origin.Add(image.Pt(
-		int(float64(view.Columns*s.tile)*s.scale), int(float64(view.Rows*s.tile)*s.scale)))}
+	device := pen.Device()
+	points := func(pixels image.Point) image.Point {
+		return image.Pt(int(float64(pixels.X)/device), int(float64(pixels.Y)/device))
+	}
+	shown := image.Rectangle{Min: points(s.origin), Max: points(s.origin.Add(image.Pt(
+		int(float64(view.Columns*s.tile)*s.scale), int(float64(view.Rows*s.tile)*s.scale))))}
 	for _, character := range s.game.Characters() {
 		if !character.Speaking || character.Floor != view.Floor {
 			continue
 		}
 		corner := s.cellAt(view, character.X, character.Y)
-		head := s.origin.Add(image.Pt(int(float64(corner.X*ui.Half+s.tile)*s.scale/ui.Half),
-			int(float64(corner.Y)*s.scale)))
+		head := points(s.origin.Add(image.Pt(int(float64(corner.X*ui.Half+s.tile)*s.scale/ui.Half),
+			int(float64(corner.Y)*s.scale))))
 		if head.In(shown) {
 			showdraw.DrawBubble(screen, s.theme, head, character.Line.Text,
 				float64(character.Line.Left)/float64(character.Line.Ticks))
@@ -129,8 +140,8 @@ func (s *State) drawShown(screen *ebiten.Image, view game.View) {
 	showdraw.DrawBox(screen, s.theme, shown, showdraw.BoxOf(s.game.Stage()))
 }
 
-// present draws the canvas as large as the tab allows, keeping its shape and
-// centring it on black. A whole-number scale is drawn as it is; any other is
+// present draws the canvas as large as the tab allows, in the screen's own
+// pixels, keeping its shape and centring it on black. A whole-number scale is drawn as it is; any other is
 // first enlarged by the next whole number with hard edges, then shrunk to fit
 // smoothly, so every pixel stays the same size and only their edges soften.
 func (s *State) present(screen *ebiten.Image, width, height int) {
@@ -283,12 +294,12 @@ func (s *State) drawCharacters(view game.View) {
 		centreX, centreY := float32(corner.X)+float32(s.tile)/ui.Half, float32(corner.Y)+float32(s.tile)/ui.Half
 		radius := float32(s.tile) * discShare
 		if each.player {
-			vector.FillCircle(s.canvas, centreX, centreY, radius, ui.Hex(hexPlayer), true)
-			vector.StrokeCircle(s.canvas, centreX, centreY, radius, ringWidth, ui.Hex(hexRing), true)
+			pen.FillCircle(s.canvas, centreX, centreY, radius, ui.Hex(hexPlayer), true)
+			pen.StrokeCircle(s.canvas, centreX, centreY, radius, ringWidth, ui.Hex(hexRing), true)
 
 			continue
 		}
-		vector.FillCircle(s.canvas, centreX, centreY, radius, ui.Hex(hexToken), true)
+		pen.FillCircle(s.canvas, centreX, centreY, radius, ui.Hex(hexToken), true)
 	}
 }
 

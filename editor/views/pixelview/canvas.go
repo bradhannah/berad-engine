@@ -10,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/client"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/art"
@@ -49,60 +50,80 @@ func toolbarTop() int { return ui.Inset }
 
 // layoutToolbar places the tool buttons at the left of the toolbar, and the
 // zoom, the template toggle, while the sprite has a template, and the grid
-// toggle at its right.
+// toggle at its right. When they do not fit on one line, the zoom and the
+// toggles go on a line of their own below, and the canvas starts below that
+// (increment 61).
 func (s *State) layoutToolbar(docs frame.Docs) {
-	top := toolbarTop()
-	left := ui.Inset
+	content := frame.Content(s.size)
+	widths := make([]int, len(s.tools))
+	for index := range s.tools {
+		widths[index] = toolWidth
+	}
+	_, templated := s.templateID(docs)
+	trail := []int{zoomStep + zoomLabel + zoomStep, zoomFitW}
+	if templated {
+		trail = append(trail, templateWidth)
+	}
+	trail = append(trail, gridApart+gridWidth)
+	row := image.Rect(ui.Inset, toolbarTop(), content.Max.X-ui.Inset, toolbarTop())
+	leads, trails, bottom := ui.WrapRow(row, widths, trail, ui.Gap)
 	for index, button := range s.tools {
-		button.Rect = image.Rect(left, top, left+toolWidth, top+ui.ButtonH)
+		button.Rect = leads[index]
 		button.On = tools()[index].tool == s.tool
-		left += toolWidth + ui.Gap
 	}
-	right := frame.Content(s.size).Max.X - ui.Inset
-	s.grid.Rect = image.Rect(right-gridWidth, top, right, top+ui.ButtonH)
-	right = s.grid.Rect.Min.X - ui.Inset
+	zoom := trails[0]
+	s.zoomOut.Rect = image.Rect(zoom.Min.X, zoom.Min.Y, zoom.Min.X+zoomStep, zoom.Max.Y)
+	s.zoomIn.Rect = image.Rect(zoom.Max.X-zoomStep, zoom.Min.Y, zoom.Max.X, zoom.Max.Y)
+	s.zoomFit.Rect = trails[1]
 	s.overlay.Rect = ui.Zero()
-	if _, drawn := s.templateID(docs); drawn {
-		s.overlay.Rect = image.Rect(right-templateWidth, top, right, top+ui.ButtonH)
-		right = s.overlay.Rect.Min.X - ui.Gap
+	if templated {
+		s.overlay.Rect = trails[2]
 	}
-	s.zoomFit.Rect = image.Rect(right-zoomFitW, top, right, top+ui.ButtonH)
-	right = s.zoomFit.Rect.Min.X - ui.Gap
-	s.zoomIn.Rect = image.Rect(right-zoomStep, top, right, top+ui.ButtonH)
-	right = s.zoomIn.Rect.Min.X - zoomLabel
-	s.zoomOut.Rect = image.Rect(right-zoomStep, top, right, top+ui.ButtonH)
+	grid := trails[len(trails)-1]
+	s.grid.Rect = image.Rect(grid.Max.X-gridWidth, grid.Min.Y, grid.Max.X, grid.Max.Y)
+	s.toolbarBottom = bottom
 	s.zoomOut.Disabled = s.zoom <= 1
 	s.zoomIn.Disabled = s.zoom >= maxZoom
 }
+
+// gridApart is the further room kept before the grid toggle.
+const gridApart = ui.Inset - ui.Gap
 
 // canvas is the area that shows the tile, between the toolbar and the
 // readout.
 func (s *State) canvas() image.Rectangle {
 	content := frame.Content(s.size)
-	top := toolbarTop() + ui.ButtonH + ui.Inset
+	top := max(s.toolbarBottom, toolbarTop()+ui.ButtonH) + ui.Inset
 
 	return image.Rect(0, top, content.Max.X, max(top, content.Max.Y-readoutSpace))
 }
 
-// tileRect is where the tile shows: centred in the canvas, then panned.
+// stage is the canvas in its own points, where the tile is placed: the
+// author's scale for text and controls does not change its magnification
+// (increment 56).
+func (s *State) stage() image.Rectangle { return pen.CanvasRect(s.canvas()) }
+
+// tileRect is where the tile shows, in the canvas's points: centred in the
+// canvas, then panned.
 func (s *State) tileRect(size int) image.Rectangle {
 	side := size * max(s.zoom, 1)
-	centre := ui.Center(s.canvas()).Add(s.pan)
+	centre := ui.Center(s.stage()).Add(s.pan)
 	corner := centre.Sub(image.Pt(side/ui.Half, side/ui.Half))
 
 	return image.Rectangle{Min: corner, Max: corner.Add(image.Pt(side, side))}
 }
 
-// pixelAt returns the tile pixel under a screen point, and whether the point
-// is on the tile within the canvas. Points off the tile give pixels outside
-// it, so a stroke dragged off and back draws up to the edge.
+// pixelAt returns the tile pixel under a point in the canvas's points, and
+// whether the point is on the tile within the canvas. Points off the tile
+// give pixels outside it, so a stroke dragged off and back draws up to the
+// edge.
 func (s *State) pixelAt(point image.Point, size int) (image.Point, bool) {
 	rect := s.tileRect(size)
 	zoom := max(s.zoom, 1)
 	local := point.Sub(rect.Min)
 	pixel := image.Pt(floorDiv(local.X, zoom), floorDiv(local.Y, zoom))
 
-	return pixel, point.In(rect) && point.In(s.canvas())
+	return pixel, point.In(rect) && point.In(s.stage())
 }
 
 // pixelRect returns a tile pixel's screen rectangle.
@@ -133,7 +154,7 @@ func fitZoom(size int, canvas image.Rectangle) int {
 // fit magnifies the tile as much as fits, and centres it.
 func (s *State) fit(docs frame.Docs) {
 	if size, ok := s.tileSize(docs); ok {
-		s.zoom = fitZoom(size, s.canvas())
+		s.zoom = fitZoom(size, s.stage())
 		s.pan = image.Pt(0, 0)
 	}
 }
@@ -168,10 +189,10 @@ func (s *State) updateCanvas(input *ui.Input, ctx *frame.Context) {
 	}
 	canvas := s.canvas()
 	if s.zoom == 0 {
-		s.zoom = fitZoom(size, canvas)
+		s.zoom = fitZoom(size, s.stage())
 	}
 	s.panAndZoom(input, canvas)
-	pixel, onTile := s.pixelAt(input.Cursor, size)
+	pixel, onTile := s.pixelAt(pen.CanvasPoint(input.Cursor), size)
 	s.hover, s.hovering = pixel, onTile
 	switch s.tool {
 	case ToolPencil, ToolEraser:
@@ -197,7 +218,7 @@ func (s *State) panAndZoom(input *ui.Input, canvas image.Rectangle) {
 		return
 	}
 	if !input.Held.Shortcut {
-		s.pan = s.pan.Add(input.WheelPan())
+		s.pan = s.pan.Add(pen.CanvasDelta(input.WheelPan()))
 
 		return
 	}
@@ -271,20 +292,28 @@ func (s *State) drawCanvas(screen *ebiten.Image, docs frame.Docs) {
 	ui.FillRect(screen, canvas, ui.ColorStage())
 	ui.Divider(screen, canvas.Min, image.Pt(canvas.Max.X, canvas.Min.Y))
 	size, ok := s.tileSize(docs)
-	area, clipped := screen.SubImage(canvas).(*ebiten.Image)
+	area, clipped := pen.Clip(screen, canvas)
 	if !ok || !clipped || !s.refresh(docs) {
 		s.theme.DrawText(screen, "Loading the sprite…", canvas.Min.X+ui.Inset, canvas.Min.Y+ui.Inset, ui.ColorStageInk())
 
 		return
 	}
+	// The tile is drawn at its own magnification, without the author's
+	// scale for text and controls (increment 56).
+	pen.OnCanvas(func() { s.drawTile(area, docs, size) })
+}
+
+// drawTile draws the tile, its checkerboard, grid, template and marks, in
+// the canvas's points.
+func (s *State) drawTile(area *ebiten.Image, docs frame.Docs, size int) {
 	rect := s.tileRect(size)
 	var place ebiten.DrawImageOptions
 	place.GeoM.Translate(float64(rect.Min.X), float64(rect.Min.Y))
-	area.DrawImage(s.checkerboard(rect.Size()), &place)
+	pen.DrawImage(area, s.checkerboard(rect.Size()), &place)
 	var magnify ebiten.DrawImageOptions
 	magnify.GeoM.Scale(float64(s.zoom), float64(s.zoom))
 	magnify.GeoM.Translate(float64(rect.Min.X), float64(rect.Min.Y))
-	area.DrawImage(s.picture.tile.Image(), &magnify)
+	pen.DrawImage(area, s.picture.tile.Image(), &magnify)
 	if s.grid.On && s.zoom >= minGridZoom {
 		ink := ui.HexAlpha(0, gridAlpha)
 		for line := 1; line < size; line++ {

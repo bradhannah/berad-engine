@@ -27,14 +27,14 @@ const (
 // form, or an NPC's or zone's templates to apply.
 func (s *State) inspect(selected item) {
 	if selected.kind != itemDeclared && s.named != "" {
-		s.focus = ui.Focus{}
+		s.focus = s.newFocus()
 	}
 	s.named = ""
 	s.inspectPath(selected)
 	s.inspectHeld(selected)
 	if selected.kind == itemDeclared {
 		if s.form.Show(selected.declared, valuetree.Dotted(selected.list.Values, selected.declared.ID)) {
-			s.focus = ui.Focus{}
+			s.focus = s.newFocus()
 			s.focus.Register(s.form.Fields()...)
 		}
 		s.named = s.list.Selected
@@ -72,7 +72,7 @@ func (s *State) inspectPath(selected item) {
 	}
 	if s.pathOf != s.list.Selected {
 		s.path.Field.Revert()
-		s.focus = ui.Focus{}
+		s.focus = s.newFocus()
 		s.focus.Register(s.path)
 		s.pathOf = s.list.Selected
 	}
@@ -97,10 +97,11 @@ func inspectorTop(panel image.Rectangle) int {
 	return panel.Min.Y + ui.Inset + ui.Half*ui.LineHeight + ui.Gap
 }
 
-// layoutInspector places the inspector's parts for the selected row.
+// layoutInspector places the inspector's parts for the selected row: the
+// save bar and Delete at its foot, then its fields from the top down,
+// scrolled between its heading and the foot (increment 61).
 func (s *State) layoutInspector(panel image.Rectangle) {
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
-	bottom := panel.Max.Y - ui.Inset
 	s.form.Hide()
 	s.save.Rect, s.takeOff.Rect, s.path.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	s.signal.name.Rect, s.signal.description.Rect, s.signal.remove.Rect = ui.Zero(), ui.Zero(), ui.Zero()
@@ -108,22 +109,24 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 	for _, button := range s.templates {
 		button.Rect = ui.Zero()
 	}
+	s.scroll.For(s.list.Selected)
+	s.scroll.Body = ui.Zero()
 	selected, found := s.selected()
+	if !found {
+		return
+	}
+	s.scroll.Body = image.Rect(panel.Min.X, inspectorTop(panel), panel.Max.X,
+		max(inspectorTop(panel), s.layoutFoot(selected, left, width, panel.Max.Y-ui.Inset)))
+	top := inspectorTop(panel) - s.scroll.Offset
 	switch {
-	case !found:
 	case s.isHeldConstant(selected):
-		s.layoutHeld(panel)
+		s.layoutHeld(left, width, top)
 	case selected.kind == itemDeclared:
-		s.form.Delete.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
-		saveTop := s.form.Delete.Rect.Min.Y - footerGap - ui.SaveBarHeight(width)
-		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
-		s.form.Layout(left, inspectorTop(panel), width)
+		s.formBottom = s.form.Layout(left, top, width)
 	case selected.kind == itemOwner:
-		pathTop := inspectorTop(panel) + ui.LineHeight
+		pathTop := top + ui.LineHeight
 		s.path.Rect = image.Rect(left, pathTop, left+width, pathTop+ui.ButtonH)
 		top := pathTop + ui.ButtonH + ui.Gap + noteLines*ui.LineHeight + ui.LineHeight
-		saveTop := bottom - ui.SaveBarHeight(width)
-		s.save.Rect = image.Rect(left, saveTop, left+width, bottom)
 		gap := ui.Gap
 		for index, button := range s.templates {
 			column, row := index%templatesPerRow, index/templatesPerRow
@@ -132,11 +135,35 @@ func (s *State) layoutInspector(panel image.Rectangle) {
 			button.Rect = image.Rect(from, at, from+(width-gap)/templatesPerRow, at+ui.ButtonH)
 		}
 	case selected.kind == itemApplied:
-		top := inspectorTop(panel) + noteLines*ui.LineHeight
+		top += noteLines * ui.LineHeight
 		s.takeOff.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	case isSignal(selected.kind):
-		s.layoutSignal(panel)
+		s.layoutSignal(left, width, top)
 	}
+}
+
+// layoutFoot places what stays at the inspector's foot for the selected
+// row, from its bottom up: the save bar, and a value's or a signal's Delete.
+// It returns where the fields above it must end.
+func (s *State) layoutFoot(selected item, left, width, bottom int) int {
+	switch {
+	case s.isHeldConstant(selected), selected.kind == itemOwner:
+		s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
+
+		return s.save.Rect.Min.Y - footerGap
+	case selected.kind == itemDeclared:
+		s.form.Delete.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
+		saveTop := s.form.Delete.Rect.Min.Y - footerGap - ui.SaveBarHeight(width)
+		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
+
+		return saveTop - footerGap
+	case isSignal(selected.kind):
+		s.signal.remove.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
+
+		return s.signal.remove.Rect.Min.Y - footerGap
+	}
+
+	return bottom
 }
 
 // updateInspector handles the inspector's buttons for the selected row.
@@ -245,30 +272,47 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	s.theme.Heading(screen, heading(selected), left, panel.Min.Y+ui.Inset)
 	s.theme.DrawMonoStrong(screen, s.theme.FitText(selected.path, width), left, panel.Min.Y+ui.Inset+ui.LineHeight,
 		ui.ColorInk())
-	top := inspectorTop(panel)
+	if body, ok := s.scroll.Clip(screen); ok {
+		s.scroll.Fit(s.drawBody(body, docs, panel, selected))
+	}
+	s.save.Draw(screen, s.theme)
+	if selected.kind == itemDeclared {
+		s.form.Delete.Draw(screen, s.theme)
+	}
+	s.signal.remove.Draw(screen, s.theme)
+	s.scroll.DrawThumb(screen)
+}
+
+// drawBody draws the inspector's fields, which scroll between its heading
+// and its foot, and returns where they end.
+func (s *State) drawBody(body *ebiten.Image, docs frame.Docs, panel image.Rectangle, selected item) int {
+	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
+	top := inspectorTop(panel) - s.scroll.Offset
 	switch selected.kind {
 	case itemDeclared:
-		s.form.Draw(screen)
-		under := s.drawUses(screen, left, s.form.Layout(left, top, width), width)
-		under = s.drawMarkupWarning(screen, selected.declared, selected.declared.Zero(), left, under, width)
-		s.drawHolders(screen, selected, left, under+ui.Gap, width)
-		s.save.Draw(screen, s.theme)
-		s.form.Delete.Draw(screen, s.theme)
+		s.form.Draw(body)
+		under := s.drawUses(body, left, s.formBottom, width)
+		under = s.drawMarkupWarning(body, selected.declared, selected.declared.Zero(), left, under, width)
+
+		return s.drawHolders(body, selected, left, under+ui.Gap, width)
 	case itemOwner:
-		s.drawOwner(screen, selected, left, top, width)
+		return s.drawOwner(body, selected, left, top, width)
 	case itemHeld:
 		if s.isHeldConstant(selected) {
-			s.drawHeld(screen, selected, left, top, width)
-
-			break
+			return s.drawHeld(body, selected, left, top, width)
 		}
-		s.drawNote(screen, note(selected), left, top, width)
+
+		return s.drawNote(body, note(selected), left, top, width)
 	case itemApplied, itemTemplates, itemName:
-		s.drawNote(screen, note(selected), left, top, width)
-		s.takeOff.Draw(screen, s.theme)
+		s.drawNote(body, note(selected), left, top, width)
+		s.takeOff.Draw(body, s.theme)
+
+		return max(s.takeOff.Rect.Max.Y, top+noteLines*ui.LineHeight)
 	case itemSignal, itemSignalGroup:
-		s.drawSignal(screen, docs, panel, selected.kind == itemSignalGroup)
+		return s.drawSignal(body, docs, panel, selected.kind == itemSignalGroup)
 	}
+
+	return top
 }
 
 // heading names what the inspector shows.
@@ -337,31 +381,38 @@ func plural(scope worldstate.Scope) string {
 	return "NPCs"
 }
 
-// drawOwner draws an NPC's or zone's path name and its templates.
-func (s *State) drawOwner(screen *ebiten.Image, selected item, left, top, width int) {
+// drawOwner draws an NPC's or zone's path name and its templates, and
+// returns where they end.
+func (s *State) drawOwner(screen *ebiten.Image, selected item, left, top, width int) int {
 	s.theme.Heading(screen, "PATH NAME", left, top)
 	s.path.Draw(screen)
 	top = s.path.Rect.Max.Y + ui.Gap
 	s.drawNote(screen, s.pathNote(selected), left, top, width)
 	top += noteLines * ui.LineHeight
-	s.save.Draw(screen, s.theme)
 	s.theme.Heading(screen, "TEMPLATES", left, top)
+	bottom := top + ui.Half*ui.LineHeight
 	if len(s.templates) == 0 {
 		s.theme.DrawText(screen, "No "+string(selected.scope)+" templates yet.", left, top+ui.LineHeight, ui.ColorMuted())
 	}
 	for _, button := range s.templates {
 		button.Draw(screen, s.theme)
+		bottom = max(bottom, button.Rect.Max.Y+ui.Gap)
 	}
+
+	return bottom
 }
 
-// drawNote draws a few lines of explanation.
-func (s *State) drawNote(screen *ebiten.Image, text string, left, top, width int) {
-	for index, line := range s.theme.Wrap(text, width) {
+// drawNote draws a few lines of explanation, and returns where they end.
+func (s *State) drawNote(screen *ebiten.Image, text string, left, top, width int) int {
+	lines := s.theme.Wrap(text, width)
+	for index, line := range lines {
 		if index == noteLines {
 			break
 		}
 		s.theme.DrawText(screen, line, left, top+index*ui.LineHeight, ui.ColorMuted())
 	}
+
+	return top + min(len(lines), noteLines)*ui.LineHeight
 }
 
 // drawUses lists where the selected declaration is used.

@@ -20,6 +20,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/ui/textedit"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
@@ -717,7 +718,7 @@ func (s *State) updateShowMenu(input *ui.Input, ctx *frame.Context) {
 
 // Draw renders the window.
 func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
-	s.size = screen.Bounds().Size()
+	s.size = pen.Bounds(screen).Size()
 	screen.Fill(ui.ColorPage())
 	template, ok := s.current(docs)
 	if !ok {
@@ -774,20 +775,31 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, template artp
 	s.showOn.Draw(screen, s.theme)
 	ui.FillRect(screen, s.preview, ui.ColorStage())
 	size := tileSize(docs)
-	zoom := max(1, min(maxZoom, (min(s.preview.Dx(), s.preview.Dy())-fitMargin*ui.Half)/size))
-	side := size * zoom
-	corner := ui.Center(s.preview).Sub(image.Pt(side/ui.Half, side/ui.Half))
-	rect := image.Rectangle{Min: corner, Max: corner.Add(image.Pt(side, side))}
-	area, clipped := screen.SubImage(s.preview).(*ebiten.Image)
+	area, clipped := pen.Clip(screen, s.preview)
 	if !clipped {
 		return
 	}
+	// The preview is drawn at whole pixels of the screen, without the
+	// author's scale for text and controls (increment 56).
+	pen.OnCanvas(func() { s.drawMagnified(area, docs, template, size) })
+	caption := strconv.Itoa(size) + " × " + strconv.Itoa(size) + " pixels · where rules overlap, the strictest wins"
+	s.theme.DrawText(screen, caption, s.preview.Min.X, s.preview.Max.Y+ui.Gap, ui.ColorMuted())
+}
+
+// drawMagnified draws the template over a tile magnified to fit the
+// preview, in the canvas's points.
+func (s *State) drawMagnified(area *ebiten.Image, docs frame.Docs, template artplugin.Template, size int) {
+	stage := pen.CanvasRect(s.preview)
+	zoom := max(1, min(maxZoom, (min(stage.Dx(), stage.Dy())-fitMargin*ui.Half)/size))
+	side := size * zoom
+	corner := ui.Center(stage).Sub(image.Pt(side/ui.Half, side/ui.Half))
+	rect := image.Rectangle{Min: corner, Max: corner.Add(image.Pt(side, side))}
 	ui.FillRect(area, rect, ui.ColorField())
 	if tileID, ok := shownTile(docs, s.shown); ok && s.picture.Refresh(docs, tileID) && s.picture.Size() == size {
 		var magnify ebiten.DrawImageOptions
 		magnify.GeoM.Scale(float64(zoom), float64(zoom))
 		magnify.GeoM.Translate(float64(rect.Min.X), float64(rect.Min.Y))
-		area.DrawImage(s.picture.Image(), &magnify)
+		pen.DrawImage(area, s.picture.Image(), &magnify)
 	}
 	if zoom >= minGridZoom {
 		ink := ui.HexAlpha(0, gridAlpha)
@@ -798,10 +810,8 @@ func (s *State) drawPreview(screen *ebiten.Image, docs frame.Docs, template artp
 		}
 	}
 	tileart.DrawMarks(area, template, rect, size, zoom)
-	tileart.DrawGuides(area, s.theme, template, tileart.Placed{Rect: rect, Size: size, Zoom: zoom, Within: s.preview})
+	tileart.DrawGuides(area, s.theme, template, tileart.Placed{Rect: rect, Size: size, Zoom: zoom, Within: stage})
 	ui.StrokeRect(area, rect, ui.Hairline, ui.ColorRule())
-	caption := strconv.Itoa(size) + " × " + strconv.Itoa(size) + " pixels · where rules overlap, the strictest wins"
-	s.theme.DrawText(screen, caption, s.preview.Min.X, s.preview.Max.Y+ui.Gap, ui.ColorMuted())
 }
 
 // Locate finds a named part of the window for input scripts: "ui:<id>" for

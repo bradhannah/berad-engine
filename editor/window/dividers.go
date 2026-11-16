@@ -49,9 +49,11 @@ const noRoom = "The canvas keeps the rest of the window: Cmd+I folds the inspect
 // with, before it is run, drawn or asked where its parts are.
 func (h *host) useWidths() { frame.SetInspectorWidth(h.inspectorWidth) }
 
-// inspectorDivider is the grip on the inspector's edge, while it shows.
+// inspectorDivider is the grip on the inspector's edge, while it shows. A
+// view with no inspector, such as Watch, has none, so a press where its
+// edge would be reaches the view (increment 61).
 func (h *host) inspectorDivider() image.Rectangle {
-	if h.folded() {
+	if h.folded() || !h.hasInspector() {
 		return ui.Zero()
 	}
 	x := h.visible.X - frame.InspectorWide()

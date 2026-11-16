@@ -187,7 +187,7 @@ func (s *State) showSignal(docs frame.Docs, selected item) {
 		if signal.ID != selected.ownerID {
 			continue
 		}
-		s.focus = ui.Focus{}
+		s.focus = s.newFocus()
 		s.focus.Register(s.signal.name, s.signal.description)
 		s.signal.of = signal.ID
 		s.signal.name.Field.SetSaved(signal.Name)
@@ -309,21 +309,19 @@ func (s *State) deleteSignals(ctx *frame.Context, going []ids.ULID, name string)
 		})
 }
 
-// layoutSignal places a selected signal's or group's name, description and
-// Delete.
-func (s *State) layoutSignal(panel image.Rectangle) {
-	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
-	top := inspectorTop(panel) + ui.LineHeight
+// layoutSignal places a selected signal's or group's name and description
+// from a top edge; its Delete is at the inspector's foot.
+func (s *State) layoutSignal(left, width, top int) {
+	top += ui.LineHeight
 	s.signal.name.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
 	top += ui.ButtonH + ui.Gap + ui.LineHeight
 	s.signal.description.Rect = image.Rect(left, top, left+width, top+signalDescRows*ui.LineHeight)
-	bottom := panel.Max.Y - ui.Inset
-	s.signal.remove.Rect = image.Rect(left, bottom-ui.ButtonH, left+width, bottom)
 }
 
 // drawSignal draws a selected signal's name, description, where it is used
-// and Delete; or a group's, with what it holds.
-func (s *State) drawSignal(screen *ebiten.Image, docs frame.Docs, panel image.Rectangle, group bool) {
+// and Delete; or a group's, with what it holds; and returns where it
+// ends. Delete is drawn at the inspector's foot.
+func (s *State) drawSignal(screen *ebiten.Image, docs frame.Docs, panel image.Rectangle, group bool) int {
 	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
 	s.theme.DrawStrong(screen, "Name", left, s.signal.name.Rect.Min.Y-ui.LineHeight, ui.ColorInk())
 	s.signal.name.Draw(screen)
@@ -343,7 +341,8 @@ func (s *State) drawSignal(screen *ebiten.Image, docs frame.Docs, panel image.Re
 		s.theme.DrawText(screen, s.theme.FitText(line, width), left, top, ui.ColorInk())
 		top += ui.LineHeight
 	}
-	s.signal.remove.Draw(screen, s.theme)
+
+	return top + ui.LineHeight
 }
 
 // signalUseLines lists the workflows that send or answer the selected

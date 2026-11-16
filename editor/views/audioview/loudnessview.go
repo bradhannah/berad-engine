@@ -9,6 +9,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/loudness"
 )
@@ -76,7 +77,7 @@ func (view *loudnessView) buttons() []*ui.Button {
 func (s *State) loudnessArea() image.Rectangle {
 	content := frame.Content(s.size)
 
-	return image.Rect(listWidth, toolbarHeight, s.size.X, content.Max.Y)
+	return image.Rect(listWidth, s.barBottom, s.size.X, content.Max.Y)
 }
 
 // everyRecording lists the library's recordings with a file, each once,
@@ -221,7 +222,7 @@ func (s *State) adjustCategory(ctx *frame.Context, category string, gain float64
 // drawLoudness draws the view: its settings, then every recording and cue.
 func (s *State) drawLoudness(window *ebiten.Image) {
 	view, area := s.loud, s.loudnessArea()
-	screen, clipped := window.SubImage(area).(*ebiten.Image)
+	screen, clipped := pen.Clip(window, area)
 	if !clipped {
 		return
 	}
