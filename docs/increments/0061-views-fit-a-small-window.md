@@ -57,9 +57,11 @@ Chosen while building, for its author to check:
   what ends it at its right, as now; when they do not fit with room between
   them, the right end starts a line of its own below, against the right
   edge, and a control that does not fit on its line carries on at the start
-  of the next. The Pixel editor's zoom, Template and Grid, the Palette
-  Editor's Delete palette…, the Project window's sizes and views, Audio's
-  toolbar buttons and World state's Find a value each go below together.
+  of the next; when the left end itself wrapped, the right end ends its
+  last line if it fits there. The Pixel editor's zoom, Template and Grid,
+  the Palette Editor's Delete palette…, the Project window's sizes and
+  views, Audio's toolbar buttons and World state's Find a value each go
+  below together.
 - **The Project window's facets carry on to further lines** rather than
   leave out those that did not fit on the second, as Changed and Problems
   were at 150% in a small window.
@@ -71,7 +73,10 @@ Chosen while building, for its author to check:
   touch while they fit together and carry on one by one when they do not.
 - **The gradient wraps by its ends:** its right end and Steps go below its
   left end, each end's opacity stays under its own field, its description
-  takes further lines, and its panel grows by what wrapped.
+  takes further lines, and its panel grows by what wrapped. An open panel,
+  the gradient or Copy colours from…, stops under the toolbar in a short
+  window, and the ramps above it give it their room; Copy colours from…'s
+  instructions take further lines before its close button.
 - **What stays at an inspector's foot:** World state's save bar and Delete;
   the Palette Editor's save bar, or for Default the note saying why it
   can't be changed; Audio's Delete cue or Delete recording; and a Map's
@@ -89,6 +94,10 @@ Chosen while building, for its author to check:
   foot, above the status bar, and the lists scroll above them; in a window
   tall enough nothing moves. The Keys sheet stays inside the window and its
   rows scroll under its title.
+- **Watch has no inspector:** it says so, so a window needs room for its
+  canvas only beside its Map. At 100% in a window 1200 wide it still opens
+  beside the Map, whose divider now stops where the Map keeps its panels and
+  canvas, a few points right of where it was.
 - **What is refused, and where it is said:** Watch opening beside its Map,
   and a window asked for beside a tab from quick open, open in a tab of
   their own and say so in their own status bar; a larger Text step is
@@ -154,7 +163,23 @@ Chosen while building, for its author to check:
   `TestALargerTextStepIsRefusedWithoutRoom` refuses 175% where a Map would
   not fit and takes 150%; `TestTheDividerKeepsEachPanesRoom` stops a split's
   divider at each pane's room.
+- **Every view fits:** `TestViewsFitASmallWindow` opens the Project window,
+  World state, the Palette Editor, the Pixel editor, a previewing Map and
+  Audio in six runs at 150% in a window of 1200 × 832, and saves twelve
+  screenshots; Watch opens in a third tab, and Cmd+Shift+= leaves text and
+  controls at 150%.
 
 ## Not in this increment
 
+- **Watch's own rows wrapping:** its strip's tabs and buttons and its Pause,
+  Step and Follow still run past a narrow pane. In a small window Watch now
+  opens in its own tab, where they fit; beside a Map at 100% in a window
+  1200 wide they run past its pane as before.
+- **The walks written for 100% at 150% in a small window:** 17 of them
+  failed there before this increment, most on a click landing on a part
+  drawn over another; they were not run there again, as they assume a
+  window that lays out as at 100%.
+- **The tab bar at 150% in a small window** puts all but the Project tab
+  under "2 more", the tab in front among them, as it does whenever tabs do
+  not fit.
 - A Workflow drawn sharp at zooms other than 100%, left from increment 56.
