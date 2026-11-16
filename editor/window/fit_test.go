@@ -4,7 +4,9 @@ import (
 	"image"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -79,5 +81,34 @@ func TestALargerTextStepIsRefusedWithoutRoom(t *testing.T) {
 	shown.followTextScale()
 	if shown.textScale != 1.5 {
 		t.Fatalf("a step with room was refused: %v", shown.textScale)
+	}
+}
+
+// canvasOnly is a view with no inspector, as Watch is.
+type canvasOnly struct{ pickingView }
+
+func (*canvasOnly) HasInspector() bool { return false }
+
+// TestWatchFitsBesideItsMapAt100 opens Watch, which has no inspector, beside
+// a Map in a window 1200 points wide, as at 100%: the two need the Map's
+// panels and two canvases' room, which the window has. In a window 800 wide
+// they do not fit, and Watch opens in a tab of its own (increment 61).
+func TestWatchFitsBesideItsMapAt100(t *testing.T) {
+	t.Parallel()
+	for _, wide := range []bool{true, false} {
+		townMap, _ := panelPane("map")
+		townWatch := titled("watch", "Watch: Town")
+		townWatch.host = &host{view: &canvasOnly{pickingView: pickingView{selected: ""}}, frame: frame.NewFrame(time.Now)}
+		town := ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC")
+		townMap.target, townWatch.target = town, town
+		size := image.Pt(1200, 800)
+		if !wide {
+			size = image.Pt(800, 555)
+		}
+		shown := &shell{tabs: []*tab{{panes: []*pane{townMap}}}, active: 0, size: size, textScale: 1}
+		shown.place(townWatch)
+		if beside := len(shown.tabs) == 1; beside != wide {
+			t.Fatalf("in a window %v wide, Watch beside its Map: %v", size.X, beside)
+		}
 	}
 }

@@ -16,13 +16,24 @@ import (
 // divider stops where either pane would lose its panels or its canvas.
 
 // paneNeed is the narrowest a pane goes: its left panel, its inspector and
-// the canvas's room; a pane not connected yet needs only the canvas's room.
+// the canvas's room; a pane not connected yet needs only the canvas's room,
+// and a view with no inspector, such as Watch, none for one.
 func paneNeed(shown *pane) int {
 	if shown.host == nil {
 		return minCanvas
 	}
+	need := shown.host.leftEdge() + minCanvas
+	if inspected, says := shown.host.view.(inspectorView); !says || inspected.HasInspector() {
+		need += shown.host.inspectorRoom()
+	}
 
-	return shown.host.leftEdge() + shown.host.inspectorRoom() + minCanvas
+	return need
+}
+
+// inspectorView is a view that says whether it has an inspector at its
+// right; one that does not say has one.
+type inspectorView interface {
+	HasInspector() bool
 }
 
 // makesRoom names the keys that make room, ending what a refusal says.

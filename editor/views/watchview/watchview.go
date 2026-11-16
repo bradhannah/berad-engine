@@ -252,6 +252,11 @@ func (s *State) fitMono(text string, width int) string {
 	return ""
 }
 
+// HasInspector reports that Watch has no inspector: its canvas and strip
+// take its pane's whole width, so a window needs no room for one beside its
+// Map (increment 61).
+func (s *State) HasInspector() bool { return false }
+
 // layout places the buttons in the footer, each as wide as its label
 // needs, Watch zone loop only while the preview runs one.
 func (s *State) layout() {
