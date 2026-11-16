@@ -20,15 +20,23 @@ type fileStamp struct {
 	sum  [sha256.Size]byte
 }
 
-// note records a file as the editor has just read or written it.
+// note records a file as the editor has just read or written it. Its size
+// and time are kept only while the file still holds those bytes: a change
+// from outside that lands between the editor's write and this look leaves
+// the file to be judged by its bytes, so it is not taken for the editor's.
 func (p *project) note(path string, data []byte) {
+	sum := sha256.Sum256(data)
 	info, err := p.root.Stat(path)
 	if err != nil {
 		delete(p.seen, path)
 
 		return
 	}
-	p.seen[path] = fileStamp{size: info.Size(), mod: info.ModTime(), sum: sha256.Sum256(data)}
+	stamp := fileStamp{size: info.Size(), mod: info.ModTime(), sum: sum}
+	if now, err := p.root.ReadFile(path); err != nil || sha256.Sum256(now) != sum {
+		stamp.size, stamp.mod = -1, time.Time{}
+	}
+	p.seen[path] = stamp
 }
 
 // forget forgets a file the editor no longer reads or writes.
