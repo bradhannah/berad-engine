@@ -95,7 +95,7 @@ func noDrag() drag {
 // rowsArea is where the ramps show: below the toolbar, above any open panel.
 func (s *State) rowsArea() image.Rectangle {
 	content := frame.Content(s.size)
-	top := ui.Inset + ui.ButtonH + ui.Inset
+	top := max(s.bar.bottom, ui.Inset+ui.ButtonH) + ui.Inset
 	bottom := content.Max.Y - ui.Inset
 	if panel := s.panelRect(); !panel.Empty() {
 		bottom = panel.Min.Y - ui.Inset

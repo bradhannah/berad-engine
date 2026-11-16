@@ -73,44 +73,50 @@ func (s *State) place(button *ui.Button, left, top int) int {
 
 // layoutToolbar places the palette's name and the buttons above the ramps:
 // for Default, only copying out; for any other palette, its name, + Ramp,
-// Gradient…, Copy colours from… and Delete palette….
+// Gradient…, Copy colours from… and, at the right, Delete palette…. When
+// they do not fit on one line, the rest carry on below and the ramps start
+// under them (increment 61).
 func (s *State) layoutToolbar() {
 	for _, button := range []*ui.Button{
 		s.bar.addRamp, s.bar.gradient, s.bar.copyFrom, s.bar.remove, s.bar.copyTo, s.bar.newPalette,
 	} {
 		button.Rect = ui.Zero()
 	}
-	s.name.Rect = ui.Zero()
-	top, left := ui.Inset, ui.Inset
+	s.name.Rect, s.bar.title = ui.Zero(), ui.Zero()
+	row := image.Rect(ui.Inset, ui.Inset, frame.Content(s.size).Max.X-ui.Inset, ui.Inset)
 	if s.ReadOnly() {
-		left += s.theme.StrongWidth(art.DefaultPaletteName) + ui.Inset + s.theme.TextWidth(readOnlyNote) + ui.Inset
-		left = s.place(s.bar.copyTo, left, top)
-		s.place(s.bar.newPalette, left, top)
+		title := s.theme.StrongWidth(art.DefaultPaletteName) + ui.Inset + s.theme.TextWidth(readOnlyNote)
+		leads, _, bottom := ui.WrapRow(row, []int{title + nameApart, s.buttonWidth(s.bar.copyTo),
+			s.buttonWidth(s.bar.newPalette)}, nil, ui.Gap)
+		s.bar.title, s.bar.copyTo.Rect, s.bar.newPalette.Rect, s.bar.bottom = leads[0], leads[1], leads[2], bottom
 		s.bar.copyTo.Disabled = len(s.picked) == 0
 		s.bar.newPalette.Disabled = len(s.picked) == 0
 
 		return
 	}
-	s.name.Rect = image.Rect(left, top, left+nameWidth, top+ui.ButtonH)
-	left = s.name.Rect.Max.X + ui.Inset
-	left = s.place(s.bar.addRamp, left, top)
-	left = s.place(s.bar.gradient, left, top)
-	s.place(s.bar.copyFrom, left, top)
+	leads, trails, bottom := ui.WrapRow(row, []int{
+		nameWidth + nameApart, s.buttonWidth(s.bar.addRamp), s.buttonWidth(s.bar.gradient), s.buttonWidth(s.bar.copyFrom),
+	}, []int{s.buttonWidth(s.bar.remove)}, ui.Gap)
+	s.name.Rect = image.Rect(leads[0].Min.X, leads[0].Min.Y, min(leads[0].Min.X+nameWidth, leads[0].Max.X), leads[0].Max.Y)
+	s.bar.addRamp.Rect, s.bar.gradient.Rect, s.bar.copyFrom.Rect = leads[1], leads[2], leads[3]
+	s.bar.remove.Rect, s.bar.bottom = trails[0], bottom
 	s.bar.gradient.On = s.gradient.open
 	s.bar.copyFrom.On = s.copying.open
-	right := frame.Content(s.size).Max.X - ui.Inset
-	s.place(s.bar.remove, right-s.buttonWidth(s.bar.remove), top)
 }
+
+// nameApart is the further room kept after the palette's name.
+const nameApart = ui.Inset - ui.Gap
 
 // readOnlyNote follows Default's name in its toolbar.
 const readOnlyNote = "built in · read only · the same in every game"
 
 // drawToolbar draws the palette's name and the toolbar's buttons.
 func (s *State) drawToolbar(screen *ebiten.Image) {
-	text := ui.Inset + (ui.ButtonH-ui.TextSize)/ui.Half
 	if s.ReadOnly() {
-		s.theme.DrawStrong(screen, art.DefaultPaletteName, ui.Inset, text, ui.ColorInk())
-		s.theme.DrawText(screen, readOnlyNote, ui.Inset+s.theme.StrongWidth(art.DefaultPaletteName)+ui.Inset, text,
+		title := s.bar.title
+		text := title.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half
+		s.theme.DrawStrong(screen, art.DefaultPaletteName, title.Min.X, text, ui.ColorInk())
+		s.theme.DrawText(screen, readOnlyNote, title.Min.X+s.theme.StrongWidth(art.DefaultPaletteName)+ui.Inset, text,
 			ui.ColorMuted())
 	} else {
 		s.name.Draw(screen)

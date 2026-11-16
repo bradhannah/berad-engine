@@ -741,3 +741,26 @@ func TestGradientPicksItsEnds(t *testing.T) {
 		t.Fatal("the gradient's settings never wait for Save")
 	}
 }
+
+// TestTheToolbarWrapsInASmallWindow lays the Palette Editor out at 800 ×
+// 555 points, as a 1200 × 832 window is at 150%: a palette's name and
+// buttons do not fit on one line with Delete palette…, which goes on a line
+// below, and the ramps start under it, nothing drawn over anything else;
+// Default's toolbar likewise (increment 61).
+func TestTheToolbarWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	for _, target := range []ids.ULID{gloomyID, art.DefaultPaletteID()} {
+		f := newFixture(t, target)
+		f.resize(image.Pt(800, 555))
+		if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), f.state.Toolbar()...); wrong != "" {
+			t.Fatal(wrong)
+		}
+	}
+}
+
+// resize lays the window out at another size, as a frame does.
+func (f *fixture) resize(size image.Point) {
+	f.ctx.Size = size
+	f.screen = ebiten.NewImage(size.X, size.Y)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+}

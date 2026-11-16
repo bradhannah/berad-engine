@@ -112,6 +112,10 @@ type State struct {
 // toolbar is the row of buttons above the ramps.
 type toolbar struct {
 	addRamp, gradient, copyFrom, remove, copyTo, newPalette *ui.Button
+	// title is where Default's name and note are written, and bottom where
+	// the toolbar's last line ends, as last laid out.
+	title  image.Rectangle
+	bottom int
 }
 
 // inspectorButtons are the inspector's buttons.
@@ -137,7 +141,7 @@ func New(window, palette ids.ULID, theme *ui.Theme) *State {
 			addRamp: ui.NewButton("add-ramp", "+ Ramp"), gradient: ui.NewButton("gradient", "Gradient…"),
 			copyFrom: ui.NewButton("copy-from", "Copy colours from…"), remove: ui.NewButton("delete", "Delete palette…"),
 			copyTo:     ui.NewButton("copy-to", "Copy to palette"),
-			newPalette: ui.NewButton("new-palette", "New palette from these"),
+			newPalette: ui.NewButton("new-palette", "New palette from these"), title: ui.Zero(), bottom: 0,
 		},
 		inspect: inspectorButtons{
 			duplicate: ui.NewButton("duplicate-colour", "Duplicate colour"), moveTo: ui.NewButton("move-to", "Move to ramp"),
