@@ -340,10 +340,9 @@ func (s *State) layoutLayer(slot *layerSlot, left, right, top int) int {
 	top += ui.ButtonH + ui.Gap
 	slot.quieter.Rect = image.Rect(left, top, left+smallButton, top+ui.ButtonH)
 	slot.louder.Rect = slot.quieter.Rect.Add(image.Pt(smallButton+gainText, 0))
-	s.row(slot.louder.Rect.Max.X+ui.Gap*ui.Half, top, slot.mute, slot.solo)
+	top = s.row(slot.louder.Rect.Max.X+ui.Gap*ui.Half, right, top, slot.mute, slot.solo) + ui.Gap
 	slot.quieter.Disabled, slot.louder.Disabled = slot.gain <= 0, slot.gain >= 1
 	slot.mute.On, slot.solo.On = slot.muted, slot.soloed
-	top += ui.ButtonH + ui.Gap
 	if slot.againToggle != nil {
 		slot.againToggle.Rect = image.Rect(left, top, right, top+ui.ButtonH)
 		slot.againToggle.On = slot.again

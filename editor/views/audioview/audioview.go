@@ -70,6 +70,11 @@ type State struct {
 	theme  *ui.Theme
 	size   image.Point
 	subbed bool
+	// barBottom is where the toolbar ends, and titleAt where its title is,
+	// as last laid out: lower when its buttons go on lines below the title
+	// (increment 61).
+	barBottom int
+	titleAt   image.Rectangle
 	// library is the audio library as last listed; asking is set while a
 	// question is out, and again when another is wanted after it.
 	library *protocol.AudioLibrary
@@ -120,7 +125,7 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	button := ui.NewButton
 	view := &State{
-		window: window, theme: theme, size: image.Pt(0, 0), subbed: false,
+		window: window, theme: theme, size: image.Pt(0, 0), subbed: false, barBottom: toolbarHeight, titleAt: ui.Zero(),
 		library: nil, asking: false, again: false, selectNext: "", playedNext: "",
 		mode: modeCues, filter: filterAll,
 		tabs: []*ui.Button{button("tab-"+modeCues, "Cues"), button("tab-"+modeRecordings, "Recordings")},

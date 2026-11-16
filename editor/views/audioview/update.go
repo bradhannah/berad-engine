@@ -17,21 +17,27 @@ const (
 )
 
 // layout places the toolbar, the list's controls, the list, the panel and
-// the inspector.
+// the inspector. The toolbar's buttons go on lines below the title when
+// they do not fit beside it, and everything under the toolbar moves down
+// (increment 61).
 func (s *State) layout() {
 	content := frame.Content(s.size)
-	top := (toolbarHeight - ui.ButtonH) / ui.Half
-	right := content.Max.X - ui.Inset
 	s.soundscape.toggle.On = s.soundscape.shown
 	s.loud.toggle.On = s.loud.shown
-	for _, button := range []*ui.Button{
-		s.stopAll, s.soundscape.toggle, s.loud.toggle, s.checkFiles, s.newCue, s.addSound,
-	} {
-		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
-		button.Rect = image.Rect(right-width, top, right, top+ui.ButtonH)
-		right -= width + toolbarGap
+	buttons := []*ui.Button{s.addSound, s.newCue, s.checkFiles, s.loud.toggle, s.soundscape.toggle, s.stopAll}
+	widths := make([]int, len(buttons))
+	for index, button := range buttons {
+		widths[index] = s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
 	}
-	left, row := ui.Inset, toolbarHeight+ui.Inset/ui.Half
+	pad := (toolbarHeight - ui.ButtonH) / ui.Half
+	bar := image.Rect(ui.Inset, pad, content.Max.X-ui.Inset, pad)
+	title, placed, bottom := ui.WrapRow(bar, []int{s.titleWidth()}, widths, toolbarGap)
+	s.titleAt = title[0]
+	for index, button := range buttons {
+		button.Rect = placed[index]
+	}
+	s.barBottom = bottom + pad
+	left, row := ui.Inset, s.barBottom+ui.Inset/ui.Half
 	s.spread(s.tabs, left, listWidth-ui.Inset, row)
 	s.tabs[0].Label = "Cues · " + itoa(s.count(modeCues))
 	s.tabs[1].Label = "Recordings · " + itoa(s.count(modeRecordings))
@@ -51,6 +57,11 @@ func (s *State) layout() {
 	s.layoutPanel()
 	s.layoutInspector()
 	s.layoutLoudness()
+}
+
+// titleWidth is how wide the toolbar's title and summary are.
+func (s *State) titleWidth() int {
+	return s.theme.TextWidth("Audio") + ui.Inset*ui.Half + s.theme.MonoWidth(s.summary())
 }
 
 // spread lays buttons out side by side across a width.

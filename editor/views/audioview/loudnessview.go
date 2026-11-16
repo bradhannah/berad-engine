@@ -77,7 +77,7 @@ func (view *loudnessView) buttons() []*ui.Button {
 func (s *State) loudnessArea() image.Rectangle {
 	content := frame.Content(s.size)
 
-	return image.Rect(listWidth, toolbarHeight, s.size.X, content.Max.Y)
+	return image.Rect(listWidth, s.barBottom, s.size.X, content.Max.Y)
 }
 
 // everyRecording lists the library's recordings with a file, each once,

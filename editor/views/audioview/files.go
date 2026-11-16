@@ -289,11 +289,10 @@ func (s *State) layoutFile(file string, left, right, top int) int {
 		screen.file, screen.analysis, screen.asked, screen.found = file, nil, "", nil
 	}
 	pieces := s.pieces(file)
-	s.row(left, top, screen.play, screen.find, screen.makeAll)
 	screen.makeAll.Label = "Make " + piecesText(len(screen.found))
 	screen.makeAll.Disabled = len(screen.found) == 0
 	screen.find.Disabled = screen.analysis == nil
-	screen.top = top + ui.ButtonH + ui.Inset
+	screen.top = s.row(left, right, top, screen.play, screen.find, screen.makeAll) + ui.Inset
 	screen.wave.Rect = image.Rect(left, screen.top+ui.LineHeight, right, screen.top+ui.LineHeight+waveHeight)
 	screen.wave.HasRegion = false
 	screen.wave.Marks = marksOf(pieces, "")

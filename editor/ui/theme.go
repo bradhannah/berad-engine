@@ -360,13 +360,20 @@ func (t *Theme) TextWidth(value string) int { return measure(value, t.Face) }
 
 // Wrap breaks text into lines that fit a width, keeping its own line
 // breaks.
-func (t *Theme) Wrap(text string, width int) []string {
+func (t *Theme) Wrap(text string, width int) []string { return wrap(text, width, t.TextWidth) }
+
+// WrapLabel breaks a label drawn with DrawLabel into lines that fit a width,
+// as Wrap does for ordinary text (increment 61).
+func (t *Theme) WrapLabel(text string, width int) []string { return wrap(text, width, t.LabelWidth) }
+
+// wrap breaks text into lines that fit a width as a face measures it.
+func wrap(text string, width int, measured func(string) int) []string {
 	var lines []string
 	for _, paragraph := range strings.Split(text, "\n") {
 		line := ""
 		for _, word := range strings.Fields(paragraph) {
 			candidate := strings.TrimSpace(line + " " + word)
-			if line != "" && t.TextWidth(candidate) > width {
+			if line != "" && measured(candidate) > width {
 				lines = append(lines, line)
 				candidate = word
 			}

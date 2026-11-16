@@ -75,6 +75,12 @@ type trimmer struct {
 	// meterTop is where the recording's loudness meter is, and choiceTop
 	// where the hear buttons are.
 	meterTop, choiceTop int
+	// Where the waveform's label, the playhead's time, "Play it", the
+	// meter's ringing and the note beside Set by hand go, and the lines of
+	// the hint, the meter's legend and what Play plays, as last laid out:
+	// each row carries on below when the panel is narrow (increment 61).
+	labelAt, playheadAt, playItAt, ringedAt, noteAt image.Rectangle
+	hint, legend, sentence                          []string
 }
 
 func newTrimmer(theme *ui.Theme) *trimmer {
@@ -99,6 +105,8 @@ func newTrimmer(theme *ui.Theme) *trimmer {
 		partWhole: button("part-whole", "Whole file"), hearRecorded: button("hear-recorded", "As recorded"),
 		hearEvened: button("hear-evened", "Evened out"), hearCue: button("hear-cue", "In this cue"), wholeFile: false,
 		hearOnCue: hearInCue, hearAlone: hearEvened, meterTop: 0, choiceTop: 0,
+		labelAt: ui.Zero(), playheadAt: ui.Zero(), playItAt: ui.Zero(), ringedAt: ui.Zero(), noteAt: ui.Zero(),
+		hint: nil, legend: nil, sentence: nil,
 	}
 }
 
@@ -264,23 +272,27 @@ func (s *State) layoutTrim(left, right, top int) int {
 	} else if trim.auditioned != nil {
 		trim.auditioned.Label = labelStop
 	}
-	trim.fit.Rect = image.Rect(right-zoomWidth*ui.Half, top, right, top+ui.ButtonH)
-	trim.zoomIn.Rect = image.Rect(trim.fit.Rect.Min.X-ui.Gap-zoomWidth, top, trim.fit.Rect.Min.X-ui.Gap, top+ui.ButtonH)
-	trim.zoomOut.Rect = trim.zoomIn.Rect.Sub(image.Pt(zoomWidth+ui.Gap, 0))
-	top += ui.ButtonH + ui.Gap
+	leads, zoom, bottom := ui.WrapRow(image.Rect(left, top, right, top), []int{s.theme.LabelWidth(s.waveLabel())},
+		[]int{zoomWidth, zoomWidth, zoomWidth * ui.Half}, ui.Gap)
+	trim.labelAt, trim.zoomOut.Rect, trim.zoomIn.Rect, trim.fit.Rect = leads[0], zoom[0], zoom[1], zoom[2]
+	top = bottom + ui.Gap
 	trim.wave.Rect = image.Rect(left, top, right, top+waveHeight)
 	top += waveHeight + ui.Gap*ui.Half
-	s.row(left, top, trim.play)
-	s.segments(trim.play.Rect.Max.X+ui.Inset, top, trim.partRegion, trim.partWhole)
+	parts := s.widths(trim.play, trim.partRegion, trim.partWhole, trim.duplicate)
+	pieces := []int{parts[0], parts[1] + parts[2], loopWidth, parts[3]}
+	if at, playing := s.playingAt(); playing {
+		pieces = append(pieces, s.theme.MonoWidth(playhead(at)))
+	}
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top), pieces, nil, ui.Inset)
+	trim.play.Rect, trim.loop.Rect, trim.duplicate.Rect = placed[0], placed[2], placed[3]
+	segments(placed[1], parts[1:3], trim.partRegion, trim.partWhole)
 	trim.partRegion.On, trim.partWhole.On = !trim.wholeFile, trim.wholeFile
-	trim.loop.Rect = image.Rect(trim.partWhole.Rect.Max.X+ui.Inset, top, trim.partWhole.Rect.Max.X+ui.Inset+loopWidth,
-		top+ui.ButtonH)
-	s.row(trim.loop.Rect.Max.X+ui.Inset, top, trim.duplicate)
-	top += ui.ButtonH + ui.Inset + ui.LineHeight
-	trim.start.Rect = image.Rect(left, top, left+fieldWidth, top+ui.ButtonH)
-	trim.end.Rect = image.Rect(trim.start.Rect.Max.X+ui.Gap, top, trim.start.Rect.Max.X+ui.Gap+fieldWidth, top+ui.ButtonH)
-	s.row(trim.end.Rect.Max.X+ui.Inset, top, trim.suggest, trim.all, trim.apply, trim.cancel)
-	top = s.layoutLoudnessSection(left, top+ui.ButtonH+ui.LineHeight+ui.Inset+ui.LineHeight)
+	trim.playheadAt = ui.Zero()
+	if len(placed) > len(parts) {
+		trim.playheadAt = placed[len(parts)]
+	}
+	top = s.layoutRegion(left, right, bottom+ui.Inset+ui.LineHeight)
+	top = s.layoutLoudnessSection(left, right, top+len(trim.hint)*ui.LineHeight+ui.Inset+ui.LineHeight)
 	trim.layoutWave()
 	recording, _ := s.focused()
 	trim.wave.Marks = marksOf(s.pieces(recording.File), recording.ID)
@@ -290,10 +302,31 @@ func (s *State) layoutTrim(left, right, top int) int {
 	return top
 }
 
-// layoutLoudnessSection places the recording's meter, its listening buttons
-// and its level's buttons from a top edge, and returns where they end.
-func (s *State) layoutLoudnessSection(left, top int) int {
+// layoutRegion places the region's start and end and its buttons from a top
+// edge, carrying on below when they do not fit across, and the hint's lines,
+// and returns where the buttons end.
+func (s *State) layoutRegion(left, right, top int) int {
 	trim := s.trim
+	parts := s.widths(trim.suggest, trim.all, trim.apply, trim.cancel)
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top),
+		append([]int{fieldWidth + ui.Gap + fieldWidth}, parts...), nil, panelButtonGap)
+	fields := placed[0]
+	trim.start.Rect = image.Rect(fields.Min.X, fields.Min.Y, min(fields.Min.X+fieldWidth, fields.Max.X), fields.Max.Y)
+	trim.end.Rect = image.Rect(min(trim.start.Rect.Max.X+ui.Gap, fields.Max.X), fields.Min.Y, fields.Max.X, fields.Max.Y)
+	trim.suggest.Rect, trim.all.Rect, trim.apply.Rect, trim.cancel.Rect = placed[1], placed[2], placed[3], placed[4]
+	trim.hint = s.theme.Wrap(regionHint, right-left)
+
+	return bottom
+}
+
+// layoutLoudnessSection places the recording's meter, its listening buttons
+// and its level's buttons from a top edge, and returns where they end. The
+// legend's lines go above the top, as a label would, and the rows carry on
+// below when they do not fit across (increment 61).
+func (s *State) layoutLoudnessSection(left, right, top int) int {
+	trim := s.trim
+	trim.legend = s.theme.WrapLabel(s.loudnessLegend(), right-left)
+	top += (len(trim.legend) - 1) * ui.LineHeight
 	trim.meterTop = top
 	top += ui.RowHeight + ui.LineHeight*levelLines
 	trim.choiceTop = top
@@ -303,25 +336,94 @@ func (s *State) layoutLoudnessSection(left, top int) int {
 		hear = append(hear, trim.hearCue)
 		trim.hearCue.Disabled = cue.Gain <= 0
 	}
-	s.segments(left+s.theme.TextWidth(playItLabel)+ui.Inset, top, hear...)
+	// The hear buttons touch, so the row is laid out without gaps, the room
+	// after the label and before the note made part of them; a button that
+	// does not fit beside the others carries on below.
+	pieces := append([]int{s.theme.LabelWidth(playItLabel) + ui.Inset}, s.widths(hear...)...)
+	pieces = append(pieces, ui.Inset+s.theme.TextWidth(ringedNote))
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top), pieces, nil, 0)
+	trim.playItAt, trim.ringedAt = placed[0], placed[len(placed)-1]
+	for index, button := range hear {
+		button.Rect = placed[index+1]
+	}
 	chosen := s.hearing()
 	trim.hearRecorded.On, trim.hearEvened.On, trim.hearCue.On = chosen == hearRecorded, chosen == hearEvened,
 		chosen == hearInCue
-	top += ui.ButtonH + ui.Gap + ui.LineHeight
+	trim.sentence = s.theme.Wrap(s.playSentence(), right-left)
+
+	return s.layoutLevel(left, right, bottom+ui.Gap+len(trim.sentence)*ui.LineHeight)
+}
+
+// layoutLevel places the level's buttons from a top edge, and the note
+// beside them while the region waits to be applied, and returns where they
+// end.
+func (s *State) layoutLevel(left, right, top int) int {
+	trim := s.trim
 	recording, _ := s.focused()
 	buttons := []*ui.Button{trim.measure, trim.setLevel}
 	if recording.CalibrationMode == protocol.CalibrationManual || recording.TargetDB != 0 {
 		buttons = []*ui.Button{trim.useReference, trim.setLevel}
 	}
-	s.row(left, top, buttons...)
 	trim.measure.Disabled = trim.dirty() || recording.CalibrationMode == protocol.CalibrationAuto
 	trim.measure.Label = "Measure"
 	if recording.CalibrationMode == protocol.CalibrationAuto {
 		trim.measure.Label = "Measured"
 	}
+	pieces := s.widths(buttons...)
+	if trim.measure.Disabled && trim.dirty() {
+		pieces = append(pieces, s.theme.TextWidth(applyToMeasure))
+	}
+	placed, _, bottom := ui.WrapRow(image.Rect(left, top, right, top), pieces, nil, panelButtonGap)
+	for index, button := range buttons {
+		button.Rect = placed[index]
+	}
+	trim.noteAt = ui.Zero()
+	if len(placed) > len(buttons) {
+		trim.noteAt = placed[len(buttons)]
+	}
 
-	return top + ui.ButtonH + ui.Inset
+	return bottom + ui.Inset
 }
+
+// What the trim and the loudness section say beside their controls.
+const (
+	regionHint     = "Drag the blue ends, or type the start and end in seconds."
+	ringedNote     = "Ringed on the meter."
+	applyToMeasure = "Apply the region to measure it."
+)
+
+// waveLabel heads the waveform: the part of the recording it shows, or
+// what went wrong reading it.
+func (s *State) waveLabel() string {
+	trim := s.trim
+	if trim.analysis != nil && trim.analysis.Problem != "" {
+		return "WAVEFORM · " + trim.analysis.Problem
+	}
+	from, until := trim.view()
+
+	return "WAVEFORM · " + seconds(from) + "–" + seconds(until) + " s"
+}
+
+// loudnessLegend says how to read the meter: for a cue, its black mark.
+func (s *State) loudnessLegend() string {
+	if _, ok := s.selectedCue(); ok {
+		return "LOUDNESS · HOLLOW AS RECORDED, BLUE EVENED OUT, BLACK IN THIS CUE"
+	}
+
+	return "LOUDNESS · HOLLOW AS RECORDED, BLUE EVENED OUT, THE LINE THE REFERENCE"
+}
+
+// playingAt is where in the recording the waveform's Play is playing.
+func (s *State) playingAt() (int64, bool) {
+	if s.sounds == nil {
+		return 0, false
+	}
+
+	return s.sounds.AuditionAt()
+}
+
+// playhead says where in the recording Play is playing.
+func playhead(at int64) string { return "▶ " + seconds(at) + " s" }
 
 // levelLines counts the lines about a recording's loudness under its meter:
 // as recorded, and as evened out.
@@ -330,12 +432,13 @@ const levelLines = 2
 // playItLabel names the hear buttons.
 const playItLabel = "PLAY IT"
 
-// segments lays buttons out side by side with no gap, as one choice.
-func (s *State) segments(left, top int, buttons ...*ui.Button) {
-	for _, button := range buttons {
-		width := s.theme.TextWidth(button.Label) + ui.Half*ui.Inset
-		button.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
-		left += width
+// segments lays buttons out side by side with no gap between them across a
+// piece of a row, each as wide as its label.
+func segments(piece image.Rectangle, widths []int, buttons ...*ui.Button) {
+	across := piece.Min.X
+	for index, button := range buttons {
+		button.Rect = image.Rect(across, piece.Min.Y, min(across+widths[index], piece.Max.X), piece.Max.Y)
+		across += widths[index]
 	}
 }
 
@@ -769,16 +872,14 @@ func (s *State) drawTrim(screen *ebiten.Image) {
 		return
 	}
 	left := trim.wave.Rect.Min.X
-	from, until := trim.view()
-	view := "WAVEFORM · " + seconds(from) + "–" + seconds(until) + " s"
-	if trim.analysis != nil && trim.analysis.Problem != "" {
-		view = "WAVEFORM · " + trim.analysis.Problem
-	}
-	s.theme.DrawLabel(screen, view, left, trim.top+(ui.ButtonH-ui.LabelSize)/ui.Half, ui.ColorMuted())
-	if at, playing := s.sounds.AuditionAt(); playing {
+	s.theme.DrawLabel(screen, s.waveLabel(), trim.labelAt.Min.X, trim.labelAt.Min.Y+(ui.ButtonH-ui.LabelSize)/ui.Half,
+		ui.ColorMuted())
+	if at, playing := s.playingAt(); playing {
 		trim.wave.Playhead, trim.wave.Playing = at, true
-		s.theme.DrawMono(screen, "▶ "+seconds(at)+" s", trim.loop.Rect.Max.X+ui.Inset, trim.loop.Rect.Min.Y+ui.Gap*ui.Half,
-			ui.ColorLive())
+		if !trim.playheadAt.Empty() {
+			s.theme.DrawMono(screen, playhead(at), trim.playheadAt.Min.X, trim.playheadAt.Min.Y+ui.Gap*ui.Half,
+				ui.ColorLive())
+		}
 	} else {
 		trim.wave.Playing = false
 	}
@@ -787,13 +888,14 @@ func (s *State) drawTrim(screen *ebiten.Image) {
 	s.theme.DrawLabel(screen, regionLabel, left, trim.start.Rect.Min.Y-ui.LineHeight+ui.Gap, ui.ColorMuted())
 	trim.start.Draw(screen)
 	trim.end.Draw(screen)
-	hint := "Drag the blue ends, or type the start and end in seconds."
-	s.theme.DrawText(screen, hint, left, trim.start.Rect.Max.Y+ui.Gap, ui.ColorSubdued())
+	below := max(trim.start.Rect.Max.Y, trim.cancel.Rect.Max.Y) + ui.Gap
+	for index, line := range trim.hint {
+		s.theme.DrawText(screen, line, left, below+index*ui.LineHeight, ui.ColorSubdued())
+	}
 	s.drawLoudnessSection(screen, left, trim.wave.Rect.Max.X)
 	s.drawButtons(screen, trim.buttons()...)
-	if trim.measure.Disabled && trim.dirty() {
-		s.theme.DrawText(screen, "Apply the region to measure it.", trim.setLevel.Rect.Max.X+ui.Inset,
-			trim.setLevel.Rect.Min.Y+ui.Gap, ui.ColorSubdued())
+	if !trim.noteAt.Empty() {
+		s.theme.DrawText(screen, applyToMeasure, trim.noteAt.Min.X, trim.noteAt.Min.Y+ui.Gap, ui.ColorSubdued())
 	}
 }
 
@@ -802,11 +904,10 @@ func (s *State) drawTrim(screen *ebiten.Image) {
 func (s *State) drawLoudnessSection(screen *ebiten.Image, left, right int) {
 	trim := s.trim
 	recording, _ := s.focused()
-	legend := "LOUDNESS · HOLLOW AS RECORDED, BLUE EVENED OUT, THE LINE THE REFERENCE"
-	if _, ok := s.selectedCue(); ok {
-		legend = "LOUDNESS · HOLLOW AS RECORDED, BLUE EVENED OUT, BLACK IN THIS CUE"
+	for index, line := range trim.legend {
+		s.theme.DrawLabel(screen, line, left, trim.meterTop-(len(trim.legend)-index)*ui.LineHeight+ui.Gap,
+			ui.ColorMuted())
 	}
-	s.theme.DrawLabel(screen, legend, left, trim.meterTop-ui.LineHeight+ui.Gap, ui.ColorMuted())
 	recorded, status, problem := s.loudnessText(recording)
 	drawMeter(screen, image.Rect(left, trim.meterTop+(ui.RowHeight-meterHeight)/ui.Half, right,
 		trim.meterTop+(ui.RowHeight-meterHeight)/ui.Half+meterHeight), s.trimMarks(recording, problem))
@@ -817,12 +918,11 @@ func (s *State) drawLoudnessSection(screen *ebiten.Image, left, right int) {
 		ink = ui.ColorWarn()
 	}
 	s.theme.DrawText(screen, s.theme.FitText(status, right-left), left, top+ui.LineHeight, ink)
-	s.theme.DrawLabel(screen, playItLabel, left, trim.choiceTop+(ui.ButtonH-ui.LabelSize)/ui.Half, ui.ColorMuted())
-	chosen := trim.hearEvened.Rect.Max.X
-	if !trim.hearCue.Rect.Empty() {
-		chosen = trim.hearCue.Rect.Max.X
+	s.theme.DrawLabel(screen, playItLabel, trim.playItAt.Min.X, trim.playItAt.Min.Y+(ui.ButtonH-ui.LabelSize)/ui.Half,
+		ui.ColorMuted())
+	s.theme.DrawText(screen, ringedNote, trim.ringedAt.Min.X+ui.Inset, trim.ringedAt.Min.Y+ui.Gap, ui.ColorSubdued())
+	below := max(trim.playItAt.Max.Y, trim.ringedAt.Max.Y, trim.hearEvened.Rect.Max.Y) + ui.Gap
+	for index, line := range trim.sentence {
+		s.theme.DrawText(screen, line, left, below+index*ui.LineHeight, ui.ColorInk())
 	}
-	s.theme.DrawText(screen, "Ringed on the meter.", chosen+ui.Inset, trim.choiceTop+ui.Gap, ui.ColorSubdued())
-	s.theme.DrawText(screen, s.theme.FitText(s.playSentence(), right-left), left, trim.choiceTop+ui.ButtonH+ui.Gap,
-		ui.ColorInk())
 }

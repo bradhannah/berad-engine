@@ -36,8 +36,8 @@ func (s *State) Draw(screen *ebiten.Image, _ frame.Docs) {
 	s.theme.DrawTitle(screen, "Audio", ui.Inset, (toolbarHeight-ui.TitleSize)/ui.Half-1, ui.ColorInk())
 	s.theme.DrawMono(screen, s.summary(), ui.Inset+s.theme.TextWidth("Audio")+ui.Inset*ui.Half,
 		(toolbarHeight-ui.MonoSize)/ui.Half, ui.ColorSubdued())
-	ui.Divider(screen, image.Pt(0, toolbarHeight-ui.Outline), image.Pt(content.Max.X, toolbarHeight-ui.Outline))
-	ui.Divider(screen, image.Pt(listWidth, toolbarHeight), image.Pt(listWidth, content.Max.Y))
+	ui.Divider(screen, image.Pt(0, s.barBottom-ui.Outline), image.Pt(content.Max.X, s.barBottom-ui.Outline))
+	ui.Divider(screen, image.Pt(listWidth, s.barBottom), image.Pt(listWidth, content.Max.Y))
 	s.drawButtons(screen, s.addSound, s.newCue, s.checkFiles, s.loud.toggle, s.soundscape.toggle, s.stopAll)
 	s.drawButtons(screen, s.tabs...)
 	s.drawButtons(screen, s.filters...)
