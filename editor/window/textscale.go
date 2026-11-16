@@ -59,14 +59,14 @@ const percentage = 100
 // this size of screen (increment 56). The window lays itself out again at
 // the new scale from the next frame. Every pane's Text button names it.
 func (s *shell) followTextScale() {
-	asked := 0.0
+	asked, asking := 0.0, s.focused()
 	for _, shown := range s.panes() {
 		if scale, ok := shown.host.frame.TakeTextScale(); ok {
-			asked = scale
+			asked, asking = scale, shown
 		}
 	}
 	if asked > 0 {
-		s.setTextScale(asked)
+		s.setTextScale(asked, asking)
 	}
 	for _, shown := range s.panes() {
 		shown.host.frame.SetTextScale(s.textScale)
@@ -75,12 +75,12 @@ func (s *shell) followTextScale() {
 
 // setTextScale changes the scale of text and controls, says so in the
 // focused pane's status bar and keeps it. A larger scale at which a tab
-// would not fit the window is refused, saying which and what makes room
-// (increment 61).
-func (s *shell) setTextScale(scale float64) {
+// would not fit the window is refused in the status bar of the pane that
+// asked, saying which and what makes room (increment 61).
+func (s *shell) setTextScale(scale float64, asking *pane) {
 	if fits, refusal := s.scaleFits(scale); scale > s.textScale && !fits {
-		if focused := s.focused(); focused != nil {
-			focused.host.frame.Refuse(refusal)
+		if asking != nil && asking.host != nil {
+			asking.host.frame.Refuse(refusal)
 		}
 
 		return
