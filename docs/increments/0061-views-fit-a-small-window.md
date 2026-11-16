@@ -1,6 +1,6 @@
 # Increment 61: Views fit a small window
 
-**Status:** Planned
+**Status:** Built
 
 Every view lays out without one part drawn over another in a small window:
 a row of buttons wider than its room goes on onto another row, an
@@ -95,9 +95,16 @@ Chosen while building, for its author to check:
   tall enough nothing moves. The Keys sheet stays inside the window and its
   rows scroll under its title.
 - **Watch has no inspector:** it says so, so a window needs room for its
-  canvas only beside its Map. At 100% in a window 1200 wide it still opens
-  beside the Map, whose divider now stops where the Map keeps its panels and
-  canvas, a few points right of where it was.
+  canvas only beside its Map, and it has no inspector divider, whose hidden
+  grip lay over Step to next change once its pane was a little narrower. At
+  100% in a window 1200 wide Watch still opens beside the Map, whose divider
+  now stops where the Map keeps its panels and canvas, 18 points right of
+  where it was.
+- **Beside a Map from quick open, a Workflow needs room at 100% too:** a
+  Map's panels and a Workflow's need about 1,440 points with their
+  canvases, so in a window 1200 wide Cmd+Enter opens the Workflow in a tab
+  of its own and says so, where before it opened beside with almost no
+  canvas. Folding the Map's inspector, as the refusal says, makes room.
 - **What is refused, and where it is said:** Watch opening beside its Map,
   and a window asked for beside a tab from quick open, open in a tab of
   their own and say so in their own status bar; a larger Text step is
@@ -116,11 +123,11 @@ Chosen while building, for its author to check:
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Seeing it | A scripted run opens its window at a size it is given, so the walks can be seen at 150% in 1200 × 832 | A unit test; screenshots of every walk | Planned |
-| 2. Rows wrap | The Project window's view buttons, the Palette Editor's toolbar and gradient row, the Pixel editor's toolbar and Audio's toolbar and rows carry on below when too wide | Unit tests | Planned |
-| 3. Inspectors scroll | World state's, the Palette Editor's, Audio's and a Map's inspectors scroll between heading and foot | Unit tests | Planned |
-| 4. Refused when it will not fit | Watch beside its Map, and a larger Text step, refused with the reason and keys | Unit tests | Planned |
-| 5. Checks | Screenshots at 150% in 1200 × 832, `make check` and the real-window walks | Nothing drawn over anything; all pass | Planned |
+| 1. Seeing it | A scripted run opens its window at a size it is given, so the walks can be seen at 150% in 1200 × 832 | A unit test; screenshots of every walk | Built |
+| 2. Rows wrap | The Project window's view buttons and facets, World state's header, the Palette Editor's toolbar, gradient and copy panel, the Pixel editor's toolbar and Audio's toolbar and rows carry on below when too wide | Unit tests | Built |
+| 3. Inspectors scroll | World state's, the Palette Editor's, Audio's and a Map's inspectors scroll between heading and foot; a Map's left panel and the Keys sheet in a short window | Unit tests | Built |
+| 4. Refused when it will not fit | A pane beside a tab, a larger Text step and a split's divider, refused with the reason and keys | Unit tests | Built |
+| 5. Checks | Screenshots at 150% in 1200 × 832, `make check` and the real-window walks | Nothing drawn over anything; all pass | Built |
 
 ## Step results
 
@@ -163,11 +170,31 @@ Chosen while building, for its author to check:
   `TestALargerTextStepIsRefusedWithoutRoom` refuses 175% where a Map would
   not fit and takes 150%; `TestTheDividerKeepsEachPanesRoom` stops a split's
   divider at each pane's room.
+- **The walks at 100%:** the first whole run on this increment passed 79 of
+  81. `TestQuickOpenFromAMap` expected the Workflow beside the Map in a
+  window 1200 wide; it now finds it in a tab of its own, saying why, then
+  folds the Map's inspector and finds it beside. `TestNPCFollowsItsWorkflow`
+  pressed Step to next change on Watch's hidden inspector divider, which
+  started a drag instead; Watch now has none.
 - **Every view fits:** `TestViewsFitASmallWindow` opens the Project window,
   World state, the Palette Editor, the Pixel editor, a previewing Map and
   Audio in six runs at 150% in a window of 1200 × 832, and saves twelve
   screenshots; Watch opens in a third tab, and Cmd+Shift+= leaves text and
-  controls at 150%.
+  controls at 150%. Looked at in the screenshots, nothing in any of them is
+  drawn over anything else: the Project window's sizes and views sit below
+  the path and its facets take a second line; World state's Find a value
+  sits below its Add buttons and its fields scroll above Save and Delete;
+  the Palette Editor's toolbar takes two lines, its gradient wraps by its
+  ends under the toolbar and Copy colours from…'s instructions wrap before
+  its close button; the Pixel editor's zoom and Grid sit below its tools;
+  a previewing Map keeps Show floor below, Stop preview, its preview lines,
+  Clock, Watch and Keys in place with the rest scrolling; Watch says in its
+  own tab why it is there; and Audio's toolbar, panel and inspector wrap
+  and scroll within their room.
+- **Checks:** `make check` passes. All 81 real-window walks pass at 100%,
+  the new one among them, run from a frozen copy in 20 minutes. Run while
+  the real-window walks ran, `make check` failed in tests that time the
+  orchestrator and fade status messages by the clock; alone, it passes.
 
 ## Not in this increment
 
