@@ -112,3 +112,20 @@ func TestWatchFitsBesideItsMapAt100(t *testing.T) {
 		}
 	}
 }
+
+// TestWatchHasNoInspectorDivider gives a view with no inspector, as Watch
+// is, no divider at the edge its inspector would have, so a press there,
+// on Step to next change, reaches the view (increment 61).
+func TestWatchHasNoInspectorDivider(t *testing.T) {
+	t.Parallel()
+	watch := &host{view: &canvasOnly{pickingView: pickingView{selected: ""}}, frame: frame.NewFrame(time.Now),
+		visible: image.Pt(482, 800)}
+	watch.frame.ShowInspector.On = true
+	if grip := watch.inspectorDivider(); !grip.Empty() {
+		t.Fatalf("Watch has an inspector divider at %v", grip)
+	}
+	townMap, _ := panelPane("map")
+	if grip := townMap.host.inspectorDivider(); grip.Empty() {
+		t.Fatal("a Map has lost its inspector divider")
+	}
+}

@@ -23,11 +23,19 @@ func paneNeed(shown *pane) int {
 		return minCanvas
 	}
 	need := shown.host.leftEdge() + minCanvas
-	if inspected, says := shown.host.view.(inspectorView); !says || inspected.HasInspector() {
+	if shown.host.hasInspector() {
 		need += shown.host.inspectorRoom()
 	}
 
 	return need
+}
+
+// hasInspector reports whether the host's view has an inspector at its
+// right.
+func (h *host) hasInspector() bool {
+	inspected, says := h.view.(inspectorView)
+
+	return !says || inspected.HasInspector()
 }
 
 // inspectorView is a view that says whether it has an inspector at its
