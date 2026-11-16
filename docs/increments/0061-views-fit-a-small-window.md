@@ -115,6 +115,46 @@ Chosen while building, for its author to check:
 
 ## Step results
 
+- **Seeing it:** `TestAScriptedRunOpensAtTheSizeAskedFor` opens a scripted
+  run at `BERAD_WINDOW_SIZE`, and an unscripted run never reads it. Every
+  real-window walk was run at 150% in a window of 1200 × 832 before any
+  change: 63 passed and 17 failed, most where a click landed on a part
+  drawn over another. Their screenshots showed the overlaps the brief
+  listed, and four more: World state's Find a constant over Add template,
+  the Project's NPCs path under Cards, a Map's Preview button under the
+  status bar, and the Keys sheet taller than the window.
+- **Rows wrap:** `ui.WrapRow` places a row's two ends and carries them on
+  below; `TestARowWrapsWhenTooWide` checks one line when wide, the right end
+  on its own line when narrow, and nothing outside or over anything. At 800
+  × 555 points, `TestTheToolbarWrapsInASmallWindow` in the Pixel editor and
+  the Palette Editor, `TestTheHeadWrapsInASmallWindow` in the Project window,
+  `TestTheHeaderWrapsInASmallWindow` in World state,
+  `TestRowsWrapInASmallWindow` in Audio and
+  `TestTheGradientWrapsInASmallWindow` find no part over another or outside
+  its room. Run on the code before, the Pixel editor's, the Palette
+  Editor's, the Project window's and the gradient's failed on the overlaps
+  the screenshots showed, such as "Fill over zoom", "places over S" and
+  "steps outside" the gradient's panel.
+- **Inspectors scroll:** `ui.Scroll` holds a body's offset, scrolls with the
+  wheel, hides what lies beside the body from presses, reveals a field for
+  Tab or an input script, and clips what scrolls;
+  `TestABodyScrollsBetweenHeadingAndFoot` and `TestTabRevealsAFieldOfTheBody`
+  check them. At 800 × 555, `TestTheInspectorScrollsInASmallWindow` in World
+  state, the Palette Editor, Audio and the Map finds the foot apart from the
+  fields, the fields needing more height than they have, and the wheel
+  scrolling them; World state's and Audio's press Delete with a field
+  scrolled behind it and find Delete takes it, which World state's failed
+  to without the foot taking presses first.
+  `TestTheLeftPanelScrollsInASmallWindow` keeps a Map's Show floor below and
+  Preview above the status bar, and `TestAKeySheetFitsAShortWindow` keeps
+  the Keys sheet inside the window.
+- **Refused when it will not fit:** `TestWatchOpensInItsOwnTabWithoutRoom`
+  and `TestWatchFitsBesideItsMapAt100` open Watch beside its Map in a window
+  1200 points wide and in its own tab, saying why, in one 800 wide;
+  `TestALargerTextStepIsRefusedWithoutRoom` refuses 175% where a Map would
+  not fit and takes 150%; `TestTheDividerKeepsEachPanesRoom` stops a split's
+  divider at each pane's room.
+
 ## Not in this increment
 
 - A Workflow drawn sharp at zooms other than 100%, left from increment 56.

@@ -8,7 +8,8 @@ import "image"
 // both fit with Inset between them. When they do not, the trail starts a
 // line of its own below, and a control that does not fit on its group's
 // line carries on at the start of the next, so a row too wide for its room
-// wraps rather than run under another control (increment 61). Each width
+// wraps rather than run under another control (increment 61); the trail
+// ends the lead's last line instead when it fits there. Each width
 // is a control's, or a few controls' kept together; a width wider than the
 // area is cut to it. It returns each control's rectangle, the lead's then
 // the trail's, and the bottom of the last line.
@@ -21,6 +22,17 @@ func WrapRow(area image.Rectangle, lead, trail []int, gap int) ([]image.Rectangl
 		return leads, trails, max(leadLast, trailLast) + ButtonH
 	}
 	leads, last := flow(area, lead, gap, area.Min.Y, false)
+	used := 0
+	for _, rect := range leads {
+		if rect.Min.Y == last {
+			used = rect.Max.X - area.Min.X
+		}
+	}
+	if used+Inset+span(trail, gap) <= room {
+		trails, _ := flow(area, trail, gap, last, true)
+
+		return leads, trails, last + ButtonH
+	}
 	trails, last := flow(area, trail, gap, last+ButtonH+Gap, true)
 
 	return leads, trails, last + ButtonH

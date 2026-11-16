@@ -112,6 +112,9 @@ type copyPanel struct {
 	swatches                 []sourceSwatch
 	ramps                    []sourceRamp
 	scroll                   int
+	// how is what the panel says to do, in lines before its close button
+	// (increment 61).
+	how []string
 }
 
 // sourceSwatch is one of the source palette's colours in the copy panel.
@@ -135,7 +138,7 @@ func newCopyPanel(theme *ui.Theme) *copyPanel {
 		intoButton:   ui.NewButton("copy-target", newRampLabel), copyButton: ui.NewButton("copy", "Copy"),
 		close: ui.NewButton("close-copy", "×"),
 		name:  ui.NewTextField("copy-name", textedit.NewField("", false, nameBytes), false, theme),
-		area:  ui.Zero(), swatches: nil, ramps: nil, scroll: 0,
+		area:  ui.Zero(), swatches: nil, ramps: nil, scroll: 0, how: nil,
 	}
 	panel.sourceButton.Caret = true
 	panel.intoButton.Caret = true
@@ -163,8 +166,11 @@ func (s *State) panelRect() image.Rectangle {
 	if height == 0 {
 		return ui.Zero()
 	}
+	// In a short window the panel stops under the toolbar, and the ramps
+	// give it their room (increment 61).
+	top := max(content.Max.Y-ui.Inset-height, max(s.bar.bottom, ui.Inset+ui.ButtonH)+ui.Inset)
 
-	return image.Rect(ui.Inset, content.Max.Y-ui.Inset-height, content.Max.X-ui.Inset, content.Max.Y-ui.Inset)
+	return image.Rect(ui.Inset, top, content.Max.X-ui.Inset, max(top, content.Max.Y-ui.Inset))
 }
 
 // toggleGradient opens the gradient, filling a ramp or, with none, a new
@@ -515,8 +521,11 @@ func (s *State) layoutCopying(docs frame.Docs, panel image.Rectangle) {
 	left, top := panel.Min.X+ui.Inset, panel.Min.Y+ui.Inset
 	copier.sourceButton.Label = documentName(docs, copier.source, art.DefaultPaletteName)
 	s.place(copier.sourceButton, left+s.theme.TextWidth("From")+ui.Gap, top)
+	how := copier.sourceButton.Rect.Max.X + ui.Inset
+	copier.how = s.theme.Wrap(copyHow, copier.close.Rect.Min.X-ui.Inset-how)
 	bottom := panel.Max.Y - ui.Inset - ui.ButtonH - ui.Inset
-	copier.area = image.Rect(left, top+ui.ButtonH+ui.Gap, panel.Max.X-ui.Inset, bottom)
+	areaTop := max(top+ui.ButtonH, top+(ui.ButtonH-ui.TextSize)/ui.Half+len(copier.how)*ui.LineHeight) + ui.Gap
+	copier.area = image.Rect(left, areaTop, panel.Max.X-ui.Inset, max(areaTop, bottom))
 	source, ok := paletteOf(docs, copier.source)
 	if ok {
 		s.layoutSource(source)
@@ -537,6 +546,9 @@ func (s *State) layoutCopying(docs frame.Docs, panel image.Rectangle) {
 	copier.copyButton.Disabled = len(copier.picked) == 0
 	s.place(copier.copyButton, across, row)
 }
+
+// copyHow says how to pick the colours to copy.
+const copyHow = "Click a colour, Shift-click a run, Cmd-click to add more; a ramp's name takes it all."
 
 // layoutSource places the source palette's ramps and colours, scrolled.
 func (s *State) layoutSource(source *art.Palette) {
@@ -834,8 +846,10 @@ func (s *State) drawCopying(screen *ebiten.Image, panel image.Rectangle) {
 	left := panel.Min.X + ui.Inset
 	text := (ui.ButtonH - ui.TextSize) / ui.Half
 	s.theme.DrawText(screen, "From", left, copier.sourceButton.Rect.Min.Y+text, ui.ColorMuted())
-	s.theme.DrawText(screen, "Click a colour, Shift-click a run, Cmd-click to add more; a ramp's name takes it all.",
-		copier.sourceButton.Rect.Max.X+ui.Inset, copier.sourceButton.Rect.Min.Y+text, ui.ColorMuted())
+	for index, line := range copier.how {
+		s.theme.DrawText(screen, line, copier.sourceButton.Rect.Max.X+ui.Inset,
+			copier.sourceButton.Rect.Min.Y+text+index*ui.LineHeight, ui.ColorMuted())
+	}
 	area, clipped := pen.Clip(screen, copier.area)
 	if clipped {
 		for _, label := range copier.ramps {

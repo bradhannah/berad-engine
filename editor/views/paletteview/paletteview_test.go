@@ -808,4 +808,23 @@ func TestTheGradientWrapsInASmallWindow(t *testing.T) {
 	if wrong := frametest.Apart(panel, parts...); wrong != "" {
 		t.Fatal(wrong)
 	}
+	for _, part := range f.state.Toolbar() {
+		if part.Name != "ramps" && part.Rect.Overlaps(panel) {
+			t.Fatalf("the gradient's panel %v lies over the toolbar's %s %v", panel, part.Name, part.Rect)
+		}
+	}
+}
+
+// TestTheCopyPanelWrapsInASmallWindow opens Copy colours from… at 800 ×
+// 555 points: what it says to do takes further lines before its close
+// button, and nothing in it lies over anything else (increment 61).
+func TestTheCopyPanelWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gloomyID)
+	f.resize(image.Pt(800, 555))
+	f.click("ui:copy-from")
+	panel, parts := f.state.CopyParts()
+	if wrong := frametest.Apart(panel, parts...); wrong != "" {
+		t.Fatal(wrong)
+	}
 }

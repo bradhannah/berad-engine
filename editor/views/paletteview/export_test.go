@@ -3,6 +3,7 @@ package paletteview
 import (
 	"image"
 
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 )
 
@@ -46,4 +47,26 @@ func (s *State) GradientParts() (image.Rectangle, []frametest.Part) {
 	}
 
 	return s.panelRect(), parts
+}
+
+// CopyParts names the open copy panel's parts, as laid out, what it says to
+// do among them, and the panel.
+func (s *State) CopyParts() (image.Rectangle, []frametest.Part) {
+	copier := s.copying
+	how := image.Rectangle{}
+	if len(copier.how) > 0 {
+		left := copier.sourceButton.Rect.Max.X + ui.Inset
+		width := 0
+		for _, line := range copier.how {
+			width = max(width, s.theme.TextWidth(line))
+		}
+		how = image.Rect(left, copier.sourceButton.Rect.Min.Y, left+width, copier.area.Min.Y-ui.Gap)
+	}
+
+	return s.panelRect(), []frametest.Part{
+		{Name: "From", Rect: copier.sourceButton.Rect}, {Name: "close", Rect: copier.close.Rect},
+		{Name: "how to pick", Rect: how}, {Name: "colours", Rect: copier.area},
+		{Name: "Into", Rect: copier.intoButton.Rect}, {Name: "name", Rect: copier.name.Rect},
+		{Name: "Copy", Rect: copier.copyButton.Rect},
+	}
 }

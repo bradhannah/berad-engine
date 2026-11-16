@@ -44,3 +44,16 @@ func TestARowWrapsWhenTooWide(t *testing.T) {
 		t.Fatalf("a control wider than the row was not cut to it: %v", leads[0])
 	}
 }
+
+// TestARowsEndSharesTheLastLine lays out a palette's name and three buttons
+// that take two lines, and Delete palette… at the right: it fits at the end
+// of the second line, so it goes there rather than on a third (increment
+// 61).
+func TestARowsEndSharesTheLastLine(t *testing.T) {
+	t.Parallel()
+	leads, trails, bottom := ui.WrapRow(image.Rect(0, 0, 500, 0), []int{190, 70, 90, 140}, []int{116}, ui.Gap)
+	line := ui.ButtonH + ui.Gap
+	if leads[3].Min.Y != line || trails[0].Min.Y != line || trails[0].Max.X != 500 || bottom != line+ui.ButtonH {
+		t.Fatalf("the end did not share the last line: %v %v, bottom %d", leads, trails, bottom)
+	}
+}
