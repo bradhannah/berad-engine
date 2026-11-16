@@ -218,32 +218,47 @@ func TestBackReturnsToANode(t *testing.T) {
 	noCrashes(t, project)
 }
 
-// TestQuickOpenFromAMap presses Cmd+P in a Map's tab, finds Clerk's day in
-// the sheet and opens it with Enter in a tab of its own; then finds Fetch
-// stock and opens it with Cmd+Enter beside the Map, in the Map's tab
-// (increment 38).
+// TestQuickOpenFromAMap opens quick open with Cmd+P from a Map, finds a
+// workflow, Clerk's day, by its words, which narrow the sheet, and opens it
+// with Enter in a tab of its own (increment 38). Then it finds Fetch stock
+// and asks for it beside the Map with Cmd+Enter: in a window 1200 wide the
+// Map's panels and a Workflow's need more, so it opens in a tab of its own,
+// saying why; with the Map's inspector folded, as that says, it opens beside
+// the Map, in the Map's tab (increment 61).
 func TestQuickOpenFromAMap(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
 	project := filepath.Join(t.TempDir(), "project")
 	shot := shotPath(t, "quick-open.png")
+	fetch := func() []step {
+		return script(
+			must("state:quick-open", 1800), wait(5), typed("Fetch"), must("quick:Fetch stock", 120),
+			click("quick:Fetch stock"), keys("Cmd+Enter"),
+		)
+	}
 	browserScript := script(
 		must("row:Sample zone", 600), wait(5), click("row:Zones"), wait(20), doubleClick("row:Sample zone"),
 		must("state:tabs:2", 600), must("state:quick-open", 900), wait(5), typed("Clerk's"),
 		must("quick:Clerk's day", 120), step{Repeat: 2, Screenshot: shot, Front: false}, click("quick:Clerk's day"),
-		keys("Enter"), must("state:tabs:3", 600), must("state:quick-open", 1800), wait(5), typed("Fetch"),
-		must("quick:Fetch stock", 120), click("quick:Fetch stock"), keys("Cmd+Enter"),
+		keys("Enter"), must("state:tabs:3", 600), fetch(), must("state:tabs:3", 600), fetch(),
 		must("state:tabs:1", 3600), wait(5), keys("Cmd+Q"), must("ui:quit", 300), wait(5), click("ui:quit"), wait(60),
 	)
 	mapScript := script(
 		must("state:loaded", 600), wait(30), keys("Cmd+P"), must("state:tabs:3", 900),
 		must("state:front:Clerk's day", 60), must("state:tabs:2", 1800), wait(10), keys("Cmd+P"),
-		must("state:front:Fetch stock", 900), must("state:tabs:2", 5), wait(120), keys("Cmd+W"), wait(30),
+		must("state:front:Fetch stock", 900), must("state:tabs:3", 5), must("state:tabs:2", 1800), wait(10),
+		keys("Cmd+I"), must("state:inspector-folded", 60), keys("Cmd+P"),
+		must("state:front:Fetch stock", 900), must("state:tabs:2", 5), wait(120), keys("Cmd+I"), keys("Cmd+W"),
+		wait(30),
 	)
 	clerkScript := script(must("state:loaded", 600), wait(30), keys("Cmd+W"), wait(30))
+	ownTabScript := script(
+		must("state:loaded", 600), must("state:said:Opened in a tab of its own", 60), wait(30), keys("Cmd+W"),
+		wait(30),
+	)
 	fetchScript := script(must("state:loaded", 600), wait(60), keys("Cmd+W"), wait(30))
 	runEditor(t, binary, project, scripts{
-		"browser": {browserScript}, "map": {mapScript}, "workflow": {clerkScript, fetchScript},
+		"browser": {browserScript}, "map": {mapScript}, "workflow": {clerkScript, ownTabScript, fetchScript},
 	})
 	noCrashes(t, project)
 	t.Logf("screenshot: %s", shot)
