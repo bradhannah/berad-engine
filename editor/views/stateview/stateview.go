@@ -71,7 +71,6 @@ const (
 	detailAt  = 320
 	addWidth  = 120
 	headerTop = ui.Inset + ui.LineHeight + ui.LineHeight
-	listTop   = headerTop + ui.ButtonH + ui.Gap
 	footerGap = 10
 	usesShown = 6
 )
@@ -356,13 +355,32 @@ func (s *State) layout() {
 	content := frame.Content(s.size)
 	panel := s.panel()
 	right := s.listRight()
-	for index, button := range s.adds {
-		left := ui.Inset + index*(addWidth+ui.Gap)
-		button.Rect = image.Rect(left, headerTop, left+addWidth, headerTop+ui.ButtonH)
-	}
-	s.list.Rect = image.Rect(0, listTop, right, content.Max.Y)
-	s.layoutFind(right)
+	s.list.Rect = image.Rect(0, s.layoutHeader(right)+ui.Gap, right, content.Max.Y)
 	s.layoutInspector(panel)
+}
+
+// layoutHeader places the Add buttons at the left and Find a value at the
+// right, Find on a line below when they do not fit beside each other
+// (increment 61), and returns where they end.
+func (s *State) layoutHeader(right int) int {
+	adds := make([]int, len(s.adds))
+	for index := range s.adds {
+		adds[index] = addWidth
+	}
+	var find []int
+	if s.part != PartSignals {
+		find = []int{findWidth}
+	}
+	placed, found, bottom := ui.WrapRow(image.Rect(ui.Inset, headerTop, right, headerTop), adds, find, ui.Gap)
+	for index, button := range s.adds {
+		button.Rect = placed[index]
+	}
+	s.findButton.Rect = ui.Zero()
+	if len(found) > 0 {
+		s.findButton.Rect = found[0]
+	}
+
+	return bottom
 }
 
 // Update handles one frame of input.
@@ -796,7 +814,9 @@ func (s *State) Draw(screen *ebiten.Image, docs frame.Docs) {
 	right := s.listRight()
 	if s.part != PartSignals {
 		s.findButton.Draw(screen, s.theme)
-		right = s.findButton.Rect.Min.X
+		if s.findButton.Rect.Min.Y == s.adds[len(s.adds)-1].Rect.Min.Y {
+			right = s.findButton.Rect.Min.X
+		}
 	}
 	if where := s.addsNote(docs); loaded && where != "" {
 		last := s.adds[len(s.adds)-1].Rect

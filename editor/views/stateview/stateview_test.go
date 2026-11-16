@@ -446,6 +446,7 @@ func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.size, f.ctx.Size = image.Pt(800, 555), image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
 	f.click("row:world.mood")
 	body, foot := f.state.InspectorParts()
 	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), append(foot, frametest.Part{Name: "fields", Rect: body})...); wrong != "" {
@@ -471,5 +472,19 @@ func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
 	f.answerUses(nil)
 	if _, found := f.world().Value(moodID); found {
 		t.Fatal("Delete deletes, though a field is scrolled behind it")
+	}
+}
+
+// TestTheHeaderWrapsInASmallWindow lays World state out at 800 × 555
+// points, as a 1200 × 832 window is at 150%: Find a value does not fit
+// beside the Add buttons, so it goes on a line below them and the list
+// starts under it (increment 61).
+func TestTheHeaderWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.size, f.ctx.Size = image.Pt(800, 555), image.Pt(800, 555)
+	f.frame(ui.NewInput(image.Pt(0, 0)))
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), f.state.HeaderParts()...); wrong != "" {
+		t.Fatal(wrong)
 	}
 }

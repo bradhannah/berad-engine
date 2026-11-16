@@ -2,13 +2,11 @@ package stateview
 
 import (
 	"encoding/json"
-	"image"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
-	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/editor/views/valuepicker"
 	"github.com/bradhannah/berad-engine/editor/views/valuetree"
@@ -403,15 +401,4 @@ func (s *State) nameToType() {
 	name := s.form.Fields()[0]
 	s.focus.Set(name)
 	name.Field.SelectFrom(strings.LastIndex(name.Field.Value(), ".") + 1)
-}
-
-// layoutFind places Find a value at the right of the add buttons, in the
-// Values window only.
-func (s *State) layoutFind(right int) {
-	if s.part == PartSignals {
-		s.findButton.Rect = image.Rect(0, 0, 0, 0)
-
-		return
-	}
-	s.findButton.Rect = image.Rect(right-findWidth, headerTop, right, headerTop+ui.ButtonH)
 }
