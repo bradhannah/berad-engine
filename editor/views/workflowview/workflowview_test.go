@@ -377,7 +377,7 @@ func TestInspectorEditsParameters(t *testing.T) {
 	if len(f.requests.Of(workflowplugin.ReplaceEdit)) != replaces || !strings.Contains(f.status(), "whole number") {
 		t.Fatalf("a wrong value is refused: %q", f.status())
 	}
-	f.keys("Escape")
+	f.click("ui:" + ui.RevertID)
 	f.click("node:start:1")
 	f.add("" + flow.KindTimeSwitch)
 	f.click("ui:add-time")

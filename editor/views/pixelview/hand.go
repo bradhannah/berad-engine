@@ -41,8 +41,10 @@ func toolLabel(tool Tool) string {
 func (s *State) handLine(docs frame.Docs) string {
 	parts := []string{s.spriteName(docs), toolLabel(s.tool)}
 	if s.tool == ToolPencil || s.tool == ToolFill {
-		if name, named := s.colorName(docs, s.color); named {
+		if name, named := s.colorName(docs, s.color); named && s.chosen {
 			parts = append(parts, name)
+		} else if !s.chosen {
+			parts = append(parts, "no colour")
 		}
 	}
 	if s.hovering {

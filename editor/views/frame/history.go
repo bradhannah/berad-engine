@@ -150,6 +150,7 @@ func (f *Frame) layoutHistory(size image.Point) {
 		right = f.history.button.Rect.Min.X - ui.Gap
 		f.history.dismiss.Rect = image.Rect(right-dismissWidth, top, right, top+ui.ButtonH)
 	}
+	f.layoutNotice(top, f.history.button.Rect.Min.X-ui.Gap)
 	rows := min(max(len(f.history.log), historyLeast), historyRows)
 	height := min(rows*ui.RowHeight+ui.Half*ui.Inset+ui.LineHeight, size.Y-StatusHeight-ui.Inset)
 	width := min(historyPanelW, size.X-ui.Half*ui.Inset)
@@ -165,6 +166,9 @@ func (f *Frame) statusLeft() int {
 	if !f.history.dismiss.Rect.Empty() {
 		return f.history.dismiss.Rect.Min.X
 	}
+	if left, shows := f.noticeLeft(); shows {
+		return left
+	}
 
 	return f.history.button.Rect.Min.X
 }
@@ -174,6 +178,7 @@ func (f *Frame) updateHistoryButtons(input *ui.Input) {
 	if f.history.dismiss.Update(input) {
 		f.history.refusal = ""
 	}
+	f.updateNotice(input)
 	if f.history.button.Update(input) {
 		f.history.open = !f.history.open
 		f.history.list.Selected = ""

@@ -231,6 +231,9 @@ func (o *Orchestrator) query(from *window, message protocol.Message) {
 		o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: o.whereUsed(question)}))
 	case err == nil && question.Question == protocol.QuestionRunners:
 		o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: o.runners(question.Document)}))
+	case err == nil && question.Question == protocol.QuestionOpenUnsaved:
+		uses := o.openUnsaved(from, question.Document)
+		o.send(from, mustMessage(protocol.KindAnswer, message.Request, protocol.Answer{Uses: uses}))
 	default:
 		o.reply(from, message.Request, "unknown question")
 	}

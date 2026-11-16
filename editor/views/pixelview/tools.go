@@ -63,6 +63,9 @@ func (s *State) paintColor() art.ColorRef {
 // paintable reports whether the current tool can paint: not with a ramp
 // chosen without one of its shades.
 func (s *State) paintable(ctx *frame.Context) bool {
+	if s.refuseNoColour(ctx) {
+		return false
+	}
 	if color := s.paintColor(); color.IsClear() || !color.Shade.IsZero() {
 		return true
 	}
@@ -232,7 +235,7 @@ func (s *State) pick(ctx *frame.Context, pixel image.Point) {
 			ref = art.Named(ref.Palette, ramp, ref.Shade)
 		}
 	}
-	s.color = ref
+	s.choose(ref)
 	ctx.Frame.Status("Painting with " + name)
 }
 

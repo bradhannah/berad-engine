@@ -17,6 +17,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugin"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/engine/content"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
@@ -143,7 +144,10 @@ func TestTornJournalLineIsIgnored(t *testing.T) {
 	}
 }
 
-func TestJournalGapRefusesToOpen(t *testing.T) {
+// A journal that does not fit the files is not applied, and the project asks
+// before it opens (increment 57): until its author answers, nothing changes;
+// Open without them keeps the journal whole in the backups and empties it.
+func TestAJournalThatDoesNotFitIsAskedAbout(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	floor := createProject(t, dir)
@@ -156,10 +160,33 @@ func TestJournalGapRefusesToOpen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".berad", "journal.log"), append(line, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = orchestrator.New(baseConfig(t, dir))
-	if !errors.Is(err, orchestrator.ErrJournalGap) {
-		t.Fatalf("err = %v", err)
+	h := start(t, dir, nil)
+	view := h.dial(t, "")
+	asked := nextOpening(t, view)
+	if !strings.Contains(asked.Journal, "The journal's 1 change do not fit the files") &&
+		!strings.Contains(asked.Journal, "do not fit the files") {
+		t.Fatalf("the question says the journal does not fit: %+v", asked)
 	}
+	if got := tileAt(t, view, floor, 0, 0); got != "grass" {
+		t.Fatalf("a journal that does not fit is not applied at all: %q", got)
+	}
+	if _, err := paint(t, view, floor, 1, 1, "wall", ""); err == nil || !strings.Contains(err.Error(), "not open yet") {
+		t.Fatalf("nothing changes until the question is answered: %v", err)
+	}
+	if err := view.NoticeChoice(protocol.OpeningKey, protocol.OpenAnyway); err != nil {
+		t.Fatal(err)
+	}
+	if notice := nextNotice(t, view); !strings.Contains(notice.Text, "kept in the backups") {
+		t.Fatalf("it says where the journal went: %+v", notice)
+	}
+	kept, err := filepath.Glob(filepath.Join(dir, ".berad", "backups", "journal", "*.bak"))
+	if err != nil || len(kept) != 1 {
+		t.Fatalf("the journal is kept whole in the backups: %v %v", kept, err)
+	}
+	if data, err := os.ReadFile(kept[0]); err != nil || !strings.Contains(string(data), `"revision":5`) {
+		t.Fatalf("the copy holds the journal: %s %v", data, err)
+	}
+	mustPaint(t, view, floor, 1, 1, "wall", "")
 }
 
 // nextVersionPlugin re-registers the tile floor format one version ahead with
@@ -258,10 +285,13 @@ func TestVersionOneFloorIsUpgraded(t *testing.T) {
 	}
 }
 
-func TestNewerFileRefusesToOpen(t *testing.T) {
+// A file newer than the program is left out when its author says so, and
+// never written over (increment 57).
+func TestANewerFileIsLeftOutWhenItsAuthorSays(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	createProject(t, dir)
+	configure := withGame(t)
+	createWithGame(t, dir, configure)
 	envelope := readFloorFile(t, dir)
 	envelope.Version = 99
 	encoded, err := content.Encode(envelope)
@@ -272,9 +302,23 @@ func TestNewerFileRefusesToOpen(t *testing.T) {
 	if err := os.WriteFile(matches[0], encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = orchestrator.New(baseConfig(t, dir))
-	if !errors.Is(err, content.ErrNewerVersion) {
-		t.Fatalf("err = %v", err)
+	h := start(t, dir, configure)
+	asked := nextOpening(t, h.dial(t, ""))
+	if len(asked.Files) != 1 || !strings.Contains(asked.Files[0].Reason, "newer") {
+		t.Fatalf("the question names the file and why: %+v", asked)
+	}
+	view := h.dial(t, "")
+	if err := view.NoticeChoice(protocol.OpeningKey, protocol.OpenAnyway); err != nil {
+		t.Fatal(err)
+	}
+	if notice := nextNotice(t, view); notice.Kind != protocol.NoticeFilesLeftOut {
+		t.Fatalf("the file left out is told: %+v", notice)
+	}
+	if err := h.stop(); err != nil {
+		t.Fatal(err)
+	}
+	if after, err := os.ReadFile(matches[0]); err != nil || string(after) != string(encoded) {
+		t.Fatalf("a file left out is never written over: %v", err)
 	}
 }
 

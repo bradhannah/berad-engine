@@ -86,6 +86,56 @@ under consideration), **open** (undecided).
   Buttons, choices and pick
   on map still apply at once and can be undone. Selecting something else or
   closing a tab with unsaved changes asks: Save, Don't save or Cancel.
+- **Agreed (2026-11-13):** **keys in a field do only what the field shows.**
+  Esc leaves the field and keeps what was typed, waiting for Save, as a
+  click elsewhere does; throwing typing away is Revert's. Cmd+Z in a field
+  stops at the field's own history and says so, so it never takes back a
+  saved change unseen. Tab moves to the next field in the panel and
+  Shift+Tab to the one before, bringing it into view; at the last or first
+  field it stays and says so. The keyboard is where the text cursor is,
+  never where the pointer rests: a panel over a tab, such as the clock's,
+  takes keys only once its field is clicked, and Esc or a click outside
+  closes it. (Rejected: Esc asking Save, Don't save or Cancel; Esc
+  dropping the typing for Cmd+Z to bring back; Tab wrapping round; keys
+  following the pointer; a modal clock.)
+- **Agreed (2026-11-13):** **the files are shared,** with git, agents and
+  the author's own hands, and the editor never overwrites what it has not
+  seen. Before writing a document it checks the file is as it read it. A
+  document with nothing waiting in the editor takes in a file changed
+  outside it, and History says so; one changed in both places asks Keep
+  mine or Take the file's, or Later, and the version not kept goes to the
+  project's backups. A project that cannot open as it is opens a window
+  naming each file that cannot be read, and why, and a journal that no
+  longer fits the files, and offers Open without them or Quit. A file left
+  out is never written over, and a journal set aside is kept whole in
+  backups, never applied in part. Anything in a file the editor does not
+  know is said in a lasting notice when the project opens, and each such
+  file is copied to backups before the save that drops it. (Rejected:
+  asking only, leaving unchanged documents behind their files; overwriting
+  after a backup; opening without asking; opening read-only; keeping
+  unknown fields, which reaches every kind of document the game shares;
+  refusing such files.)
+- **Agreed (2026-11-13):** **nothing used goes unseen.** Before anything is
+  removed, what goes with it is listed: a zone's floors, the uses of a
+  document, the unsaved changes another tab holds to it, and everything in
+  the cells a floor gives up (anchors and their uses, NPCs, ambient sounds,
+  stairs, and stairs on other floors that lead into those cells). The
+  orchestrator refuses a zone or a floor deleted out of step with the
+  other. A value in use, local or world, is refused until nothing uses it,
+  with its uses listed and each a click away. A floor that would leave the
+  player start outside it is refused until the start is moved, and a tab
+  closed because its document went says why. (Rejected: the orchestrator
+  deleting a zone's floors whenever a zone goes; refusing a delete while
+  another tab holds changes; keeping a tab open on a deleted document;
+  saving its changes first; moving the player start for the author;
+  deleting a value in use after asking.)
+- **Agreed (2026-11-13):** **a crashed tab reopens when told.** Its notice
+  offers Reopen, and nothing reopens by itself. Opening documents, quick
+  open and Launch do not depend on the Project tab, so they keep working
+  while it is closed. When several notices last at once, the newest shows
+  with how many there are, and History holds each. (Rejected: reopening by
+  itself, which could crash again at once; quitting the editor when the
+  Project tab crashes.)
 - **Agreed (2026-10-30):** the editor is **one window**, the editor window,
   in one process ([increment 13](increments/0013-single-window.md)). Its
   window bar has a tab for each kind of view open, the project browser's
@@ -465,6 +515,11 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   paints the two current colours at 25%, 50% or 75%; the second colour starts
   as the next shade of the ramp, and any colour can be chosen instead. Nothing
   cleverer.
+- **Agreed (2026-11-13):** a sprite opens with **the colour last used in
+  it,** kept per person; one never painted opens with none, and the Pencil
+  and Fill refuse until a colour is chosen, saying so. (Rejected: none each
+  time; clear first with the Pencil refusing clear; clear first, as before,
+  which drew nothing and said nothing.)
 - **Tentative:** characteristics such as wall or gettable belong to the
   definition, shown beside the art in the editor, and the art itself knows
   nothing of them, since one sprite can serve several definitions.
@@ -718,6 +773,12 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   over the window, beside a preview of how the game draws it. Making a
   constant from a typed-in value lists the other places typed the same, to
   tick and switch, with one Undo for all of it.
+- **Agreed (2026-11-13):** a line of text holds **a brace as `{{`,** as it
+  holds a bracket as `[[` in markup: "Use the {{red} door" reads "Use the
+  {red} door" in the game, and `{` alone still begins a value's name.
+  (Rejected: values only as chips, with typed braces always text, a larger
+  change to the field; an unknown name kept as text, which lets a misspelt
+  value through without a refusal.)
 - **Removed (2026-11-06):** Text documents, a placeholder kept to prove the
   text field and picking a place, are gone, as constants will hold a game's
   text ([increment 31](increments/0031-no-text-documents.md)).

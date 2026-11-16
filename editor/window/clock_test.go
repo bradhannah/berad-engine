@@ -63,3 +63,32 @@ func TestStartingAPreviewOpensNothing(t *testing.T) {
 		t.Fatal("pressing the readout opens the panel")
 	}
 }
+
+// TestKeysStayWithTheTabInFront opens the clock's panel: keys go to the tab
+// in front while the clock's field does not have the keyboard, Esc closes
+// the panel while no field has it, and so does a press outside the panel
+// (increment 59).
+func TestKeysStayWithTheTabInFront(t *testing.T) {
+	t.Parallel()
+	view := &clockStandIn{running: true, asked: nil}
+	front := &pane{view: "map", host: &host{view: &clockStandIn{running: false, asked: nil}}}
+	shown := &shell{size: image.Pt(1400, 900), clock: &pane{view: "clock", host: &host{view: view}}}
+	shown.layout()
+	shown.clockOpen = true
+	if shown.target(front, true) != front {
+		t.Fatal("keys stay with the tab in front")
+	}
+	escape := ui.NewInput(image.Pt(10, 400))
+	escape.Presses = []ui.Press{ui.ParsePress("Escape")}
+	shown.closeClock(&escape, front)
+	if shown.clockOpen {
+		t.Fatal("Esc closes the panel while no field has the keyboard")
+	}
+	shown.clockOpen = true
+	outside := ui.NewInput(image.Pt(200, 400))
+	outside.Pressed = true
+	shown.closeClock(&outside, front)
+	if shown.clockOpen {
+		t.Fatal("a press outside the panel closes it")
+	}
+}

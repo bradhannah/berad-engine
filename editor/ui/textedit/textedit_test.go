@@ -218,12 +218,10 @@ func TestDraftLifecycle(t *testing.T) {
 	if !field.Conflict() || field.Value() != "old new!" {
 		t.Fatal("a change elsewhere replaced the draft")
 	}
-	if got := press(field, textedit.KeyEscape, none, nil); got != textedit.OutcomeNone || field.Value() != "changed elsewhere" {
-		t.Fatalf("Escape reverts: %v %q", got, field.Value())
+	if got := press(field, textedit.KeyEscape, none, nil); got != textedit.OutcomeBlur || field.Value() != "old new!" {
+		t.Fatalf("Escape leaves the field and keeps the typing: %v %q", got, field.Value())
 	}
-	if got := press(field, textedit.KeyEscape, none, nil); got != textedit.OutcomeBlur {
-		t.Fatalf("Escape with nothing to revert leaves the field: %v", got)
-	}
+	field.Revert()
 
 	field.Focus()
 	field.Type("x")
@@ -260,8 +258,9 @@ func TestClipboardAndUndoKeys(t *testing.T) {
 	press(field, textedit.KeyZ, command, clipboard)
 	press(field, textedit.KeyZ, command, clipboard)
 	press(field, textedit.KeyZ, command, clipboard)
-	if got := press(field, textedit.KeyZ, command, clipboard); got != textedit.OutcomePass {
-		t.Fatalf("undo with no typing left passes to the window: %v %q", got, field.Value())
+	if got := press(field, textedit.KeyZ, command, clipboard); got != textedit.OutcomeNone ||
+		!strings.HasPrefix(field.TakeRefusal(), "Nothing more to undo in this field") {
+		t.Fatalf("undo with no typing left stops at the field and says so: %v %q", got, field.Value())
 	}
 	if got := press(field, textedit.KeyZ, shiftCmd, clipboard); got != textedit.OutcomeNone {
 		t.Fatalf("redo: %v", got)

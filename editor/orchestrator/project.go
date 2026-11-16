@@ -41,6 +41,8 @@ type project struct {
 	// unread are the files left out when the project was loaded because
 	// they could not be read as documents.
 	unread []unreadFile
+	// seen is each file as the editor last read or wrote it (increment 57).
+	seen map[string]fileStamp
 }
 
 // unreadFile is a file left out of the project, and why.
@@ -56,6 +58,9 @@ type storedDocument struct {
 	envelope    content.Envelope
 	fromVersion int
 	layout      *storedDocument
+	// raw is the file as read, for telling what in it the editor does not
+	// know (increment 57).
+	raw []byte
 }
 
 // upgraded reports whether the document or its layout was upgraded on load,
@@ -84,7 +89,7 @@ func openProject(dir string, logger *slog.Logger) (*project, error) {
 		}
 	}
 
-	opened := &project{root: root, logger: logger, unread: nil}
+	opened := &project{root: root, logger: logger, unread: nil, seen: map[string]fileStamp{}}
 	if err := opened.ignoreState(); err != nil {
 		return nil, err
 	}
@@ -112,7 +117,7 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 	seen := map[ids.ULID]int{}
 	walk := func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return p.leaveOut(path, entry, walkErr)
 		}
 		if entry.IsDir() {
 			// The audio folder holds berad-audio's own files, not documents.
@@ -128,9 +133,9 @@ func (p *project) loadDocuments(formats *content.Registry, now time.Time) ([]sto
 		if filepath.Ext(path) != ".json" {
 			return nil
 		}
-		document, ok, err := p.loadOne(formats, path, now)
-		if err != nil || !ok {
-			return err
+		document, ok := p.loadOne(formats, path, now)
+		if !ok {
+			return nil
 		}
 		if strings.HasSuffix(path, layoutSuffix) {
 			layouts[path] = document
@@ -175,35 +180,42 @@ func (p *project) attachLayouts(documents []storedDocument, layouts map[string]s
 	return errors.Join(errs...)
 }
 
-func (p *project) loadOne(formats *content.Registry, path string, now time.Time) (storedDocument, bool, error) {
+func (p *project) loadOne(formats *content.Registry, path string, now time.Time) (storedDocument, bool) {
 	raw, err := p.root.ReadFile(path)
 	if err != nil {
-		return storedDocument{}, false, fmt.Errorf("read %s: %w", path, err)
+		p.unread = append(p.unread, unreadFile{path: path, reason: "it cannot be read: " + plainReason(err)})
+
+		return noDocument(), false
 	}
+	p.note(path, raw)
 	envelope, err := content.Decode(raw)
 	if err != nil {
 		p.logger.Warn("skipping file that is not a document", "path", path, "error", err)
 		reason := strings.TrimPrefix(err.Error(), content.ErrMalformed.Error()+": ")
 		p.unread = append(p.unread, unreadFile{path: path, reason: reason})
 
-		return noDocument(), false, nil
+		return noDocument(), false
 	}
 	upgraded, changed, err := formats.Upgrade(envelope)
 	if errors.Is(err, content.ErrUnknownFormat) {
 		p.logger.Warn("skipping document with unknown format", "path", path, "format", envelope.Format)
 
-		return noDocument(), false, nil
+		return noDocument(), false
 	}
 	if err != nil {
-		return storedDocument{}, false, fmt.Errorf("%s: %w", path, err)
+		p.unread = append(p.unread, unreadFile{path: path, reason: plainReason(err)})
+
+		return noDocument(), false
 	}
 	if changed {
 		if err := p.backup(path, raw, envelope.Version, now); err != nil {
-			return storedDocument{}, false, err
+			p.unread = append(p.unread, unreadFile{path: path, reason: plainReason(err)})
+
+			return noDocument(), false
 		}
 	}
 
-	return storedDocument{path: path, envelope: upgraded, fromVersion: envelope.Version, layout: nil}, true, nil
+	return storedDocument{path: path, envelope: upgraded, fromVersion: envelope.Version, layout: nil, raw: raw}, true
 }
 
 // newer returns the copy of a document to keep and the one to retire: the
@@ -252,6 +264,7 @@ func (p *project) isOneOf(path string, files []fs.FileInfo) bool {
 func (p *project) retire(path string, now time.Time) error {
 	name := strings.NewReplacer("/", "_", "\\", "_").Replace(path)
 	target := filepath.Join(removedDir, name+"."+now.UTC().Format(stampLayout)+".bak")
+	p.forget(path)
 	if err := p.root.Rename(path, target); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
@@ -292,6 +305,7 @@ func (p *project) writeAtomic(path string, data []byte) error {
 	if err := p.root.Rename(temp, path); err != nil {
 		return fmt.Errorf("rename %s: %w", temp, err)
 	}
+	p.note(path, data)
 
 	return nil
 }
@@ -334,6 +348,31 @@ func slug(name string) string {
 	}
 
 	return result
+}
+
+// leaveOut leaves out of the project a file or folder that cannot be read,
+// saying why; the project folder itself not being readable stops loading.
+func (p *project) leaveOut(path string, entry fs.DirEntry, failure error) error {
+	if path == "." {
+		return failure
+	}
+	p.unread = append(p.unread, unreadFile{path: path, reason: "it cannot be read: " + plainReason(failure)})
+	if entry != nil && entry.IsDir() {
+		return fs.SkipDir
+	}
+
+	return nil
+}
+
+// plainReason is an error's words, without the file's path its first part
+// may repeat.
+func plainReason(failure error) string {
+	reason := failure.Error()
+	if _, after, cut := strings.Cut(reason, ": "); cut && strings.Contains(reason[:len(reason)-len(after)], "/") {
+		return after
+	}
+
+	return reason
 }
 
 func noDocument() storedDocument {

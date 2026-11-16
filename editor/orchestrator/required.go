@@ -52,15 +52,20 @@ func (o *Orchestrator) addRequired() error {
 
 			continue
 		}
+		path, standIn := o.standInFor(required.ID)
+		if !standIn {
+			path = documentPath(required.Format, "", required.Name, required.ID)
+		}
 		o.docs[required.ID] = &documentEntry{
 			info: DocumentInfo{
 				ID: required.ID, Name: required.Name, Format: required.Format, Revision: 0,
-				Path: documentPath(required.Format, "", required.Name, required.ID), Folder: "", Tags: nil,
-				Changed: time.Time{},
+				Path: path, Folder: folderOf(required.Format, path), Tags: nil, Changed: time.Time{},
 			},
 			version:  documentType.Format.Current,
 			document: document,
-			dirty:    true,
+			dirty:    !standIn,
+			standIn:  standIn,
+			unknown:  nil,
 		}
 		o.cfg.Logger.Info("added a document every project holds", "name", required.Name)
 	}

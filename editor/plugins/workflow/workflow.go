@@ -579,6 +579,13 @@ func change(
 // to. Local values are the workflow's own.
 func valueReferences(node flow.Node) []model.Reference {
 	kind, _ := flow.KindOf(node.Kind)
+
+	return refReferences(valueRefs(node), "a "+kind.Label+" node")
+}
+
+// valueRefs lists every value a value node uses, its own and its operands'.
+func valueRefs(node flow.Node) []flow.ValueRef {
+	kind, _ := flow.KindOf(node.Kind)
 	var refs []flow.ValueRef
 	for _, param := range kind.Params {
 		if param.Type == flow.TypeValue {
@@ -600,7 +607,7 @@ func valueReferences(node flow.Node) []model.Reference {
 		}
 	}
 
-	return refReferences(refs, "a "+kind.Label+" node")
+	return refs
 }
 
 // CallItem is the item a Call's reference to the workflow it calls names,
@@ -631,6 +638,13 @@ func callReferences(node flow.Node) []model.Reference {
 	if called, ok := node.Called(); ok {
 		references = append(references, model.Reference{Document: called, Item: CallItem, Label: label})
 	}
+
+	return append(references, refReferences(callRefs(node), label)...)
+}
+
+// callRefs lists the values a Call gives its inputs from or keeps its
+// outputs in.
+func callRefs(node flow.Node) []flow.ValueRef {
 	refs := slices.Collect(maps.Values(node.Keeps()))
 	for _, given := range node.Inputs() {
 		if ref, refers := flow.OperandRef(given); refers {
@@ -638,18 +652,24 @@ func callReferences(node flow.Node) []model.Reference {
 		}
 	}
 
-	return append(references, refReferences(refs, label)...)
+	return refs
 }
 
 // messageReferences lists the values and constants outside the workflow
 // that a Log, a Say or a Show message puts in its line, each named by its
 // node's kind.
 func messageReferences(node flow.Node) []model.Reference {
+	kind, _ := flow.KindOf(node.Kind)
+
+	return refReferences(messageRefs(node), "a "+kind.Label+" node")
+}
+
+// messageRefs lists the values a line puts in it.
+func messageRefs(node flow.Node) []flow.ValueRef {
 	segments, err := node.Message()
 	if err != nil {
 		return nil
 	}
-	kind, _ := flow.KindOf(node.Kind)
 	var refs []flow.ValueRef
 	for _, segment := range segments {
 		if segment.Ref != nil {
@@ -657,7 +677,32 @@ func messageReferences(node flow.Node) []model.Reference {
 		}
 	}
 
-	return refReferences(refs, "a "+kind.Label+" node")
+	return refs
+}
+
+// LocalUses lists the nodes of a workflow that use one of its local values:
+// setting, checking or looking for it, in an operand, in a line, or as what
+// a Call gives or keeps. A local in use is not deleted (increment 58).
+func LocalUses(workflow *flow.Workflow, local ids.ULID) []flow.Node {
+	var uses []flow.Node
+	for _, node := range workflow.Nodes() {
+		var refs []flow.ValueRef
+		switch node.Kind {
+		case flow.KindSetValue, flow.KindCheckValue, flow.KindFindNPC:
+			refs = valueRefs(node)
+		case flow.KindCall:
+			refs = callRefs(node)
+		case flow.KindLog, flow.KindSay, flow.KindShowMessage:
+			refs = messageRefs(node)
+		}
+		if slices.ContainsFunc(refs, func(ref flow.ValueRef) bool {
+			return ref.Scope == worldstate.ScopeLocal && ref.Value == local
+		}) {
+			uses = append(uses, node)
+		}
+	}
+
+	return uses
 }
 
 // refReferences lists values outside the workflow by ID under the world

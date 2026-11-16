@@ -98,12 +98,15 @@ type Requests struct {
 	UsesOf []UsesQuestion
 	// RunnerAsks are questions of which NPCs run a workflow, waiting for
 	// the test to answer, and RunnersOf the workflows they asked about.
-	RunnerAsks  []func([]protocol.Use, error)
-	RunnersOf   []ids.ULID
-	PickAsks    []func([]protocol.PickMap, error)
-	PickStarts  []protocol.PickStart
-	PickAnswers []protocol.PickAnswer
-	PickCancels []protocol.PickCancel
+	RunnerAsks []func([]protocol.Use, error)
+	RunnersOf  []ids.ULID
+	// OpenUnsavedUses are the other windows holding unsaved changes to a
+	// document, by the document, for OpenUnsaved to answer with.
+	OpenUnsavedUses map[ids.ULID][]protocol.Use
+	PickAsks        []func([]protocol.PickMap, error)
+	PickStarts      []protocol.PickStart
+	PickAnswers     []protocol.PickAnswer
+	PickCancels     []protocol.PickCancel
 	// Previews are preview starts waiting for the test to answer.
 	Previews      []func(protocol.Result, error)
 	PreviewStates []protocol.PreviewState
@@ -341,6 +344,12 @@ func (r *Requests) WhereUsed(document ids.ULID, item string, done func([]protoco
 func (r *Requests) Runners(workflow ids.ULID, done func([]protocol.Use, error)) {
 	r.RunnerAsks = append(r.RunnerAsks, done)
 	r.RunnersOf = append(r.RunnersOf, workflow)
+}
+
+// OpenUnsaved answers at once that no other window holds unsaved changes,
+// unless the test set some in Unsaved.
+func (r *Requests) OpenUnsaved(document ids.ULID, done func([]protocol.Use, error)) {
+	done(r.OpenUnsavedUses[document], nil)
 }
 
 // PickAsk records a pick question; the test answers it.

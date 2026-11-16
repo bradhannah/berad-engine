@@ -55,10 +55,9 @@ const (
 	OutcomeNone Outcome = iota
 	// OutcomeCommit: save the draft (Enter).
 	OutcomeCommit
-	// OutcomeBlur: leave the field (Escape with nothing to revert, or Tab).
+	// OutcomeBlur: leave the field (Escape, keeping what was typed).
 	OutcomeBlur
-	// OutcomePass: the field did not use the key; the window may (for
-	// example Undo with no typing left to undo undoes the last saved change).
+	// OutcomePass: the field did not use the key; the window may.
 	OutcomePass
 )
 
@@ -93,8 +92,10 @@ type Field struct {
 	// limit is how many characters the field holds, or 0 for no limit, and
 	// refusal says why the last typing or paste was refused for it, until
 	// taken.
-	limit    int
-	refusal  string
+	limit   int
+	refusal string
+	// tab is the way Tab last moved, for the window's fields to take.
+	tab      int
 	conflict bool
 	column   *float64
 }
@@ -106,7 +107,7 @@ type Field struct {
 func NewField(saved string, multiline bool, limit int) *Field {
 	return &Field{
 		saved: saved, draft: nil, pending: nil, multiline: multiline, breaks: false, limit: limit, refusal: "",
-		conflict: false, column: nil,
+		conflict: false, column: nil, tab: 0,
 	}
 }
 
@@ -293,15 +294,20 @@ func (f *Field) Key(press Press, lines Lines, clipboard Clipboard) Outcome {
 	case KeyEnter, KeyJ:
 		return f.newLine(press)
 	case KeyEscape:
+		// A stray Esc changes nothing (increment 59): it leaves the field,
+		// and what was typed waits for Save, as a click elsewhere leaves it.
 		if f.Dirty() {
-			f.Revert()
-
-			return OutcomeNone
+			f.refusal = "Left the field. What you typed waits for Save."
 		}
 
 		return OutcomeBlur
 	case KeyTab:
-		return OutcomeBlur
+		f.tab = 1
+		if press.Mods.Shift {
+			f.tab = -1
+		}
+
+		return OutcomeNone
 	case KeyNone, KeyBackspace, KeyDelete, KeyLeft, KeyRight, KeyUp, KeyDown, KeyHome, KeyEnd:
 		return f.edit(press, lines)
 	case KeyA, KeyC, KeyX, KeyV, KeyZ:
@@ -434,22 +440,35 @@ func (f *Field) command(press Press, clipboard Clipboard) Outcome {
 	return OutcomeNone
 }
 
-// undo undoes typing in the draft; with none left, the window undoes its last
-// saved change instead.
+// undo undoes typing in the draft. With none left it stops at the field and
+// says so, so it never takes back a saved change unseen (increment 59).
 func (f *Field) undo(redo bool) Outcome {
 	if redo {
-		if f.draft.Redo() {
-			return OutcomeNone
+		if !f.draft.Redo() {
+			f.refusal = "Nothing more to redo in this field"
 		}
 
-		return OutcomePass
-	}
-	if f.draft.Undo() {
 		return OutcomeNone
 	}
+	if !f.draft.Undo() {
+		f.refusal = "Nothing more to undo in this field. Esc leaves it, to undo saved changes."
+	}
 
-	return OutcomePass
+	return OutcomeNone
 }
+
+// TakeTab is the way Tab moved, once: 1 for Tab, -1 for Shift+Tab, 0 for
+// none.
+func (f *Field) TakeTab() int {
+	step := f.tab
+	f.tab = 0
+
+	return step
+}
+
+// Say keeps words for the window to say about the field, as it says why
+// the field refused what was typed.
+func (f *Field) Say(words string) { f.refusal = words }
 
 // HardLines lays text out as its hard lines only, for fields that do not wrap
 // and for tests.

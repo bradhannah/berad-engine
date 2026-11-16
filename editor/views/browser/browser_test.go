@@ -3,6 +3,7 @@ package browser_test
 import (
 	"image"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -11,6 +12,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/browser"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
@@ -464,5 +466,33 @@ func TestNPCPathName(t *testing.T) {
 	var saved npcplugin.SetPathArgs
 	if len(set) != 1 || set[0].Command.Document != clerkID || set[0].Decode(&saved) != nil || saved.Path != "ada" {
 		t.Fatalf("path name %d %+v", len(set), saved)
+	}
+}
+
+// TestDeleteZoneNamesAllThatGoes asks before deleting a zone, naming its
+// floors and the tab that holds unsaved changes to it, then takes each floor
+// out of the zone before deleting it, and the zone last, as one step
+// (increment 58).
+func TestDeleteZoneNamesAllThatGoes(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.requests.OpenUnsavedUses = map[ids.ULID][]protocol.Use{
+		floorID: {{Document: floorID, Name: "Town", Format: "map", Label: "2 changes", Item: ""}},
+	}
+	f.click("row:Town", false)
+	f.click("ui:delete", false)
+	for _, answer := range f.whereUsed() {
+		answer(nil, nil)
+	}
+	lines := strings.Join(f.state.DialogLines(), "\n")
+	for _, want := range []string{"Its floor goes with it: Ground.", "Town tab · 2 changes"} {
+		if !strings.Contains(lines, want) {
+			t.Fatalf("the question names %q:\n%s", want, lines)
+		}
+	}
+	f.click("ui:delete", false)
+	removes, deletes := f.requests.Of(zoneplugin.RemoveFloorEdit), f.requests.Of(project.DeleteEdit)
+	if len(removes) != 1 || len(deletes) != 2 || removes[0].Command.Gesture != deletes[1].Command.Gesture {
+		t.Fatalf("removes %d deletes %d", len(removes), len(deletes))
 	}
 }

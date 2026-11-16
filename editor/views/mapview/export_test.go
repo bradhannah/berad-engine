@@ -29,3 +29,12 @@ func (s *State) MenuItems() []string {
 // NPCHint returns where the hint for a project with no NPCs is drawn, and
 // where the heading of the floor list below it starts, for tests.
 func (s *State) NPCHint() (image.Rectangle, int) { return s.npcHint(), s.floorsHeadingTop() }
+
+// DialogLines returns the open dialog's lines, for tests.
+func (s *State) DialogLines() []string {
+	if s.dialog == nil {
+		return nil
+	}
+
+	return s.dialog.Lines
+}
