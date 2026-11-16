@@ -8,6 +8,8 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/art"
 )
 
@@ -46,5 +48,27 @@ func TestPicturesShowArt(t *testing.T) {
 	}
 	if !f.has("pane=rows") {
 		t.Fatal("Rows shows the folder as rows")
+	}
+}
+
+// TestTheHeadWrapsInASmallWindow shows Sprites as pictures at 800 × 555
+// points, as a 1200 × 832 window is at 150%: the facets take further lines
+// rather than be left out, the sizes and views go on a line below the path,
+// and the main pane starts under them, nothing drawn over anything else
+// (increment 61).
+func TestTheHeadWrapsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withArt(f)
+	f.ctx.Size = image.Pt(800, 555)
+	f.click("place:Sprites", false)
+	parts := f.state.Head(f.ctx.Docs)
+	if wrong := frametest.Apart(frame.Content(f.ctx.Size), parts...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	for _, part := range parts {
+		if part.Rect.Empty() && part.Name != "Cards" && part.Name != "Preview" {
+			t.Fatalf("%s is left out", part.Name)
+		}
 	}
 }

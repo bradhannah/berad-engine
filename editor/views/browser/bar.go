@@ -116,8 +116,9 @@ func (s *State) layoutPanes(docs frame.Docs, content image.Rectangle) {
 // layoutBar places the search, a button for each facet, and at the right,
 // while narrowed, Clear and Save as a view…, the name of a view being
 // saved, or Delete view when the ticks are a saved view's. The facets go on
-// a second line when they do not fit beside the search; it returns where
-// the bar ends.
+// a second line when they do not fit beside the search, and carry on to
+// further lines rather than be left out (increment 61); it returns where the
+// bar ends.
 func (s *State) layoutBar(docs frame.Docs, bar image.Rectangle, labels facetLabels) int {
 	top := bar.Min.Y + (barHeight-ui.ButtonH)/ui.Half
 	right := bar.Max.X - ui.Inset
@@ -161,11 +162,12 @@ func (s *State) layoutBar(docs frame.Docs, bar image.Rectangle, labels facetLabe
 	}
 	for _, def := range barFacets() {
 		button := s.facetBns[def.id]
-		button.Rect = ui.Zero()
-		if left+widths[def.id] <= right {
-			button.Rect = image.Rect(left, top, left+widths[def.id], top+ui.ButtonH)
-			left += widths[def.id] + ui.Gap
+		if left+widths[def.id] > right && left > bar.Min.X+ui.Inset {
+			left, top, right = bar.Min.X+ui.Inset, top+barHeight, bar.Max.X-ui.Inset
+			bottom += barHeight
 		}
+		button.Rect = image.Rect(left, top, min(left+widths[def.id], max(right, left)), top+ui.ButtonH)
+		left += widths[def.id] + ui.Gap
 	}
 
 	return bottom

@@ -115,8 +115,9 @@ func (s *State) pictureSize() int {
 }
 
 // layoutHead places the strip over the main pane: the place's path at the
-// left, its views at the right, and Pictures' sizes before them. It returns
-// where the strip ends; a place without views has none.
+// left, its views at the right, and Pictures' sizes before them. When they
+// do not fit beside the path, the buttons go on a line below it (increment
+// 61). It returns where the strip ends; a place without views has none.
 func (s *State) layoutHead(top, right int) int {
 	for _, button := range s.viewBns {
 		button.Rect = ui.Zero()
@@ -124,30 +125,39 @@ func (s *State) layoutHead(top, right int) int {
 	for _, button := range s.sizeBns {
 		button.Rect = ui.Zero()
 	}
+	s.headPath = ui.Zero()
 	offered := viewsOf(s.place)
 	if len(offered) == 0 || s.narrowed() {
 		return top
 	}
-	buttonTop := top + (headHeight-ui.ButtonH)/ui.Half
-	edge := right - ui.Inset
 	shown := s.viewShown()
-	for position := len(offered) - 1; position >= 0; position-- {
-		button := s.viewBns[offered[position]]
-		button.On = offered[position] == shown
-		button.Rect = image.Rect(edge-viewBnWidth, buttonTop, edge, buttonTop+ui.ButtonH)
-		edge -= viewBnWidth + ui.Gap
-	}
+	var trail []int
 	if shown == viewPictures {
-		edge -= ui.Gap
-		for position := len(s.sizeBns) - 1; position >= 0; position-- {
-			button := s.sizeBns[position]
+		trail = append(trail, len(s.sizeBns)*(sizeBnWidth+ui.Gap)-ui.Gap+ui.Gap)
+	}
+	for range offered {
+		trail = append(trail, viewBnWidth)
+	}
+	pad := (headHeight - ui.ButtonH) / ui.Half
+	row := image.Rect(s.places.Rect.Max.X+ui.Inset, top+pad, right-ui.Inset, top+pad)
+	leads, trails, bottom := ui.WrapRow(row, []int{s.theme.TextWidth(s.placePath())}, trail, ui.Gap)
+	s.headPath = leads[0]
+	if shown == viewPictures {
+		sizes := trails[0]
+		trails = trails[1:]
+		for position, button := range s.sizeBns {
 			button.On = pictureSizes()[position] == s.pictureSize()
-			button.Rect = image.Rect(edge-sizeBnWidth, buttonTop, edge, buttonTop+ui.ButtonH)
-			edge -= sizeBnWidth + ui.Gap
+			left := sizes.Min.X + position*(sizeBnWidth+ui.Gap)
+			button.Rect = image.Rect(left, sizes.Min.Y, left+sizeBnWidth, sizes.Max.Y)
 		}
 	}
+	for position, view := range offered {
+		button := s.viewBns[view]
+		button.On = view == shown
+		button.Rect = trails[position]
+	}
 
-	return top + headHeight
+	return bottom + pad
 }
 
 // updateHead handles the strip: a view's button shows the place in that
@@ -187,8 +197,8 @@ func (s *State) drawHead(screen *ebiten.Image) {
 	if len(viewsOf(s.place)) == 0 || s.narrowed() {
 		return
 	}
-	top := s.barBottom + (headHeight-ui.TextSize)/ui.Half - 1
-	s.theme.DrawText(screen, s.placePath(), s.places.Rect.Max.X+ui.Inset, top, ui.ColorInk())
+	top := s.headPath.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
+	s.theme.DrawText(screen, s.theme.FitText(s.placePath(), s.headPath.Dx()), s.headPath.Min.X, top, ui.ColorInk())
 	for _, view := range []string{viewRows, viewCards, viewPictures, viewPreview} {
 		s.viewBns[view].Draw(screen, s.theme)
 	}

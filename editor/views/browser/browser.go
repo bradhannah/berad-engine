@@ -176,8 +176,10 @@ type State struct {
 	columns []placedColumn
 	// viewBns and sizeBns switch the main pane's view and Pictures' size;
 	// grid lays out Pictures and Cards, and pictures are the sprites drawn.
-	viewBns     map[string]*ui.Button
-	sizeBns     []*ui.Button
+	viewBns map[string]*ui.Button
+	sizeBns []*ui.Button
+	// headPath is where the strip writes the place's path, as last laid out.
+	headPath    image.Rectangle
 	grid        *tileGrid
 	pictures    map[ids.ULID]*tileart.Picture
 	maps        map[ids.ULID]*minimap
@@ -245,8 +247,8 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 		movingNPC: ids.ULID{}, movingTo: ids.ULID{},
 		places: ui.NewList("places", placeHome), columns: nil, viewBns: nil, sizeBns: nil, grid: newTileGrid(),
 		pictures: map[ids.ULID]*tileart.Picture{}, maps: map[ids.ULID]*minimap{}, sounds: newSoundState(),
-		preview: newPreviewState(),
-		home:    newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", moving: nil, wasNarrowed: false,
+		preview: newPreviewState(), headPath: ui.Zero(),
+		home: newHomeState(), barBottom: 0, place: placeHome, placeBefore: "", moving: nil, wasNarrowed: false,
 		facets: ui.NewList("facets", ""), facetOpen: "", facetBns: newFacetButtons(),
 		ticks: map[string]map[string]bool{}, more: map[string]bool{},
 		checks: map[ids.ULID]*workflowview.Check{}, checkAt: 0, shown: 0, total: 0, constantsFound: 0, linesFound: 0,

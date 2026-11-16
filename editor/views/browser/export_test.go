@@ -6,6 +6,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -72,3 +73,24 @@ func (s *State) LocateInPlace(name string, docs frame.Docs) (image.Point, bool) 
 
 // Showing is what the bar says it shows.
 func (s *State) Showing() string { return s.showing() }
+
+// Head names the places column, the search, the facets, the strip's path
+// and buttons, and the main pane, as laid out.
+func (s *State) Head(docs frame.Docs) []frametest.Part {
+	s.layout(docs)
+	parts := []frametest.Part{
+		{Name: "places", Rect: s.places.Rect}, {Name: "search", Rect: s.search.Rect},
+		{Name: "path", Rect: s.headPath}, {Name: "main pane", Rect: s.list.Rect},
+	}
+	for _, def := range barFacets() {
+		parts = append(parts, frametest.Part{Name: def.label, Rect: s.facetBns[def.id].Rect})
+	}
+	for _, button := range s.sizeBns {
+		parts = append(parts, frametest.Part{Name: button.Label, Rect: button.Rect})
+	}
+	for _, view := range []string{viewRows, viewCards, viewPictures, viewPreview} {
+		parts = append(parts, frametest.Part{Name: viewLabel(view), Rect: s.viewBns[view].Rect})
+	}
+
+	return parts
+}
