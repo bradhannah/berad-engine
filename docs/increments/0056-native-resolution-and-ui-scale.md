@@ -204,6 +204,24 @@ Chosen while building, for its author to check:
   went on and closed the Map before its last screenshot was drawn. An input
   script now waits for the screenshot it asked for to be drawn.
 
+## Joined with increments 57 to 60
+
+Built beside increments 57 to 60, and joined with them on 2026-11-16 once
+they were merged:
+
+- **Four conflicts, each kept both sides:** the README's rows; the status
+  bar's Text button beside the notice's buttons; the window's new fields;
+  and the clock's panel, which takes keys only once its field is clicked,
+  now reading the pointer through the pen.
+- **Nothing of 57 to 60 needed moving onto the pen:** their notices,
+  questions and lists draw through the theme's and `editor/ui`'s helpers,
+  and none draws, clips or reads the pointer directly.
+- **Checks:** `make check` passes. Of the 80 real-window walks at 100%, 79
+  passed on the first run; `TestViewsOpenAsTabs` waited out its two
+  minutes without the editor quitting, then passed three times alone, and
+  why it waited once was not found. The five walks of 57 to 60 pass at
+  150%.
+
 ## Not in this increment
 
 - Views that fit a small window: the overlaps seen at 150% in a window of
