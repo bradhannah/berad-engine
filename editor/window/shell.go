@@ -52,6 +52,9 @@ type shell struct {
 	clockLive bool
 	// dragging is set while the divider of a split tab is dragged.
 	dragging bool
+	// squeezed is set while a split's divider is dragged past where a pane
+	// keeps its panels and the canvas's room (increment 61).
+	squeezed bool
 	// stats are the window's frame statistics, when they are asked for.
 	stats *frameStats
 	// more lists the tabs that do not fit on the bar, while open, and used
@@ -136,7 +139,7 @@ func newShell(args Args, registry *plugin.Registry, theme *ui.Theme) *shell {
 	return &shell{
 		args: args, hosting: nil, registry: registry, theme: theme, reader: newInputReader(), tabs: nil, active: 0,
 		size: image.Pt(0, 0), opened: make(chan openedPane, openedQueue), title: "", shots: nil,
-		clock: nil, clockOpen: false, clockLive: false, dragging: false, stats: newFrameStats("shell"),
+		clock: nil, clockOpen: false, clockLive: false, dragging: false, squeezed: false, stats: newFrameStats("shell"),
 		more: ui.Menu{Items: nil, Width: 0}, used: nil, trail: trail{places: nil, at: 0, settling: 0},
 		beside: nil, quickImage: nil, statusImage: nil,
 		onTop: false, folded: map[string]bool{}, leftFolded: map[string]bool{},

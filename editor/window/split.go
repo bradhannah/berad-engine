@@ -30,15 +30,20 @@ const (
 // its tab, as that tab's right pane, and any other pane in a tab of its own.
 // The tab comes to the front; in a split the Map keeps the focus, so its
 // arrow keys still walk the preview.
+//
+// A pane that would leave the tab beside it more than the window's width
+// opens in a tab of its own instead, saying why and what makes room
+// (increment 61).
 func (s *shell) place(shown *pane) {
-	if beside, asked := s.besideFor(shown); asked {
+	if beside, asked := s.besideFor(shown); asked && s.fitsBeside(beside, shown) {
 		s.putBeside(shown, beside)
 
 		return
 	}
 	if shown.view == watchview.ViewName {
 		for index, each := range s.tabs {
-			if len(each.panes) == 1 && each.panes[0].view == mapview.ViewName && each.panes[0].target == shown.target {
+			if len(each.panes) == 1 && each.panes[0].view == mapview.ViewName && each.panes[0].target == shown.target &&
+				s.fitsBeside(each, shown) {
 				each.panes = append(each.panes, shown)
 				s.active = index
 
@@ -48,6 +53,19 @@ func (s *shell) place(shown *pane) {
 	}
 	s.tabs = append(s.tabs, &tab{panes: []*pane{shown}, focus: 0, split: defaultSplit, tint: 0})
 	s.active = len(s.tabs) - 1
+}
+
+// fitsBeside reports whether a pane fits beside a tab's panes in the
+// window; when it does not, the pane says why and what makes room, and is
+// given a tab of its own (increment 61).
+func (s *shell) fitsBeside(beside *tab, shown *pane) bool {
+	fits, refusal := s.roomBeside(beside, shown)
+	if !fits {
+		s.beside = nil
+		shown.host.frame.Refuse(refusal)
+	}
+
+	return fits
 }
 
 // layoutTab gives a tab's panes their parts of an area: all of it for one
@@ -65,9 +83,12 @@ func layoutTab(each *tab, area image.Rectangle) {
 	each.panes[1].rect = image.Rect(divider.Max.X, area.Min.Y, area.Max.X, area.Max.Y)
 }
 
-// dividerRect is where a split tab's divider is in an area.
+// dividerRect is where a split tab's divider is in an area: at its share
+// of the tab, kept where each pane keeps its panels and the canvas's room
+// (increment 61).
 func dividerRect(each *tab, area image.Rectangle) image.Rectangle {
-	at := area.Min.X + int(float64(area.Dx())*each.split)
+	least, most := dividerRange(each, area)
+	at := min(max(area.Min.X+int(float64(area.Dx())*each.split), least), most)
 
 	return image.Rect(at-dividerWidth/ui.Half, area.Min.Y, at+dividerWidth/ui.Half, area.Max.Y)
 }
@@ -85,9 +106,9 @@ func (s *shell) updateSplit(input *ui.Input) {
 	divider := dividerRect(front, area)
 	switch {
 	case input.Pressed && input.Cursor.In(divider):
-		s.dragging = true
+		s.dragging, s.squeezed = true, false
 	case s.dragging && !input.Down:
-		s.dragging = false
+		s.endSplitDrag()
 	}
 	if s.dragging || input.Cursor.In(divider) {
 		ebiten.SetCursorShape(ebiten.CursorShapeEWResize)
@@ -97,6 +118,8 @@ func (s *shell) updateSplit(input *ui.Input) {
 	if s.dragging {
 		share := float64(input.Cursor.X-area.Min.X) / float64(max(area.Dx(), 1))
 		front.split = max(minSplit, min(maxSplit, share))
+		least, most := dividerRange(front, area)
+		s.squeezed = s.squeezed || input.Cursor.X < least || input.Cursor.X > most
 		quietMouse(input)
 
 		return
@@ -107,6 +130,15 @@ func (s *shell) updateSplit(input *ui.Input) {
 				front.focus = slot
 			}
 		}
+	}
+}
+
+// endSplitDrag ends dragging a split's divider, saying what makes room when
+// it was dragged into a pane's room (increment 61).
+func (s *shell) endSplitDrag() {
+	s.dragging = false
+	if focused := s.focused(); s.squeezed && focused != nil && focused.host != nil {
+		focused.host.frame.Refuse(noRoomBeside)
 	}
 }
 

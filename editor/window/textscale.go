@@ -74,8 +74,17 @@ func (s *shell) followTextScale() {
 }
 
 // setTextScale changes the scale of text and controls, says so in the
-// focused pane's status bar and keeps it.
+// focused pane's status bar and keeps it. A larger scale at which a tab
+// would not fit the window is refused, saying which and what makes room
+// (increment 61).
 func (s *shell) setTextScale(scale float64) {
+	if fits, refusal := s.scaleFits(scale); scale > s.textScale && !fits {
+		if focused := s.focused(); focused != nil {
+			focused.host.frame.Refuse(refusal)
+		}
+
+		return
+	}
 	said := "Text and controls at " + strconv.Itoa(frame.TextPercent(scale)) + "%"
 	if scale == s.textScale {
 		said = "Text and controls are already at " + strconv.Itoa(frame.TextPercent(scale)) + "%"

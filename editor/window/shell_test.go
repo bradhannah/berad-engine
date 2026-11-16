@@ -57,7 +57,7 @@ func TestWatchOpensBesideAMapOfItsZone(t *testing.T) {
 	t.Parallel()
 	town, harbour := ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHC"), ids.MustParse("01J9XK4M7QF2ZB8T5N3R6W1VHD")
 	project, townMap := &pane{view: "browser"}, &pane{view: "map", target: town}
-	shown := &shell{tabs: []*tab{{panes: []*pane{project}}, {panes: []*pane{townMap}}}, active: 0}
+	shown := &shell{tabs: []*tab{{panes: []*pane{project}}, {panes: []*pane{townMap}}}, active: 0, size: image.Pt(1200, 800)}
 	townWatch := &pane{view: "watch", target: town}
 	shown.place(townWatch)
 	if len(shown.tabs) != 2 || shown.active != 1 || len(shown.tabs[1].panes) != 2 || shown.focused() != townMap {

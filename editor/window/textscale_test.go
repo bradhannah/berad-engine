@@ -19,7 +19,7 @@ func TestTheTextScaleIsChosenAndKept(t *testing.T) {
 	shown := &shell{
 		tabs: []*tab{{panes: []*pane{first}}, {panes: []*pane{second}}}, active: 1, folded: map[string]bool{},
 		leftFolded: map[string]bool{}, widths: map[string]kindWidths{}, screen: "1512x982", known: map[string]bool{},
-		textScale: 1,
+		textScale: 1, size: image.Pt(1200, 800),
 	}
 	second.host.frame.StepTextScale(1)
 	second.host.frame.StepTextScale(1)
@@ -48,6 +48,7 @@ func TestTheTextScaleIsPutBack(t *testing.T) {
 	shown := &shell{
 		tabs: []*tab{{panes: []*pane{first}}}, folded: map[string]bool{}, leftFolded: map[string]bool{},
 		widths: map[string]kindWidths{}, screen: "1512x982", known: map[string]bool{}, textScale: 1,
+		size: image.Pt(1200, 800),
 	}
 	kept, err := json.Marshal(protocol.Layout{Screens: map[string]protocol.Arrangement{
 		"1512x982":  {Kinds: map[string]protocol.KindLayout{}, TextScale: 1.5},

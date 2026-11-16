@@ -157,7 +157,7 @@ func (s *shell) screenPoints(length int) int { return int(math.Ceil(float64(leng
 func neededWidth(front *tab) int {
 	need := 0
 	for _, shown := range front.panes {
-		need += shown.host.leftEdge() + shown.host.inspectorRoom() + minCanvas
+		need += paneNeed(shown)
 	}
 	if len(front.panes) >= splitPanes {
 		need += dividerWidth
