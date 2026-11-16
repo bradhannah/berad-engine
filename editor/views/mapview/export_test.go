@@ -1,6 +1,12 @@
 package mapview
 
-import "image"
+import (
+	"image"
+
+	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+)
 
 // Initials exposes the NPC token's initials to tests.
 var Initials = initials
@@ -37,4 +43,18 @@ func (s *State) DialogLines() []string {
 	}
 
 	return s.dialog.Lines
+}
+
+// InspectorParts returns where the inspector's parts scroll, how far and the
+// furthest, and what stays at its foot: the preview's lines, Clock, Watch
+// and Keys.
+func (s *State) InspectorParts(docs frame.Docs) (image.Rectangle, int, int, []frametest.Part) {
+	panel := frame.Inspector(s.size)
+	preview := image.Rect(panel.Min.X, footTop(panel)-ui.ButtonH-ui.Inset-s.previewHeight(docs), panel.Max.X,
+		footTop(panel)-ui.ButtonH-ui.Inset)
+
+	return s.body.Body, s.body.Offset, s.body.Most, []frametest.Part{
+		{Name: "preview", Rect: preview}, {Name: "Clock", Rect: s.clockBn.Rect}, {Name: "Watch", Rect: s.watchBn.Rect},
+		{Name: "Keys", Rect: s.keysBn.Rect},
+	}
 }

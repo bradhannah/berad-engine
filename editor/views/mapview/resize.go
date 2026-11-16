@@ -95,7 +95,7 @@ func (s *State) layoutSides(left int, shown bool) {
 		if !shown {
 			continue
 		}
-		top := sidesTop + index*(ui.ButtonH+ui.Gap)
+		top := s.down(sidesTop) + index*(ui.ButtonH+ui.Gap)
 		shrinkLeft := left + sideLabelWidth
 		side.shrink.Rect = image.Rect(shrinkLeft, top, shrinkLeft+sideButtonWidth, top+ui.ButtonH)
 		growLeft := side.shrink.Rect.Max.X + ui.Gap
@@ -467,7 +467,7 @@ func (s *State) drawResizeInspector(screen *ebiten.Image, floorData *floor.Floor
 	}
 	line("Resize floor", false)
 	line("Drag an edge or corner, or use the buttons.", true)
-	*textY = sidesTop - 2*ui.LineHeight - ui.Gap
+	*textY = s.down(sidesTop) - 2*ui.LineHeight - ui.Gap
 	line(fmt.Sprintf("%d × %d: columns %d to %d, rows %d to %d",
 		bounds.Dx(), bounds.Dy(), bounds.Min.X, bounds.Max.X-1, bounds.Min.Y, bounds.Max.Y-1), false)
 	line("0,0 is the zone origin; every floor shares it.", true)
@@ -477,5 +477,5 @@ func (s *State) drawResizeInspector(screen *ebiten.Image, floorData *floor.Floor
 		side.shrink.Draw(screen, s.theme)
 		side.grow.Draw(screen, s.theme)
 	}
-	*textY = sidesTop + len(s.sides)*(ui.ButtonH+ui.Gap) + ui.LineHeight/ui.Half
+	*textY = s.down(sidesTop) + len(s.sides)*(ui.ButtonH+ui.Gap) + ui.LineHeight/ui.Half
 }

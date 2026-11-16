@@ -10,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
@@ -232,5 +233,32 @@ func TestTheMapFollowsTheWatchedNPC(t *testing.T) {
 	at(2, upperID)
 	if f.state.Floor() != upperID || !strings.Contains(f.status(), "took the stairs to Upper") {
 		t.Fatalf("the map follows the watched NPC upstairs: %q", f.status())
+	}
+}
+
+// TestTheInspectorScrollsInASmallWindow previews the Map at 800 × 555
+// points, as a 1200 × 832 window is at 150%: the preview's lines, Clock,
+// Watch and Keys stay at the inspector's foot, and the zone's, the floor's
+// and the tool's lines above them scroll rather than lie under them; the
+// wheel scrolls them (increment 61).
+func TestTheInspectorScrollsInASmallWindow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.ctx.Size = image.Pt(800, 555)
+	f.startPreview("cell:3,3")
+	screen := pen.Layer(nil, image.Rect(0, 0, 800, 555))
+	f.state.Draw(screen, f.ctx.Docs)
+	body, _, most, foot := f.state.InspectorParts(f.ctx.Docs)
+	if wrong := frametest.Apart(image.Rect(0, 0, 800, 555), append(foot, frametest.Part{Name: "body", Rect: body})...); wrong != "" {
+		t.Fatal(wrong)
+	}
+	if most == 0 {
+		t.Fatal("while previewing, the inspector's lines need more height than it has above its foot")
+	}
+	wheel := ui.NewInput(body.Min.Add(image.Pt(ui.Inset, ui.Inset)))
+	wheel.WheelY = -1
+	f.frame(wheel)
+	if _, offset, _, _ := f.state.InspectorParts(f.ctx.Docs); offset == 0 {
+		t.Fatal("the wheel scrolls the inspector's lines")
 	}
 }

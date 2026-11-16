@@ -483,7 +483,17 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 	}
 	panel := frame.Inspector(s.size)
 	textX := panel.Min.X + ui.Inset
-	textY := panel.Min.Y + ui.Inset
+	s.theme.Heading(screen, "INSPECTOR", textX, panel.Min.Y+ui.Inset)
+	if body, shown := s.body.Clip(screen); shown {
+		s.body.Fit(max(s.drawBody(body, docs, textX, s.down(bodyTop(panel))), s.deleteBtn.Rect.Max.Y,
+			s.removeBn.Rect.Max.Y, s.replace.Rect.Max.Y) + ui.Inset)
+	}
+	s.drawFoot(screen, docs, textX, panel)
+}
+
+// drawBody draws the inspector's parts that scroll, from the zone's name
+// down, and returns where they end.
+func (s *State) drawBody(screen *ebiten.Image, docs frame.Docs, textX, textY int) int {
 	line := func(text string, ink color.Color) {
 		s.theme.DrawText(screen, text, textX, textY, ink)
 		textY += ui.LineHeight
@@ -494,8 +504,6 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 			zoneName, floorName = index.Name(s.zone, ""), index.Name(s.floor, "")
 		}
 	})
-	s.theme.Heading(screen, "INSPECTOR", textX, textY)
-	textY += ui.LineHeight
 	line("Zone: "+zoneName, ui.ColorInk())
 	if s.zonePalettesShown() {
 		s.zonePalettes.Draw(screen)
@@ -511,28 +519,43 @@ func (s *State) drawInspector(screen *ebiten.Image, docs frame.Docs) {
 		zoom := strconv.Itoa(s.camera.cellSize())
 		line("revision "+strconv.FormatUint(document.Revision, 10)+"  zoom "+zoom+" px", ui.ColorSubdued())
 		textY += ui.LineHeight / ui.Half
-		switch {
-		case !s.anchor.IsZero():
-			s.drawAnchorInspector(screen, floorData, textX, &textY)
-		case !s.placement.IsZero():
-			s.drawPlacementInspector(screen, floorData, textX, &textY)
-		case len(s.selected) > 0:
-			line(fmt.Sprintf("%d walls selected", len(s.selected)), ui.ColorInk())
-			s.replace.Draw(screen, s.theme)
-			textY = familyListTop
-			line("Pick a family on the left to change them.", ui.ColorMuted())
-		case s.tool == ToolResize:
-			s.drawResizeInspector(screen, floorData, textX, &textY)
-			s.drawHover(screen, floorData, textX, &textY)
-		default:
-			s.drawCellInspector(screen, floorData, textX, &textY)
-		}
+		s.drawSelected(screen, floorData, textX, &textY)
 	})
 	if !loaded {
 		line("Floor: "+floorName, ui.ColorInk())
 	}
+
+	return textY
+}
+
+// drawSelected draws the inspector's part for what is selected, or the tool
+// in hand.
+func (s *State) drawSelected(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
+	switch {
+	case !s.anchor.IsZero():
+		s.drawAnchorInspector(screen, floorData, textX, textY)
+	case !s.placement.IsZero():
+		s.drawPlacementInspector(screen, floorData, textX, textY)
+	case len(s.selected) > 0:
+		s.theme.DrawText(screen, fmt.Sprintf("%d walls selected", len(s.selected)), textX, *textY, ui.ColorInk())
+		s.replace.Draw(screen, s.theme)
+		*textY = s.down(familyListTop)
+		s.theme.DrawText(screen, "Pick a family on the left to change them.", textX, *textY, ui.ColorMuted())
+		*textY += ui.LineHeight
+	case s.tool == ToolResize:
+		s.drawResizeInspector(screen, floorData, textX, textY)
+		s.drawHover(screen, floorData, textX, textY)
+	default:
+		s.drawCellInspector(screen, floorData, textX, textY)
+	}
+}
+
+// drawFoot draws what stays at the inspector's foot: the preview's lines,
+// Clock and Watch, and Keys, and the thumb while its parts scroll.
+func (s *State) drawFoot(screen *ebiten.Image, docs frame.Docs, textX int, panel image.Rectangle) {
 	s.drawPreview(screen, docs, textX, footTop(panel))
 	s.keysBn.Draw(screen, s.theme)
+	s.body.DrawThumb(screen)
 }
 
 func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor, textX int, textY *int) {
@@ -540,9 +563,9 @@ func (s *State) drawAnchorInspector(screen *ebiten.Image, floorData *floor.Floor
 	if !ok {
 		return
 	}
-	s.theme.Heading(screen, "ANCHOR NAME", textX, inspectorFieldTop-ui.LineHeight)
+	s.theme.Heading(screen, "ANCHOR NAME", textX, s.down(inspectorFieldTop)-ui.LineHeight)
 	s.nameField.Draw(screen)
-	top := inspectorFieldTop + ui.ButtonH + ui.Gap
+	top := s.down(inspectorFieldTop) + ui.ButtonH + ui.Gap
 	s.theme.DrawText(screen, fmt.Sprintf("at %d, %d", anchor.Col, anchor.Row), textX, top, ui.ColorInk())
 	s.theme.DrawText(screen, "ID "+anchor.ID.String(), textX, top+ui.LineHeight, ui.ColorSubdued())
 	s.save.Draw(screen, s.theme)

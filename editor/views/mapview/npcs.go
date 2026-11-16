@@ -456,7 +456,7 @@ func (s *State) drawPlacementInspector(screen *ebiten.Image, floorData *floor.Fl
 	default:
 		s.theme.DrawText(screen, "None yet. Choose one in the project browser.", textX, *textY, ui.ColorMuted())
 	}
-	*textY = placementButtonsTop
+	*textY = s.down(placementButtonsTop)
 	s.openBn.Disabled = !has
 	s.openBn.Draw(screen, s.theme)
 	s.removeBn.Draw(screen, s.theme)

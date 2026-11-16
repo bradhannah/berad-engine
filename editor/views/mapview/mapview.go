@@ -146,13 +146,17 @@ type State struct {
 	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
-	theme        *ui.Theme
-	floors       []ids.ULID
-	floor        ids.ULID
-	subs         map[ids.ULID]bool
-	tool         Tool
-	tile         map[Tool]string
-	camera       camera
+	// body is how far the inspector's parts are scrolled between its heading
+	// and the preview's lines, Clock, Watch and Keys at its foot (increment
+	// 61).
+	body   ui.Scroll
+	theme  *ui.Theme
+	floors []ids.ULID
+	floor  ids.ULID
+	subs   map[ids.ULID]bool
+	tool   Tool
+	tile   map[Tool]string
+	camera camera
 	// sprites is the art drawn for stand-ins that sprites show.
 	sprites *spriteArt
 	size    image.Point
@@ -277,7 +281,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		replace:   ui.NewButton("replace-family", "Replace family everywhere…"),
 		previewBn: ui.NewButton("preview", "Preview"),
 		keysBn:    ui.NewButton("keys", "Keys"), keySheet: ui.KeySheet{Rows: keyRows()},
-		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0,
+		zonePalettes: zonepalettes.New(theme), zoneListFoot: 0, body: ui.NewScroll(),
 		openBn:   ui.NewButton("open-behaviour", "Open behaviour"),
 		removeBn: ui.NewButton("remove-npc", "Remove"),
 		clockBn:  ui.NewButton("clock", "Clock"), watchBn: ui.NewButton("watch", "Watch"),
@@ -562,6 +566,10 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	}
 
 	s.layoutFold()
+	inspector := frame.Inspector(s.size)
+	s.body.For(s.inspecting())
+	s.body.Body = image.Rect(inspector.Min.X, bodyTop(inspector), inspector.Max.X,
+		max(bodyTop(inspector), footTop(inspector)-ui.ButtonH-ui.Inset-s.previewHeight(docs)-ui.Gap))
 	s.layoutInspector()
 	s.layoutZonePalettes(docs)
 }
@@ -573,26 +581,41 @@ func (s *State) layoutInspector() {
 	s.nameField.Rect, s.deleteBtn.Rect, s.replace.Rect = ui.Zero(), ui.Zero(), ui.Zero()
 	s.openBn.Rect, s.removeBn.Rect = ui.Zero(), ui.Zero()
 	if !s.placement.IsZero() {
-		half := (width - ui.Gap) / ui.Half
-		s.openBn.Rect = image.Rect(left, placementButtonsTop, left+half, placementButtonsTop+ui.ButtonH)
-		s.removeBn.Rect = image.Rect(left+half+ui.Gap, placementButtonsTop, left+width, placementButtonsTop+ui.ButtonH)
+		half, top := (width-ui.Gap)/ui.Half, s.down(placementButtonsTop)
+		s.openBn.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
+		s.removeBn.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
 	}
 	s.save.Rect = ui.Zero()
 	if !s.anchor.IsZero() {
-		s.nameField.Rect = image.Rect(left, inspectorFieldTop, left+width, inspectorFieldTop+ui.ButtonH)
-		saveTop := inspectorFieldTop + ui.ButtonH + anchorRows*ui.LineHeight
+		top := s.down(inspectorFieldTop)
+		s.nameField.Rect = image.Rect(left, top, left+width, top+ui.ButtonH)
+		saveTop := top + ui.ButtonH + anchorRows*ui.LineHeight
 		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
 		deleteTop := s.save.Rect.Max.Y + ui.Half*ui.Gap
 		s.deleteBtn.Rect = image.Rect(left, deleteTop, left+width, deleteTop+ui.ButtonH)
 	}
 	if len(s.selected) > 0 {
-		s.replace.Rect = image.Rect(left, replaceTop, left+width, replaceTop+ui.ButtonH)
+		s.replace.Rect = image.Rect(left, s.down(replaceTop), left+width, s.down(replaceTop)+ui.ButtonH)
 	}
 	s.keysBn.Rect = image.Rect(left+width-keysWidth, inspector.Max.Y-ui.Inset-ui.ButtonH, left+width,
 		inspector.Max.Y-ui.Inset)
 	s.layoutPreview(left, width, footTop(inspector))
 	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero() &&
 		s.placement.IsZero())
+}
+
+// down is where a part of the inspector laid out at a height from its top
+// is, as far as its parts are scrolled (increment 61).
+func (s *State) down(top int) int { return top - s.body.Offset }
+
+// bodyTop is where the inspector's parts that scroll start, under its
+// heading.
+func bodyTop(inspector image.Rectangle) int { return inspector.Min.Y + ui.Inset + ui.LineHeight }
+
+// inspecting names what the inspector shows, so another thing starts at its
+// top: the anchor or NPC selected, the walls selected, or the tool.
+func (s *State) inspecting() string {
+	return s.anchor.String() + s.placement.String() + strconv.Itoa(len(s.selected)) + string(s.tool)
 }
 
 // footTop is where the inspector's sections at its foot end, above the
@@ -662,6 +685,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	s.guardAnchor()
+	s.updateInspectorFoot(input, ctx)
 	s.updateZoom(input, ctx)
 	s.updateFields(input, ctx)
 	if s.focus.Current() == nil {
@@ -870,6 +894,23 @@ func (s *State) updatePanels(input *ui.Input, ctx *frame.Context) {
 		s.togglePreview(ctx)
 	}
 	s.updateInspectorButtons(input, ctx)
+}
+
+// updateInspectorFoot scrolls the inspector's parts with the wheel over it,
+// and gives a press beside them, on Clock, Watch, Keys or the heading, to
+// those alone, never to a part scrolled behind them (increment 61).
+func (s *State) updateInspectorFoot(input *ui.Input, ctx *frame.Context) {
+	if s.body.Wheel(input, frame.Inspector(s.size)) {
+		s.layoutWidgets(ctx.Docs)
+	}
+	if !s.body.Hidden(input.Cursor) {
+		return
+	}
+	defer input.ClearPointer()
+	s.updatePreviewControls(input, ctx)
+	if s.keysBn.Update(input) {
+		s.keySheet.Open(image.Rectangle{Min: image.Pt(0, 0), Max: s.size}, s.theme)
+	}
 }
 
 // updateInspectorButtons handles the buttons for what is selected.
@@ -1568,11 +1609,7 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	case "floor":
 		return s.locateFloor(value)
 	case "ui":
-		if at, found := s.locateSides(name); found {
-			return at, true
-		}
-
-		return s.locateWidget(value)
+		return s.locateInspector(name, value, docs)
 	case "live-npc":
 		return s.locateLiveNPC(value)
 	case "player":
@@ -1580,6 +1617,29 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), false
+}
+
+// locateInspector finds a widget for an input script, scrolling the
+// inspector's parts to one hidden above or below them, as an author would;
+// Clock, Watch and Keys stay where they are (increment 61).
+func (s *State) locateInspector(name, value string, docs frame.Docs) (image.Point, bool) {
+	point, found := s.locateLaidOut(name, value)
+	foot := value == s.keysBn.ID || value == s.clockBn.ID || value == s.watchBn.ID
+	if !found || foot || !s.body.Reveal(point) {
+		return point, found
+	}
+	s.layoutWidgets(docs)
+
+	return s.locateLaidOut(name, value)
+}
+
+// locateLaidOut finds a widget, a side's buttons among them, as laid out.
+func (s *State) locateLaidOut(name, value string) (image.Point, bool) {
+	if at, found := s.locateSides(name); found {
+		return at, true
+	}
+
+	return s.locateWidget(value)
 }
 
 // hasState answers input scripts waiting for the window: "loaded" once the

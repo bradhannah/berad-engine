@@ -28,5 +28,5 @@ func (s *State) layoutZonePalettes(docs frame.Docs) {
 	if s.zonePalettesShown() {
 		zoneID = s.zone
 	}
-	s.zoneListFoot = s.zonePalettes.Layout(docs, zoneID, left, inspector.Min.Y+zonePalettesTop(), width, s.size)
+	s.zoneListFoot = s.zonePalettes.Layout(docs, zoneID, left, s.down(inspector.Min.Y+zonePalettesTop()), width, s.size)
 }
