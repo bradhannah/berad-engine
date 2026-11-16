@@ -115,7 +115,12 @@ type State struct {
 	form    *valueform.Form
 	focus   ui.Focus
 	save    *ui.SaveBar
-	guard   frame.Guard
+	// scroll is how far the inspector's fields are scrolled between its
+	// heading and the save bar and Delete at its foot, and formBottom where
+	// a value's form ends, as last laid out (increment 61).
+	scroll     ui.Scroll
+	formBottom int
+	guard      frame.Guard
 	// named is the row whose declaration the form holds; uses and usesOf
 	// are where it is used, as last asked.
 	named      string
@@ -203,6 +208,7 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 		list:  listWithDetails(),
 		shown: tree{rows: nil, items: nil, catalog: nil, signals: nil}, toggled: map[string]bool{}, subs: map[ids.ULID]bool{},
 		adds: adds, form: valueform.New(theme), focus: ui.Focus{}, save: ui.NewSaveBar(), guard: frame.Guard{},
+		scroll: ui.NewScroll(), formBottom: 0,
 		named: "", uses: nil, usesOf: "", usesAsking: false, usesFor: "", templates: nil,
 		takeOff: ui.NewButton(takeOffID, "Take it off"), dialog: nil, deleting: nil, moving: nil,
 		menu:   ui.Menu{Items: nil, Width: 0},
@@ -223,6 +229,8 @@ func newState(part Part, window, document ids.ULID, theme *ui.Theme) *State {
 		return ok
 	}
 	view.list.Faded, view.list.DragLabel = view.faded, view.dragLabel
+
+	view.focus = view.newFocus()
 
 	return view
 }
@@ -375,21 +383,14 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	if s.updateFoot(input, ctx) {
+		return
+	}
 	if field, outcome := s.focus.Update(input, ctx.Clipboard); field != nil && outcome == textedit.OutcomeCommit {
 		s.Save(ctx)
 	}
 	frame.CommonKeys(input, ctx)
-	switch s.save.Update(input) {
-	case ui.SaveID:
-		s.Save(ctx)
-
-		return
-	case ui.RevertID:
-		s.focus.Set(nil)
-		s.form.Revert()
-		s.path.Field.Revert()
-		s.held.revert()
-
+	if s.updateSaveBar(input, ctx) {
 		return
 	}
 	if !loaded {
@@ -411,6 +412,66 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.updateTree(input, ctx)
 	s.updateAdds(input, ctx)
 	s.updateInspector(input, ctx)
+}
+
+// newFocus starts the inspector's fields again, Tab bringing each into view
+// as the inspector scrolls (increment 61).
+func (s *State) newFocus() ui.Focus {
+	var focus ui.Focus
+	focus.SetReveal(s.scroll.RevealField)
+
+	return focus
+}
+
+// updateSaveBar saves or reverts from the save bar, and reports whether it
+// did.
+func (s *State) updateSaveBar(input *ui.Input, ctx *frame.Context) bool {
+	switch s.save.Update(input) {
+	case ui.SaveID:
+		s.Save(ctx)
+
+		return true
+	case ui.RevertID:
+		s.focus.Set(nil)
+		s.form.Revert()
+		s.path.Field.Revert()
+		s.held.revert()
+
+		return true
+	}
+
+	return false
+}
+
+// updateFoot scrolls the inspector's fields with the wheel over it, and
+// gives a press beside them, on the save bar, Delete or the heading, to
+// those alone, never to a field scrolled behind them (increment 61). It
+// reports whether the press did something.
+func (s *State) updateFoot(input *ui.Input, ctx *frame.Context) bool {
+	if s.scroll.Wheel(input, s.panel()) {
+		s.layout()
+	}
+	if !s.scroll.Hidden(input.Cursor) {
+		return false
+	}
+	defer input.ClearPointer()
+	if s.updateSaveBar(input, ctx) {
+		return true
+	}
+	selected, found := s.selected()
+	switch {
+	case !found:
+	case selected.kind == itemDeclared && s.form.Delete.Update(input):
+		s.startDelete(ctx, selected)
+
+		return true
+	case isSignal(selected.kind) && s.signal.remove.Update(input):
+		s.startSignalDelete(ctx, selected)
+
+		return true
+	}
+
+	return false
 }
 
 // updateOverlay gives a frame's input to the dialog, the right-click menu
@@ -606,10 +667,25 @@ func (s *State) Locate(name string, docs frame.Docs) (image.Point, bool) {
 	return s.locateWidget(strings.TrimPrefix(name, "ui:"))
 }
 
+// locateWidget finds a widget for an input script, scrolling the
+// inspector's fields to one hidden above or below them, as an author would.
+// The save bar and Delete stay where they are.
 func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if point, found := s.save.Locate(widget); found {
 		return point, true
 	}
+	point, found := s.locateField(widget)
+	if found && widget != deleteSignalID && widget != s.form.Delete.ID && s.scroll.Reveal(point) {
+		s.layout()
+
+		return s.locateField(widget)
+	}
+
+	return point, found
+}
+
+// locateField finds a widget as laid out.
+func (s *State) locateField(widget string) (image.Point, bool) {
 	if widget == pathID && !s.path.Rect.Empty() {
 		return s.path.Center(), true
 	}

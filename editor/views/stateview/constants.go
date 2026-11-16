@@ -225,7 +225,7 @@ func (s *State) inspectHeld(selected item) {
 	if s.held.of != s.list.Selected {
 		s.held.revert()
 		s.held.kind = selected.declared.Type
-		s.focus = ui.Focus{}
+		s.focus = s.newFocus()
 		s.focus.Register(s.held.field())
 		s.held.of = s.list.Selected
 	}
@@ -238,10 +238,10 @@ func (s *State) inspectHeld(selected item) {
 	s.held.useDefault.Disabled = !own
 }
 
-// layoutHeld places the value's field, Use the default and Save.
-func (s *State) layoutHeld(panel image.Rectangle) {
-	left, width := panel.Min.X+ui.Inset, panel.Dx()-ui.Half*ui.Inset
-	top := inspectorTop(panel) + ui.LineHeight
+// layoutHeld places the value's field and Use the default from a top edge;
+// Save is at the inspector's foot.
+func (s *State) layoutHeld(left, width, top int) {
+	top += ui.LineHeight
 	height := ui.ButtonH
 	if s.held.kind == worldstate.TypeText {
 		height = heldTextHeight
@@ -258,8 +258,6 @@ func (s *State) layoutHeld(panel image.Rectangle) {
 	}
 	s.held.useDefault.Rect = image.Rect(from, top, from+min(width, s.theme.TextWidth(s.held.useDefault.Label)+
 		ui.Half*ui.Inset), top+ui.ButtonH)
-	bottom := panel.Max.Y - ui.Inset
-	s.save.Rect = image.Rect(left, bottom-ui.SaveBarHeight(width), left+width, bottom)
 }
 
 // updateHeld handles Use the default, which clears the NPC's or zone's own
@@ -323,8 +321,8 @@ func (s *State) setOwnConstant(ctx *frame.Context, selected item, raw json.RawMe
 }
 
 // drawHeld draws the NPC's or zone's value, Use the default, and what the
-// default is.
-func (s *State) drawHeld(screen *ebiten.Image, selected item, left, top, width int) {
+// default is, and returns where it ends.
+func (s *State) drawHeld(screen *ebiten.Image, selected item, left, top, width int) int {
 	s.theme.Heading(screen, "VALUE", left, top)
 	s.held.field().Draw(screen)
 	s.held.useDefault.Draw(screen, s.theme)
@@ -346,26 +344,24 @@ func (s *State) drawHeld(screen *ebiten.Image, selected item, left, top, width i
 		s.theme.DrawText(screen, line, left, under+index*ui.LineHeight, ui.ColorMuted())
 	}
 	value, _ := ownValue(selected.declared, selected.owner)
-	s.drawMarkupWarning(screen, selected.declared, value, left, under+len(lines)*ui.LineHeight+ui.Gap, width)
-	s.save.Draw(screen, s.theme)
+
+	return s.drawMarkupWarning(screen, selected.declared, value, left, under+len(lines)*ui.LineHeight+ui.Gap, width)
 }
 
 // drawHolders lists who holds a template's constant, under its uses: each
 // NPC or zone the template is on, with its own value or the default. A
 // click on one selects it in the tree.
-func (s *State) drawHolders(screen *ebiten.Image, selected item, left, top, width int) {
+// It returns where the list ends.
+func (s *State) drawHolders(screen *ebiten.Image, selected item, left, top, width int) int {
 	s.holders = map[string]image.Rectangle{}
 	catalog := s.shown.catalog
 	template, inTemplate := catalog.World().Template(selected.declared.ID)
 	if !inTemplate || !selected.declared.IsConstant() {
-		return
+		return top
 	}
 	holders := catalog.Holders(template)
 	declared, _ := catalog.World().Value(template)
-	shown := s.holdersRoom(top, len(holders))
-	if shown < 0 {
-		return
-	}
+	shown := min(len(holders), holdersShown)
 	s.theme.Heading(screen, "ON "+strconv.Itoa(len(holders))+" "+strings.ToUpper(plural(selected.scope))+
 		", WITH THE "+strings.ToUpper(declared.Name)+" TEMPLATE", left, top)
 	top += ui.LineHeight
@@ -386,25 +382,8 @@ func (s *State) drawHolders(screen *ebiten.Image, selected item, left, top, widt
 			top+ui.LineHeight)
 		top += ui.LineHeight
 	}
-}
 
-// holdersRoom is how many of a constant's holders the list shows from top,
-// above the save bar, keeping a line for how many more: at most
-// holdersShown, or -1 when not even its heading fits.
-func (s *State) holdersRoom(top, holders int) int {
-	room := holdersShown + 1
-	if !s.save.Rect.Empty() {
-		lines := (s.save.Rect.Min.Y - ui.Gap - top) / ui.LineHeight
-		if lines < 1 || (lines < 2 && holders > 0) {
-			return -1
-		}
-		room = lines - 1
-	}
-	if holders <= min(room, holdersShown) {
-		return holders
-	}
-
-	return max(min(room-1, holdersShown), 0)
+	return top + ui.LineHeight
 }
 
 // updateHolders selects an NPC's or zone's value of a constant clicked in
