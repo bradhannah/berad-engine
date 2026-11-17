@@ -11,13 +11,14 @@ GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
 GOIMPORTS := $(TOOLS_DIR)/goimports
 
 EDITOR_BIN := .cache/bin/berad-editor
+PLAYER_BIN := .cache/bin/berad-play
 DEMO_PROJECT ?= .cache/demo
 
 # local.mk, never committed, holds settings for this computer alone, such as
 # GAME_PROJECT, the project make game opens.
 -include local.mk
 
-.PHONY: help tools tools-check format format-check lint vet test check editor blank demo game gui-test latency
+.PHONY: help tools tools-check format format-check lint vet test check editor blank demo game player play-demo play-game gui-test latency
 
 help:
 	@echo "make tools         install the pinned golangci-lint and goimports (network)"
@@ -31,6 +32,9 @@ help:
 	@echo "make blank         open a new, empty project, a fresh one every time"
 	@echo "make demo          open the sample project, kept between runs in $(DEMO_PROJECT)"
 	@echo "make game          open your game's project, GAME_PROJECT in local.mk"
+	@echo "make player        build berad-play into .cache/bin"
+	@echo "make play-demo     play the sample project in a window of its own, without the editor"
+	@echo "make play-game     play your game's project in a window of its own, GAME_PROJECT in local.mk"
 	@echo "make gui-test      run the tests that open the real editor window"
 	@echo "make latency       measure strict-mode command-to-event time"
 
@@ -73,6 +77,17 @@ demo: editor
 game: editor
 	@test -n "$(GAME_PROJECT)" || { echo "Set GAME_PROJECT in local.mk, for example: GAME_PROJECT = ../my-game/project"; exit 1; }
 	./$(EDITOR_BIN) open --project $(GAME_PROJECT)
+
+player:
+	$(GO) -C engine build -o ../$(PLAYER_BIN) ./cmd/berad-play
+
+play-demo: player
+	@test -d $(DEMO_PROJECT) || { echo "No sample project in $(DEMO_PROJECT) yet: run make demo once to make it"; exit 1; }
+	./$(PLAYER_BIN) --project $(DEMO_PROJECT)
+
+play-game: player
+	@test -n "$(GAME_PROJECT)" || { echo "Set GAME_PROJECT in local.mk, for example: GAME_PROJECT = ../my-game/project"; exit 1; }
+	./$(PLAYER_BIN) --project $(GAME_PROJECT)
 
 gui-test:
 	BERAD_GUI_TESTS=1 $(GO) -C editor test -count=1 -v ./cmd/berad-editor/

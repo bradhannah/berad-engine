@@ -85,9 +85,9 @@ type State struct {
 	// zone and floors are the zone being played and its floors from the
 	// bottom up, for "floor:" states.
 	floors []ids.ULID
-	// held is the directions held last frame; shown says the tab is in
-	// front, so the game runs.
-	held  play.Direction
+	// hands plays the game by hand, as a game's own window does; shown says
+	// the tab is in front, so the game runs.
+	hands player.Hands
 	shown bool
 	// screen draws the game: the engine's player, which a game's own
 	// program draws through too (increment 62).
@@ -102,7 +102,7 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
-		launching: true, launches: 0, from: nil, floors: nil, held: 0, shown: true,
+		launching: true, launches: 0, from: nil, floors: nil, hands: player.Hands{}, shown: true,
 		screen: player.NewScreen(), sound: newSounds(), clockStart: protocol.DefaultClockStart,
 	}
 }
@@ -159,12 +159,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	held := s.heldKeys(input)
-	if stage := s.game.Stage(); stage.Holding() &&
-		(input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) || input.Pressed) {
-		stage.Close()
-	}
-	step := s.game.Step(play.Input{Held: held, Pressed: held &^ s.held})
-	s.held = held
+	closeBox := s.game.Stage().Holding() &&
+		(input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) || input.Pressed)
+	step := s.hands.Step(s.game, held, closeBox)
 	if step.Outcome == play.Lost {
 		s.stop(ctx, "The player's floor is not in the zone")
 

@@ -36,6 +36,11 @@ const (
 	MaxScreen      = 63
 )
 
+// DefaultStartSeconds is the time of day, in seconds, a game's clock starts
+// at until something sets another: 08:00. A game's own start time is not
+// project data yet.
+const DefaultStartSeconds = 8 * 3600
+
 // ErrData reports saved game settings that cannot be read.
 var ErrData = errors.New("invalid game settings data")
 

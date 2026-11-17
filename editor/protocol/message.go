@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bradhannah/berad-engine/engine/clock"
+	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
@@ -229,7 +230,7 @@ const TopicClockStart = "clock-start"
 
 // DefaultClockStart is the time of day, in seconds, a preview starts at until
 // the Clock window sets another: 08:00.
-const DefaultClockStart = 8 * 3600
+const DefaultClockStart = game.DefaultStartSeconds
 
 // ClockStart is the time of day, in seconds, the next preview starts at.
 type ClockStart struct {
