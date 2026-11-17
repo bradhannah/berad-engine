@@ -36,9 +36,9 @@ func (s *State) hasState(state string) bool {
 
 		return shown
 	case "heard":
-		return s.sound.heard[value] > 0
+		return s.sound.rules.Heard(value) > 0
 	case "layer":
-		return s.sound.playing(value)
+		return s.sound.rules.Playing(value)
 	case "scale":
 		return strconv.FormatFloat(s.screen.Scale()/pen.Scale(), 'f', 2, 64) == value
 	case "launches":
