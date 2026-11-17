@@ -148,6 +148,15 @@ Not in a pull request yet.
   the project changed; and by hand on a project with no player start, which
   opens and says so.
 
+- **Checks:** `make check` passes: formatting, the strict lint with no
+  findings, vet, and every test with the race detector. The real-window
+  suite, run from a frozen copy of the branch, passed 82 tests and failed
+  one, `TestClerkCallsFetchStock`. That walk waits for the sample's clerk to
+  call Fetch stock, which the clerk chooses at random over stretching, and
+  each preview has a new seed: run alone it failed once in three on this
+  branch and twice in five on `main` as it was before the increment. It is
+  left as it is, for its author to say what to do with it.
+
 ## Changed after its author tried it
 
 - None yet.
