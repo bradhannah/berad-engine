@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/tileart"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/game"
+	"github.com/bradhannah/berad-engine/engine/gameload"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/tiles"
@@ -248,19 +249,19 @@ type figure struct {
 func (s *State) spriteOf(npcID ids.ULID) string {
 	values := s.game.Values()
 	if values == nil {
-		return npcKey(npcID)
+		return gameload.NPCKey(npcID)
 	}
 	declared, known := values.Catalog().Lookup(worldstate.ScopeNPC, npcID, worldstate.SpriteID())
 	if !known {
-		return npcKey(npcID)
+		return gameload.NPCKey(npcID)
 	}
 	switch now := values.Get(declared, npcID).Ref; {
 	case now == s.npcSprites[npcID]:
-		return npcKey(npcID)
+		return gameload.NPCKey(npcID)
 	case now.IsZero():
 		return ""
 	default:
-		return spriteKey(now)
+		return gameload.SpriteKey(now)
 	}
 }
 

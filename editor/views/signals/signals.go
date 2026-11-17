@@ -4,7 +4,6 @@
 package signals
 
 import (
-	"cmp"
 	"slices"
 	"strconv"
 
@@ -12,8 +11,9 @@ import (
 	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
-	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
+	"github.com/bradhannah/berad-engine/editor/views/docsource"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/gameload"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
@@ -21,22 +21,9 @@ import (
 )
 
 // Declared returns the signals and groups the world state declares, by
-// path, and whether it has loaded.
+// path, and whether it has loaded, by the engine's rules (increment 62).
 func Declared(docs frame.Docs) ([]worldstate.Signal, bool) {
-	var declared []worldstate.Signal
-	loaded := false
-	docs.View(worldstate.ID(), func(document client.Document) {
-		if stateDoc, ok := document.Model.(*stateplugin.Document); ok {
-			declared, loaded = slices.Clone(stateDoc.State.Signals), true
-		}
-	})
-	paths := map[ids.ULID]string{}
-	for _, signal := range declared {
-		paths[signal.ID] = worldstate.SignalPath(declared, signal.ID)
-	}
-	slices.SortFunc(declared, func(a, b worldstate.Signal) int { return cmp.Compare(paths[a.ID], paths[b.ID]) })
-
-	return declared, loaded
+	return gameload.Signals(docsource.New(docs))
 }
 
 // Sendable returns the declared signals, not their groups, by path.

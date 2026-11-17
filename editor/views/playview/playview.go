@@ -89,9 +89,7 @@ type State struct {
 	// front, so the game runs.
 	held  play.Direction
 	shown bool
-	// standIns and npcSprites are the sprites that show each stand-in and
-	// the player, and each NPC, as the launch read them.
-	standIns   map[string]ids.ULID
+	// npcSprites is the sprite that shows each NPC, as the launch read it.
 	npcSprites map[ids.ULID]ids.ULID
 	art        *artSet
 	sound      *sounds
@@ -113,7 +111,7 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
-		launching: true, launches: 0, from: nil, floors: nil, held: 0, shown: true, standIns: map[string]ids.ULID{},
+		launching: true, launches: 0, from: nil, floors: nil, held: 0, shown: true,
 		npcSprites: map[ids.ULID]ids.ULID{}, art: newArtSet(), sound: newSounds(),
 		canvas: nil, sharp: nil, scale: 1, origin: image.Pt(0, 0), tile: 0, clockStart: protocol.DefaultClockStart,
 	}
@@ -205,10 +203,11 @@ func (s *State) heldKeys(input *ui.Input) play.Direction {
 // launch starts the game from what the project holds now, once every
 // document it needs has loaded.
 func (s *State) launch(ctx *frame.Context) {
-	project, tile, ready := s.prepare(ctx)
+	loaded, ready := s.prepare(ctx)
 	if !ready {
 		return
 	}
+	project, tile := loaded.Project, loaded.TileSize
 	s.launching = false
 	s.sound.silence(ctx)
 	s.game, s.problem = nil, ""
@@ -228,8 +227,9 @@ func (s *State) launch(ctx *frame.Context) {
 		return
 	}
 	s.game, s.tile, s.floors = played, tile, project.Zone.Floors()
+	s.npcSprites, s.art.want = loaded.NPCSprites, loaded.Tiles
 	s.art.draw(ctx.Docs, tile)
-	s.sound.launch(ctx, played, s.workflowCues(project))
+	s.sound.launch(ctx, played, loaded.Cues)
 	switch {
 	case s.from != nil:
 		ctx.Frame.Status(fmt.Sprintf("Playing from %d,%d for this run. Launch plays from the player start again.",

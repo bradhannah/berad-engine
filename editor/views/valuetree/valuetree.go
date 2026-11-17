@@ -17,7 +17,9 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	stateplugin "github.com/bradhannah/berad-engine/editor/plugins/worldstate"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/views/docsource"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
+	"github.com/bradhannah/berad-engine/engine/gameload"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npc"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
@@ -73,45 +75,11 @@ func World(docs frame.Docs) (List, bool) {
 }
 
 // Catalog builds the catalog of a project's values from the documents a
-// window holds: the world state, and each NPC and zone loaded so far. It is
-// not ready until the world state has arrived.
+// window holds: the world state, and each NPC and zone loaded so far, by the
+// engine's rules (increment 62). It is not ready until the world state has
+// arrived.
 func Catalog(docs frame.Docs) (*worldstate.Catalog, bool) {
-	world, ok := World(docs)
-	if !ok {
-		return nil, false
-	}
-	held := map[ids.ULID]worldstate.Owner{}
-	for _, entry := range owners(docs) {
-		if owner, found := ownerOf(docs, entry); found {
-			held[entry.ID] = owner
-		}
-	}
-
-	return worldstate.NewCatalog(world.Values, held), true
-}
-
-// ownerOf reads an NPC or zone as values see it.
-func ownerOf(docs frame.Docs, entry project.Entry) (worldstate.Owner, bool) {
-	var owner worldstate.Owner
-	found := false
-	docs.View(entry.ID, func(document client.Document) {
-		switch held := document.Model.(type) {
-		case *npcplugin.Document:
-			owner = worldstate.Owner{
-				Scope: worldstate.ScopeNPC, Path: held.NPC.Path, Name: entry.Name, Owned: held.NPC.Owned, Zone: held.NPC.Zone,
-				Behaviour: held.NPC.Behaviour, Sprite: held.NPC.Sprite,
-			}
-			found = true
-		case *zoneplugin.Document:
-			owner = worldstate.Owner{
-				Scope: worldstate.ScopeZone, Path: held.Zone.Path, Name: entry.Name, Owned: held.Zone.Owned,
-				Zone: ids.ULID{}, Behaviour: ids.ULID{}, Sprite: ids.ULID{},
-			}
-			found = true
-		}
-	})
-
-	return owner, found
+	return gameload.Catalog(docsource.New(docs))
 }
 
 // Owned returns an NPC's or zone's own list, once it has arrived.
