@@ -16,6 +16,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/bradhannah/berad-engine/editor/ui/pen"
+	"github.com/bradhannah/berad-engine/engine/player"
+	"github.com/bradhannah/berad-engine/engine/player/fonts"
 )
 
 // Sizes, in screen pixels.
@@ -115,16 +117,10 @@ const (
 	hexValueWash    = 0xdfe7f2
 )
 
-// Embedded IBM Plex fonts (SIL Open Font License; see fonts/OFL.txt).
+// Embedded IBM Plex Mono (SIL Open Font License; see fonts/OFL.txt). IBM Plex
+// Sans comes from the engine's player, where a game's text is written in it
+// too (increment 62).
 var (
-	//go:embed fonts/IBMPlexSans-Regular.ttf
-	sansRegular []byte
-	//go:embed fonts/IBMPlexSans-SemiBold.ttf
-	sansSemiBold []byte
-	//go:embed fonts/IBMPlexSans-Italic.ttf
-	sansItalic []byte
-	//go:embed fonts/IBMPlexSans-SemiBoldItalic.ttf
-	sansSemiBoldItalic []byte
 	//go:embed fonts/IBMPlexMono-Regular.ttf
 	monoRegular []byte
 	//go:embed fonts/IBMPlexMono-SemiBold.ttf
@@ -277,6 +273,10 @@ type Theme struct {
 	Font *berad.Font
 	// Text draws laid-out editable text.
 	Text *berad.Renderer
+	// Shown is the faces what a game shows is written in, for the engine's
+	// player to draw a preview's bubbles and boxes as a game draws them:
+	// Face, Strong, Italic, StrongItalic and Small (increment 62).
+	Shown *player.Type
 	// fonts are Font opened at each scale it is drawn at (increment 56).
 	fonts *scaledFonts
 }
@@ -312,8 +312,8 @@ func (t *Theme) fontAt(scale float64) *berad.Font {
 func NewTheme() (*Theme, error) {
 	sources := map[string]*etext.GoTextFaceSource{}
 	for name, data := range map[string][]byte{
-		"sans": sansRegular, "sans-bold": sansSemiBold, "mono": monoRegular, "mono-bold": monoSemiBold,
-		"sans-italic": sansItalic, "sans-bold-italic": sansSemiBoldItalic,
+		"sans": fonts.SansRegular(), "sans-bold": fonts.SansSemiBold(), "mono": monoRegular, "mono-bold": monoSemiBold,
+		"sans-italic": fonts.SansItalic(), "sans-bold-italic": fonts.SansSemiBoldItalic(),
 	} {
 		source, err := etext.NewGoTextFaceSource(bytes.NewReader(data))
 		if err != nil {
@@ -328,7 +328,7 @@ func NewTheme() (*Theme, error) {
 
 		return &made
 	}
-	parsed, err := berad.ParseFont(sansRegular)
+	parsed, err := berad.ParseFont(fonts.SansRegular())
 	if err != nil {
 		return nil, fmt.Errorf("load text font: %w", err)
 	}
@@ -343,13 +343,16 @@ func NewTheme() (*Theme, error) {
 		return nil, fmt.Errorf("text renderer: %w", err)
 	}
 
-	return &Theme{
+	theme := &Theme{
 		Face: face("sans", TextSize), Strong: face("sans-bold", TextSize), Italic: face("sans-italic", TextSize),
 		StrongItalic: face("sans-bold-italic", TextSize), Small: face("sans-bold", LabelSize),
 		Title: face("sans-bold", TitleSize), Mono: face("mono", MonoSize), MonoStrong: face("mono-bold", MonoSize),
-		Display: face("mono-bold", DisplaySize), Font: font, Text: renderer,
+		Display: face("mono-bold", DisplaySize), Font: font, Text: renderer, Shown: nil,
 		fonts: &scaledFonts{Mutex: sync.Mutex{}, sized: map[float64]*berad.Font{}},
-	}, nil
+	}
+	theme.Shown = player.TypeOf(theme.Face, theme.Strong, theme.Italic, theme.StrongItalic, theme.Small)
+
+	return theme, nil
 }
 
 // Close releases the text renderer.
