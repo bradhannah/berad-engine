@@ -17,15 +17,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hajimehoshi/ebiten/v2"
-
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/docsource"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/player"
 )
 
 // ViewName is the Play tab's view name; its target is the game settings.
@@ -89,19 +89,10 @@ type State struct {
 	// front, so the game runs.
 	held  play.Direction
 	shown bool
-	// npcSprites is the sprite that shows each NPC, as the launch read it.
-	npcSprites map[ids.ULID]ids.ULID
-	art        *artSet
-	sound      *sounds
-	// canvas is the game's screen at one pixel per tile pixel; scale is how
-	// many screen pixels each of its pixels takes; sharp is the canvas
-	// enlarged by a whole number, for a scale that is not one.
-	canvas *ebiten.Image
-	sharp  *ebiten.Image
-	scale  float64
-	// origin is where the canvas's top-left corner is drawn on the screen.
-	origin image.Point
-	tile   int
+	// screen draws the game: the engine's player, which a game's own
+	// program draws through too (increment 62).
+	screen *player.Screen
+	sound  *sounds
 	// clockStart is the time of day the clock starts at, as the Clock window
 	// sets it.
 	clockStart float64
@@ -112,8 +103,7 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
 		launching: true, launches: 0, from: nil, floors: nil, held: 0, shown: true,
-		npcSprites: map[ids.ULID]ids.ULID{}, art: newArtSet(), sound: newSounds(),
-		canvas: nil, sharp: nil, scale: 1, origin: image.Pt(0, 0), tile: 0, clockStart: protocol.DefaultClockStart,
+		screen: player.NewScreen(), sound: newSounds(), clockStart: protocol.DefaultClockStart,
 	}
 }
 
@@ -207,7 +197,7 @@ func (s *State) launch(ctx *frame.Context) {
 	if !ready {
 		return
 	}
-	project, tile := loaded.Project, loaded.TileSize
+	project := loaded.Project
 	s.launching = false
 	s.sound.silence(ctx)
 	s.game, s.problem = nil, ""
@@ -226,9 +216,8 @@ func (s *State) launch(ctx *frame.Context) {
 
 		return
 	}
-	s.game, s.tile, s.floors = played, tile, project.Zone.Floors()
-	s.npcSprites, s.art.want = loaded.NPCSprites, loaded.Tiles
-	s.art.draw(ctx.Docs, tile)
+	s.game, s.floors = played, project.Zone.Floors()
+	s.screen.Start(loaded, docsource.New(ctx.Docs))
 	s.sound.launch(ctx, played, loaded.Cues)
 	switch {
 	case s.from != nil:

@@ -32,7 +32,7 @@ func (s *State) hasState(state string) bool {
 	case "problem":
 		return s.problem != "" && strings.HasPrefix(s.problem, value)
 	case "sprite":
-		_, shown := s.art.image(value)
+		_, shown := s.screen.Art().Image(value)
 
 		return shown
 	case "heard":
@@ -40,7 +40,7 @@ func (s *State) hasState(state string) bool {
 	case "layer":
 		return s.sound.playing(value)
 	case "scale":
-		return strconv.FormatFloat(s.scale/pen.Scale(), 'f', 2, 64) == value
+		return strconv.FormatFloat(s.screen.Scale()/pen.Scale(), 'f', 2, 64) == value
 	case "launches":
 		return strconv.Itoa(s.launches) == value
 	case "box":
