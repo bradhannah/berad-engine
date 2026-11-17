@@ -16,7 +16,14 @@ What a top-down tile RPG runs. This module must never import the editor module.
 | `npc` | An NPC: its behaviour workflow and its author's private notes |
 | `clock` | The game clock: a time of day, a rate, stop and jump |
 | `npcrun` | NPCs running their workflows, a tick at a time; Go to finds its way with berad-path |
+| `game` | The game runtime: a project being played, a tick at a time, with nothing drawn |
+| `gameload` | What a game plays, gathered from a project's documents: from an editor window's, or from a project folder |
+| `player` | A game shown and played: draws the game runtime's screen, writes what it shows, plays its sounds, and runs it in a window of its own |
+| `cmd/berad-play` | The player as a program: `berad-play --project DIR` |
 
-The engine depends on one berad-sdk module, `modules/berad-path`, pinned at a
-reviewed revision. The world model, characteristics, schedules and game loop
-arrive as games need them.
+The engine depends on two berad-sdk modules, `modules/berad-path` and
+`modules/berad-audio`, each pinned at a reviewed revision. Only package
+`player` and the programs under `cmd` use Ebitengine and berad-audio's
+Ebitengine backend; everything else is headless, so a run repeats exactly,
+and `boundary_test.go` fails when that changes. The world model,
+characteristics, schedules and a game's own modes arrive as games need them.

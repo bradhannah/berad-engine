@@ -6,8 +6,10 @@ A Go/Ebitengine engine and shared editor for top-down tile RPGs.
 open: a project browser, Map, Text, Workflow, Audio, a Pixel editor, a
 Palette Editor and a Template editor, and a preview that walks a player
 through a zone. The
-engine has floors, zones, stand-in tiles and walking. There are no game
-features beyond that, and no stable API yet.
+engine has floors, zones, stand-in tiles, walking, NPCs that follow
+workflows, and a player that plays a project in a window of its own,
+outside the editor. There are no game features beyond that, and no stable
+API yet.
 
 ## Layout
 
@@ -35,7 +37,15 @@ in its own repository.
 make blank    # build the editor and open a new, empty project, fresh every time
 make demo     # open the sample project, kept between runs in .cache/demo
 make game     # open your game's project: put GAME_PROJECT = <path> in local.mk
+make play-demo  # play the sample in a window of its own, without the editor
+make play-game  # play your game's project the same way
 ```
+
+`make play-demo` and `make play-game` run `berad-play --project DIR`, the
+engine's player and nothing else ([increment
+62](docs/increments/0062-a-game-runs-on-its-own.md)): it reads the project's
+folder, never writes to it, and plays from the player start. The arrow keys
+walk; Enter, Space or a click closes a message box.
 
 The editor window opens with the project browser's tab; double-click the
 sample zone, which has two floors, to open it in a Map tab. Every view opens

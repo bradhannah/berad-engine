@@ -8,6 +8,10 @@ must be generic and self-contained.
 - Two Go modules: `engine` (what games run) and `editor` (the shared editor).
   The engine module must never import the editor module. Games use the engine
   module and berad-sdk, never the editor module.
+- In the engine module, only package `player` and the programs under `cmd`
+  may use Ebitengine, berad-audio's Ebitengine backend, or package `player`
+  itself. Everything else stays headless, so the simulation repeats exactly;
+  `engine/boundary_test.go` holds the line.
 - Sort new code with one test. Would any Ebitengine game use it unchanged? It
   belongs in [berad-sdk](https://github.com/bradhannah/berad-sdk). Is it about
   top-down tile-RPG worlds, workflows or authoring? It belongs here. Is it one
