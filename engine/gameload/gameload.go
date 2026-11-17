@@ -39,12 +39,13 @@ type Document struct {
 	Value any
 }
 
-// Source is a project's documents. View shows one for as long as fn runs,
-// and nothing of it may be kept past the call without copying it. Name names
-// a document, "" for one the project lacks. List lists the documents of a
-// format, in a steady order.
+// Source is a project's documents. View shows one for as long as show runs:
+// nothing of it may be kept past the call without copying it, and show must
+// not ask the source for anything, as an editor window's documents cannot be
+// viewed from inside a view. Name names a document, "" for one the project
+// lacks. List lists the documents of a format, in a steady order.
 type Source interface {
-	View(id ids.ULID, fn func(Document)) State
+	View(id ids.ULID, show func(Document)) State
 	Name(id ids.ULID) string
 	List(format string) []ids.ULID
 }
@@ -108,11 +109,11 @@ func Load(source Source, from *game.Start) (Loaded, bool) {
 
 // need shows a document the project holds and reports whether it has
 // arrived; one it does not hold is skipped.
-func (l *loader) need(documentID ids.ULID, fn func(Document)) bool {
+func (l *loader) need(documentID ids.ULID, show func(Document)) bool {
 	if documentID.IsZero() {
 		return false
 	}
-	switch l.source.View(documentID, fn) {
+	switch l.source.View(documentID, show) {
 	case Held:
 		return true
 	case Waiting:
