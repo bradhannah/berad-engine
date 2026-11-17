@@ -6,7 +6,6 @@ package tileart
 import (
 	"image"
 	"image/color"
-	"math"
 	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -16,6 +15,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/player"
 )
 
 // Picture is a tile drawn at one image pixel per tile pixel, kept until the
@@ -140,18 +140,6 @@ func (p *Picture) Deallocate() {
 }
 
 // Premultiply returns colours with straight alpha, as a tile draws them,
-// with each channel scaled by its alpha, as Ebitengine takes them.
-func Premultiply(straight []byte) []byte {
-	const channels, alpha = 4, 3
-	scaled := make([]byte, len(straight))
-	for start := 0; start+alpha < len(straight); start += channels {
-		opacity := uint32(straight[start+alpha])
-		for channel := range alpha {
-			value := uint32(straight[start+channel]) * opacity / math.MaxUint8
-			scaled[start+channel] = byte(value) //nolint:gosec // A channel times an alpha, over 255, is at most 255.
-		}
-		scaled[start+alpha] = straight[start+alpha]
-	}
-
-	return scaled
-}
+// with each channel scaled by its alpha, as Ebitengine takes them: the
+// engine's, which draws a game's art (increment 62).
+func Premultiply(straight []byte) []byte { return player.Premultiply(straight) }

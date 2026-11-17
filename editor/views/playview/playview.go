@@ -17,15 +17,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hajimehoshi/ebiten/v2"
-
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/docsource"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/player"
 )
 
 // ViewName is the Play tab's view name; its target is the game settings.
@@ -85,25 +85,14 @@ type State struct {
 	// zone and floors are the zone being played and its floors from the
 	// bottom up, for "floor:" states.
 	floors []ids.ULID
-	// held is the directions held last frame; shown says the tab is in
-	// front, so the game runs.
-	held  play.Direction
+	// hands plays the game by hand, as a game's own window does; shown says
+	// the tab is in front, so the game runs.
+	hands player.Hands
 	shown bool
-	// standIns and npcSprites are the sprites that show each stand-in and
-	// the player, and each NPC, as the launch read them.
-	standIns   map[string]ids.ULID
-	npcSprites map[ids.ULID]ids.ULID
-	art        *artSet
-	sound      *sounds
-	// canvas is the game's screen at one pixel per tile pixel; scale is how
-	// many screen pixels each of its pixels takes; sharp is the canvas
-	// enlarged by a whole number, for a scale that is not one.
-	canvas *ebiten.Image
-	sharp  *ebiten.Image
-	scale  float64
-	// origin is where the canvas's top-left corner is drawn on the screen.
-	origin image.Point
-	tile   int
+	// screen draws the game: the engine's player, which a game's own
+	// program draws through too (increment 62).
+	screen *player.Screen
+	sound  *sounds
 	// clockStart is the time of day the clock starts at, as the Clock window
 	// sets it.
 	clockStart float64
@@ -113,9 +102,8 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
-		launching: true, launches: 0, from: nil, floors: nil, held: 0, shown: true, standIns: map[string]ids.ULID{},
-		npcSprites: map[ids.ULID]ids.ULID{}, art: newArtSet(), sound: newSounds(),
-		canvas: nil, sharp: nil, scale: 1, origin: image.Pt(0, 0), tile: 0, clockStart: protocol.DefaultClockStart,
+		launching: true, launches: 0, from: nil, floors: nil, hands: player.Hands{}, shown: true,
+		screen: player.NewScreen(), sound: newSounds(), clockStart: protocol.DefaultClockStart,
 	}
 }
 
@@ -171,12 +159,9 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 		return
 	}
 	held := s.heldKeys(input)
-	if stage := s.game.Stage(); stage.Holding() &&
-		(input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) || input.Pressed) {
-		stage.Close()
-	}
-	step := s.game.Step(play.Input{Held: held, Pressed: held &^ s.held})
-	s.held = held
+	closeBox := s.game.Stage().Holding() &&
+		(input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) || input.Pressed)
+	step := s.hands.Step(s.game, held, closeBox)
 	if step.Outcome == play.Lost {
 		s.stop(ctx, "The player's floor is not in the zone")
 
@@ -205,10 +190,11 @@ func (s *State) heldKeys(input *ui.Input) play.Direction {
 // launch starts the game from what the project holds now, once every
 // document it needs has loaded.
 func (s *State) launch(ctx *frame.Context) {
-	project, tile, ready := s.prepare(ctx)
+	loaded, ready := s.prepare(ctx)
 	if !ready {
 		return
 	}
+	project := loaded.Project
 	s.launching = false
 	s.sound.silence(ctx)
 	s.game, s.problem = nil, ""
@@ -227,9 +213,9 @@ func (s *State) launch(ctx *frame.Context) {
 
 		return
 	}
-	s.game, s.tile, s.floors = played, tile, project.Zone.Floors()
-	s.art.draw(ctx.Docs, tile)
-	s.sound.launch(ctx, played, s.workflowCues(project))
+	s.game, s.floors = played, project.Zone.Floors()
+	s.screen.Start(loaded, docsource.New(ctx.Docs))
+	s.sound.launch(ctx, played, loaded.Cues)
 	switch {
 	case s.from != nil:
 		ctx.Frame.Status(fmt.Sprintf("Playing from %d,%d for this run. Launch plays from the player start again.",

@@ -417,6 +417,14 @@ back with a short reason the pane shows.
   a game would, through the engine's game runtime (package `game`), which a
   game's own program can run too. It plays a snapshot taken at launch, so
   edits apply only when it launches again; Preview stays for live checks.
+- *As built (increment 62):* the Play tab gathers, draws and plays through
+  the engine: package `gameload` gathers what a game plays from a source of
+  documents, and package `player` draws it, writes what it shows and decides
+  what is heard. A game's own window, `player.Run`, is the same code reading
+  the project's folder, and `berad-play --project DIR` is that window and
+  nothing else. See [increment 62](increments/0062-a-game-runs-on-its-own.md).
+- *Agreed (2026-11-16), not built:* Preview stays in the Map and runs on the
+  game runtime, in place of the Map's own copy of the simulation.
 
 ## D16 — Code layout
 
@@ -425,9 +433,17 @@ back with a short reason the pane shows.
 - **berad-engine:** an `engine` module (what games run) and an `editor` module
   (the orchestrator and the editor window). The engine never imports the
   editor; games never use the editor.
+  *As built (increment 62):* within the engine module, only package `player`
+  and the programs under `cmd` use Ebitengine; the game runtime and
+  everything under it stay headless, so a run repeats exactly, and a test
+  holds the line.
 - **Each game:** its content, settings (tile size, base resolution) and its own
   game modes, such as an intro. The engine runs the game loop and lets a game
   start and stop its own modes.
+  *Agreed (2026-11-16):* a game is its own program: the engine's player as a
+  library, with the game's own Go code beside it. `berad-play` is the player
+  with no game code, for a project that needs none. *Not built yet:* a
+  game's own program, and its modes.
 - **Grouping:** the framework is organised by layer; features (walls, doors,
   schedules, conversation nodes) are plug-ins that register edits, node types
   and inspector sections.

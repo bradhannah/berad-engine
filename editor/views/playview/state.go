@@ -1,29 +1,21 @@
 package playview
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/bradhannah/berad-engine/editor/ui/pen"
-	"github.com/bradhannah/berad-engine/editor/views/showdraw"
-	"github.com/bradhannah/berad-engine/engine/show"
-	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+	"github.com/bradhannah/berad-engine/engine/player"
 )
 
 // hasState answers input scripts waiting on the game:
 //
 //   - "playing" once it runs, and "problem:<start>" when it cannot;
-//   - "player:C,R" when the player stands still on that cell, and
-//     "floor:N" when they are on the Nth floor from the bottom;
-//   - "sprite:<what>" when a sprite shows a stand-in, the player or
-//     "npc:<id>";
-//   - "heard:<cue>" once an NPC asked for a cue, and "layer:<cue>" while a
-//     zone or ambient sound plays it;
 //   - "scale:N.NN" when the screen is drawn that many times its size, and
 //     "launches:N" after N launches;
-//   - "ground:C,R:<id>" when the game's floor has that ground there;
-//   - "box:<text>" while the game shows that message box.
+//   - and the states of the engine's player, which a game's own window
+//     answers too: "player:C,R", "floor:N", "sprite:<what>", "heard:<cue>",
+//     "layer:<cue>", "ground:C,R:<id>" and "box:<text>".
 func (s *State) hasState(state string) bool {
 	kind, value, _ := strings.Cut(state, ":")
 	switch kind {
@@ -31,62 +23,31 @@ func (s *State) hasState(state string) bool {
 		return s.game != nil
 	case "problem":
 		return s.problem != "" && strings.HasPrefix(s.problem, value)
+	case "scale":
+		return strconv.FormatFloat(s.screen.Scale()/pen.Scale(), 'f', 2, 64) == value
+	case "launches":
+		return strconv.Itoa(s.launches) == value
+	}
+	if s.game == nil {
+		return s.stateWithNoGame(kind, value)
+	}
+	in, _ := player.State(state, s.game, s.screen, s.sound.rules, s.floors)
+
+	return in
+}
+
+// stateWithNoGame answers for what outlasts a game that stopped: the sprites
+// it drew, and what was heard.
+func (s *State) stateWithNoGame(kind, value string) bool {
+	switch kind {
 	case "sprite":
-		_, shown := s.art.image(value)
+		_, shown := s.screen.Art().Image(value)
 
 		return shown
 	case "heard":
-		return s.sound.heard[value] > 0
+		return s.sound.rules.Heard(value) > 0
 	case "layer":
-		return s.sound.playing(value)
-	case "scale":
-		return strconv.FormatFloat(s.scale/pen.Scale(), 'f', 2, 64) == value
-	case "launches":
-		return strconv.Itoa(s.launches) == value
-	case "box":
-		box := showdraw.BoxOf(s.stage())
-
-		return box != nil && box.Text == value
-	}
-
-	return s.hasPlace(kind, value)
-}
-
-// stage is the game's boxes and shake, or none before it runs.
-func (s *State) stage() *show.Stage {
-	if s.game == nil {
-		return show.NewStage()
-	}
-
-	return s.game.Stage()
-}
-
-// hasPlace answers "player:", "floor:" and "ground:".
-func (s *State) hasPlace(kind, value string) bool {
-	if s.game == nil {
-		return false
-	}
-	player := s.game.Player()
-	switch kind {
-	case "player":
-		return !player.Moving() && fmt.Sprintf("%d,%d", player.Cell.X, player.Cell.Y) == value
-	case "floor":
-		number, err := strconv.Atoi(value)
-
-		return err == nil && number >= 1 && number <= len(s.floors) && s.floors[number-1] == player.Floor
-	case "ground":
-		where, ground, _ := strings.Cut(value, ":")
-		var col, row int
-		if _, err := fmt.Sscanf(where, "%d,%d", &col, &row); err != nil {
-			return false
-		}
-		found := false
-		s.game.Floor(player.Floor, func(shown *floor.Floor) {
-			got, err := shown.Ground(col, row)
-			found = err == nil && got == ground
-		})
-
-		return found
+		return s.sound.rules.Playing(value)
 	}
 
 	return false
