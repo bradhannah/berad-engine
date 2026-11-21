@@ -1716,7 +1716,8 @@ func (s *State) locateLaidOut(name, value string) (image.Point, bool) {
 // "floor:N" when the Nth floor from the bottom is shown,
 // "bounds:C,R,W,H" when the current floor has those bounds, "zoom:N" when
 // the zoom control shows N%, "sprite:…" and "art:…" for the art sprites
-// show stand-ins with (hasArt), "previewing"
+// show stand-ins with (hasArt), "launched" while Launch's game runs in the
+// Play tab, "previewing"
 // while this window runs a preview, "player:C,R" or "remote-player:C,R"
 // when this window's or another window's player stands on that cell, and
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
@@ -1724,7 +1725,8 @@ func (s *State) locateLaidOut(name, value string) (image.Point, bool) {
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	_, offView := s.floorOffView(docs)
 	simple := map[string]bool{
-		"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen(), "floor-off-view": offView,
+		"picking": s.pick != nil, "previewing": s.preview != nil, "launched": s.playing, "keys": s.keySheet.IsOpen(),
+		"floor-off-view": offView,
 	}
 	if s.pick != nil {
 		simple["pick-now="+s.pick.Now.Name] = true

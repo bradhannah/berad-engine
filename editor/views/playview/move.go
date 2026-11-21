@@ -71,7 +71,7 @@ func (s *State) move(ctx *frame.Context) {
 		return
 	}
 	docs := docsource.New(ctx.Docs)
-	s.floors = loaded.Project.Zone.Floors()
+	s.floors, s.zoneNamed = loaded.Project.Zone.Floors(), docs.Name(target.Zone)
 	s.screen.Start(loaded, docs)
 	if len(loaded.Cues) > 0 {
 		ctx.Sounds.Prepare(loaded.Cues)

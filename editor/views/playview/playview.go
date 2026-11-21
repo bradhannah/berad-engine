@@ -96,6 +96,8 @@ type State struct {
 	// from is where Play from here puts the player for the next launch
 	// alone, nil to launch at the player start.
 	from *game.Start
+	// zoneNamed is the name of the zone the game is playing, for scripts.
+	zoneNamed string
 	// moving is where Move the player here puts the player of the game that
 	// is running, nil when no move waits; told is whether the Maps were last
 	// told a game is running.
@@ -121,7 +123,8 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
-		launching: true, launches: 0, from: nil, moving: nil, told: false, floors: nil, hands: player.Hands{}, shown: true,
+		launching: true, launches: 0, from: nil, zoneNamed: "", moving: nil, told: false, floors: nil,
+		hands: player.Hands{}, shown: true,
 		screen: player.NewScreen(), sound: newSounds(), clockStart: protocol.DefaultClockStart,
 	}
 }
@@ -241,6 +244,7 @@ func (s *State) launch(ctx *frame.Context) {
 		return
 	}
 	s.game, s.floors = played, project.Zone.Floors()
+	s.zoneNamed = docsource.New(ctx.Docs).Name(played.Zone())
 	s.screen.Start(loaded, docsource.New(ctx.Docs))
 	s.sound.launch(ctx, played, loaded.Cues)
 	switch {
