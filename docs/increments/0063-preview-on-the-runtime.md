@@ -103,10 +103,20 @@ Chosen while building, for its author to check:
 - **Moving into the zone being played from another Map of it** places the
   player and starts nothing again.
 - **`BERAD_SEED` fixes the seed** of the previews and launches a window
-  starts, for an automated run. `TestClerkCallsFetchStock` runs with seed 1,
-  where the clerk fetches stock the first time she chooses.
-- **A preview's random draws differ from before for the same run,** since
-  its seed is now made as Launch's is. Nothing an author sees depends on it.
+  starts, for an automated run.
+- **An NPC is seeded by its place among those its zone has started,** in
+  the order their placements were made, and no longer by its placement's
+  ID. A walk makes its sample afresh every run, with new IDs, so a fixed
+  seed fixed nothing while IDs went into it; now a project made again plays
+  the same from the same seed. The zone's loop is seeded after every NPC.
+  An NPC's draws differ from before for the same seed; nothing an author
+  sees depends on which they are.
+- **`TestClerkCallsFetchStock` runs with seed 4.** That walk failed now and
+  then for a second reason, found by playing the sample without a window
+  under each seed: with most seeds the clerk is inside her first call to
+  Fetch stock for ticks 10 to 30 of a preview, a third of a second, before
+  Watch can open. With seed 4 she stretches first and makes the call from
+  tick 1940, half a minute in.
 - **When a project is gathered, its values are asked for before the
   workflows that read them.**
 - **Scripts can wait on two more states:** a Map's `launched`, while
@@ -146,7 +156,11 @@ Not in a pull request yet.
   Two faults found by the walks in the real window and fixed: a document
   that arrived between a gathering and its note of what it had read was
   never seen, and the wait described above.
-- **A fixed seed:** `frame.Context.Seed`, from `BERAD_SEED`.
+- **A fixed seed:** `frame.Context.Seed`, from `BERAD_SEED`, and the
+  runtime's seeding by order. Verified by
+  `TestAProjectMadeAgainPlaysTheSame`, and by `TestClerkCallsFetchStock`
+  passing ten runs in ten in the real window; with the seed fixed but NPCs
+  still seeded by ID it had failed four in ten.
 - **Moving within a zone:** `play.Run.Place` and `game.Place`, with
   `ErrPlace`; Move the player here in `mapview`. Verified by tests of the
   runtime and the Map.
