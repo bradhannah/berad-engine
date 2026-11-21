@@ -400,6 +400,24 @@ func drawDiamond(area *ebiten.Image, centreX, centreY, reach float32, fill color
 	pen.FillPath(area, &diamond, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, options)
 }
 
+// locateDialog finds a part of the open dialog for input scripts: a button
+// or a list row by its ID, or a list row by what it says, as "row:Cellar".
+func (s *State) locateDialog(value string) (image.Point, bool) {
+	window := image.Rectangle{Min: image.Pt(0, 0), Max: s.size}
+	label, byLabel := strings.CutPrefix(value, "row:")
+	if !byLabel || s.dialog.List == nil {
+		return s.dialog.Locate(value, window)
+	}
+	s.dialog.Locate("", window)
+	for _, row := range s.dialog.List.Rows {
+		if row.Label == label {
+			return s.dialog.List.Locate(row.ID)
+		}
+	}
+
+	return image.Pt(0, 0), false
+}
+
 // hasMark answers the states of what marks a cell: "ambient:" for an
 // ambient sound and "portal:" for a portal.
 func (s *State) hasMark(state string, docs frame.Docs) bool {

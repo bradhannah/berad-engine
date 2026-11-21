@@ -1824,7 +1824,7 @@ func (s *State) locateOver(kind, value string) (image.Point, bool, bool) {
 
 		return point, found, true
 	case s.dialog != nil:
-		point, found := s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+		point, found := s.locateDialog(value)
 
 		return point, found, true
 	case s.menu != nil && kind == "menu":
