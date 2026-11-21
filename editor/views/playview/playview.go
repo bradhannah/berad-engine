@@ -10,6 +10,7 @@
 package playview
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -205,7 +206,7 @@ func (s *State) launch(ctx *frame.Context) {
 		return
 	}
 	s.launches++
-	project.Seconds, project.Seed = s.clockStart, seed(s.window, s.launches)
+	project.Seconds, project.Seed = s.clockStart, cmp.Or(ctx.Seed, seed(s.window, s.launches))
 	played, err := game.New(project)
 	if err != nil {
 		s.problem = "The game cannot start: " + err.Error()

@@ -1,6 +1,7 @@
 package mapview
 
 import (
+	"cmp"
 	"fmt"
 	"hash/fnv"
 	"image"
@@ -152,7 +153,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 			return
 		}
 		loaded, read := s.gatherPreview(ctx, from)
-		loaded.Project.Seconds, loaded.Project.Seed = s.start, seedOf(result.Created)
+		loaded.Project.Seconds, loaded.Project.Seed = s.start, cmp.Or(ctx.Seed, seedOf(result.Created))
 		played, err := game.New(loaded.Project)
 		if err != nil {
 			ctx.Requests.PreviewStop(protocol.PreviewStop{Run: result.Created, Reason: "the game could not start"})

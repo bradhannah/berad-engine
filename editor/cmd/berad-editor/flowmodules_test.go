@@ -65,6 +65,10 @@ func TestMakingAndCallingAModule(t *testing.T) {
 	t.Logf("screenshots: %s %s %s", moduleShot, callShot, calledShot)
 }
 
+// fetchesStockSeed is a seed with which the sample's clerk fetches stock the
+// first time she chooses between that and stretching.
+const fetchesStockSeed = "1"
+
 // TestClerkCallsFetchStock previews the sample and watches the clerk: its
 // day calls Fetch stock, giving it the shelf, and Watch names the path down
 // through the call while the clerk walks there, then the clerk comes back
@@ -95,10 +99,13 @@ func TestClerkCallsFetchStock(t *testing.T) {
 		must("state:path=", 600), wait(10), shoot(backShot), quit(),
 	)
 	clockScript := script(must("state:running", 3600), wait(30), quit())
-	runEditor(t, binary, project, scripts{
+	// After serving, the clerk fetches stock or stretches, at random; the
+	// seed is fixed at one where she fetches stock first, so the walk sees
+	// the call every time (increment 63).
+	runEditorWith(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {fetchScript}, "map": {mapScript}, "watch": {watchScript},
 		"clock": {clockScript},
-	})
+	}, "BERAD_SEED="+fetchesStockSeed)
 	noCrashes(t, project)
 	t.Logf("screenshots: %s %s %s", watchShot, backShot, stripShot)
 }
