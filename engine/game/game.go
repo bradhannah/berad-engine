@@ -55,11 +55,13 @@ type Project struct {
 // default when the game starts.
 type Game struct {
 	settings Settings
-	levels   play.Levels
-	sounds   []string
-	run      *play.Run
-	npcs     []*npcrun.NPC
-	flows    map[ids.ULID]*flow.Workflow
+	// zone is the zone being played, the one that is alive.
+	zone   ids.ULID
+	levels play.Levels
+	sounds []string
+	run    *play.Run
+	npcs   []*npcrun.NPC
+	flows  map[ids.ULID]*flow.Workflow
 	// behaviours names each NPC's behaviour, and workflows holds every
 	// workflow, for Calls to call.
 	behaviours map[ids.ULID]ids.ULID
@@ -136,7 +138,8 @@ func New(project Project) (*Game, error) {
 		return nil, fmt.Errorf("%w: cell %d,%d of its floor", ErrStart, start.Col, start.Row)
 	}
 	game := &Game{
-		settings: project.Settings, levels: levels, sounds: project.Zone.Sounds(), run: play.Start(start.Floor, cell),
+		settings: project.Settings, zone: start.Zone, levels: levels, sounds: project.Zone.Sounds(),
+		run:  play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
 		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(), cueTicks: nil,
@@ -192,15 +195,31 @@ func seed(game uint64, placement ids.ULID) uint64 {
 	return hash.Sum64()
 }
 
-// Step runs the game for one tick: the player walks, unless a message box
-// holds them until they close it, the boxes and the shake count down, the
-// clock moves on and the NPCs follow their behaviours, each seeing where the
-// others were as the tick began.
+// Step runs the game for one tick: the player walks, then the world ticks.
 func (g *Game) Step(input play.Input) Step {
+	outcome := g.Walk(input)
+
+	return Step{Outcome: outcome, Cues: g.Tick()}
+}
+
+// Walk moves the player for one tick, unless a message box holds them until
+// they close it. On its own it leaves the world as it is, as when an author
+// pauses the NPCs and walks on.
+func (g *Game) Walk(input play.Input) play.Outcome {
 	if g.stage.Holding() {
 		input = play.Input{Held: 0, Pressed: 0}
 	}
-	outcome := g.run.Step(g.levels, input)
+
+	return g.run.Step(g.levels, input)
+}
+
+// Tick runs the world for one tick without the player: the boxes and the
+// shake count down, the clock moves on, the signals sent on the tick before
+// land, and the NPCs and the zone's loop follow their workflows, each seeing
+// where the others were as the tick began. It returns the cues they asked
+// for, each once. Ticks run one after another without a Walk between them
+// hurry the world on while the player stands, as a step does.
+func (g *Game) Tick() []npcrun.Sound {
 	g.stage.Tick()
 	passed := g.clock.Advance()
 	others := make([]npcrun.Other, 0, len(g.npcs))
@@ -210,12 +229,12 @@ func (g *Game) Step(input play.Input) Step {
 		})
 	}
 	var cues []npcrun.Sound
-	npcrun.Deliver(g.sent, g.runners(), g.settings.Start.Zone)
+	npcrun.Deliver(g.sent, g.runners(), g.zone)
 	g.sent = g.sent[:0]
 	for _, character := range g.npcs {
 		world := npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
-			Workflows: g.workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.settings.Start.Zone,
+			Workflows: g.Workflow, Clock: g.clock, Passed: passed, State: g.values, Here: g.zone,
 			Others: others, Stage: g.stage, CueTicks: g.cueTicks, Signals: g.signals,
 		}
 		character.Step(world, g.run.Tick())
@@ -224,15 +243,15 @@ func (g *Game) Step(input play.Input) Step {
 	}
 	if g.loop != nil {
 		g.loop.Step(npcrun.World{
-			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.workflow, Clock: g.clock,
-			Passed: passed, State: g.values, Here: g.settings.Start.Zone, Others: others, Stage: g.stage,
+			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.Workflow, Clock: g.clock,
+			Passed: passed, State: g.values, Here: g.zone, Others: others, Stage: g.stage,
 			CueTicks: g.cueTicks, Signals: g.signals,
 		}, g.run.Tick())
 		cues = heard(cues, g.loop.Sounds)
 		g.sent = append(g.sent, g.loop.Sent...)
 	}
 
-	return Step{Outcome: outcome, Cues: cues}
+	return cues
 }
 
 // KnowCues tells the game how many ticks each cue plays for, from its
@@ -259,12 +278,47 @@ func heard(cues, asked []npcrun.Sound) []npcrun.Sound {
 	return cues
 }
 
-// workflow finds a workflow a Call calls.
-func (g *Game) workflow(target ids.ULID) (*flow.Workflow, bool) {
+// Workflow finds a workflow the game holds, as a Call finds the one it
+// calls.
+func (g *Game) Workflow(target ids.ULID) (*flow.Workflow, bool) {
 	found, ok := g.workflows[target]
 
 	return found, ok && found != nil
 }
+
+// Runner is an NPC, or the zone's loop, as the game runs it: its runner,
+// the workflow it follows, nil for none, and which workflow that is. The
+// runner is the game's own, for showing what it is doing; only the game
+// steps it.
+type Runner struct {
+	NPC       *npcrun.NPC
+	Workflow  *flow.Workflow
+	Behaviour ids.ULID
+}
+
+// Runners returns the NPCs as they run, in placement order.
+func (g *Game) Runners() []Runner {
+	runners := make([]Runner, 0, len(g.npcs))
+	for _, character := range g.npcs {
+		runners = append(runners, Runner{
+			NPC: character, Workflow: g.flows[character.NPC], Behaviour: g.behaviours[character.NPC],
+		})
+	}
+
+	return runners
+}
+
+// LoopRunner returns the zone's loop as it runs, if the zone has one.
+func (g *Game) LoopRunner() (Runner, bool) {
+	if g.loop == nil {
+		return Runner{NPC: nil, Workflow: nil, Behaviour: ids.ULID{}}, false
+	}
+
+	return Runner{NPC: g.loop, Workflow: g.loopFlow, Behaviour: g.loopID}, true
+}
+
+// Zone returns the zone being played.
+func (g *Game) Zone() ids.ULID { return g.zone }
 
 // Stage returns the message boxes and the shake, for drawing them and for
 // closing a box the player must close.
