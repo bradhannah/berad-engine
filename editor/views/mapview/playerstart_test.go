@@ -6,7 +6,9 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
+	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/playview"
 	"github.com/bradhannah/berad-engine/engine/game"
 )
 
@@ -82,5 +84,36 @@ func TestMoveThePlayerHereDuringAPreview(t *testing.T) {
 	f.walk(ui.KeyLeft, 1)
 	if !f.has("player:4,5") {
 		t.Fatal("the player walks on from there")
+	}
+}
+
+// TestMoveThePlayerHereReachesLaunchsGame offers Move the player here while
+// Launch's game runs in the Play tab, and asks the Play tab to move its
+// player to the cell, in this Map's zone; once that game has stopped, the
+// item is gone.
+func TestMoveThePlayerHereReachesLaunchsGame(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	playing := func(running bool) {
+		value := `{"running":false}`
+		if running {
+			value = `{"running":true}`
+		}
+		f.state.Changed(client.Update{Session: &protocol.Session{Topic: protocol.TopicPlaying, Value: []byte(value)}}, f.ctx)
+	}
+	playing(true)
+	f.rightClick("cell:5,5")
+	if !strings.Contains(f.menu(), "move-here") || strings.Contains(f.menu(), "move-here (disabled)") {
+		t.Fatalf("while Launch's game runs its player can be moved: %s", f.menu())
+	}
+	f.click("menu:move-here")
+	want := playview.MoveToItem(game.Start{Zone: zoneID, Floor: groundID, Col: 5, Row: 5})
+	if opened := f.requests.Opened; len(opened) != 1 || opened[0].View != playview.ViewName || opened[0].Item != want {
+		t.Fatalf("the Play tab is asked to move its player here: %+v", opened)
+	}
+	playing(false)
+	f.rightClick("cell:5,5")
+	if strings.Contains(f.menu(), "move-here") {
+		t.Fatalf("with the game stopped there is no player to move: %s", f.menu())
 	}
 }

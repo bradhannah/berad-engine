@@ -31,13 +31,17 @@ func (s *State) playFrom(ctx *frame.Context, cell Cell) {
 const menuMoveHere = "move-here"
 
 // canMovePlayer reports whether there is a game whose player this Map can
-// move: the preview it runs.
-func (s *State) canMovePlayer() bool { return s.preview != nil }
+// move: the preview it runs, or Launch's game in the Play tab.
+func (s *State) canMovePlayer() bool { return s.preview != nil || s.playing }
 
-// movePlayer moves the player of this Map's preview to a cell of the shown
-// floor.
+// movePlayer moves a player to a cell of the shown floor: this Map's
+// preview's when it runs one, and otherwise the player of Launch's game,
+// which the Play tab moves, into this zone if it is playing another.
 func (s *State) movePlayer(ctx *frame.Context, cell Cell) {
 	if s.preview == nil {
+		start := game.Start{Zone: s.zone, Floor: s.floor, Col: cell.X, Row: cell.Y}
+		ctx.Requests.OpenItem(playview.ViewName, game.SettingsID(), playview.MoveToItem(start))
+
 		return
 	}
 	if err := s.preview.game.Place(s.floor, cell); err != nil {

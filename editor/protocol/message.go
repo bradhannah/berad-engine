@@ -228,6 +228,16 @@ const TopicNotice = "notice"
 // DefaultClockStart.
 const TopicClockStart = "clock-start"
 
+// TopicPlaying is the session topic for whether Launch's game is running in
+// the Play tab, a Playing. The Play tab sets it, and a Map offers to move the
+// game's player while it is set (increment 63).
+const TopicPlaying = "playing"
+
+// Playing says whether Launch's game is running in the Play tab.
+type Playing struct {
+	Running bool `json:"running"`
+}
+
 // DefaultClockStart is the time of day, in seconds, a preview starts at until
 // the Clock window sets another: 08:00.
 const DefaultClockStart = game.DefaultStartSeconds

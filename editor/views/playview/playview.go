@@ -48,9 +48,22 @@ func LaunchFromItem(start game.Start) string {
 		strconv.Itoa(start.Row)
 }
 
-// startOfItem reads where a LaunchFromItem puts the player.
+// moveToPrefix starts the item Move the player here opens the Play tab with
+// (increment 63).
+const moveToPrefix = "move-to:"
+
+// MoveToItem is the item Move the player here opens the Play tab with: the
+// game running there moves its player to a cell, into another zone if need
+// be, and goes on with its values and its clock, where LaunchFromItem starts
+// the game again (increment 63).
+func MoveToItem(start game.Start) string {
+	return moveToPrefix + strings.TrimPrefix(LaunchFromItem(start), launchFromPrefix)
+}
+
+// startOfItem reads where a LaunchFromItem or a MoveToItem puts the player.
 func startOfItem(item string) (game.Start, bool) {
-	parts := strings.Split(strings.TrimPrefix(item, launchFromPrefix), ":")
+	item = strings.TrimPrefix(strings.TrimPrefix(item, launchFromPrefix), moveToPrefix)
+	parts := strings.Split(item, ":")
 	if len(parts) != startParts {
 		return game.NoStart(), false
 	}
@@ -83,6 +96,11 @@ type State struct {
 	// from is where Play from here puts the player for the next launch
 	// alone, nil to launch at the player start.
 	from *game.Start
+	// moving is where Move the player here puts the player of the game that
+	// is running, nil when no move waits; told is whether the Maps were last
+	// told a game is running.
+	moving *game.Start
+	told   bool
 	// zone and floors are the zone being played and its floors from the
 	// bottom up, for "floor:" states.
 	floors []ids.ULID
@@ -103,7 +121,7 @@ type State struct {
 func New(window ids.ULID, theme *ui.Theme) *State {
 	return &State{
 		window: window, theme: theme, size: image.Pt(0, 0), subs: map[ids.ULID]bool{}, game: nil, problem: "",
-		launching: true, launches: 0, from: nil, floors: nil, hands: player.Hands{}, shown: true,
+		launching: true, launches: 0, from: nil, moving: nil, told: false, floors: nil, hands: player.Hands{}, shown: true,
 		screen: player.NewScreen(), sound: newSounds(), clockStart: protocol.DefaultClockStart,
 	}
 }
@@ -116,7 +134,7 @@ func (s *State) Focused() *ui.TextField { return nil }
 
 // Start subscribes to what a launch reads first.
 func (s *State) Start(ctx *frame.Context) {
-	s.prepare(ctx)
+	s.prepare(ctx, s.from)
 }
 
 // SetShown tells the tab whether it is in front. A game behind another tab
@@ -125,13 +143,17 @@ func (s *State) SetShown(shown bool) { s.shown = shown }
 
 // Changed follows the orchestrator: Launch asked again, so the game launches
 // again, and the time the Clock window sets for the clock to start at.
-func (s *State) Changed(update client.Update, _ *frame.Context) {
+func (s *State) Changed(update client.Update, ctx *frame.Context) {
 	switch {
 	case update.Attention && update.Item == LaunchItem:
 		s.launching, s.from = true, nil
 	case update.Attention && strings.HasPrefix(update.Item, launchFromPrefix):
 		if start, ok := startOfItem(update.Item); ok {
 			s.launching, s.from = true, &start
+		}
+	case update.Attention && strings.HasPrefix(update.Item, moveToPrefix):
+		if start, ok := startOfItem(update.Item); ok {
+			s.askMove(ctx, start)
 		}
 	}
 	if update.Session != nil && update.Session.Topic == protocol.TopicClockStart {
@@ -151,6 +173,10 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.launching {
 		s.launch(ctx)
 	}
+	if s.moving != nil {
+		s.move(ctx)
+	}
+	s.tellMaps(ctx)
 	if s.game == nil {
 		return
 	}
@@ -191,7 +217,7 @@ func (s *State) heldKeys(input *ui.Input) play.Direction {
 // launch starts the game from what the project holds now, once every
 // document it needs has loaded.
 func (s *State) launch(ctx *frame.Context) {
-	loaded, ready := s.prepare(ctx)
+	loaded, ready := s.prepare(ctx, s.from)
 	if !ready {
 		return
 	}
@@ -264,4 +290,16 @@ func (s *State) Locate(name string, _ frame.Docs) (image.Point, bool) {
 	}
 
 	return image.Pt(0, 0), s.hasState(value)
+}
+
+// tellMaps tells the Maps whether a game is running here, when that has
+// changed, so each offers Move the player here only while one is. A tab
+// about to close says none is.
+func (s *State) tellMaps(ctx *frame.Context) {
+	running := s.game != nil && !ctx.Frame.Closing && !ctx.Frame.Quit
+	if running == s.told {
+		return
+	}
+	s.told = running
+	ctx.Requests.Publish(protocol.TopicPlaying, protocol.Playing{Running: running})
 }

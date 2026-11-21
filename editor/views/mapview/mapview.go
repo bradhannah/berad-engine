@@ -156,6 +156,9 @@ type State struct {
 	floors []ids.ULID
 	floor  ids.ULID
 	subs   map[ids.ULID]bool
+	// playing says Launch's game is running in the Play tab, so its player
+	// can be moved from this Map (increment 63).
+	playing bool
 	// arriving is the documents subscribed to whose answer has not come
 	// yet: while any is on its way a preview's world waits (increment 63).
 	arriving map[ids.ULID]bool
@@ -263,7 +266,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, playerStart: game.NoStart(),
 		ambient: ambientSounds{library: nil, asking: false, moving: ids.ULID{}, changing: ids.ULID{}}, theme: theme,
-		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, arriving: map[ids.ULID]bool{},
+		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, playing: false, arriving: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
@@ -352,6 +355,28 @@ const shortID = 6
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
+// sessionChanged follows what the windows share that a Map keeps: when the
+// next preview's clock starts, and whether Launch's game is running in the
+// Play tab. It reports whether the topic was one of those.
+func (s *State) sessionChanged(session protocol.Session) bool {
+	switch session.Topic {
+	case protocol.TopicPlaying:
+		var playing protocol.Playing
+		if err := json.Unmarshal(session.Value, &playing); err == nil {
+			s.playing = playing.Running
+		}
+	case protocol.TopicClockStart:
+		var start protocol.ClockStart
+		if err := json.Unmarshal(session.Value, &start); err == nil {
+			s.start = start.Seconds
+		}
+	default:
+		return false
+	}
+
+	return true
+}
+
 // Changed reacts to the orchestrator: the zone's floors, picks, and the art
 // that sprites show stand-ins with.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
@@ -365,11 +390,7 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		s.previewChanged(update, ctx)
 	case update.PreviewControl != nil:
 		s.control(*update.PreviewControl, ctx)
-	case update.Session != nil && update.Session.Topic == protocol.TopicClockStart:
-		var start protocol.ClockStart
-		if err := json.Unmarshal(update.Session.Value, &start); err == nil {
-			s.start = start.Seconds
-		}
+	case update.Session != nil && s.sessionChanged(*update.Session):
 	case update.PickStart != nil, update.PickCancel != nil:
 		s.pickChanged(update, ctx)
 	case update.Snapshot != nil && *update.Snapshot == s.zone, update.Event != nil && update.Event.Document == s.zone:
