@@ -9,6 +9,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/show"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -206,6 +207,44 @@ func (g *Game) Place(floorID ids.ULID, cell image.Point) error {
 		return fmt.Errorf("%w: nothing can stand on cell %d,%d", ErrPlace, cell.X, cell.Y)
 	}
 	g.run.Place(floorID, cell)
+
+	return nil
+}
+
+// Enter moves the game into the zone a project is gathered for, with the
+// player at the project's start (increment 63): the player leaves the zone
+// being played, which stops, and the zone entered comes alive.
+//
+//   - The NPCs of the zone left stop. Those of the zone entered start at
+//     their placements, as when a game begins, and so does its loop.
+//   - The boxes and the shake are cleared, and signals not yet landed are
+//     dropped: they belonged to the zone left.
+//   - The clock keeps its time and the values what they hold, so anything
+//     recorded as a value is remembered. Entering the zone being played
+//     again starts its NPCs afresh in the same way.
+//
+// A project with no start or no zone, or a start the player cannot stand
+// on, is refused, and the game goes on where it was.
+func (g *Game) Enter(project Project) error {
+	start := project.Settings.Start
+	if start.IsZero() || project.Zone == nil {
+		return fmt.Errorf("%w: its zone is not in the project", ErrPlace)
+	}
+	levels := levelsOf(project)
+	cell := image.Pt(start.Col, start.Row)
+	if !play.CanStand(levels, start.Floor, cell) {
+		return fmt.Errorf("%w: nothing can stand on cell %d,%d", ErrPlace, start.Col, start.Row)
+	}
+	g.settings, g.zone, g.levels, g.sounds = project.Settings, start.Zone, levels, project.Zone.Sounds()
+	g.run.Place(start.Floor, cell)
+	g.names, g.signals, g.workflows = project.Names, project.Signals, project.Workflows
+	g.declare(project.Values)
+	g.npcs, g.flows, g.behaviours = nil, map[ids.ULID]*flow.Workflow{}, map[ids.ULID]ids.ULID{}
+	g.loop, g.loopFlow, g.loopID = nil, nil, ids.ULID{}
+	g.stage, g.sent = show.NewStage(), nil
+	g.syncRunners()
+	g.follow(project)
+	g.startLoop(project)
 
 	return nil
 }

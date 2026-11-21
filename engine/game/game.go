@@ -131,10 +131,7 @@ func New(project Project) (*Game, error) {
 	if project.Zone == nil {
 		return nil, fmt.Errorf("%w: its zone is not in the project", ErrStart)
 	}
-	levels := make(play.Levels, 0, len(project.Zone.Floors()))
-	for _, floorID := range project.Zone.Floors() {
-		levels = append(levels, play.Level{ID: floorID, Floor: project.Floors[floorID]})
-	}
+	levels := levelsOf(project)
 	cell := image.Pt(start.Col, start.Row)
 	if !play.CanStand(levels, start.Floor, cell) {
 		return nil, fmt.Errorf("%w: cell %d,%d of its floor", ErrStart, start.Col, start.Row)
@@ -150,19 +147,8 @@ func New(project Project) (*Game, error) {
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
 	}
-	for _, level := range levels {
-		if level.Floor == nil {
-			continue
-		}
-		for _, placement := range level.Floor.Placements() {
-			game.npcs = append(game.npcs, npcrun.Start(placement, level.ID, seed(project.Seed, placement.ID)))
-			if definition, ok := project.NPCs[placement.NPC]; ok && !definition.Behaviour.IsZero() {
-				game.flows[placement.NPC] = project.Workflows[definition.Behaviour]
-				game.behaviours[placement.NPC] = definition.Behaviour
-			}
-		}
-	}
-	slices.SortFunc(game.npcs, func(a, b *npcrun.NPC) int { return a.Placement.Compare(b.Placement) })
+	game.syncRunners()
+	game.follow(project)
 	game.startLoop(project)
 
 	return game, nil

@@ -14,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
+	"github.com/bradhannah/berad-engine/engine/zone"
 )
 
 const (
@@ -330,5 +331,111 @@ func TestPlaceMovesThePlayerAndNothingElse(t *testing.T) {
 	walk(played, play.East, play.StepTicks)
 	if played.Player().Cell != image.Pt(4, 3) {
 		t.Fatalf("the player walks on from where they were put: %+v", played.Player().Cell)
+	}
+}
+
+// harbour is a project gathered for a second zone: one floor of sand with
+// Bea at 2,2, who follows a day of her own, its own music, and the player
+// arriving at 4,4.
+func harbour(t *testing.T) game.Project {
+	t.Helper()
+	sand, err := tilefloor.New(8, 8, "sand")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sand.InsertPlacement(0, tilefloor.Placement{ID: id(beaPlaced), NPC: id(beaID), Col: 2, Row: 2}); err != nil {
+		t.Fatal(err)
+	}
+	zoned := zone.New()
+	if err := zoned.Insert(0, id(72)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zoned.InsertSound(0, "music/harbour"); err != nil {
+		t.Fatal(err)
+	}
+	settings := game.DefaultSettings()
+	settings.Start = game.Start{Zone: id(71), Floor: id(72), Col: 4, Row: 4}
+
+	return game.Project{
+		Settings: settings, Zone: zoned, Floors: map[ids.ULID]*tilefloor.Floor{id(72): sand},
+		NPCs:      map[ids.ULID]npc.NPC{id(beaID): follows(id(8))},
+		Workflows: map[ids.ULID]*flow.Workflow{id(8): rings(t, "gull")},
+		Values:    nil, Seconds: 0, Seed: 9, Names: nil, Signals: nil,
+	}
+}
+
+// TestEnterLeavesAZoneAndStartsAnother moves the game into a second zone:
+// the clerk of the town stops and Bea of the harbour starts at her
+// placement; the harbour's music is the zone's; a value counted in the town
+// and the clock's time carry over. Back in the town, the clerk starts her
+// day afresh.
+func TestEnterLeavesAZoneAndStartsAnother(t *testing.T) {
+	t.Parallel()
+	greetings := worldstate.New(id(40), "greetings", worldstate.ScopeWorld, worldstate.TypeInteger)
+	world := worldstate.NewDeclarations(worldstate.HoldsWorldState)
+	if err := world.Insert(greetings); err != nil {
+		t.Fatal(err)
+	}
+	town, away := town(t), harbour(t)
+	town.Values, away.Values = worldstate.NewCatalog(world, nil), worldstate.NewCatalog(world, nil)
+	played, err := game.New(town)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticks(played, 20)
+	if err := played.Values().Set(greetings, ids.ULID{}, worldstate.Value{Type: worldstate.TypeInteger, Integer: 3}); err != nil {
+		t.Fatal(err)
+	}
+	ticked, at := played.Ticks(), played.Clock().Seconds()
+	if err := played.Enter(away); err != nil {
+		t.Fatal(err)
+	}
+	player, runners := played.Player(), played.Runners()
+	if played.Zone() != id(71) || player.Floor != id(72) || player.Cell != image.Pt(4, 4) {
+		t.Fatalf("the player stands in the harbour: zone %v, %+v", played.Zone(), player)
+	}
+	if len(runners) != 1 || runners[0].NPC.NPC != id(beaID) || runners[0].NPC.Cell != image.Pt(2, 2) {
+		t.Fatalf("only Bea runs, from her placement: %+v", runners)
+	}
+	if sounds := played.ZoneSounds(); len(sounds) != 1 || sounds[0] != "music/harbour" {
+		t.Fatalf("the zone's sounds are the harbour's: %v", sounds)
+	}
+	if played.Values().Get(greetings, ids.ULID{}).Integer != 3 || played.Clock().Seconds() != at || played.Ticks() != ticked {
+		t.Fatal("the count and the time carry over")
+	}
+	cues, _ := ticks(played, 20)
+	if count(cues, "gull") != 1 || count(cues, "bell") != 0 {
+		t.Fatalf("Bea starts her day; the clerk, in the zone left, does nothing: %v", cues)
+	}
+	back := town
+	back.Settings.Start = game.Start{Zone: id(zoneID), Floor: id(groundID), Col: 1, Row: 1}
+	if err := played.Enter(back); err != nil {
+		t.Fatal(err)
+	}
+	cues, _ = ticks(played, 20)
+	if count(cues, "bell") != 1 || played.Player().Cell != image.Pt(1, 1) || played.Zone() != id(zoneID) {
+		t.Fatalf("back in the town, the clerk starts her day afresh: %v", cues)
+	}
+}
+
+// TestEnterRefusesWhereThePlayerCannotStand refuses a project with no zone,
+// and a start on a cell off the floor: the game goes on where it was.
+func TestEnterRefusesWhereThePlayerCannotStand(t *testing.T) {
+	t.Parallel()
+	played, err := game.New(town(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := harbour(t)
+	off.Settings.Start.Col = 40
+	none := harbour(t)
+	none.Zone = nil
+	for name, refused := range map[string]error{"a cell off the floor": played.Enter(off), "no zone": played.Enter(none)} {
+		if !errors.Is(refused, game.ErrPlace) {
+			t.Fatalf("%s is refused: %v", name, refused)
+		}
+	}
+	if played.Zone() != id(zoneID) || len(played.Runners()) != 1 || played.Player().Cell != image.Pt(5, 5) {
+		t.Fatal("refused, the game goes on in the town")
 	}
 }
