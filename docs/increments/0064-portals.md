@@ -167,6 +167,12 @@ Not in a pull request yet.
   anchor by its menu, one is told to fade, and Launch's game walks through
   both, launched once.
 
+- **Checks:** `make check` passes: formatting, the strict lint with no
+  findings, vet, and every test with the race detector. The real-window
+  suite, run from a frozen copy of the final code, passed all 85 of its
+  tests. `TestAPortalLeadsToAnotherZone` passed ten runs in ten on its own
+  first.
+
 ## Changed after its author tried it
 
 - None yet.
