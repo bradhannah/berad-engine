@@ -42,7 +42,9 @@ func (h *Hands) Step(played *game.Game, held play.Direction, closeBox bool) game
 //   - "heard:<cue>" once an NPC asked for a cue, and "layer:<cue>" while a
 //     zone or ambient sound plays it;
 //   - "ground:C,R:<id>" when the game's floor has that ground there;
-//   - "box:<text>" while the game shows that message box.
+//   - "box:<text>" while the game shows that message box;
+//   - "dark" while a portal that fades has the screen black, "light" while
+//     nothing is faded, and "leaving" while the player waits on a portal.
 func State(state string, played *game.Game, screen *Screen, sound *Sound, floors []ids.ULID) (bool, bool) {
 	kind, value, _ := strings.Cut(state, ":")
 	switch kind {
@@ -60,6 +62,14 @@ func State(state string, played *game.Game, screen *Screen, sound *Sound, floors
 		return box != nil && box.Text == value, true
 	case "player", "floor", "ground":
 		return placed(kind, value, played, floors), true
+	case "dark":
+		return played.Darkness() >= 1, true
+	case "light":
+		return played.Darkness() == 0, true
+	case "leaving":
+		_, leaving := played.Leaving()
+
+		return leaving, true
 	}
 
 	return false, false

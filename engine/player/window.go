@@ -2,8 +2,10 @@ package player
 
 import (
 	"fmt"
+	"image"
 	"io/fs"
 	"math"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -12,6 +14,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/gameload"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/play"
+	"github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
 // How much of the display a game's window may take when it opens, and the
@@ -52,6 +55,12 @@ type Window struct {
 	problem string
 	// floors are the zone's floors from the bottom up, for "floor:" states.
 	floors []ids.ULID
+	// folder is the project's documents, read again for each zone a portal
+	// leads to; report is told what could not be played, and said holds
+	// what it has been told, so each is told once.
+	folder *gameload.Folder
+	report func(string)
+	said   map[string]bool
 	// device is the screen's pixels to a point.
 	device float64
 	script *script
@@ -87,7 +96,8 @@ func Open(options Options) (*Window, error) {
 	}
 	window := &Window{
 		screen: NewScreen(), sound: NewSound(), audio: NewAudio(library, report), faces: faces, hands: Hands{held: 0},
-		played: nil, problem: "", floors: nil, device: 1, script: nil, failed: nil,
+		played: nil, problem: "", floors: nil, folder: folder, report: report, said: map[string]bool{}, device: 1,
+		script: nil, failed: nil,
 	}
 	if options.Script != nil {
 		window.script = &script{steps: options.Script, index: 0, tick: 0, shot: "", quit: false}
@@ -151,6 +161,7 @@ func (w *Window) Update() error {
 			w.sound.Silence(w.audio, w.audio)
 			w.played, w.problem = nil, "The player's floor is not in the zone."
 		} else {
+			w.travel()
 			w.sound.Update(w.audio, w.audio, w.played, step)
 		}
 	}
@@ -164,6 +175,59 @@ func (w *Window) Update() error {
 	}
 
 	return nil
+}
+
+// travel takes a player who is leaving by a portal where it leads
+// (increment 64), once the screen is dark for a portal that fades: to a
+// cell of the zone being played, or into another zone, whose documents are
+// gathered from the folder as the first zone's were. A portal that leads
+// nowhere, or to a cell nothing can stand on, leaves the player where they
+// are, and why is reported.
+func (w *Window) travel() {
+	portal, leaving := w.played.Leaving()
+	if !leaving || !w.played.Dark() {
+		return
+	}
+	start, state, why := gameload.Destination(w.folder, portal.To)
+	if state != gameload.Held {
+		w.stay(portal, why)
+
+		return
+	}
+	if start.Zone == w.played.Zone() {
+		if err := w.played.Place(start.Floor, image.Pt(start.Col, start.Row)); err != nil {
+			w.stay(portal, err.Error())
+		}
+
+		return
+	}
+	loaded, _ := gameload.Load(w.folder, &start)
+	if loaded.Project.Zone == nil {
+		w.stay(portal, gameload.NoZone)
+
+		return
+	}
+	if err := w.played.Enter(loaded.Project); err != nil {
+		w.stay(portal, err.Error())
+
+		return
+	}
+	w.floors = loaded.Project.Zone.Floors()
+	w.screen.Start(loaded, w.folder)
+	if len(loaded.Cues) > 0 {
+		w.audio.Prepare(loaded.Cues)
+	}
+}
+
+// stay leaves the player on a portal that cannot take them, and reports
+// why, once for each portal and reason.
+func (w *Window) stay(portal tilefloor.Portal, why string) {
+	w.played.Stay()
+	problem := fmt.Sprintf("The portal at cell %d,%d cannot take the player: %s.", portal.Col, portal.Row, why)
+	if !w.said[problem] {
+		w.said[problem] = true
+		w.report(problem)
+	}
 }
 
 // keys reads what is held and asked this tick, from the script when there
@@ -188,8 +252,8 @@ func (w *Window) keys() (play.Direction, bool) {
 }
 
 // State answers what a script waits on: "playing" while a game runs,
-// "problem:<start>" when none does and the window says why, and the states
-// of State.
+// "problem:<start>" when none does and the window says why, "zone:<name>"
+// while the game plays the zone of that name, and the states of State.
 func (w *Window) State(state string) bool {
 	switch {
 	case state == "playing":
@@ -200,10 +264,17 @@ func (w *Window) State(state string) bool {
 	case w.played == nil:
 		return false
 	}
+	if zone, asked := strings.CutPrefix(state, zoneState); asked {
+		return w.folder.Name(w.played.Zone()) == zone
+	}
 	in, _ := State(state, w.played, w.screen, w.sound, w.floors)
 
 	return in
 }
+
+// zoneState starts the state that says which zone is being played, by its
+// name.
+const zoneState = "zone:"
 
 // problemState starts the state that says why no game runs.
 const problemState = "problem:"
