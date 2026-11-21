@@ -55,8 +55,10 @@ type Project struct {
 // default when the game starts.
 type Game struct {
 	settings Settings
-	// zone is the zone being played, the one that is alive.
+	// zone is the zone being played, the one that is alive; seed fixes its
+	// NPCs' random choices.
 	zone   ids.ULID
+	seed   uint64
 	levels play.Levels
 	sounds []string
 	run    *play.Run
@@ -138,7 +140,7 @@ func New(project Project) (*Game, error) {
 		return nil, fmt.Errorf("%w: cell %d,%d of its floor", ErrStart, start.Col, start.Row)
 	}
 	game := &Game{
-		settings: project.Settings, zone: start.Zone, levels: levels, sounds: project.Zone.Sounds(),
+		settings: project.Settings, zone: start.Zone, seed: project.Seed, levels: levels, sounds: project.Zone.Sounds(),
 		run:  play.Start(start.Floor, cell),
 		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
@@ -170,17 +172,37 @@ func New(project Project) (*Game, error) {
 // running in the zone or in any zone. It runs while the zone is alive,
 // which is the whole game while a game plays one zone.
 func (g *Game) startLoop(project Project) {
-	zoneID, loopID := project.Settings.Start.Zone, project.Zone.Loop
+	loopID, loop := loopOf(project, g.zone)
+	if loop == nil {
+		return
+	}
+	g.loop, g.loopFlow, g.loopID = npcrun.StartLoop(g.zone, seed(g.seed, g.zone)), loop, loopID
+}
+
+// loopOf is the loop a project's zone runs, nil when it has none that fits
+// the zone: a zone loop running there or in any zone.
+func loopOf(project Project, zoneID ids.ULID) (ids.ULID, *flow.Workflow) {
+	if project.Zone == nil {
+		return ids.ULID{}, nil
+	}
+	loopID := project.Zone.Loop
 	loop := project.Workflows[loopID]
 	if loopID.IsZero() || loop == nil || loop.Purpose() != flow.PurposeZoneLoop ||
 		(!loop.RunsIn().IsZero() && loop.RunsIn() != zoneID) {
-		return
+		return ids.ULID{}, nil
 	}
-	g.loop, g.loopFlow, g.loopID = npcrun.StartLoop(zoneID, seed(project.Seed, zoneID)), loop, loopID
+
+	return loopID, loop
 }
 
 // Loop returns the zone's loop as it runs, nil when the zone has none.
-func (g *Game) Loop() *npcrun.NPC { return g.loop }
+func (g *Game) Loop() *npcrun.NPC {
+	if g.loopFlow == nil {
+		return nil
+	}
+
+	return g.loop
+}
 
 // seed is an NPC's random seed: the game's and its placement's.
 func seed(game uint64, placement ids.ULID) uint64 {
@@ -241,7 +263,7 @@ func (g *Game) Tick() []npcrun.Sound {
 		cues = heard(cues, character.Sounds)
 		g.sent = append(g.sent, character.Sent...)
 	}
-	if g.loop != nil {
+	if g.loop != nil && g.loopFlow != nil {
 		g.loop.Step(npcrun.World{
 			Names: g.names, Zone: g.levels, Workflow: g.loopFlow, Behaviour: g.loopID, Workflows: g.Workflow, Clock: g.clock,
 			Passed: passed, State: g.values, Here: g.zone, Others: others, Stage: g.stage,
@@ -258,9 +280,9 @@ func (g *Game) Tick() []npcrun.Sound {
 // audio library, so a Play sound can wait until its sound has played.
 func (g *Game) KnowCues(cueTicks func(cue string) int) { g.cueTicks = cueTicks }
 
-// runners are the NPCs, then the zone's loop when it has one.
+// runners are the NPCs, then the zone's loop when it has one to run.
 func (g *Game) runners() []*npcrun.NPC {
-	if g.loop == nil {
+	if g.loop == nil || g.loopFlow == nil {
 		return g.npcs
 	}
 
@@ -310,7 +332,7 @@ func (g *Game) Runners() []Runner {
 
 // LoopRunner returns the zone's loop as it runs, if the zone has one.
 func (g *Game) LoopRunner() (Runner, bool) {
-	if g.loop == nil {
+	if g.loop == nil || g.loopFlow == nil {
 		return Runner{NPC: nil, Workflow: nil, Behaviour: ids.ULID{}}, false
 	}
 
