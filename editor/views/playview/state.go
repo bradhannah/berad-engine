@@ -11,8 +11,9 @@ import (
 // hasState answers input scripts waiting on the game:
 //
 //   - "playing" once it runs, and "problem:<start>" when it cannot;
-//   - "scale:N.NN" when the screen is drawn that many times its size, and
-//     "launches:N" after N launches;
+//   - "scale:N.NN" when the screen is drawn that many times its size,
+//     "launches:N" after N launches, and "zone:<name>" while the game plays
+//     the zone of that name;
 //   - and the states of the engine's player, which a game's own window
 //     answers too: "player:C,R", "floor:N", "sprite:<what>", "heard:<cue>",
 //     "layer:<cue>", "ground:C,R:<id>" and "box:<text>".
@@ -27,6 +28,8 @@ func (s *State) hasState(state string) bool {
 		return strconv.FormatFloat(s.screen.Scale()/pen.Scale(), 'f', 2, 64) == value
 	case "launches":
 		return strconv.Itoa(s.launches) == value
+	case "zone":
+		return s.game != nil && s.zoneNamed == value
 	}
 	if s.game == nil {
 		return s.stateWithNoGame(kind, value)

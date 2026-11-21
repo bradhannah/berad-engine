@@ -65,6 +65,13 @@ func TestMakingAndCallingAModule(t *testing.T) {
 	t.Logf("screenshots: %s %s %s", moduleShot, callShot, calledShot)
 }
 
+// fetchesStockSeed is a seed with which the sample's clerk stretches first
+// and calls Fetch stock about half a minute into a preview that starts at
+// 08:00: long after Watch has opened, and long before the walk ends. With
+// most seeds she makes that call in the preview's first half second, before
+// Watch can open, which is what made this walk fail now and then.
+const fetchesStockSeed = "4"
+
 // TestClerkCallsFetchStock previews the sample and watches the clerk: its
 // day calls Fetch stock, giving it the shelf, and Watch names the path down
 // through the call while the clerk walks there, then the clerk comes back
@@ -95,10 +102,12 @@ func TestClerkCallsFetchStock(t *testing.T) {
 		must("state:path=", 600), wait(10), shoot(backShot), quit(),
 	)
 	clockScript := script(must("state:running", 3600), wait(30), quit())
-	runEditor(t, binary, project, scripts{
+	// The clerk fetches stock or stretches, at random; the seed is fixed so
+	// the walk sees the call every time (increment 63).
+	runEditorWith(t, binary, project, scripts{
 		"browser": {browserScript}, "workflow": {fetchScript}, "map": {mapScript}, "watch": {watchScript},
 		"clock": {clockScript},
-	})
+	}, "BERAD_SEED="+fetchesStockSeed)
 	noCrashes(t, project)
 	t.Logf("screenshots: %s %s %s", watchShot, backShot, stripShot)
 }

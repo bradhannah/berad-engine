@@ -92,15 +92,41 @@ func (s *State) menuItems(floorData *floor.Floor, cell Cell, onFloor bool) []ui.
 		here = append(here, menuItem(menuClearTop, "Remove “"+tileName(top)+"”", false))
 	}
 	here = append(here, s.soundItems(floorData, cell)...)
-	busy := live || s.choosing || s.starting
-	standable := s.canStart(floorData, cell)
-	here = append(here, menuItem(menuPreviewHere, "Preview from here", busy || !standable),
-		menuItem(menuPlayHere, "Play from here", !standable), s.startItem(standable, cell))
+	here = append(here, s.gameItems(floorData, cell, live)...)
 	if len(items) > 0 {
 		here[0].Rule = true
 	}
 
 	return append(items, here...)
+}
+
+// gameItems are the menu's items for trying the game from a cell: Preview
+// from here, Play from here, Move the player here while there is a game
+// whose player can be moved, and the player start.
+func (s *State) gameItems(floorData *floor.Floor, cell Cell, live bool) []ui.MenuItem {
+	busy := live || s.choosing || s.starting
+	standable := s.canStart(floorData, cell)
+	items := []ui.MenuItem{
+		menuItem(menuPreviewHere, "Preview from here", busy || !standable),
+		menuItem(menuPlayHere, "Play from here", !standable),
+	}
+	if s.canMovePlayer() {
+		items = append(items, menuItem(menuMoveHere, "Move the player here", !standable))
+	}
+
+	return append(items, s.startItem(standable, cell))
+}
+
+// chooseGame carries out one of the items for trying the game from a cell.
+func (s *State) chooseGame(ctx *frame.Context, chosen string, cell Cell) {
+	switch chosen {
+	case menuPreviewHere:
+		s.startPreviewAt(ctx, cell)
+	case menuPlayHere:
+		s.playFrom(ctx, cell)
+	case menuMoveHere:
+		s.movePlayer(ctx, cell)
+	}
 }
 
 // chosenNPC returns the name of the NPC chosen in the NPC list, if any.
@@ -166,10 +192,8 @@ func (s *State) choose(ctx *frame.Context, floorData *floor.Floor, chosen string
 		gesture := s.window.String() + "-clear-" + strconv.Itoa(s.stroke.count)
 		cleared := tilefloor.Cell{Col: cell.X, Row: cell.Y, Layer: tilefloor.LayerTop, Tile: ""}
 		s.command(ctx, s.floor, tilefloor.PaintEdit, gesture, tilefloor.PaintArgs{Cells: []tilefloor.Cell{cleared}}, nil)
-	case menuPreviewHere:
-		s.startPreviewAt(ctx, cell)
-	case menuPlayHere:
-		s.playFrom(ctx, cell)
+	case menuPreviewHere, menuPlayHere, menuMoveHere:
+		s.chooseGame(ctx, chosen, cell)
 	case menuSetStart:
 		s.setStart(ctx, cell)
 	case menuExtendFloor:

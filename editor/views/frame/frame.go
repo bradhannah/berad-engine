@@ -189,6 +189,10 @@ type Context struct {
 	Size   image.Point
 	// Frame is the shared status bar and window state.
 	Frame *Frame
+	// Seed, when it is not zero, fixes the random choices of the previews
+	// and launches this window starts, so a scripted run repeats; zero
+	// leaves each to pick its own, new every time (increment 63).
+	Seed uint64
 	// InspectorFolded is set while the inspector is folded to its strip.
 	// Size is then wider than the window by all but the strip, so an
 	// inspector at the right edge falls past it; a view that places its

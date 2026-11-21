@@ -5,6 +5,8 @@
 package docsource
 
 import (
+	"slices"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -135,4 +137,74 @@ func artOf(document model.Document) any {
 	}
 
 	return nil
+}
+
+// Asked is a window's documents for something that gathers a game from
+// them: each document asked for that the project holds is subscribed to, so
+// it arrives, and noted as it was when first asked for, so that a change to
+// it, or its arrival, can be seen later with Stamp. A window's documents
+// arrive while it works, so what a gathering saw is noted as it looks, not
+// read again afterwards.
+type Asked struct {
+	Source
+
+	subscribe func(ids.ULID)
+	seen      map[ids.ULID]uint64
+	index     uint64
+}
+
+// Asking shows a window's documents, subscribing to each one asked for
+// that the project holds.
+func (s Source) Asking(subscribe func(ids.ULID)) Asked {
+	return Asked{Source: s, subscribe: subscribe, seen: map[ids.ULID]uint64{}, index: s.mark(project.IndexID())}
+}
+
+// mark is a document as it is now, for telling when it changes: zero while
+// the window does not hold it, and otherwise one more than its revision.
+func (s Source) mark(documentID ids.ULID) uint64 {
+	mark := uint64(0)
+	s.docs.View(documentID, func(document client.Document) { mark = document.Revision + 1 })
+
+	return mark
+}
+
+// View shows a document, subscribing to it when the project holds it.
+func (a Asked) View(documentID ids.ULID, show func(gameload.Document)) gameload.State {
+	// The mark is taken before the document is shown, so a document that
+	// arrives in between is seen as changed, never missed.
+	mark := a.mark(documentID)
+	held := a.Source.View(documentID, show)
+	if held != gameload.Missing {
+		a.subscribe(documentID)
+		if _, noted := a.seen[documentID]; !noted {
+			a.seen[documentID] = mark
+		}
+	}
+
+	return held
+}
+
+// Seen lists the documents asked for so far that the project holds, in
+// order, and a stamp of what they and the project index were when first
+// asked for: Stamp gives another once any of them has changed or arrived.
+func (a Asked) Seen() ([]ids.ULID, uint64) {
+	read, stamp := make([]ids.ULID, 0, len(a.seen)), a.index
+	for documentID, mark := range a.seen {
+		read = append(read, documentID)
+		stamp += mark
+	}
+	slices.SortFunc(read, func(a, b ids.ULID) int { return a.Compare(b) })
+
+	return read, stamp
+}
+
+// Stamp is a stamp of some documents and the project index as they are
+// now, to compare with the one a gathering saw.
+func (s Source) Stamp(documents []ids.ULID) uint64 {
+	stamp := s.mark(project.IndexID())
+	for _, documentID := range documents {
+		stamp += s.mark(documentID)
+	}
+
+	return stamp
 }

@@ -156,9 +156,15 @@ type State struct {
 	floors []ids.ULID
 	floor  ids.ULID
 	subs   map[ids.ULID]bool
-	tool   Tool
-	tile   map[Tool]string
-	camera camera
+	// playing says Launch's game is running in the Play tab, so its player
+	// can be moved from this Map (increment 63).
+	playing bool
+	// arriving is the documents subscribed to whose answer has not come
+	// yet: while any is on its way a preview's world waits (increment 63).
+	arriving map[ids.ULID]bool
+	tool     Tool
+	tile     map[Tool]string
+	camera   camera
 	// sprites is the art drawn for stand-ins that sprites show.
 	sprites *spriteArt
 	size    image.Point
@@ -260,7 +266,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, playerStart: game.NoStart(),
 		ambient: ambientSounds{library: nil, asking: false, moving: ids.ULID{}, changing: ids.ULID{}}, theme: theme,
-		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
+		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, playing: false, arriving: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
@@ -349,6 +355,28 @@ const shortID = 6
 // Focused returns the focused text field.
 func (s *State) Focused() *ui.TextField { return s.focus.Current() }
 
+// sessionChanged follows what the windows share that a Map keeps: when the
+// next preview's clock starts, and whether Launch's game is running in the
+// Play tab. It reports whether the topic was one of those.
+func (s *State) sessionChanged(session protocol.Session) bool {
+	switch session.Topic {
+	case protocol.TopicPlaying:
+		var playing protocol.Playing
+		if err := json.Unmarshal(session.Value, &playing); err == nil {
+			s.playing = playing.Running
+		}
+	case protocol.TopicClockStart:
+		var start protocol.ClockStart
+		if err := json.Unmarshal(session.Value, &start); err == nil {
+			s.start = start.Seconds
+		}
+	default:
+		return false
+	}
+
+	return true
+}
+
 // Changed reacts to the orchestrator: the zone's floors, picks, and the art
 // that sprites show stand-ins with.
 func (s *State) Changed(update client.Update, ctx *frame.Context) {
@@ -362,11 +390,7 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		s.previewChanged(update, ctx)
 	case update.PreviewControl != nil:
 		s.control(*update.PreviewControl, ctx)
-	case update.Session != nil && update.Session.Topic == protocol.TopicClockStart:
-		var start protocol.ClockStart
-		if err := json.Unmarshal(update.Session.Value, &start); err == nil {
-			s.start = start.Seconds
-		}
+	case update.Session != nil && s.sessionChanged(*update.Session):
 	case update.PickStart != nil, update.PickCancel != nil:
 		s.pickChanged(update, ctx)
 	case update.Snapshot != nil && *update.Snapshot == s.zone, update.Event != nil && update.Event.Document == s.zone:
@@ -443,8 +467,9 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 	if s.subs[document] {
 		return
 	}
-	s.subs[document] = true
+	s.subs[document], s.arriving[document] = true, true
 	ctx.Requests.Subscribe(document, func(err error) {
+		delete(s.arriving, document)
 		if err != nil {
 			delete(s.subs, document)
 			ctx.Frame.Status(err.Error())
@@ -1691,7 +1716,8 @@ func (s *State) locateLaidOut(name, value string) (image.Point, bool) {
 // "floor:N" when the Nth floor from the bottom is shown,
 // "bounds:C,R,W,H" when the current floor has those bounds, "zoom:N" when
 // the zoom control shows N%, "sprite:…" and "art:…" for the art sprites
-// show stand-ins with (hasArt), "previewing"
+// show stand-ins with (hasArt), "launched" while Launch's game runs in the
+// Play tab, "previewing"
 // while this window runs a preview, "player:C,R" or "remote-player:C,R"
 // when this window's or another window's player stands on that cell, and
 // "placement:C,R" or "placement:C,R=Name" when an NPC, or the named NPC,
@@ -1699,7 +1725,8 @@ func (s *State) locateLaidOut(name, value string) (image.Point, bool) {
 func (s *State) hasState(state string, docs frame.Docs) bool {
 	_, offView := s.floorOffView(docs)
 	simple := map[string]bool{
-		"picking": s.pick != nil, "previewing": s.preview != nil, "keys": s.keySheet.IsOpen(), "floor-off-view": offView,
+		"picking": s.pick != nil, "previewing": s.preview != nil, "launched": s.playing, "keys": s.keySheet.IsOpen(),
+		"floor-off-view": offView,
 	}
 	if s.pick != nil {
 		simple["pick-now="+s.pick.Now.Name] = true

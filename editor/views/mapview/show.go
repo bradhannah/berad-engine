@@ -99,10 +99,10 @@ func boxArea(grid image.Rectangle) image.Rectangle {
 // closeBox closes a box that waits for the player when they click the map,
 // reporting whether it did.
 func (s *State) closeBox(input *ui.Input) bool {
-	if s.preview == nil || !s.preview.stage.Holding() || !input.Pressed || !input.Cursor.In(s.Grid()) {
+	if s.preview == nil || !s.preview.game.Stage().Holding() || !input.Pressed || !input.Cursor.In(s.Grid()) {
 		return false
 	}
-	s.preview.stage.Close()
+	s.preview.game.Stage().Close()
 	input.ClearPointer()
 
 	return true

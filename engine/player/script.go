@@ -77,7 +77,10 @@ func (s *script) hands() (play.Direction, bool) {
 // advance moves the script on after a tick, given whether the game is in a
 // state; a state a step must reach and never does is an error.
 func (s *script) advance(inState func(state string) bool) error {
-	if s.index >= len(s.steps) {
+	// A screenshot a step asked for is taken when the window next draws;
+	// the script waits for it, so the step after cannot end first and leave
+	// it untaken.
+	if s.index >= len(s.steps) || s.shot != "" {
 		return nil
 	}
 	step := s.steps[s.index]

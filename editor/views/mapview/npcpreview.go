@@ -3,33 +3,25 @@ package mapview
 import (
 	"cmp"
 	"fmt"
-	"hash/fnv"
 	"image"
 	"math"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/bradhannah/berad-engine/editor/client"
-	npcplugin "github.com/bradhannah/berad-engine/editor/plugins/npc"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
-	workflowplugin "github.com/bradhannah/berad-engine/editor/plugins/workflow"
-	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/pen"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
-	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/editor/views/showdraw"
-	"github.com/bradhannah/berad-engine/editor/views/signals"
-	"github.com/bradhannah/berad-engine/editor/views/valuetree"
 	"github.com/bradhannah/berad-engine/engine/clock"
+	"github.com/bradhannah/berad-engine/engine/game"
 	"github.com/bradhannah/berad-engine/engine/ids"
 	"github.com/bradhannah/berad-engine/engine/npcrun"
-	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
 
@@ -48,35 +40,7 @@ const (
 	// stoppedStepLimit, ten minutes of them, room for a walk to finish.
 	stepLimit        = 24 * 60 * stepBudget
 	stoppedStepLimit = 10 * stepBudget
-	// restartedByEdit is why an NPC starts again when its workflow is
-	// edited during a preview.
-	restartedByEdit = "Started again: its workflow was changed"
 )
-
-// npcRun is one NPC in this window's preview: its runner, and a copy of its
-// workflow at the revision it last saw, so an edit restarts it.
-type npcRun struct {
-	npc      *npcrun.NPC
-	workflow *flow.Workflow
-	source   ids.ULID
-	revision uint64
-}
-
-// startClock starts the preview's clock at the time set in the Clock
-// window.
-func (s *State) startClock() *clock.Clock {
-	return clock.New(s.start, clock.MinutePerSecond)
-}
-
-// seed is an NPC's random seed: the run and its placement, so a run repeats
-// and NPCs differ.
-func seed(run, placement ids.ULID) uint64 {
-	hash := fnv.New64a()
-	_, _ = hash.Write(run[:])
-	_, _ = hash.Write(placement[:])
-
-	return hash.Sum64()
-}
 
 // watchClicked watches the NPC clicked during a preview, and reports whether
 // a click went to one.
@@ -103,172 +67,29 @@ func (s *State) locatePreviewWidget(widget string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// syncRunners keeps a runner for every placement on the zone's floors:
-// placements added during the preview start running, and removed ones stop.
-// Floors are read one at a time.
-func (s *State) syncRunners(docs frame.Docs) {
-	present := map[ids.ULID]bool{}
-	for _, floorID := range s.floors {
-		docs.View(floorID, func(document client.Document) {
-			floorDoc, ok := document.Model.(*tilefloor.Document)
-			if !ok {
-				return
-			}
-			for _, placement := range floorDoc.Floor.Placements() {
-				present[placement.ID] = true
-				if _, running := s.preview.npcs[placement.ID]; !running {
-					s.preview.npcs[placement.ID] = &npcRun{
-						npc: npcrun.Start(placement, floorID, seed(s.preview.id, placement.ID)), workflow: nil,
-						source: ids.ULID{}, revision: 0,
-					}
-				}
-			}
-		})
-	}
-	for placement := range s.preview.npcs {
-		if !present[placement] {
-			delete(s.preview.npcs, placement)
-		}
-	}
-}
-
-// runners lists the preview's NPCs in placement order, so they step the same
-// way every run.
-func (s *State) runners() []*npcRun {
-	list := make([]*npcRun, 0, len(s.preview.npcs))
-	for _, run := range s.preview.npcs {
-		list = append(list, run)
-	}
-	slices.SortFunc(list, func(a, b *npcRun) int { return a.npc.Placement.Compare(b.npc.Placement) })
-
-	return list
-}
-
-// refreshWorkflow keeps an NPC's copy of its behaviour current: a changed
-// behaviour, or an edit to it, restarts the NPC. Documents are read one at a
-// time.
-func (s *State) refreshWorkflow(ctx *frame.Context, run *npcRun) {
-	behaviour := ids.ULID{}
-	if s.names.Name(run.npc.NPC, "") != "" {
-		s.subscribe(run.npc.NPC, ctx)
-	}
-	ctx.Docs.View(run.npc.NPC, func(document client.Document) {
-		if npcDoc, ok := document.Model.(*npcplugin.Document); ok {
-			behaviour = npcDoc.NPC.Behaviour
-		}
-	})
-	if behaviour.IsZero() || s.names.Name(behaviour, "") == "" {
-		run.workflow, run.source = nil, ids.ULID{}
-
-		return
-	}
-	s.subscribe(behaviour, ctx)
-	ctx.Docs.View(behaviour, func(document client.Document) {
-		workflowDoc, ok := document.Model.(*workflowplugin.Document)
-		if !ok || (behaviour == run.source && document.Revision == run.revision && run.workflow != nil) {
-			return
-		}
-		restart := run.workflow != nil
-		run.workflow, run.source, run.revision = workflowDoc.Workflow.Clone(), behaviour, document.Revision
-		if restart {
-			run.npc.Restart(restartedByEdit)
-		}
-		if cues := cuesOf(run.workflow); len(cues) > 0 {
-			ctx.Sounds.Prepare(cues)
-		}
-	})
-}
-
-// refreshLoop keeps the zone loop's copy of its workflow current, as
-// refreshWorkflow keeps an NPC's: an edit restarts it. A zone with no loop,
-// or with one that is no zone loop or runs in another zone, runs none.
-// Documents are read one at a time.
-func (s *State) refreshLoop(ctx *frame.Context) {
-	run := s.preview.loop
-	loopID := ids.ULID{}
-	ctx.Docs.View(s.zone, func(document client.Document) {
-		if zoneDoc, ok := document.Model.(*zoneplugin.Document); ok {
-			loopID = zoneDoc.Zone.Loop
-		}
-	})
-	if loopID.IsZero() || s.names.Name(loopID, "") == "" || !s.takeLoop(ctx, loopID) {
-		run.workflow, run.source = nil, ids.ULID{}
-	}
-}
-
-// takeLoop keeps the zone loop's copy of a loop current, reporting whether
-// the loop fits the zone: a zone loop running there or in any zone.
-func (s *State) takeLoop(ctx *frame.Context, loopID ids.ULID) bool {
-	run, fits := s.preview.loop, false
-	s.subscribe(loopID, ctx)
-	ctx.Docs.View(loopID, func(document client.Document) {
-		workflowDoc, ok := document.Model.(*workflowplugin.Document)
-		if !ok {
-			return
-		}
-		loop := workflowDoc.Workflow
-		fits = loop.Purpose() == flow.PurposeZoneLoop && (loop.RunsIn().IsZero() || loop.RunsIn() == s.zone)
-		if !fits || (loopID == run.source && document.Revision == run.revision && run.workflow != nil) {
-			return
-		}
-		restart := run.workflow != nil
-		run.workflow, run.source, run.revision = loop.Clone(), loopID, document.Revision
-		if restart {
-			run.npc.Restart(restartedByEdit)
-		}
-		if cues := cuesOf(run.workflow); len(cues) > 0 {
-			ctx.Sounds.Prepare(cues)
-		}
-	})
-
-	return fits
-}
-
-// cuesOf lists the cues a workflow's Play sounds play, so they can be
-// fetched before an NPC reaches them.
-func cuesOf(workflow *flow.Workflow) []string {
-	var cues []string
-	for _, node := range workflow.Nodes() {
-		if cue, err := node.Cue("cue"); node.Kind == flow.KindPlaySound && err == nil && cue != "" {
-			cues = append(cues, cue)
-		}
-	}
-
-	return cues
-}
-
-// stepNPCs runs every NPC for one tick, unless they are paused. During a
-// step it runs them as fast as it can, up to stepBudget ticks a frame, until
-// the watched NPC changes node, then pauses them. The cues the NPCs' Play
-// sounds asked for in the tick they ran, or the tick a step ended in, play;
-// those of the ticks a step hurries through do not.
+// stepNPCs runs the world for one tick, unless the NPCs are paused or a
+// document the Map asked for has yet to arrive: the
+// game runtime's own tick, of the boxes, the clock, the signals, the NPCs
+// and the zone's loop. During a step it runs ticks as fast as it can, up to
+// stepBudget a frame, until the watched NPC changes node, then pauses. The
+// cues the NPCs' Play sounds asked for in the tick they ran, or the tick a
+// step ended in, play; those of the ticks a step hurries through do not.
 func (s *State) stepNPCs(ctx *frame.Context) {
-	s.syncRunners(ctx.Docs)
-	if s.preview.paused {
+	// Documents arrive in no order, so the world waits while one the Map
+	// asked for is on its way: no NPC follows a workflow that arrived before
+	// the values it reads, or the workflows it calls.
+	if s.preview.paused || len(s.arriving) > 0 {
 		return
 	}
-	runners := s.runners()
-	for _, run := range runners {
-		s.refreshWorkflow(ctx, run)
-	}
-	s.refreshLoop(ctx)
-	s.refreshModules(ctx, append(slices.Clone(runners), s.preview.loop))
 	s.nameAnchors(ctx.Docs)
-	zone := docsZone{floors: s.floors, docs: ctx.Docs}
-	s.declareValues(ctx.Docs)
 	ticks := 1
 	if s.preview.stepping {
 		ticks = stepBudget
 	}
 	var asked []npcrun.Sound
-	s.preview.named, _ = signals.Declared(ctx.Docs)
-	base := npcrun.World{
-		Names: places.NewNames(ctx.Docs), Zone: zone, Workflow: nil, Behaviour: ids.ULID{}, Workflows: s.module,
-		Clock: s.preview.clock, Passed: 0, State: s.preview.values, Here: s.zone, Others: nil,
-		Stage: s.preview.stage, CueTicks: s.cueTicks, Signals: s.preview.named,
-	}
 	for range ticks {
-		asked = s.stepTick(runners, base)
+		asked = s.preview.game.Tick()
+		s.keepTick()
 		if s.preview.stepping && s.stepped() {
 			s.hear(ctx, asked)
 
@@ -284,10 +105,22 @@ func (s *State) stepNPCs(ctx *frame.Context) {
 	s.giveUpStep(ctx)
 }
 
+// keepTick keeps what a tick wrote and passed: the lines each NPC's and the
+// zone loop's Logs wrote, and the watched NPC's changes of node.
+func (s *State) keepTick() {
+	for _, run := range s.preview.game.Runners() {
+		s.keepLines(run.NPC, run.NPC.Placement.String())
+	}
+	if loop, has := s.preview.game.LoopRunner(); has {
+		s.keepLines(loop.NPC, s.zone.String())
+	}
+	s.keepTrail()
+}
+
 // giveUpStep ends a step that has run its limit of ticks without the
 // watched NPC changing node, pauses the NPCs, and says why it gave up.
 func (s *State) giveUpStep(ctx *frame.Context) {
-	stopped := s.preview.clock.Stopped()
+	stopped := s.preview.game.Clock().Stopped()
 	if s.preview.stepTicks < stepLimit && (!stopped || s.preview.stepTicks < stoppedStepLimit) {
 		return
 	}
@@ -322,11 +155,11 @@ func (s *State) hear(ctx *frame.Context, sounds []npcrun.Sound) {
 // once it has changed node, or has gone. It reports whether the step is over.
 func (s *State) stepped() bool {
 	watched, ok := s.watchedRun()
-	if ok && len(watched.npc.Taken) == 0 {
+	if ok && len(watched.NPC.Taken) == 0 {
 		return false
 	}
 	if ok {
-		for _, change := range watched.npc.Taken {
+		for _, change := range watched.NPC.Taken {
 			s.preview.step = append(s.preview.step, previewChange(change))
 		}
 	}
@@ -342,14 +175,15 @@ func (s *State) control(control protocol.PreviewControl, ctx *frame.Context) {
 	if s.preview == nil || control.Run != s.preview.id {
 		return
 	}
+	played := s.preview.game.Clock()
 	switch control.Action {
 	case protocol.ControlRate:
-		s.preview.clock.SetRate(clock.Rate(control.Rate))
+		played.SetRate(clock.Rate(control.Rate))
 	case protocol.ControlJump:
-		s.preview.clock.Jump(control.Seconds)
+		played.Jump(control.Seconds)
 		ctx.Frame.Status("Jumped to " + clock.Format(control.Seconds) + ". NPCs start their workflows again.")
 	case protocol.ControlStopClock, protocol.ControlStartClock:
-		s.preview.clock.Stop(control.Action == protocol.ControlStopClock)
+		played.Stop(control.Action == protocol.ControlStopClock)
 	case protocol.ControlWatch:
 		s.preview.watched, s.preview.step, s.preview.trail = control.Placement, nil, nil
 	case protocol.ControlPause:
@@ -371,7 +205,7 @@ func (s *State) startStep(ctx *frame.Context) {
 	if !ok {
 		return
 	}
-	if watched.workflow == nil {
+	if watched.Workflow == nil {
 		ctx.Frame.Refuse("Cannot step: the watched NPC has no behaviour to follow.")
 
 		return
@@ -417,45 +251,17 @@ func previewChange(change npcrun.Change) protocol.PreviewChange {
 	}
 }
 
-// stepTick runs one tick of every NPC and the zone's loop, the signals sent
-// on the latest tick landing first, and returns the sounds they asked for.
-func (s *State) stepTick(runners []*npcRun, base npcrun.World) []npcrun.Sound {
-	base.Passed = s.preview.clock.Advance()
-	s.preview.stage.Tick()
-	base.Others = othersOf(runners)
-	npcrun.Deliver(s.preview.signals, s.signalled(runners), s.zone)
-	s.preview.signals = s.preview.signals[:0]
-	var asked []npcrun.Sound
-	step := func(run *npcRun, writer string) {
-		world := base
-		world.Workflow, world.Behaviour = run.workflow, run.source
-		run.npc.Step(world, s.preview.run.Tick())
-		s.preview.signals = append(s.preview.signals, run.npc.Sent...)
-		asked = append(asked, run.npc.Sounds...)
-		s.keepLines(run.npc, writer)
-	}
-	for _, run := range runners {
-		step(run, run.npc.Placement.String())
-	}
-	if loop := s.preview.loop; loop.workflow != nil {
-		step(loop, s.zone.String())
-	}
-	s.keepTrail()
-
-	return asked
-}
-
 // signalEntity adds what an NPC's signals are doing to its entity: the one
 // it is handling, from whom, what it will resume, and those held.
-func (s *State) signalEntity(entity *protocol.PreviewEntity, run *npcRun) {
-	if heard, handling := run.npc.Handling(); handling {
+func (s *State) signalEntity(entity *protocol.PreviewEntity, run game.Runner) {
+	if heard, handling := run.NPC.Handling(); handling {
 		entity.Handling = s.signalName(heard.Signal)
 		if !heard.From.IsZero() {
 			entity.HandlingFrom = s.names.Name(heard.From, "")
 		}
-		_, entity.Resumes = run.npc.Resumes(run.workflow, s.module)
+		_, entity.Resumes = run.NPC.Resumes(run.Workflow, s.preview.game.Workflow)
 	}
-	for _, held := range run.npc.Held() {
+	for _, held := range run.NPC.Held() {
 		entity.Held = append(entity.Held, s.signalName(held.Signal))
 	}
 }
@@ -467,20 +273,6 @@ func (s *State) signalName(signal ids.ULID) string {
 	}
 
 	return signal.String()
-}
-
-// signalled lists the runners a signal can reach: the NPCs, then the
-// zone's loop when it has one.
-func (s *State) signalled(runners []*npcRun) []*npcrun.NPC {
-	heard := make([]*npcrun.NPC, 0, len(runners)+1)
-	for _, run := range runners {
-		heard = append(heard, run.npc)
-	}
-	if loop := s.preview.loop; loop.workflow != nil {
-		heard = append(heard, loop.npc)
-	}
-
-	return heard
 }
 
 // previewLanes are a Together's lanes as the preview's state carries them.
@@ -499,19 +291,20 @@ func previewLanes(lanes []npcrun.Lane) []protocol.PreviewLane {
 }
 
 // npcEntity is an NPC as the preview's state carries it.
-func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
-	across, down := run.npc.At()
+func (s *State) npcEntity(run game.Runner) protocol.PreviewEntity {
+	runner := run.NPC
+	across, down := runner.At()
 
-	workflow := run.source
-	if module := run.npc.Module(); !module.IsZero() {
+	workflow := run.Behaviour
+	if module := runner.Module(); !module.IsZero() {
 		workflow = module
 	}
-	callers := run.npc.Callers()
+	callers := runner.Callers()
 	calls := make([]protocol.PreviewCall, 0, len(callers))
 	for _, call := range callers {
 		caller := call.Workflow
 		if caller.IsZero() {
-			caller = run.source
+			caller = run.Behaviour
 		}
 		calls = append(calls, protocol.PreviewCall{Workflow: caller, Call: call.Call})
 	}
@@ -519,7 +312,7 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 	if len(calls) == 0 {
 		calls = nil
 	}
-	climbs := run.npc.Way()
+	climbs := runner.Way()
 	way := make([]protocol.PreviewClimb, 0, len(climbs))
 	for _, climb := range climbs {
 		way = append(way, protocol.PreviewClimb{
@@ -529,15 +322,15 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 	}
 
 	entity := protocol.PreviewEntity{
-		ID: run.npc.Placement.String(), Floor: run.npc.Floor, X: across, Y: down,
-		Face: [2]int{run.npc.Facing.X, run.npc.Facing.Y}, NPC: run.npc.NPC, Workflow: workflow,
-		Node: run.npc.Node, Activity: run.npc.Activity(s.running(run)), Status: run.npc.Status,
-		Last: previewChange(run.npc.Last), Changes: run.npc.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
-		Sprite: s.spriteNow(run.npc.NPC), Saying: "", SayingLeft: 0, Lanes: previewLanes(run.npc.Lanes(s.running(run))),
+		ID: runner.Placement.String(), Floor: runner.Floor, X: across, Y: down,
+		Face: [2]int{runner.Facing.X, runner.Facing.Y}, NPC: runner.NPC, Workflow: workflow,
+		Node: runner.Node, Activity: runner.Activity(s.running(run)), Status: runner.Status,
+		Last: previewChange(runner.Last), Changes: runner.Changes, Calls: calls, Way: way, Loop: ids.ULID{},
+		Sprite: s.spriteNow(runner.NPC), Saying: "", SayingLeft: 0, Lanes: previewLanes(runner.Lanes(s.running(run))),
 		Handling: "", HandlingFrom: "", Resumes: "", Held: nil,
 	}
 	s.signalEntity(&entity, run)
-	if line, saying := run.npc.Saying(); saying {
+	if line, saying := runner.Saying(); saying {
 		entity.Saying, entity.SayingLeft = line.Text, float64(line.Left)/float64(line.Ticks)
 	}
 
@@ -547,7 +340,7 @@ func (s *State) npcEntity(run *npcRun) protocol.PreviewEntity {
 // spriteNow is the sprite an NPC shows in the preview now: its sprite value,
 // which starts as the sprite in its details and its workflows can change.
 func (s *State) spriteNow(npcID ids.ULID) ids.ULID {
-	values := s.preview.values
+	values := s.preview.game.Values()
 	declared, known := values.Catalog().Lookup(worldstate.ScopeNPC, npcID, worldstate.SpriteID())
 	if npcID.IsZero() || !known {
 		return ids.ULID{}
@@ -558,8 +351,8 @@ func (s *State) spriteNow(npcID ids.ULID) ids.ULID {
 
 // loopEntity is the zone's loop as the preview's state carries it: an
 // entity with no NPC, no floor and the zone's ID.
-func (s *State) loopEntity() protocol.PreviewEntity {
-	entity := s.npcEntity(s.preview.loop)
+func (s *State) loopEntity(loop game.Runner) protocol.PreviewEntity {
+	entity := s.npcEntity(loop)
 	entity.ID, entity.Loop = s.zone.String(), s.zone
 
 	return entity
@@ -567,15 +360,17 @@ func (s *State) loopEntity() protocol.PreviewEntity {
 
 // watchedRun is the runner being watched: an NPC's, or the zone loop's,
 // whose ID is the zone's.
-func (s *State) watchedRun() (*npcRun, bool) {
-	if run, ok := s.preview.npcs[s.preview.watched]; ok {
-		return run, true
+func (s *State) watchedRun() (game.Runner, bool) {
+	for _, run := range s.preview.game.Runners() {
+		if run.NPC.Placement == s.preview.watched {
+			return run, true
+		}
 	}
-	if loop := s.preview.loop; s.preview.watched == s.zone && loop.workflow != nil {
+	if loop, has := s.preview.game.LoopRunner(); has && s.preview.watched == s.zone {
 		return loop, true
 	}
 
-	return nil, false
+	return game.Runner{NPC: nil, Workflow: nil, Behaviour: ids.ULID{}}, false
 }
 
 // followWatched shows the floor the watched NPC is on when it takes
@@ -601,24 +396,25 @@ func (s *State) followWatched(ctx *frame.Context) {
 
 // previewState is this window's preview as its state carries it.
 func (s *State) previewState() protocol.PreviewState {
-	runners := s.runners()
+	played := s.preview.game
+	runners := played.Runners()
 	entities := make([]protocol.PreviewEntity, 0, 1+len(runners))
-	entities = append(entities, entityOf(s.preview.run.Player()))
+	entities = append(entities, entityOf(played.Player()))
 	for _, run := range runners {
 		entities = append(entities, s.npcEntity(run))
 	}
-	if s.preview.loop.workflow != nil {
-		entities = append(entities, s.loopEntity())
+	if loop, has := played.LoopRunner(); has {
+		entities = append(entities, s.loopEntity(loop))
 	}
-	game := s.preview.clock
+	time := played.Clock()
 	state := protocol.PreviewState{
-		Run: s.preview.id, Tick: s.preview.run.Tick(), Entities: entities, Clock: game.Seconds(), Rate: int(game.Rate()),
-		ClockStopped: game.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
+		Run: s.preview.id, Tick: played.Ticks(), Entities: entities, Clock: time.Seconds(), Rate: int(time.Rate()),
+		ClockStopped: time.Stopped(), NPCsPaused: s.preview.paused, Watched: s.preview.watched,
 		Stepping: s.preview.stepping, Step: slices.Clone(s.preview.step), Values: s.watchedValues(),
-		Log: slices.Clone(s.preview.lines), Trail: slices.Clone(s.preview.trail), Box: showdraw.BoxOf(s.preview.stage),
+		Log: slices.Clone(s.preview.lines), Trail: slices.Clone(s.preview.trail), Box: showdraw.BoxOf(played.Stage()),
 		ShakeX: 0, ShakeY: 0,
 	}
-	state.ShakeX, state.ShakeY = s.preview.stage.Offset()
+	state.ShakeX, state.ShakeY = played.Stage().Offset()
 
 	return state
 }
@@ -630,10 +426,10 @@ func (s *State) keepTrail() {
 	if !ok {
 		return
 	}
-	for _, change := range watched.npc.Taken {
+	for _, change := range watched.NPC.Taken {
 		s.preview.passed++
 		s.preview.trail = append(s.preview.trail, protocol.PreviewTrail{
-			Seq: s.preview.passed, Clock: s.preview.clock.Seconds(), Change: previewChange(change),
+			Seq: s.preview.passed, Clock: s.preview.game.Clock().Seconds(), Change: previewChange(change),
 		})
 	}
 	if over := len(s.preview.trail) - protocol.TrailLength; over > 0 {
@@ -647,44 +443,12 @@ func (s *State) keepLines(runner *npcrun.NPC, entity string) {
 	for _, line := range runner.Lines {
 		s.preview.written++
 		s.preview.lines = append(s.preview.lines, protocol.PreviewLine{
-			Seq: s.preview.written, Clock: s.preview.clock.Seconds(), Entity: entity, NPC: runner.NPC, Loop: runner.Loop,
+			Seq: s.preview.written, Clock: s.preview.game.Clock().Seconds(), Entity: entity, NPC: runner.NPC, Loop: runner.Loop,
 			Workflow: line.Workflow, Node: line.Node, Text: line.Text,
 		})
 	}
 	if over := len(s.preview.lines) - protocol.RecentLines; over > 0 {
 		s.preview.lines = slices.Delete(s.preview.lines, 0, over)
-	}
-}
-
-// othersOf lists the NPCs as a tick begins, in placement order, for each to
-// find the others.
-func othersOf(runners []*npcRun) []npcrun.Other {
-	others := make([]npcrun.Other, 0, len(runners))
-	for _, run := range runners {
-		others = append(others, npcrun.Other{
-			Placement: run.npc.Placement, NPC: run.npc.NPC, Floor: run.npc.Floor, Cell: run.npc.Cell,
-		})
-	}
-
-	return others
-}
-
-// declareValues gives the preview's values the project's declarations as
-// they are now, keeping what has been set: the world state's, and each NPC's
-// and zone's own and the templates applied to it.
-func (s *State) declareValues(docs frame.Docs) {
-	var revisions strings.Builder
-	for _, document := range valuetree.Documents(docs) {
-		docs.View(document, func(held client.Document) {
-			revisions.WriteString(document.String() + ":" + strconv.FormatUint(held.Revision, 10) + ";")
-		})
-	}
-	if revisions.String() == s.preview.declared {
-		return
-	}
-	if catalog, ready := valuetree.Catalog(docs); ready {
-		s.preview.values.Declare(catalog)
-		s.preview.declared = revisions.String()
 	}
 }
 
@@ -698,7 +462,7 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 	}
 	var shown []protocol.PreviewValue
 	if running := s.running(run); running != nil {
-		locals := run.npc.Locals()
+		locals := run.NPC.Locals()
 		for _, declared := range running.Locals().Values() {
 			value, set := locals[declared.ID]
 			if !set || !declared.Fits(value) {
@@ -709,11 +473,11 @@ func (s *State) watchedValues() []protocol.PreviewValue {
 			})
 		}
 	}
-	values := s.preview.values
+	values := s.preview.game.Values()
 	for _, part := range []struct {
 		scope worldstate.Scope
 		owner ids.ULID
-	}{{worldstate.ScopeNPC, run.npc.NPC}, {worldstate.ScopeZone, s.zone}, {worldstate.ScopeWorld, ids.ULID{}}} {
+	}{{worldstate.ScopeNPC, run.NPC.NPC}, {worldstate.ScopeZone, s.zone}, {worldstate.ScopeWorld, ids.ULID{}}} {
 		for _, held := range values.Catalog().Held(part.scope, part.owner) {
 			label := s.valueLabel(held.Declaration, values.Get(held.Declaration, part.owner))
 			shown = append(shown, protocol.PreviewValue{Path: held.Path, Value: label})
@@ -862,10 +626,10 @@ func (s *State) previewGroups(docs frame.Docs) []previewGroup {
 			"Click the cell where the player starts.", "Escape cancels.",
 		}}}
 	case s.preview != nil:
-		player := s.preview.run.Player()
-		game := s.preview.clock
-		state := clock.Format(game.Seconds()) + " · " + clock.RateLabel(game.Rate())
-		if game.Stopped() {
+		player := s.preview.game.Player()
+		time := s.preview.game.Clock()
+		state := clock.Format(time.Seconds()) + " · " + clock.RateLabel(time.Rate())
+		if time.Stopped() {
 			state += " · stopped"
 		}
 		if s.preview.paused {
@@ -927,7 +691,7 @@ func (s *State) previewHeight(docs frame.Docs) int {
 // clockShows reports whether this window's preview clock reads a time that
 // starts with prefix, such as "09:" for any minute of nine o'clock.
 func (s *State) clockShows(prefix string) bool {
-	return s.preview != nil && strings.HasPrefix(clock.Format(s.preview.clock.Seconds()), prefix)
+	return s.preview != nil && strings.HasPrefix(clock.Format(s.preview.game.Clock().Seconds()), prefix)
 }
 
 // remoteClock describes the clock of another window's preview.

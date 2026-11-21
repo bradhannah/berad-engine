@@ -110,6 +110,9 @@ func TestPreviewSeesEdits(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	// An edit applied to a document raises its revision, which is how a
+	// running preview knows to gather the floor again (increment 63).
+	f.docs.Touch(groundID)
 	f.walk(ui.KeyDown, 1)
 	if !f.has("player:3,3") {
 		t.Fatal("the new wall blocks the player")

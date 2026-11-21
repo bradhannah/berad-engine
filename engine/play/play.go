@@ -191,6 +191,14 @@ func CanStand(zone Zone, floor ids.ULID, cell image.Point) bool {
 	return can
 }
 
+// Place puts the player on a cell of a floor, standing still and facing as
+// they were, wherever they were and whatever step was under way. The run
+// goes on from there: its ticks count on.
+func (r *Run) Place(floor ids.ULID, cell image.Point) {
+	r.player.Floor, r.player.Cell, r.player.From, r.player.Progress = floor, cell, cell, 0
+	r.queued = 0
+}
+
 // Tick returns how many ticks the run has taken.
 func (r *Run) Tick() uint64 { return r.tick }
 

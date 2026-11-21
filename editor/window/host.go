@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,21 @@ const (
 // crashKeyEnv, when set, lets Cmd+Shift+K crash a pane on purpose. Only the
 // tests of failure handling set it: the key does nothing for an author.
 const crashKeyEnv = "BERAD_TEST_CRASH_KEY"
+
+// seedEnv fixes the random choices of the previews and launches a window
+// starts, as a whole number above zero, so an automated run repeats: without
+// it each preview and each launch picks a new seed (increment 63).
+const seedEnv = "BERAD_SEED"
+
+// fixedSeed is the seed the environment fixes, or zero for none.
+func fixedSeed() uint64 {
+	seed, err := strconv.ParseUint(os.Getenv(seedEnv), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return seed
+}
 
 // starter is implemented by views that subscribe to more documents once the
 // window is running.
@@ -127,7 +143,7 @@ func newHost(conn *client.Client, view frame.View, viewName string, theme *ui.Th
 		conn: conn, view: view, theme: theme, frame: frame.NewFrame(time.Now),
 		ctx: frame.Context{
 			Docs: nil, Requests: nil, Sounds: nil, Soundscape: nil, Files: nil, Clipboard: nil,
-			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil, InspectorFolded: false,
+			Window: conn.Window(), Size: image.Pt(0, 0), Frame: nil, Seed: fixedSeed(), InspectorFolded: false,
 		},
 		surface: shownIn, script: nil, sounds: nil, callbacks: make(chan func(), callbackQueue),
 		outbox:     nil,

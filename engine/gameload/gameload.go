@@ -97,9 +97,14 @@ func Load(source Source, from *game.Start) (Loaded, bool) {
 	}
 	load := &loader{source: source, ready: true, standIns: map[string]ids.ULID{}}
 	load.settings(&loaded.Project, from)
+	// The values are asked for before the workflows that read them. A source
+	// whose documents arrive in the order they were asked for, as an editor
+	// window's do, then never shows a workflow before the values it reads
+	// are declared, so a game that runs while it is still being gathered,
+	// as a preview does, finds them (increment 63).
+	load.values(&loaded.Project)
 	load.zone(&loaded.Project)
 	load.npcs(&loaded)
-	load.values(&loaded.Project)
 	loaded.TileSize = load.art()
 	loaded.Tiles = load.tiles(loaded)
 	loaded.Cues = cuesOf(loaded.Project.Workflows)

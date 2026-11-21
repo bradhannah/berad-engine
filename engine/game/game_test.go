@@ -349,3 +349,60 @@ func TestAZoneLoopRunsWithItsZone(t *testing.T) {
 		t.Fatal("a workflow that is no zone loop does not run as one")
 	}
 }
+
+// TestWalkAndTickApart walks the player while the world waits, as with the
+// NPCs paused: the clock stands and the clerk rings no bell. Then the world
+// ticks while the player stands, as a step does: the bell rings and the
+// clock moves on.
+func TestWalkAndTickApart(t *testing.T) {
+	t.Parallel()
+	played, err := game.New(town(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	began := played.Clock().Seconds()
+	for range play.StepTicks {
+		if outcome := played.Walk(play.Input{Held: play.West, Pressed: 0}); outcome != play.Walking {
+			t.Fatalf("the player walks: %v", outcome)
+		}
+	}
+	if player := played.Player(); player.Cell.X != 4 || played.Clock().Seconds() != began {
+		t.Fatalf("the player walked a cell and the clock stood: %+v at %v", player.Cell, played.Clock().Seconds())
+	}
+	bells := 0
+	for range 3 * play.StepTicks {
+		for _, cue := range played.Tick() {
+			if cue.Cue == "bell" {
+				bells++
+			}
+		}
+	}
+	if player := played.Player(); bells != 1 || player.Cell.X != 4 || played.Clock().Seconds() <= began {
+		t.Fatalf("the world ticked on without the player: %d bells, player %+v, clock %v", bells, player.Cell,
+			played.Clock().Seconds())
+	}
+}
+
+// TestRunnersShowEachNPC shows each NPC as it runs, with the workflow it
+// follows, and finds the workflows the game holds; the town has no loop.
+func TestRunnersShowEachNPC(t *testing.T) {
+	t.Parallel()
+	played, err := game.New(town(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runners := played.Runners()
+	if len(runners) != 1 || runners[0].NPC.NPC != id(clerkID) || runners[0].Behaviour != id(dayID) ||
+		runners[0].Workflow == nil {
+		t.Fatalf("the clerk, following her day: %+v", runners)
+	}
+	if _, has := played.LoopRunner(); has {
+		t.Fatal("the town has no loop")
+	}
+	if day, found := played.Workflow(id(dayID)); !found || day != runners[0].Workflow {
+		t.Fatal("the clerk's day is a workflow the game holds")
+	}
+	if _, found := played.Workflow(id(99)); found || played.Zone() != id(zoneID) {
+		t.Fatal("no workflow the game lacks, and the zone played is the town")
+	}
+}

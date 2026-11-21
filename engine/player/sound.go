@@ -1,6 +1,7 @@
 package player
 
 import (
+	"slices"
 	"strings"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
@@ -76,9 +77,17 @@ func (s *Sound) Start(cues Cues, layers Layers, played *game.Game, prepare []str
 	s.startZone(layers, played)
 }
 
-// startZone plays each of the zone's sounds again and again.
+// startZone plays each of the zone's sounds again and again, and stops
+// those of a zone the player has left (increment 63).
 func (s *Sound) startZone(layers Layers, played *game.Game) {
-	for _, cue := range played.ZoneSounds() {
+	sounds := played.ZoneSounds()
+	for slot, cue := range s.layers {
+		if strings.HasPrefix(slot, zoneSlot) && !slices.Contains(sounds, cue) {
+			layers.StopLayer(slot)
+			delete(s.layers, slot)
+		}
+	}
+	for _, cue := range sounds {
 		slot := zoneSlot + cue
 		if _, playing := s.layers[slot]; playing {
 			continue
