@@ -341,6 +341,16 @@ under consideration), **open** (undecided).
   visibility editing) and enrich it over time.
 - **Agreed:** portal-linked maps do not need to be shown stitched together;
   convenient access through their doorways is enough.
+- **Agreed (2026-11-21):** a **portal** is a cell that leads to an anchor, in
+  another zone or its own. A cell's menu adds one: the zone is chosen, then
+  the anchor is clicked in that zone's Map, which opens if none shows it.
+  Each leads one way; the way back is another portal. The Map draws it as a
+  teal diamond with where it leads beside it, red when it leads nowhere,
+  and its menu opens where it leads, leads it somewhere else, moves it and
+  removes it. See [increment 64](increments/0064-portals.md).
+- **Agreed (2026-11-21):** how the screen changes is chosen on each portal:
+  a **cut** at once, or a **fade** through black of a third of a second each
+  way, during which the keys wait. More kinds can be added.
 - **Candidate:** finding what to paint through an atlas, a tree, keyword
   search, packs, or a combination, with the same definition possibly appearing
   in several groups.
@@ -921,6 +931,10 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   player always centred. NPC cues, ambient sounds placed on the map and a
   zone's own sounds are heard. The player and each NPC show one sprite. See
   [increment 14](increments/0014-launch.md).
+- **Agreed (2026-11-21):** Launch's game travels by portals, as a game's own
+  window does: the zone left stops, the one entered starts, and the values
+  and the clock carry over. A Map's Preview stays in its zone: stepping onto
+  a portal says where it leads and leaves the player there.
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
   new time immediately rather than simulating the gap: each restarts its
   workflow from the start and walks to wherever its new branch sends it.

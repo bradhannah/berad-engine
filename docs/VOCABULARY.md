@@ -12,6 +12,7 @@ interface, and do not introduce synonyms.
 | **Floor** | A zone's vertical level (its "z"). |
 | **Area** | An authored, named region, defined only when something needs to refer to it ("wander in area X"). Areas can be indoors or outdoors, may overlap, and can sit inside other areas. A kind (for example building or room) may add detail. |
 | **Anchor** | A single named point that other content refers to, such as a destination or a place to stand. |
+| **Portal** | A cell that leads to an anchor, in another zone or its own. Stepping onto it takes the player there. It leads one way; the way back is another portal. |
 | **Cell** | One grid position on a floor. Every map coordinate names a cell. |
 | **Zone origin** | Cell 0,0, the fixed point every floor of a zone is positioned from. Columns count to the right and rows downwards; cells left of or above it have negative numbers. |
 | **Floor bounds** | The rectangle of cells a floor covers, around the zone origin. Resizing a floor changes its bounds. |
@@ -25,10 +26,12 @@ for a grid position (use cell).
 
 - **Zones** are the hard boundary: entities outside the current zone are not
   simulated. When an entity leaves the simulation, what happens to the objects it
-  carries is decided by those objects' own properties.
+  carries is decided by those objects' own properties. A portal takes the
+  player from one zone to another: the zone left stops, and the one entered
+  starts.
 - **Floors** are hard boundaries for vertical position. Stairs connect floors
   within the same live zone; a connection (such as an elevator) can be flagged to
-  teleport instead.
+  teleport instead, which a portal to an anchor of its own zone does.
 - **Areas** are not engine boundaries. They are regions that logic asks about
   ("is the player in area X?"), for example for trespassing or wandering.
 - Lighting follows geometry (walls, openings), not areas.
