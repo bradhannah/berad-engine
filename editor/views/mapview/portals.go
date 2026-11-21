@@ -320,6 +320,25 @@ func (s *State) updateMovingPortal(
 	}
 }
 
+// meetPortal keeps a preview in its zone (increment 64): when the player
+// steps onto a portal, the preview says where it leads and leaves them on
+// it, free to walk on. Launch and a game travel.
+func (s *State) meetPortal(ctx *frame.Context) {
+	portal, leaving := s.preview.game.Leaving()
+	if !leaving {
+		return
+	}
+	s.preview.game.Stay()
+	says := "This portal leads out of the floor shown."
+	switch leads, known := s.portals.leads[portal.ID]; {
+	case known && leads.state == gameload.Held:
+		says = "This portal leads to " + leads.place + "."
+	case known && leads.state == gameload.Missing:
+		says = "This portal leads nowhere: " + leads.why + "."
+	}
+	ctx.Frame.Status(says + " A preview stays in its zone; Launch travels.")
+}
+
 // leadingHere lists the portals of a floor that lead to one of its own
 // anchors, as where-used names them. The project's answer to where an
 // anchor is used leaves out the anchor's own floor.

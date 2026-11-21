@@ -9,9 +9,11 @@ import (
 	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
 	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
 	"github.com/bradhannah/berad-engine/editor/views/mapview"
 	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/play"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 )
 
@@ -214,5 +216,31 @@ func TestAPortalThatLeadsNowhereSaysSo(t *testing.T) {
 	lines := strings.Join(f.state.DialogLines(), "\n")
 	if !strings.Contains(lines, "used in 1 place") || !strings.Contains(lines, "Ground (a portal at 10, 8)") {
 		t.Fatalf("the portal on the anchor's own floor is named: %s", lines)
+	}
+}
+
+// TestAPreviewStaysInItsZone walks a preview's player onto a portal: the
+// preview says where it leads and leaves the player on it, free to walk on.
+func TestAPreviewStaysInItsZone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withCellar()
+	f.apply(groundID, tilefloor.AddPortal{}, tilefloor.AddPortalArgs{Portal: floor.Portal{
+		ID: portalID, Col: 4, Row: 3, To: floor.AnchorRef{Floor: cellarFloorID, Anchor: footID}, Change: floor.ChangeFade,
+	}, Index: 0})
+	f.keys()
+	f.startPreview("cell:3,3")
+	f.walk(ui.KeyRight, 1)
+	if !f.has("previewing") || !f.has("player:4,3") {
+		t.Fatalf("the preview goes on, with the player on the portal: %s", f.status())
+	}
+	want := "This portal leads to Foot, Cellar floor, Cellar. A preview stays in its zone; Launch travels."
+	if f.status() != want {
+		t.Fatalf("the preview says where the portal leads: %q", f.status())
+	}
+	f.walk(ui.KeyRight, 2*play.StepTicks)
+	f.walk(ui.KeyRight, 1)
+	if !f.has("player:6,3") {
+		t.Fatalf("the player walks on from the portal: %s", f.status())
 	}
 }

@@ -197,6 +197,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 
 		return
 	}
+	s.travel(ctx)
 	s.sound.update(ctx, s.game, step)
 }
 

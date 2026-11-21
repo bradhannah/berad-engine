@@ -277,6 +277,7 @@ func (s *State) stepPreview(input *ui.Input, ctx *frame.Context) {
 	s.preview.held = held
 	s.refreshPreview(ctx)
 	outcome := s.preview.game.Walk(play.Input{Held: held, Pressed: pressed})
+	s.meetPortal(ctx)
 	player := s.preview.game.Player()
 	switch outcome {
 	case play.Climbed:

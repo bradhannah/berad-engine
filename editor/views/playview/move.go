@@ -8,6 +8,7 @@ import (
 	"github.com/bradhannah/berad-engine/editor/views/docsource"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 	"github.com/bradhannah/berad-engine/engine/game"
+	"github.com/bradhannah/berad-engine/engine/gameload"
 )
 
 // Move the player here (increment 63): a Map's cell menu moves the player
@@ -65,20 +66,32 @@ func (s *State) move(ctx *frame.Context) {
 
 		return
 	}
-	if err := s.game.Enter(loaded.Project); err != nil {
+	if err := s.enter(ctx, loaded); err != nil {
 		ctx.Frame.Refuse(sentence(err.Error()))
 
 		return
 	}
+	ctx.Frame.Status(fmt.Sprintf(
+		"Moved the player to cell %d, %d of %s. The zone left has stopped; the values and the clock go on.",
+		target.Col, target.Row, zoneName(s.zoneNamed)))
+}
+
+// enter moves the running game into the zone a project was gathered for,
+// and readies the tab to show and play it: its floors, its name, its art
+// and its cues. A zone the player cannot be put in is refused, and the game
+// goes on where it was.
+func (s *State) enter(ctx *frame.Context, loaded gameload.Loaded) error {
+	if err := s.game.Enter(loaded.Project); err != nil {
+		return fmt.Errorf("enter the zone: %w", err)
+	}
 	docs := docsource.New(ctx.Docs)
-	s.floors, s.zoneNamed = loaded.Project.Zone.Floors(), docs.Name(target.Zone)
+	s.floors, s.zoneNamed = loaded.Project.Zone.Floors(), docs.Name(s.game.Zone())
 	s.screen.Start(loaded, docs)
 	if len(loaded.Cues) > 0 {
 		ctx.Sounds.Prepare(loaded.Cues)
 	}
-	ctx.Frame.Status(fmt.Sprintf(
-		"Moved the player to cell %d, %d of %s. The zone left has stopped; the values and the clock go on.",
-		target.Col, target.Row, zoneName(docs.Name(target.Zone))))
+
+	return nil
 }
 
 // zoneName is a zone's name, or a word for one with none.
