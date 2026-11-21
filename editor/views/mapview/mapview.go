@@ -156,9 +156,12 @@ type State struct {
 	floors []ids.ULID
 	floor  ids.ULID
 	subs   map[ids.ULID]bool
-	tool   Tool
-	tile   map[Tool]string
-	camera camera
+	// arriving is the documents subscribed to whose answer has not come
+	// yet: while any is on its way a preview's world waits (increment 63).
+	arriving map[ids.ULID]bool
+	tool     Tool
+	tile     map[Tool]string
+	camera   camera
 	// sprites is the art drawn for stand-ins that sprites show.
 	sprites *spriteArt
 	size    image.Point
@@ -260,7 +263,7 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, playerStart: game.NoStart(),
 		ambient: ambientSounds{library: nil, asking: false, moving: ids.ULID{}, changing: ids.ULID{}}, theme: theme,
-		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{},
+		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, arriving: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
@@ -443,8 +446,9 @@ func (s *State) subscribe(document ids.ULID, ctx *frame.Context) {
 	if s.subs[document] {
 		return
 	}
-	s.subs[document] = true
+	s.subs[document], s.arriving[document] = true, true
 	ctx.Requests.Subscribe(document, func(err error) {
+		delete(s.arriving, document)
 		if err != nil {
 			delete(s.subs, document)
 			ctx.Frame.Status(err.Error())

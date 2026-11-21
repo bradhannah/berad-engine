@@ -57,7 +57,7 @@ type previewRun struct {
 	game *game.Game
 	// from is where the player started, for gathering the project again
 	// after an edit; read is the documents the last gathering asked for, and
-	// stamp what they were then.
+	// stamp what they were as it read them.
 	from     game.Start
 	read     []ids.ULID
 	stamp    uint64
@@ -152,7 +152,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 
 			return
 		}
-		loaded, read := s.gatherPreview(ctx, from)
+		loaded, read, stamp := s.gatherPreview(ctx, from)
 		loaded.Project.Seconds, loaded.Project.Seed = s.start, cmp.Or(ctx.Seed, seedOf(result.Created))
 		played, err := game.New(loaded.Project)
 		if err != nil {
@@ -163,7 +163,7 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 		}
 		played.KnowCues(s.cueTicks)
 		s.preview = &previewRun{
-			id: result.Created, game: played, from: from, read: read, stamp: docsource.New(ctx.Docs).Stamp(read),
+			id: result.Created, game: played, from: from, read: read, stamp: stamp,
 			held: 0, sent: nil, watched: ids.ULID{}, paused: false, stepping: false, stepTicks: 0, step: nil,
 			heard: map[string]int{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0, trail: nil, passed: 0,
 			named: loaded.Project.Signals,
@@ -179,9 +179,11 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 }
 
 // gatherPreview gathers what a preview plays from the window's documents,
-// as a game gathers it, subscribing to each document it asks for, and lists
-// those documents. What has not arrived yet is left out until it does.
-func (s *State) gatherPreview(ctx *frame.Context, from game.Start) (gameload.Loaded, []ids.ULID) {
+// as a game gathers it, subscribing to each document it asks for. It lists
+// those documents, with a stamp of what they were as it read them, so a
+// change to one, or its arrival, is seen. What has not arrived yet is left
+// out until it does.
+func (s *State) gatherPreview(ctx *frame.Context, from game.Start) (gameload.Loaded, []ids.ULID, uint64) {
 	asking := docsource.New(ctx.Docs).Asking(func(documentID ids.ULID) { s.subscribe(documentID, ctx) })
 	loaded, _ := gameload.Load(asking, &from)
 	loaded.Project.Names = places.NewNames(ctx.Docs)
@@ -191,7 +193,9 @@ func (s *State) gatherPreview(ctx *frame.Context, from game.Start) (gameload.Loa
 		loaded.Project.Values = worldstate.NewCatalog(worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)
 	}
 
-	return loaded, asking.Read()
+	read, stamp := asking.Seen()
+
+	return loaded, read, stamp
 }
 
 // refreshPreview gives the running preview the project as it is now, when a
@@ -203,9 +207,9 @@ func (s *State) refreshPreview(ctx *frame.Context) {
 	if docs.Stamp(s.preview.read) == s.preview.stamp {
 		return
 	}
-	loaded, read := s.gatherPreview(ctx, s.preview.from)
+	loaded, read, stamp := s.gatherPreview(ctx, s.preview.from)
 	s.preview.game.Update(loaded.Project)
-	s.preview.read, s.preview.stamp, s.preview.named = read, docs.Stamp(read), loaded.Project.Signals
+	s.preview.read, s.preview.stamp, s.preview.named = read, stamp, loaded.Project.Signals
 	if len(loaded.Cues) > 0 {
 		ctx.Sounds.Prepare(loaded.Cues)
 	}

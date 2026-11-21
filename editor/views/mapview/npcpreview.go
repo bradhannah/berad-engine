@@ -67,14 +67,18 @@ func (s *State) locatePreviewWidget(widget string) (image.Point, bool) {
 	return image.Pt(0, 0), false
 }
 
-// stepNPCs runs the world for one tick, unless the NPCs are paused: the
+// stepNPCs runs the world for one tick, unless the NPCs are paused or a
+// document the Map asked for has yet to arrive: the
 // game runtime's own tick, of the boxes, the clock, the signals, the NPCs
 // and the zone's loop. During a step it runs ticks as fast as it can, up to
 // stepBudget a frame, until the watched NPC changes node, then pauses. The
 // cues the NPCs' Play sounds asked for in the tick they ran, or the tick a
 // step ended in, play; those of the ticks a step hurries through do not.
 func (s *State) stepNPCs(ctx *frame.Context) {
-	if s.preview.paused {
+	// Documents arrive in no order, so the world waits while one the Map
+	// asked for is on its way: no NPC follows a workflow that arrived before
+	// the values it reads, or the workflows it calls.
+	if s.preview.paused || len(s.arriving) > 0 {
 		return
 	}
 	s.nameAnchors(ctx.Docs)
