@@ -10,6 +10,7 @@ import (
 	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
 	"github.com/bradhannah/berad-engine/engine/show"
+	"github.com/bradhannah/berad-engine/engine/tilefloor"
 	flow "github.com/bradhannah/berad-engine/engine/workflow"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -104,9 +105,16 @@ func (g *Game) changedWorkflows(now map[ids.ULID]*flow.Workflow) []ids.ULID {
 }
 
 // syncRunners keeps a runner for every placement on the zone's floors: a
-// placement added starts running, and one removed stops.
+// placement added starts running, and one removed stops. Those that start
+// together start in the order their placements were made, which their IDs
+// keep, each seeded by its place among all the zone has started.
 func (g *Game) syncRunners() {
+	type placed struct {
+		placement tilefloor.Placement
+		floor     ids.ULID
+	}
 	present := map[ids.ULID]bool{}
+	var added []placed
 	for _, level := range g.levels {
 		if level.Floor == nil {
 			continue
@@ -114,9 +122,14 @@ func (g *Game) syncRunners() {
 		for _, placement := range level.Floor.Placements() {
 			present[placement.ID] = true
 			if !slices.ContainsFunc(g.npcs, func(running *npcrun.NPC) bool { return running.Placement == placement.ID }) {
-				g.npcs = append(g.npcs, npcrun.Start(placement, level.ID, seed(g.seed, placement.ID)))
+				added = append(added, placed{placement: placement, floor: level.ID})
 			}
 		}
+	}
+	slices.SortFunc(added, func(a, b placed) int { return a.placement.ID.Compare(b.placement.ID) })
+	for _, each := range added {
+		g.npcs = append(g.npcs, npcrun.Start(each.placement, each.floor, seed(g.seed, g.started)))
+		g.started++
 	}
 	g.npcs = slices.DeleteFunc(g.npcs, func(running *npcrun.NPC) bool { return !present[running.Placement] })
 	slices.SortFunc(g.npcs, func(a, b *npcrun.NPC) int { return a.Placement.Compare(b.Placement) })
@@ -171,7 +184,7 @@ func (g *Game) followLoop(project Project) {
 		return
 	}
 	if g.loop == nil {
-		g.loop = npcrun.StartLoop(g.zone, seed(g.seed, g.zone))
+		g.loop = npcrun.StartLoop(g.zone, seed(g.seed, loopOrder))
 	}
 	if loopID == g.loopID && g.loopFlow != nil && g.loopFlow.Equal(loop) {
 		return
@@ -240,6 +253,7 @@ func (g *Game) Enter(project Project) error {
 	g.names, g.signals, g.workflows = project.Names, project.Signals, project.Workflows
 	g.declare(project.Values)
 	g.npcs, g.flows, g.behaviours = nil, map[ids.ULID]*flow.Workflow{}, map[ids.ULID]ids.ULID{}
+	g.started = 0
 	g.loop, g.loopFlow, g.loopID = nil, nil, ids.ULID{}
 	g.stage, g.sent = show.NewStage(), nil
 	g.syncRunners()

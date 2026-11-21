@@ -56,14 +56,16 @@ type Project struct {
 type Game struct {
 	settings Settings
 	// zone is the zone being played, the one that is alive; seed fixes its
-	// NPCs' random choices.
-	zone   ids.ULID
-	seed   uint64
-	levels play.Levels
-	sounds []string
-	run    *play.Run
-	npcs   []*npcrun.NPC
-	flows  map[ids.ULID]*flow.Workflow
+	// NPCs' random choices, and started counts the NPCs it has started, each
+	// seeded by its place in that count.
+	zone    ids.ULID
+	seed    uint64
+	started uint64
+	levels  play.Levels
+	sounds  []string
+	run     *play.Run
+	npcs    []*npcrun.NPC
+	flows   map[ids.ULID]*flow.Workflow
 	// behaviours names each NPC's behaviour, and workflows holds every
 	// workflow, for Calls to call.
 	behaviours map[ids.ULID]ids.ULID
@@ -137,9 +139,10 @@ func New(project Project) (*Game, error) {
 		return nil, fmt.Errorf("%w: cell %d,%d of its floor", ErrStart, start.Col, start.Row)
 	}
 	game := &Game{
-		settings: project.Settings, zone: start.Zone, seed: project.Seed, levels: levels, sounds: project.Zone.Sounds(),
-		run:  play.Start(start.Floor, cell),
-		npcs: nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
+		settings: project.Settings, zone: start.Zone, seed: project.Seed, started: 0, levels: levels,
+		sounds: project.Zone.Sounds(),
+		run:    play.Start(start.Floor, cell),
+		npcs:   nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
 		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(), cueTicks: nil,
 		signals: project.Signals, sent: nil,
@@ -162,7 +165,7 @@ func (g *Game) startLoop(project Project) {
 	if loop == nil {
 		return
 	}
-	g.loop, g.loopFlow, g.loopID = npcrun.StartLoop(g.zone, seed(g.seed, g.zone)), loop, loopID
+	g.loop, g.loopFlow, g.loopID = npcrun.StartLoop(g.zone, seed(g.seed, loopOrder)), loop, loopID
 }
 
 // loopOf is the loop a project's zone runs, nil when it has none that fits
@@ -190,15 +193,22 @@ func (g *Game) Loop() *npcrun.NPC {
 	return g.loop
 }
 
-// seed is an NPC's random seed: the game's and its placement's.
-func seed(game uint64, placement ids.ULID) uint64 {
+// loopOrder is the place of the zone's loop among the zone's runners, for
+// its seed: after every NPC.
+const loopOrder = math.MaxUint64
+
+// seed is a runner's random seed: the game's, and the runner's place among
+// those the zone has started, in the order their placements were made. It
+// does not use a placement's ID, so a project made again, whose documents
+// have new IDs, plays the same from the same seed (increment 63).
+func seed(game, order uint64) uint64 {
 	hash := fnv.New64a()
-	var bytes [8]byte
-	for index := range bytes {
-		bytes[index] = byte(game >> (8 * index)) //nolint:gosec,mnd // One byte of the seed at a time.
+	var bytes [16]byte
+	for index := range 8 {
+		bytes[index] = byte(game >> (8 * index))    //nolint:gosec,mnd // One byte of the seed at a time.
+		bytes[8+index] = byte(order >> (8 * index)) //nolint:gosec,mnd // One byte of the order at a time.
 	}
 	_, _ = hash.Write(bytes[:])
-	_, _ = hash.Write(placement[:])
 
 	return hash.Sum64()
 }
