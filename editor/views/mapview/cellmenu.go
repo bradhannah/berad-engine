@@ -91,7 +91,7 @@ func (s *State) menuItems(floorData *floor.Floor, cell Cell, onFloor bool) []ui.
 	if top, _ := floorData.Top(cell.X, cell.Y); top != "" { //nolint:errcheck // The cell is on the floor.
 		here = append(here, menuItem(menuClearTop, "Remove “"+tileName(top)+"”", false))
 	}
-	here = append(here, s.soundItems(floorData, cell)...)
+	here = append(here, s.markItems(floorData, cell)...)
 	here = append(here, s.gameItems(floorData, cell, live)...)
 	if len(items) > 0 {
 		here[0].Rule = true
@@ -201,7 +201,7 @@ func (s *State) choose(ctx *frame.Context, floorData *floor.Floor, chosen string
 			s.requestResize(ctx, floorData, next)
 		}
 	default:
-		s.chooseSound(ctx, floorData, chosen, cell)
+		s.chooseMark(ctx, floorData, chosen, cell)
 	}
 }
 

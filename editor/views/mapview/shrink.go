@@ -14,22 +14,23 @@ import (
 )
 
 // A floor that shrinks lists all it gives up (increment 58): besides its
-// anchors and their uses, its NPCs, its ambient sounds, its stairs, and the
-// stairs on the floors above and below that lead into the cells it gives
-// up. A shrink that would leave the player start off the floor is refused
+// anchors and their uses, its NPCs, its ambient sounds, its portals, its
+// stairs, and the stairs on the floors above and below that lead into the
+// cells it gives up. A shrink that would leave the player start off the floor is refused
 // until the start is moved.
 
 // shrinking is what a resize gives up, besides anchors.
 type shrinking struct {
 	npcs    []string
 	sounds  []string
+	portals []string
 	stairs  []image.Point
 	leading []string
 }
 
 // empty reports whether the resize gives up none of it.
 func (g shrinking) empty() bool {
-	return len(g.npcs) == 0 && len(g.sounds) == 0 && len(g.stairs) == 0 && len(g.leading) == 0
+	return len(g.npcs) == 0 && len(g.sounds) == 0 && len(g.portals) == 0 && len(g.stairs) == 0 && len(g.leading) == 0
 }
 
 // startOff reports whether the player start is on this floor and would be
@@ -60,6 +61,11 @@ func (s *State) goesHere(floorData *floor.Floor, next image.Rectangle) shrinking
 	for _, sound := range floorData.Sounds() {
 		if !image.Pt(sound.Col, sound.Row).In(next) {
 			going.sounds = append(going.sounds, s.cueName(sound.Cue))
+		}
+	}
+	for _, portal := range floorData.Portals() {
+		if !image.Pt(portal.Col, portal.Row).In(next) {
+			going.portals = append(going.portals, strconv.Itoa(portal.Col)+","+strconv.Itoa(portal.Row))
 		}
 	}
 	bounds := floorData.Bounds()
@@ -122,6 +128,10 @@ func (g shrinking) said() []string {
 	if len(g.sounds) > 0 {
 		lines = append(lines, fmt.Sprintf("This removes the ambient %s: %s.",
 			plural(len(g.sounds), "sound", "sounds"), strings.Join(g.sounds, ", ")))
+	}
+	if len(g.portals) > 0 {
+		lines = append(lines, fmt.Sprintf("This removes the %s at %s.",
+			plural(len(g.portals), "portal", "portals"), strings.Join(g.portals, "; ")))
 	}
 	if len(g.stairs) > 0 {
 		cells := make([]string, 0, len(g.stairs))

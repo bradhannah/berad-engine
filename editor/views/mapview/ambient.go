@@ -187,23 +187,31 @@ func (s *State) heardWithin(cueID string) string {
 	return fmt.Sprintf("within %g cells", cue.Ambient.RadiusTiles)
 }
 
+// movingClick reads a frame while a mark on a cell is being moved: Escape
+// stops the move, saying so, and a click on the floor places it. It reports
+// which, if either.
+func movingClick(input *ui.Input, ctx *frame.Context, onFloor bool) (bool, bool) {
+	if input.Consume(ui.KeyEscape, ui.Plain()) {
+		ctx.Frame.Status("Move cancelled")
+
+		return true, false
+	}
+
+	return false, input.Pressed && onFloor
+}
+
 // updateMovingSound moves the sound being moved to the clicked cell, or
 // stops on Escape.
 func (s *State) updateMovingSound(
 	input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool,
 ) {
-	if input.Consume(ui.KeyEscape, ui.Plain()) {
-		s.ambient.moving = ids.ULID{}
-		ctx.Frame.Status("Move cancelled")
-
-		return
-	}
-	if !input.Pressed || !onFloor {
+	stop, place := movingClick(input, ctx, onFloor)
+	if !stop && !place {
 		return
 	}
 	sound, _, found := floorData.Sound(s.ambient.moving)
 	s.ambient.moving = ids.ULID{}
-	if !found {
+	if !found || stop {
 		return
 	}
 	if _, taken := floorData.SoundAt(cell.X, cell.Y); taken {

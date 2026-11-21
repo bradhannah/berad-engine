@@ -116,6 +116,36 @@ func (p *Picker) Start(ctx *frame.Context, owner, label string, now protocol.Pic
 	})
 }
 
+// StartIn begins picking an anchor for an owner in a zone the owner has
+// already chosen (increment 64), taking over a pick in progress: in a Map
+// that shows the zone, this window's own before another's, or in one opened
+// on it. label, now and done are as for Start.
+func (p *Picker) StartIn(ctx *frame.Context, owner, label string, zoneID ids.ULID, now protocol.PickNow,
+	done func(protocol.PickAnswer, *frame.Context),
+) {
+	if p.picking != "" {
+		ctx.Requests.PickCancel(protocol.PickCancel{Pick: p.picking, Reason: reasonTakenOver})
+		p.picking = ""
+	}
+	p.owner, p.label, p.now, p.done = owner, label, now, done
+	ctx.Requests.PickAsk(protocol.PickAnchor, func(maps []protocol.PickMap, err error) {
+		if err != nil {
+			ctx.Frame.Status(err.Error())
+
+			return
+		}
+		start := protocol.PickStart{
+			Pick: "", What: "", Label: "", Window: ids.ULID{}, Zone: zoneID, From: ids.ULID{}, Now: p.now,
+		}
+		for _, open := range maps {
+			if open.Zone == zoneID && (start.Window.IsZero() || open.Window == p.window) {
+				start.Window = open.Window
+			}
+		}
+		p.begin(ctx, start)
+	})
+}
+
 // Cancel ends the pick in progress.
 func (p *Picker) Cancel(ctx *frame.Context, reason string) {
 	ctx.Requests.PickCancel(protocol.PickCancel{Pick: p.picking, Reason: reason})

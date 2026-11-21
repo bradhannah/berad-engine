@@ -134,6 +134,7 @@ const (
 	dialogDeleteAnchor
 	dialogReplace
 	dialogResize
+	dialogPortalZone
 )
 
 // State is one Map window.
@@ -143,6 +144,7 @@ type State struct {
 	// playerStart is the project's player start, kept from its game settings.
 	playerStart game.Start
 	ambient     ambientSounds
+	portals     portalParts
 	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
@@ -266,7 +268,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, playerStart: game.NoStart(),
 		ambient: ambientSounds{library: nil, asking: false, moving: ids.ULID{}, changing: ids.ULID{}}, theme: theme,
-		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, playing: false, arriving: map[ids.ULID]bool{},
+		portals: newPortalParts(window),
+		floors:  nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, playing: false, arriving: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
@@ -384,6 +387,11 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		s.syncArt(ctx)
 		s.floorsFor = ids.ULID{}
 		s.syncStart(ctx)
+	}
+	// A pick of the Map's own, for a portal, may be answered in this very
+	// Map; a cancel of it then also ends the Map's picking.
+	if s.portals.picker.Changed(update, ctx) && update.PickCancel == nil {
+		return
 	}
 	switch {
 	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
@@ -741,6 +749,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.floor.IsZero() {
 		return
 	}
+	s.syncPortals(ctx)
 	loaded := ctx.Docs.View(s.floor, func(document client.Document) {
 		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
 			if !s.framed {
@@ -1019,6 +1028,8 @@ func (s *State) updateGridMode(
 		s.updateChoosing(input, ctx, floorData, cell, onFloor)
 	case !s.ambient.moving.IsZero():
 		s.updateMovingSound(input, ctx, floorData, cell, onFloor)
+	case !s.portals.moving.IsZero():
+		s.updateMovingPortal(input, ctx, floorData, cell, onFloor)
 	case input.Secondary && inGrid && !s.zoom.contains(input.Cursor):
 		s.openMenu(ctx, floorData, cell, onFloor, input.Cursor)
 	case s.closeBox(input):
@@ -1359,14 +1370,26 @@ func (s *State) deleteAnchor(ctx *frame.Context) {
 
 			return
 		}
-		if len(uses) == 0 {
+		// The project's answer leaves out the anchor's own floor, whose
+		// portals may lead to it.
+		var here []string
+		ctx.Docs.View(floorID, func(document client.Document) {
+			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+				here = leadingHere(floorDoc.Floor, floorID, anchorID)
+			}
+		})
+		if len(uses)+len(here) == 0 {
 			s.removeAnchor(ctx, floorID, anchorID)
 
 			return
 		}
-		lines := []string{fmt.Sprintf("This anchor is used in %d %s:", len(uses), plural(len(uses), "place", "places"))}
+		count := len(uses) + len(here)
+		lines := []string{fmt.Sprintf("This anchor is used in %d %s:", count, plural(count, "place", "places"))}
 		for _, use := range uses {
 			lines = append(lines, "  "+use.Name+" ("+use.Label+")")
+		}
+		for _, portal := range here {
+			lines = append(lines, "  "+s.names.Name(floorID, "This floor")+" ("+portal+")")
 		}
 		lines = append(lines, "Deleting leaves those references broken. You can undo it.")
 		s.dialog = ui.NewDialog("Delete this anchor?", lines,
@@ -1546,6 +1569,8 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		s.removeAnchor(ctx, s.floor, s.anchor)
 	case kind == dialogResize && resize != nil:
 		s.sendResize(ctx, *resize)
+	case kind == dialogPortalZone && dialog.List != nil:
+		s.pickLeads(ctx, dialog.List.Selected)
 	case kind == dialogReplace && dialog.List != nil:
 		floors := []ids.ULID{s.floor}
 		if choice == "zone" {
@@ -1751,8 +1776,8 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
-	case strings.HasPrefix(state, "ambient:"):
-		return s.hasSound(strings.TrimPrefix(state, "ambient:"), docs)
+	case strings.HasPrefix(state, "ambient:"), strings.HasPrefix(state, "portal:"):
+		return s.hasMark(state, docs)
 	case strings.HasPrefix(state, "clock:"):
 		return s.clockShows(strings.TrimPrefix(state, "clock:"))
 	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"),

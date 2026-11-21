@@ -132,6 +132,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
 		s.drawSounds(area, floorDoc.Floor, grid)
+		s.drawPortals(area, floorDoc.Floor, grid)
 		s.drawStart(area, grid)
 		if s.preview != nil || s.remote != nil {
 			s.drawLiveNPCs(area, grid)
