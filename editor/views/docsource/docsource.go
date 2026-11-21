@@ -5,6 +5,8 @@
 package docsource
 
 import (
+	"slices"
+
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/model"
 	artplugin "github.com/bradhannah/berad-engine/editor/plugins/art"
@@ -135,4 +137,55 @@ func artOf(document model.Document) any {
 	}
 
 	return nil
+}
+
+// Asked is a window's documents for something that gathers a game from
+// them: each document asked for that the project holds is subscribed to, so
+// it arrives, and noted, so its changes can be seen with Stamp.
+type Asked struct {
+	Source
+
+	subscribe func(ids.ULID)
+	read      map[ids.ULID]bool
+}
+
+// Asking shows a window's documents, subscribing to each one asked for
+// that the project holds.
+func (s Source) Asking(subscribe func(ids.ULID)) Asked {
+	return Asked{Source: s, subscribe: subscribe, read: map[ids.ULID]bool{}}
+}
+
+// View shows a document, subscribing to it when the project holds it.
+func (a Asked) View(documentID ids.ULID, show func(gameload.Document)) gameload.State {
+	held := a.Source.View(documentID, show)
+	if held != gameload.Missing {
+		a.subscribe(documentID)
+		a.read[documentID] = true
+	}
+
+	return held
+}
+
+// Read lists the documents asked for so far that the project holds, in
+// order.
+func (a Asked) Read() []ids.ULID {
+	read := make([]ids.ULID, 0, len(a.read))
+	for documentID := range a.read {
+		read = append(read, documentID)
+	}
+	slices.SortFunc(read, func(a, b ids.ULID) int { return a.Compare(b) })
+
+	return read
+}
+
+// Stamp changes whenever one of some documents changes or arrives, or the
+// project index does, so a game gathered from them can be gathered again
+// only then.
+func (s Source) Stamp(documents []ids.ULID) uint64 {
+	stamp := uint64(0)
+	for _, documentID := range append([]ids.ULID{project.IndexID()}, documents...) {
+		s.docs.View(documentID, func(document client.Document) { stamp += document.Revision + 1 })
+	}
+
+	return stamp
 }

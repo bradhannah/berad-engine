@@ -2,6 +2,7 @@ package mapview
 
 import (
 	"fmt"
+	"hash/fnv"
 	"image"
 	"math"
 	"slices"
@@ -10,18 +11,18 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	"github.com/bradhannah/berad-engine/editor/plugins/project"
-	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
 	"github.com/bradhannah/berad-engine/editor/protocol"
 	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/ui/pen"
+	"github.com/bradhannah/berad-engine/editor/views/docsource"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
-	"github.com/bradhannah/berad-engine/editor/views/valuetree"
+	"github.com/bradhannah/berad-engine/editor/views/places"
 	"github.com/bradhannah/berad-engine/engine/art"
 	"github.com/bradhannah/berad-engine/engine/clock"
+	"github.com/bradhannah/berad-engine/engine/game"
+	"github.com/bradhannah/berad-engine/engine/gameload"
 	"github.com/bradhannah/berad-engine/engine/ids"
-	"github.com/bradhannah/berad-engine/engine/npcrun"
 	"github.com/bradhannah/berad-engine/engine/play"
-	"github.com/bradhannah/berad-engine/engine/show"
 	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
 	"github.com/bradhannah/berad-engine/engine/worldstate"
 )
@@ -45,20 +46,22 @@ const (
 	startAlpha = 0x80
 )
 
-// previewRun is the preview this window runs (D15). The run, its clock and
-// its NPCs are simulated in this process; its state goes to the zone's other
-// views through the orchestrator. NPCs can be paused, or stepped until the
-// watched NPC changes node; step is the changes it made in the latest step.
+// previewRun is the preview this window runs (D15): the engine's game
+// runtime, playing the zone from the cell the author clicked, as Launch and a
+// game play it (increment 63). Its state goes to the zone's other views
+// through the orchestrator. NPCs can be paused, or stepped until the watched
+// NPC changes node; step is the changes it made in the latest step.
 type previewRun struct {
-	id    ids.ULID
-	run   *play.Run
-	held  play.Direction
-	sent  *protocol.PreviewState
-	clock *clock.Clock
-	npcs  map[ids.ULID]*npcRun
-	// loop runs the zone's loop, its workflow nil while the zone has none
-	// that fits it.
-	loop     *npcRun
+	id   ids.ULID
+	game *game.Game
+	// from is where the player started, for gathering the project again
+	// after an edit; read is the documents the last gathering asked for, and
+	// stamp what they were then.
+	from     game.Start
+	read     []ids.ULID
+	stamp    uint64
+	held     play.Direction
+	sent     *protocol.PreviewState
 	watched  ids.ULID
 	paused   bool
 	stepping bool
@@ -67,15 +70,6 @@ type previewRun struct {
 	step      []protocol.PreviewChange
 	// heard counts the times each cue has played in this preview.
 	heard map[string]int
-	// values are the world's, the zones' and the NPCs' values while the
-	// preview runs, each starting at its default; declared is the revisions
-	// of the world state, the NPCs and the zones they were last given.
-	values   *worldstate.Store
-	declared string
-	// modules are copies of the workflows the NPCs' behaviours call, in
-	// turn, at the revisions last seen, so an edit to one restarts the NPCs
-	// inside it.
-	modules map[ids.ULID]moduleCopy
 	// anchors names the anchors of the zone's floors, for the watched
 	// NPC's place values.
 	anchors map[ids.ULID]string
@@ -87,12 +81,8 @@ type previewRun struct {
 	// protocol.TrailLength, and passed counts every one so far.
 	trail  []protocol.PreviewTrail
 	passed uint64
-	// stage is the message boxes and the shake the workflows share.
-	stage *show.Stage
-	// signals are the signals sent on the latest tick, which land on the
-	// next, and named the signals the project declares, to name them.
-	signals []npcrun.Sent
-	named   []worldstate.Signal
+	// named is the signals the project declares, to name them.
+	named []worldstate.Signal
 }
 
 // remotePreview is a preview another window runs in this zone, and its
@@ -102,26 +92,6 @@ type remotePreview struct {
 	tick   uint64
 	player *protocol.PreviewEntity
 	state  *protocol.PreviewState
-}
-
-// docsZone gives a run the window's copies of the zone's floors.
-type docsZone struct {
-	floors []ids.ULID
-	docs   frame.Docs
-}
-
-func (z docsZone) Floors() []ids.ULID { return z.floors }
-
-func (z docsZone) Floor(id ids.ULID, fn func(*floor.Floor)) bool {
-	found := false
-	z.docs.View(id, func(document client.Document) {
-		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
-			found = true
-			fn(floorDoc.Floor)
-		}
-	})
-
-	return found
 }
 
 // arrows maps the arrow keys to the directions they walk.
@@ -173,7 +143,7 @@ func (s *State) canStart(floorData *floor.Floor, cell Cell) bool {
 func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 	s.choosing, s.starting = false, true
 	s.askAudio(ctx)
-	floorID := s.floor
+	from := game.Start{Zone: s.zone, Floor: s.floor, Col: cell.X, Row: cell.Y}
 	ctx.Requests.PreviewStart(s.zone, func(result protocol.Result, err error) {
 		s.starting = false
 		if err != nil {
@@ -181,25 +151,72 @@ func (s *State) startPreviewAt(ctx *frame.Context, cell Cell) {
 
 			return
 		}
-		s.preview = &previewRun{
-			id: result.Created, run: play.Start(floorID, cell), held: 0, sent: nil, clock: s.startClock(),
-			npcs: map[ids.ULID]*npcRun{}, watched: ids.ULID{}, paused: false, stepping: false, stepTicks: 0, step: nil,
-			loop: &npcRun{
-				npc: npcrun.StartLoop(s.zone, seed(result.Created, s.zone)), workflow: nil, source: ids.ULID{}, revision: 0,
-			},
-			heard: map[string]int{}, values: worldstate.NewStore(worldstate.NewCatalog(
-				worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)),
-			declared: "", modules: map[ids.ULID]moduleCopy{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0,
-			trail: nil, passed: 0, stage: show.NewStage(), signals: nil, named: nil,
+		loaded, read := s.gatherPreview(ctx, from)
+		loaded.Project.Seconds, loaded.Project.Seed = s.start, seedOf(result.Created)
+		played, err := game.New(loaded.Project)
+		if err != nil {
+			ctx.Requests.PreviewStop(protocol.PreviewStop{Run: result.Created, Reason: "the game could not start"})
+			ctx.Frame.Status("Preview not started: " + err.Error())
+
+			return
 		}
-		for _, document := range valuetree.Documents(ctx.Docs) {
-			s.subscribe(document, ctx)
+		played.KnowCues(s.cueTicks)
+		s.preview = &previewRun{
+			id: result.Created, game: played, from: from, read: read, stamp: docsource.New(ctx.Docs).Stamp(read),
+			held: 0, sent: nil, watched: ids.ULID{}, paused: false, stepping: false, stepTicks: 0, step: nil,
+			heard: map[string]int{}, anchors: map[ids.ULID]string{}, lines: nil, written: 0, trail: nil, passed: 0,
+			named: loaded.Project.Signals,
+		}
+		if len(loaded.Cues) > 0 {
+			ctx.Sounds.Prepare(loaded.Cues)
 		}
 		s.remote = nil
 		s.subscribeFloors(ctx)
-		ctx.Frame.Status("Preview running from " + clock.Format(s.preview.clock.Seconds()) +
+		ctx.Frame.Status("Preview running from " + clock.Format(played.Clock().Seconds()) +
 			". Arrow keys walk; click an NPC to watch it; P stops.")
 	})
+}
+
+// gatherPreview gathers what a preview plays from the window's documents,
+// as a game gathers it, subscribing to each document it asks for, and lists
+// those documents. What has not arrived yet is left out until it does.
+func (s *State) gatherPreview(ctx *frame.Context, from game.Start) (gameload.Loaded, []ids.ULID) {
+	asking := docsource.New(ctx.Docs).Asking(func(documentID ids.ULID) { s.subscribe(documentID, ctx) })
+	loaded, _ := gameload.Load(asking, &from)
+	loaded.Project.Names = places.NewNames(ctx.Docs)
+	if loaded.Project.Values == nil {
+		// Until the world state arrives the preview keeps values that
+		// declare nothing, so its value nodes find none.
+		loaded.Project.Values = worldstate.NewCatalog(worldstate.NewDeclarations(worldstate.HoldsWorldState), nil)
+	}
+
+	return loaded, asking.Read()
+}
+
+// refreshPreview gives the running preview the project as it is now, when a
+// document it was gathered from has changed or arrived: an edit made while
+// it runs is walked, followed and heard at once, and an NPC whose workflow
+// changed starts it again.
+func (s *State) refreshPreview(ctx *frame.Context) {
+	docs := docsource.New(ctx.Docs)
+	if docs.Stamp(s.preview.read) == s.preview.stamp {
+		return
+	}
+	loaded, read := s.gatherPreview(ctx, s.preview.from)
+	s.preview.game.Update(loaded.Project)
+	s.preview.read, s.preview.stamp, s.preview.named = read, docs.Stamp(read), loaded.Project.Signals
+	if len(loaded.Cues) > 0 {
+		ctx.Sounds.Prepare(loaded.Cues)
+	}
+}
+
+// seedOf is a preview's seed: its run's, so each preview differs and a run
+// repeats.
+func seedOf(run ids.ULID) uint64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write(run[:])
+
+	return hash.Sum64()
 }
 
 // arrowHint explains what the arrow keys need when no preview is running in
@@ -244,17 +261,18 @@ func (s *State) stepPreview(input *ui.Input, ctx *frame.Context) {
 			continue
 		}
 	}
-	if s.preview.stage.Holding() {
+	stage := s.preview.game.Stage()
+	if stage.Holding() {
 		held = 0
 		if input.Consume(ui.KeyEnter, ui.Plain()) || input.Consume(ui.KeySpace, ui.Plain()) {
-			s.preview.stage.Close()
+			stage.Close()
 		}
 	}
 	pressed := held &^ s.preview.held
 	s.preview.held = held
-	zone := docsZone{floors: s.floors, docs: ctx.Docs}
-	outcome := s.preview.run.Step(zone, play.Input{Held: held, Pressed: pressed})
-	player := s.preview.run.Player()
+	s.refreshPreview(ctx)
+	outcome := s.preview.game.Walk(play.Input{Held: held, Pressed: pressed})
+	player := s.preview.game.Player()
 	switch outcome {
 	case play.Climbed:
 		s.switchFloor(player.Floor, ctx)
@@ -345,7 +363,7 @@ func sameDoing(sent, now protocol.PreviewEntity) bool {
 // to the zone's other views, at most every streamTicks ticks and only when
 // it has changed.
 func (s *State) sendState(ctx *frame.Context) {
-	if s.preview.run.Tick()%streamTicks != 0 {
+	if s.preview.game.Ticks()%streamTicks != 0 {
 		return
 	}
 	state := s.previewState()
@@ -404,7 +422,7 @@ func (s *State) previewChanged(update client.Update, ctx *frame.Context) {
 func (s *State) shownPlayer() (protocol.PreviewEntity, bool) {
 	switch {
 	case s.preview != nil:
-		return entityOf(s.preview.run.Player()), true
+		return entityOf(s.preview.game.Player()), true
 	case s.remote != nil && s.remote.player != nil:
 		return *s.remote.player, true
 	}
@@ -471,7 +489,7 @@ func (s *State) hasPlayer(value string, remote bool) bool {
 	if s.preview == nil {
 		return false
 	}
-	player := s.preview.run.Player()
+	player := s.preview.game.Player()
 
 	return !player.Moving() && player.Cell == image.Pt(col, row)
 }

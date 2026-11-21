@@ -342,6 +342,10 @@ func (g *Game) LoopRunner() (Runner, bool) {
 // Zone returns the zone being played.
 func (g *Game) Zone() ids.ULID { return g.zone }
 
+// Ticks is how many ticks the player has been stepped: the tick the NPCs
+// take their steps on.
+func (g *Game) Ticks() uint64 { return g.run.Tick() }
+
 // Stage returns the message boxes and the shake, for drawing them and for
 // closing a box the player must close.
 func (g *Game) Stage() *show.Stage { return g.stage }

@@ -16,32 +16,13 @@ import (
 // subscribes to each document as the launch asks for it, and launches once
 // all have loaded. A document deleted since something named it is skipped.
 
-// asked is a window's documents for a launch: each one the launch asks for
-// that the project holds is subscribed to, so it arrives.
-type asked struct {
-	docsource.Source
-
-	state *State
-	ctx   *frame.Context
-}
-
-// View shows a document, subscribing to it when the project holds it.
-func (a asked) View(documentID ids.ULID, fn func(gameload.Document)) gameload.State {
-	held := a.Source.View(documentID, fn)
-	if held != gameload.Missing {
-		a.state.subscribe(documentID, a.ctx)
-	}
-
-	return held
-}
-
 // prepare gathers what a launch needs, subscribing to what has not loaded,
 // and reports whether everything has.
 func (s *State) prepare(ctx *frame.Context) (gameload.Loaded, bool) {
 	s.subscribe(project.IndexID(), ctx)
 	s.subscribe(worldstate.ID(), ctx)
 	docs := docsource.New(ctx.Docs)
-	loaded, ready := gameload.Load(asked{Source: docs, state: s, ctx: ctx}, s.from)
+	loaded, ready := gameload.Load(docs.Asking(func(documentID ids.ULID) { s.subscribe(documentID, ctx) }), s.from)
 	// The game names things from the window's documents as they are when it
 	// asks, without subscribing to any.
 	loaded.Project.Names = gameload.NewNames(docs)
