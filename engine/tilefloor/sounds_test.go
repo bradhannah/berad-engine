@@ -87,7 +87,7 @@ func TestUpgradeFromVersion4(t *testing.T) {
 			`"anchors":[],"placements":[]}`),
 	}
 	upgraded, changed, err := registry.Upgrade(old)
-	if err != nil || !changed || upgraded.Version != 5 {
+	if err != nil || !changed || upgraded.Version != tilefloor.FormatVersion {
 		t.Fatalf("upgrade: %+v %v %v", upgraded, changed, err)
 	}
 	floor, err := tilefloor.Decode(upgraded.Data)

@@ -298,7 +298,7 @@ func (s *State) confirmResize(resize pendingResize, lost []floor.Anchor, uses []
 func (s *State) sendResize(ctx *frame.Context, resize pendingResize) {
 	args := tilefloor.ResizeArgs{
 		Bounds: tilefloor.BoundsOf(resize.bounds), Ground: resize.ground, Cells: nil, Anchors: nil, Placements: nil,
-		Sounds: nil,
+		Sounds: nil, Portals: nil,
 	}
 	s.command(ctx, resize.floor, tilefloor.ResizeEdit, "", args, func(protocol.Result) {
 		removed := ""
