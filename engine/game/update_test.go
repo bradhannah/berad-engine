@@ -1,6 +1,8 @@
 package game_test
 
 import (
+	"errors"
+	"image"
 	"strings"
 	"testing"
 
@@ -284,5 +286,49 @@ func TestUpdateRestartsAnNPCInsideAChangedCall(t *testing.T) {
 	if !startedAgain(whys[id(clerkID)], game.RestartedByCall) || startedAgain(whys[id(beaID)], game.RestartedByCall) ||
 		startedAgain(whys[id(beaID)], game.RestartedByEdit) || count(cues, "bell") != 0 {
 		t.Fatalf("only the clerk, inside the changed call, starts again: %v, %v", whys, cues)
+	}
+}
+
+// TestPlaceMovesThePlayerAndNothingElse moves the player to another cell,
+// and up to the other floor, while the game runs: the clerk carries on, and
+// the clock and the tick count are as they were. A wall, a cell off the
+// floor and a floor the zone lacks are refused, and the player stays.
+func TestPlaceMovesThePlayerAndNothingElse(t *testing.T) {
+	t.Parallel()
+	played, err := game.New(town(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	walk(played, play.West, 5)
+	ticked, at := played.Ticks(), played.Clock().Seconds()
+	if err := played.Place(id(groundID), image.Pt(9, 2)); err != nil {
+		t.Fatal(err)
+	}
+	if player := played.Player(); player.Cell != image.Pt(9, 2) || player.Moving() || played.Ticks() != ticked ||
+		played.Clock().Seconds() != at {
+		t.Fatalf("the player stands on the new cell, and no time passed: %+v", player)
+	}
+	if err := played.Place(id(upperID), image.Pt(3, 3)); err != nil || played.Player().Floor != id(upperID) {
+		t.Fatalf("the player is moved to the upper floor: %v", err)
+	}
+	cues, whys := ticks(played, 20)
+	if count(cues, "bell") != 0 || len(whys[id(clerkID)]) != 0 {
+		t.Fatalf("the clerk, who rang before the move, waits on and does not start again: %v, %v", cues, whys)
+	}
+	for name, refused := range map[string]error{
+		"a wall":                 played.Place(id(groundID), image.Pt(6, 5)),
+		"a cell off the floor":   played.Place(id(groundID), image.Pt(40, 40)),
+		"a floor not the zone's": played.Place(id(99), image.Pt(1, 1)),
+	} {
+		if !errors.Is(refused, game.ErrPlace) {
+			t.Fatalf("%s is refused: %v", name, refused)
+		}
+	}
+	if player := played.Player(); player.Floor != id(upperID) || player.Cell != image.Pt(3, 3) {
+		t.Fatalf("refused, the player stays where they were: %+v", player)
+	}
+	walk(played, play.East, play.StepTicks)
+	if played.Player().Cell != image.Pt(4, 3) {
+		t.Fatalf("the player walks on from where they were put: %+v", played.Player().Cell)
 	}
 }

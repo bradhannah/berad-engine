@@ -1,6 +1,9 @@
 package game
 
 import (
+	"errors"
+	"fmt"
+	"image"
 	"slices"
 
 	"github.com/bradhannah/berad-engine/engine/ids"
@@ -186,4 +189,23 @@ func inside(character *npcrun.NPC, target ids.ULID) bool {
 	}
 
 	return slices.ContainsFunc(character.Callers(), func(call npcrun.Caller) bool { return call.Workflow == target })
+}
+
+// ErrPlace reports a cell the player cannot be moved to.
+var ErrPlace = errors.New("the player cannot be moved there")
+
+// Place moves the player to a cell of a floor of the zone being played
+// (increment 63), as an author trying a game moves them. Nothing else
+// changes: the NPCs carry on, and the clock and the values are as they were.
+// A floor the zone lacks, or a cell the player cannot stand on, is refused.
+func (g *Game) Place(floorID ids.ULID, cell image.Point) error {
+	if !slices.Contains(g.levels.Floors(), floorID) {
+		return fmt.Errorf("%w: that floor is not in the zone being played", ErrPlace)
+	}
+	if !play.CanStand(g.levels, floorID, cell) {
+		return fmt.Errorf("%w: nothing can stand on cell %d,%d", ErrPlace, cell.X, cell.Y)
+	}
+	g.run.Place(floorID, cell)
+
+	return nil
 }

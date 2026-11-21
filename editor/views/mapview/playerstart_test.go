@@ -6,6 +6,7 @@ import (
 
 	"github.com/bradhannah/berad-engine/editor/client"
 	gameplugin "github.com/bradhannah/berad-engine/editor/plugins/game"
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/engine/game"
 )
 
@@ -46,5 +47,40 @@ func TestSettingThePlayerStart(t *testing.T) {
 	f.rightClick("cell:2,2")
 	if got := f.menu(); !strings.Contains(got, "set-start (disabled)") {
 		t.Fatalf("a wall is no place to start: %s", got)
+	}
+}
+
+// TestMoveThePlayerHereDuringAPreview offers Move the player here only
+// while this Map runs a preview. Chosen on a cell, it puts the player there
+// and the preview goes on, its clock as it was; on a wall it is disabled.
+func TestMoveThePlayerHereDuringAPreview(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.rightClick("cell:5,5")
+	if strings.Contains(f.menu(), "move-here") {
+		t.Fatalf("with no game running there is no player to move: %s", f.menu())
+	}
+	f.keys("Escape")
+	f.startPreview("cell:3,3")
+	f.idle(30)
+	f.rightClick("cell:2,2")
+	if !strings.Contains(f.menu(), "move-here (disabled)") {
+		t.Fatalf("the player cannot be moved onto a wall: %s", f.menu())
+	}
+	f.keys("Escape")
+	f.rightClick("cell:5,5")
+	if !strings.Contains(f.menu(), "move-here") || strings.Contains(f.menu(), "move-here (disabled)") {
+		t.Fatalf("during a preview the player can be moved: %s", f.menu())
+	}
+	f.click("menu:move-here")
+	if !f.has("player:5,5") || !f.has("previewing") {
+		t.Fatal("the player stands on the cell chosen, and the preview goes on")
+	}
+	if !strings.HasPrefix(f.status(), "Moved the player to cell 5, 5") {
+		t.Fatalf("the move is said: %q", f.status())
+	}
+	f.walk(ui.KeyLeft, 1)
+	if !f.has("player:4,5") {
+		t.Fatal("the player walks on from there")
 	}
 }
