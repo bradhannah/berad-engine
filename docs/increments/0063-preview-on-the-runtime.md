@@ -171,6 +171,14 @@ Not in a pull request yet.
   then Launch's game moved within its zone, into a zone made for the walk
   and back, launched once throughout.
 
+- **Checks:** `make check` passes: formatting, the strict lint with no
+  findings, vet, and every test with the race detector. The real-window
+  suite, run from a frozen copy of the final code, passed all 84 of its
+  tests. `TestClerkCallsFetchStock`, which failed about two runs in five
+  before this increment, passed ten runs in ten on its own, and
+  `TestASampleZoneLoop`, which the faults above made fail now and then
+  while this was built, passed twelve in twelve.
+
 ## Changed after its author tried it
 
 - None yet.
