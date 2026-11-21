@@ -423,8 +423,15 @@ back with a short reason the pane shows.
   what is heard. A game's own window, `player.Run`, is the same code reading
   the project's folder, and `berad-play --project DIR` is that window and
   nothing else. See [increment 62](increments/0062-a-game-runs-on-its-own.md).
-- *Agreed (2026-11-16), not built:* Preview stays in the Map and runs on the
-  game runtime, in place of the Map's own copy of the simulation.
+- *As built (increment 63):* Preview stays in the Map and runs the game
+  runtime, in place of a simulation of its own. The Map gathers the project
+  as Launch does and, when a document it gathered from changes or arrives,
+  gathers it again and gives it to the running game, which starts again the
+  NPCs whose workflow changed. Pause is the runtime walking without
+  ticking, and a step is it ticking without walking. A cell's menu moves a
+  running game's player: within its zone during a preview, and for Launch's
+  game into any zone, where the zone left stops and the values and the clock
+  carry over. See [increment 63](increments/0063-preview-on-the-runtime.md).
 
 ## D16 — Code layout
 

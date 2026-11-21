@@ -1,6 +1,6 @@
 # Increment 63: Preview on the game runtime, and moving the player
 
-**Status:** Planned
+**Status:** Built
 
 One simulation runs Preview, Launch and a game. [Increment
 62](0062-a-game-runs-on-its-own.md) put Launch and a game's own window on the
@@ -66,22 +66,96 @@ Agreed by its author on 2026-11-21, before building:
 
 Chosen while building, for its author to check:
 
-- None yet.
+- **An edit reaches a running preview by gathering the project again.** The
+  Map no longer reads each document every tick: it notes what the documents
+  it gathered from were, and when one changes or arrives it gathers again,
+  as Launch gathers, and hands the result to the game. The effect is the
+  same tick as before.
+- **Moving a node on the canvas still starts its NPC again,** as it did:
+  the runtime compares a workflow whole, layout included. Leaving layout out
+  of that would be a change of its own.
+- **A preview's world waits while a document the Map asked for is on its
+  way.** Documents arrive in no fixed order, and a zone loop whose workflow
+  arrived a moment before the world state ran its first node before the
+  value it sets was declared. The player walks meanwhile; the wait is a few
+  frames when a preview starts or a new document is first needed.
+- **An NPC inside a call to a workflow that is deleted starts again,** as
+  one inside a workflow that was edited does. Before, it carried on in the
+  copy the Map had kept.
+- **An edit made while the NPCs are paused is applied at once,** so an NPC
+  it starts again is at its start when the NPCs resume, where before it
+  started again as they resumed.
+- **Move the player here shows only while there is a player to move:**
+  while this Map runs a preview, or Launch's game runs in the Play tab. On a
+  cell the player cannot stand on it is disabled.
+- **With a preview in this Map and Launch's game both running,** the menu
+  moves the preview's player.
+- **The Play tab tells the Maps while a game runs,** as shared session
+  state. A Play tab closed in a way that does not say so leaves the item
+  showing; chosen then, the Play tab opens, says no game is running and
+  launches nothing, since nobody asked for a launch.
+- **Each move is said in the status bar,** naming the cell, and the zone
+  when it changed: "The zone left has stopped; the values and the clock go
+  on."
+- **Entering a zone clears the message boxes and the shake,** and drops
+  signals not yet landed: they belonged to the zone left. Its NPCs start at
+  their placements with the clock as it is.
+- **Moving into the zone being played from another Map of it** places the
+  player and starts nothing again.
+- **`BERAD_SEED` fixes the seed** of the previews and launches a window
+  starts, for an automated run. `TestClerkCallsFetchStock` runs with seed 1,
+  where the clerk fetches stock the first time she chooses.
+- **A preview's random draws differ from before for the same run,** since
+  its seed is now made as Launch's is. Nothing an author sees depends on it.
+- **When a project is gathered, its values are asked for before the
+  workflows that read them.**
+- **Scripts can wait on two more states:** a Map's `launched`, while
+  Launch's game runs, and the Play tab's `zone:<name>`.
+- **A fault from increment 62 is fixed:** a game's script could end its
+  next step before a screenshot it asked for was taken, and lose it.
 
 ## Steps
 
 | Step | Builds | Done when | Status |
 | --- | --- | --- | --- |
-| 1. Walk, tick, see | The runtime walks and ticks apart, and shows each NPC as it runs, with its workflow | Tests: the player walks while the NPCs are paused; the NPCs run many ticks while the player stands | Planned |
-| 2. Edits | The runtime takes a project gathered again and applies what changed | Tests of each rule, with the reasons NPCs give for starting again | Planned |
-| 3. Preview on it | The Map runs the game runtime; its own simulation is deleted | The Map's tests and the walks of Preview pass unchanged | Planned |
-| 4. A fixed seed | A switch fixes the seed of a scripted run | `TestClerkCallsFetchStock` passes ten runs in ten | Planned |
-| 5. Moving within a zone | The runtime places the player; Move the player here in a preview | Tests, and a walk that moves the player mid-preview with its values kept | Planned |
-| 6. Moving between zones | The runtime enters a zone; the Play tab follows, with its art and the zone's sounds | Tests of what stops and what carries over; a walk that jumps Launch's game to a second zone and back | Planned |
+| 1. Walk, tick, see | The runtime walks and ticks apart, and shows each NPC as it runs, with its workflow | Tests: the player walks while the NPCs are paused; the NPCs run many ticks while the player stands | Built |
+| 2. Edits | The runtime takes a project gathered again and applies what changed | Tests of each rule, with the reasons NPCs give for starting again | Built |
+| 3. Preview on it | The Map runs the game runtime; its own simulation is deleted | The Map's tests and the walks of Preview pass unchanged | Built |
+| 4. A fixed seed | A switch fixes the seed of a scripted run | `TestClerkCallsFetchStock` passes ten runs in ten | Built |
+| 5. Moving within a zone | The runtime places the player; Move the player here in a preview | Tests, and a walk that moves the player mid-preview | Built |
+| 6. Moving between zones | The runtime enters a zone; the Play tab follows, with its art and the zone's sounds | Tests of what stops and what carries over; a walk that jumps Launch's game to a second zone and back | Built |
 
 ## Step results
 
-- None yet.
+Not in a pull request yet.
+
+- **Walk, tick, see:** `game.Walk`, `game.Tick`, `game.Runners`,
+  `game.LoopRunner` and `game.Workflow`; `Step` is the two together.
+  Verified by the runtime's tests.
+- **Edits:** `game.Update`, with `RestartedByEdit` and `RestartedByCall`.
+  Verified by a test of each rule: nothing changed, a behaviour edited,
+  taken away and given back, placements added and removed, a floor painted,
+  values declared anew, and a called workflow edited with one NPC inside
+  the call and one not.
+- **Preview on it:** the Map's `previewRun` holds a `game.Game`, gathered by
+  `gameload.Load` through `docsource`'s `Asking`, and its own player, clock,
+  runners, values, zone loop, signals and copies of called workflows are
+  gone: about 290 lines fewer in the Map. Verified by the Map's tests, of
+  which one changed: `TestPreviewSeesEdits` edited a floor in place without
+  raising its revision, which a real window always does, so it now does.
+  Two faults found by the walks in the real window and fixed: a document
+  that arrived between a gathering and its note of what it had read was
+  never seen, and the wait described above.
+- **A fixed seed:** `frame.Context.Seed`, from `BERAD_SEED`.
+- **Moving within a zone:** `play.Run.Place` and `game.Place`, with
+  `ErrPlace`; Move the player here in `mapview`. Verified by tests of the
+  runtime and the Map.
+- **Moving between zones:** `game.Enter`; `playview`'s `MoveToItem`, the
+  session topic `TopicPlaying`, and `player.Sound` stopping the sounds of a
+  zone left. Verified by tests of the runtime, the Play tab and the Map,
+  and by `TestMovingThePlayer` in the real window: a move within a preview,
+  then Launch's game moved within its zone, into a zone made for the walk
+  and back, launched once throughout.
 
 ## Changed after its author tried it
 

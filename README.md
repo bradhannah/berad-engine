@@ -80,7 +80,14 @@ game's project is.
   cell to start the player there. The arrow keys walk, one cell per tap, and
   two together walk diagonally; walking onto stairs changes floor. You can keep
   editing while you walk, other views of the zone show the player, and `P`
-  stops. A preview never changes the project.
+  stops. A preview never changes the project. It runs the engine's game
+  runtime, as Launch and a game do.
+- **Move the player here:** while a game runs, right-click a cell on a Map.
+  During a preview it moves the preview's player within the zone. While
+  Launch's game runs in the Play tab it moves that game's player, into
+  another zone if the Map shows one: the zone left stops, and the game's
+  values and clock carry on
+  ([increment 63](docs/increments/0063-preview-on-the-runtime.md)).
 - **Text:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
   Escape reverts; "Pick on map" chooses an anchor in a Map.
 - **Workflow:** New workflow in the project browser, then Open. Click a
