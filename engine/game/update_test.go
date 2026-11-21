@@ -439,3 +439,89 @@ func TestEnterRefusesWhereThePlayerCannotStand(t *testing.T) {
 		t.Fatal("refused, the game goes on in the town")
 	}
 }
+
+// chooser is a project whose two NPCs each choose at random, again and
+// again, between ringing a bell and sounding a gong. Its documents and
+// placements take their IDs from base, as a project made again takes new
+// ones.
+func chooser(t *testing.T, base byte, seed uint64) game.Project {
+	t.Helper()
+	ground, err := tilefloor.New(12, 10, "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, col := range []int{2, 9} {
+		placement := tilefloor.Placement{ID: id(base + 10 + byte(index)), NPC: id(base + 20 + byte(index)), Col: col, Row: 8}
+		if err := ground.InsertPlacement(index, placement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zoned := zone.New()
+	if err := zoned.Insert(0, id(base+1)); err != nil {
+		t.Fatal(err)
+	}
+	day, err := flow.New(id(base + 30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	choose := node(t, flow.KindRandom, base+31, map[string]any{"options": []flow.Share{
+		{Port: "o1", Label: "bell", Share: 1, Constant: flow.NoConstant()},
+		{Port: "o2", Label: "gong", Share: 1, Constant: flow.NoConstant()},
+	}})
+	bell := node(t, flow.KindPlaySound, base+32, map[string]any{"cue": "bell"})
+	gong := node(t, flow.KindPlaySound, base+33, map[string]any{"cue": "gong"})
+	rest := node(t, flow.KindWait, base+34, map[string]any{
+		"duration": flow.Duration{Amount: 1, Unit: flow.UnitMinutes, Clock: flow.ClockGame},
+	})
+	if err := day.Insert([]flow.Node{choose, bell, gong, rest}, nil, []flow.Link{
+		{From: id(base + 30), Output: flow.OutputNext, To: choose.ID}, {From: choose.ID, Output: "o1", To: bell.ID},
+		{From: choose.ID, Output: "o2", To: gong.ID}, {From: bell.ID, Output: flow.OutputNext, To: rest.ID},
+		{From: gong.ID, Output: flow.OutputNext, To: rest.ID}, {From: rest.ID, Output: flow.OutputNext, To: choose.ID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	settings := game.DefaultSettings()
+	settings.Start = game.Start{Zone: id(base), Floor: id(base + 1), Col: 5, Row: 5}
+
+	return game.Project{
+		Settings: settings, Zone: zoned, Floors: map[ids.ULID]*tilefloor.Floor{id(base + 1): ground},
+		NPCs: map[ids.ULID]npc.NPC{
+			id(base + 20): follows(id(base + 2)), id(base + 21): follows(id(base + 2)),
+		},
+		Workflows: map[ids.ULID]*flow.Workflow{id(base + 2): day},
+		Values:    nil, Seconds: eight, Seed: seed, Names: nil, Signals: nil,
+	}
+}
+
+// TestAProjectMadeAgainPlaysTheSame plays two copies of a project whose
+// documents and placements have different IDs, as a project made again has:
+// from the same seed their NPCs make the same random choices, tick for
+// tick, and from another seed they make others.
+func TestAProjectMadeAgainPlaysTheSame(t *testing.T) {
+	t.Parallel()
+	heard := func(project game.Project) string {
+		played, err := game.New(project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var said strings.Builder
+		for range 4000 {
+			for _, cue := range played.Tick() {
+				said.WriteString(cue.Cue[:1])
+			}
+			said.WriteByte('.')
+		}
+
+		return said.String()
+	}
+	first, again, other := heard(chooser(t, 100, 7)), heard(chooser(t, 180, 7)), heard(chooser(t, 100, 8))
+	if !strings.Contains(first, "b") || !strings.Contains(first, "g") {
+		t.Fatal("the NPCs ring bells and sound gongs")
+	}
+	if first != again {
+		t.Fatal("made again with new IDs, the project plays the same from the same seed")
+	}
+	if first == other {
+		t.Fatal("from another seed the NPCs choose otherwise")
+	}
+}
