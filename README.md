@@ -67,9 +67,10 @@ game's project is.
   Create zones, floors, workflows, NPCs and art; rename in the inspector
   (Enter or the Rename button saves); delete with a where-used check; reorder
   floors; double-click or Enter opens.
-- **Map:** tools on the left (`S` select, `G` ground, `W` walls, `O` doors,
+- **Map:** tools on the left, grouped by job (`S` select, `G` ground, `W` walls, `O` doors,
   stairs and pickups, `E` erase, `A` anchors, `N` place NPC, `R` resize
-  floor), `1`-`9` pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
+  floor), with what the tool in hand paints with under them
+  ([increment 66](docs/increments/0066-a-calmer-editor.md)); `1`-`9` pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
   along its edges; every floor of the zone shares it. Resize floor drags an edge
   or corner of the floor, or adds and removes rows and columns from buttons.
   With Select, click an anchor, an NPC, an ambient sound, a portal or the

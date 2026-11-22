@@ -66,6 +66,21 @@ under consideration), **open** (undecided).
   save bar that stays in place and goes quiet when nothing waits. The seven
   tints stay organisation, not meaning, and a type's muted colour stays on
   its icon, drawn as a filled chip. At most one filled button in a panel.
+- **Agreed (2026-11-22):** **a control is as strong as its job.** With
+  every button an ink outline and every selected row a heavy blue one, the
+  author found the Map's left panel "jarring and old looking". A button has
+  three strengths: *main*, filled blue, one a panel; *plain*, a white box
+  with an ink outline, for a panel's few real choices; *quiet*, the page's
+  tone inside a hairline, for the rest. A selected row has two: *in hand*,
+  filled blue, for the one thing a panel is about, and *chosen*, a wash in
+  a thin ring, for a choice under it. Keys and counts are small caps at the
+  right edge. A tool list is grouped by job, and what the tool in hand
+  paints with is a grid of swatches. Buttons that are one choice stand
+  together as one control. Text stays the size it is, and no control moves
+  or changes what it does. Built for the Map's left panel, the Project
+  window's list, filters and inspector, the Map's inspector, the Workflow's
+  palette and the window and status bars; the other views' inspectors wait.
+  See [increment 66](increments/0066-a-calmer-editor.md).
 - **Agreed (2026-11-11):** **a history that can be read.** Every change is a
   sentence saying what kind of change, to what, and where it went. The
   first is what Cmd+Z will undo, and Undo answers with it in place of

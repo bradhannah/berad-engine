@@ -19,6 +19,9 @@ func TestASetFacetHasACrossThatClearsIt(t *testing.T) {
 	if quiet, caret := f.state.FacetLook("kind"); !quiet || !caret {
 		t.Fatalf("an unset facet is quiet, with a triangle: %v %v", quiet, caret)
 	}
+	if _, crossed := f.state.Locate("clear:Kind", f.ctx.Docs); crossed {
+		t.Fatal("an unset facet has no cross")
+	}
 	f.click("ui:facet-kind", false)
 	f.click("facet:Kind/Workflows", false)
 	f.press("Escape")
@@ -28,6 +31,9 @@ func TestASetFacetHasACrossThatClearsIt(t *testing.T) {
 	cross, set := f.state.FacetCross("kind")
 	if _, caret := f.state.FacetLook("kind"); !set || caret {
 		t.Fatalf("a set facet has a cross where its triangle was: %v %v", set, caret)
+	}
+	if named, crossed := f.state.Locate("clear:Kind", f.ctx.Docs); !crossed || named != cross {
+		t.Fatalf("a script finds the cross by its facet's name: %v %v, want %v", named, crossed, cross)
 	}
 	input := ui.NewInput(cross)
 	input.Pressed, input.Down = true, true
