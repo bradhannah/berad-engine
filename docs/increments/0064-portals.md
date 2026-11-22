@@ -1,6 +1,6 @@
 # Increment 64: Portals, the way from one zone to another
 
-**Status:** Built
+**Status:** Judged by its author on 2026-11-22
 
 A game can leave its first zone. [Increment
 63](0063-preview-on-the-runtime.md) taught the game runtime to move a
@@ -200,6 +200,9 @@ never seen on the portal's cell.
   that test waits for a screenshot to appear, found the old one at once, and
   acted before the editor had made its project. Alone, with an empty folder,
   it passed.
+
+Tried again by its author on 2026-11-22, with increments 65 and 66, who said
+of the three, "They are good".
 
 ## Not in this increment
 
