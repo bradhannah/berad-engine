@@ -8,8 +8,9 @@ import (
 	"github.com/bradhannah/berad-engine/engine/ids"
 )
 
-// How the screen changes when a portal takes the player (increment 64). Each
-// is a named kind, so another is an addition.
+// How the screen changes when a portal takes the player (increment 64),
+// once they stand on its cell. Each is a named kind, so another is an
+// addition.
 const (
 	// ChangeCut shows where the portal leads at once.
 	ChangeCut = "cut"
@@ -18,8 +19,9 @@ const (
 )
 
 // Changes lists the ways the screen can change, the one a new portal has
-// first.
-func Changes() []string { return []string{ChangeCut, ChangeFade} }
+// first: a fade, since a cut puts the player somewhere else with nothing to
+// show they went.
+func Changes() []string { return []string{ChangeFade, ChangeCut} }
 
 // ErrPortal reports an invalid change to a floor's portals.
 var ErrPortal = errors.New("invalid portal")

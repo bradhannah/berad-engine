@@ -74,7 +74,7 @@ func (f *fixture) leadTo(zone ids.ULID, open []protocol.PickMap, anchorFloor, an
 
 // TestAddingAPortal adds a portal from a cell's menu: the zone is chosen
 // first, the anchor picked in that zone's Map, opened for the pick when none
-// shows it. The portal cuts until told to fade; it opens where it leads, is
+// shows it. The portal fades until told to cut; it opens where it leads, is
 // moved, led somewhere else and removed, each one floor edit with undo.
 func TestAddingAPortal(t *testing.T) {
 	t.Parallel()
@@ -93,17 +93,17 @@ func TestAddingAPortal(t *testing.T) {
 	var add tilefloor.AddPortalArgs
 	want := floor.AnchorRef{Floor: cellarFloorID, Anchor: footID}
 	if len(added) != 1 || added[0].Decode(&add) != nil || added[0].Command.Document != groundID || add.Portal.Col != 9 ||
-		add.Portal.Row != 8 || add.Portal.To != want || add.Portal.Change != floor.ChangeCut {
+		add.Portal.Row != 8 || add.Portal.To != want || add.Portal.Change != floor.ChangeFade {
 		t.Fatalf("add %d %+v", len(added), add)
 	}
 	add.Portal.ID = portalID
 	f.apply(groundID, tilefloor.AddPortal{}, add)
 	f.keys()
-	if !f.has("portal:9,8") || !f.has("portal:9,8:cut") || !f.has("portal:9,8:to:Foot") || f.has("portal:9,8:nowhere") {
-		t.Fatal("the portal is on the map, cuts, and leads to Foot")
+	if !f.has("portal:9,8") || !f.has("portal:9,8:fade") || !f.has("portal:9,8:to:Foot") || f.has("portal:9,8:nowhere") {
+		t.Fatal("the portal is on the map, fades, and leads to Foot")
 	}
 	f.rightClick("cell:9,8")
-	if got := f.menu(); !strings.Contains(got, "open-portal, lead-portal, portal-change:fade, move-portal, remove-portal") {
+	if got := f.menu(); !strings.Contains(got, "open-portal, lead-portal, portal-change:cut, move-portal, remove-portal") {
 		t.Fatalf("the portal's choices: %s", got)
 	}
 	f.click("menu:open-portal")
@@ -113,22 +113,22 @@ func TestAddingAPortal(t *testing.T) {
 		t.Fatalf("the Cellar's Map opens on Foot: %+v", opened)
 	}
 	f.rightClick("cell:9,8")
-	f.click("menu:portal-change:fade")
-	var fades tilefloor.UpdatePortalArgs
-	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 1 || updates[0].Decode(&fades) != nil ||
-		fades.Portal.Change != floor.ChangeFade || fades.Portal.ID != portalID {
-		t.Fatalf("fade %+v", fades)
+	f.click("menu:portal-change:cut")
+	var cuts tilefloor.UpdatePortalArgs
+	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 1 || updates[0].Decode(&cuts) != nil ||
+		cuts.Portal.Change != floor.ChangeCut || cuts.Portal.ID != portalID {
+		t.Fatalf("cut %+v", cuts)
 	}
-	f.apply(groundID, tilefloor.UpdatePortal{}, fades)
+	f.apply(groundID, tilefloor.UpdatePortal{}, cuts)
 	f.rightClick("cell:9,8")
-	if !f.has("portal:9,8:fade") || !strings.Contains(f.menu(), "portal-change:cut") {
-		t.Fatalf("it fades now, and can be told to cut: %s", f.menu())
+	if !f.has("portal:9,8:cut") || !strings.Contains(f.menu(), "portal-change:fade") {
+		t.Fatalf("it cuts now, and can be told to fade: %s", f.menu())
 	}
 	f.click("menu:move-portal")
 	f.click("cell:10,8")
 	var moved tilefloor.UpdatePortalArgs
 	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 2 || updates[1].Decode(&moved) != nil ||
-		moved.Portal.Col != 10 || moved.Portal.Change != floor.ChangeFade {
+		moved.Portal.Col != 10 || moved.Portal.Change != floor.ChangeCut {
 		t.Fatalf("move %+v", moved)
 	}
 	f.apply(groundID, tilefloor.UpdatePortal{}, moved)

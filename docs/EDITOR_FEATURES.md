@@ -348,9 +348,11 @@ under consideration), **open** (undecided).
   teal diamond with where it leads beside it, red when it leads nowhere,
   and its menu opens where it leads, leads it somewhere else, moves it and
   removes it. See [increment 64](increments/0064-portals.md).
-- **Agreed (2026-11-21):** how the screen changes is chosen on each portal:
-  a **cut** at once, or a **fade** through black of a third of a second each
-  way, during which the keys wait. More kinds can be added.
+- **Agreed (2026-11-21):** the player first walks onto a portal's cell and
+  is seen standing there; then the screen changes as that portal says: a
+  **fade** through black of a third of a second each way, during which the
+  keys wait, or a **cut** at once. A new portal fades, since a cut alone
+  looked like a teleport when its author tried it. More kinds can be added.
 - **Candidate:** finding what to paint through an atlas, a tree, keyword
   search, packs, or a combination, with the same definition possibly appearing
   in several groups.

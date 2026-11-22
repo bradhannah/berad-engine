@@ -175,7 +175,18 @@ Not in a pull request yet.
 
 ## Changed after its author tried it
 
-- None yet.
+Settled by its author on 2026-11-21, after trying it. A cut looked like a
+teleport: the screen changed the instant the step began, so the player was
+never seen on the portal's cell.
+
+- **The player lands first, then the screen changes.** The step onto a
+  portal finishes, a sixth of a second, and the player is seen standing on
+  its cell before a cut or a fade begins. Stairs still change floor as the
+  step begins.
+- **A new portal fades.** A cut is what an author chooses on purpose, from
+  the portal's menu. This replaces "a cut unless changed" above. On the Map
+  a portal's label now says "· cut" when it cuts, and nothing when it
+  fades.
 
 ## Not in this increment
 
@@ -183,8 +194,13 @@ Not in a pull request yet.
   passing in travel.
 - **A workflow node that moves the player,** and a portal that leads only
   when a value holds. A portal always leads.
-- **A sound for a portal,** other kinds of change, and a game choosing how
-  long a fade lasts.
+- **A sound for a portal,** and a game choosing how long a fade lasts.
+- **Other kinds of change,** which its author raised after trying it: the
+  player walking a step out on arrival, a wipe or a closing circle, a slide
+  from one zone to the next. Each would be another kind on a portal's menu.
+- **Showing where the player has arrived.** The game keeps the player in the
+  middle of the screen and draws no anchors, so on plain ground an arrival
+  shows only by the ground changing.
 - **A preview that hands over to another Map,** and moving the player in
   `berad-play`.
 - **Adding an anchor while picking one,** so a zone with none can be led to

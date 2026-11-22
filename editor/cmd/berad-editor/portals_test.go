@@ -8,12 +8,13 @@ import (
 // TestAPortalLeadsToAnotherZone makes portals by the Map's menus and walks
 // Launch's game through them (increment 64). A zone is made for the walk,
 // with an anchor. Its Map adds a portal back to the sample's Counter, the
-// anchor picked in the sample's Map; the sample's Map adds one that leads to
-// the new zone's anchor, picked in that zone's Map, and tells it to fade.
-// Launch's player then walks onto the sample's portal: the screen fades,
-// the game enters the new zone, where the sample's tune stops, and fades in
-// on the anchor; two cells on, the portal back cuts to the Counter, where
-// the tune plays. It is one game throughout: launched once.
+// anchor picked in the sample's Map, and tells it to cut; the sample's Map
+// adds one that leads to the new zone's anchor, picked in that zone's Map,
+// which fades, as a new portal does. Launch's player then walks onto the
+// sample's portal: the screen fades, the game enters the new zone, where
+// the sample's tune stops, and fades in on the anchor; two cells on, the
+// portal back cuts to the Counter, where the tune plays. It is one game
+// throughout: launched once.
 func TestAPortalLeadsToAnotherZone(t *testing.T) {
 	requireGUI(t)
 	binary := buildEditor(t)
@@ -33,13 +34,16 @@ func TestAPortalLeadsToAnotherZone(t *testing.T) {
 	zoneScript := script(
 		must("state:loaded", 600), wait(30), rightClick("cell:1,1"), must("menu:add-anchor", 120),
 		click("menu:add-anchor"), wait(30),
-		lead("cell:3,1", "Sample zone"), must("state:portal:3,1:to:Counter", 1800), must("state:portal:3,1:cut", 60),
+		lead("cell:3,1", "Sample zone"), must("state:portal:3,1:to:Counter", 1800), must("state:portal:3,1:fade", 60),
+		rightClick("cell:3,1"), must("menu:portal-change:cut", 120), click("menu:portal-change:cut"),
+		must("state:portal:3,1:cut", 300),
 		must("state:picking", 3600), wait(10), click("cell:1,1"), wait(1500), quit(),
 	)
 	sampleScript := script(
-		must("state:loaded", 600), must("state:picking", 3600), wait(10), click("cell:-3,1"), wait(60),
+		// The new zone's Map tells its portal to cut before it can answer a
+		// pick, so this Map waits before asking for one.
+		must("state:loaded", 600), must("state:picking", 3600), wait(10), click("cell:-3,1"), wait(240),
 		lead("cell:2,2", "Zone 1"), must("state:portal:2,2:to:Anchor 1", 1800),
-		rightClick("cell:2,2"), must("menu:portal-change:fade", 120), click("menu:portal-change:fade"),
 		must("state:portal:2,2:fade", 300), wait(20), shoot(marked),
 		keys("Cmd+R"), must("state:launched", 1800), wait(1200), quit(),
 	)

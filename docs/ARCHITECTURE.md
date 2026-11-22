@@ -435,7 +435,8 @@ back with a short reason the pane shows.
 - *As built (increment 64):* a floor holds portals, cells that lead to an
   anchor. The runtime knows only its own zone, so it does not travel by
   itself: a step onto a portal starts the player leaving, held on the cell
-  with the screen fading if the portal fades, and whoever runs the game
+  until the step has finished and the screen has faded if the portal fades,
+  and whoever runs the game
   finds where the portal leads, gathers that zone as a launch gathers one,
   and tells the runtime to enter it, or to stay. A game's window reads the
   zone from its folder at once; the Play tab asks for its documents and the

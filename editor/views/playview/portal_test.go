@@ -79,8 +79,9 @@ func (f *fixture) frames(count int, held ...ui.Key) {
 }
 
 // TestLaunchTravelsByAPortalThatFades walks Launch's game onto a portal
-// that fades into another zone: the screen goes black, the game enters the
-// zone, and fades in with the player on the portal's anchor. The same game
+// that fades into another zone: once the player stands on it the screen
+// goes black, the game enters the zone, and fades in with the player on the
+// portal's anchor. The same game
 // goes on, with the new zone's music; a portal there cuts back.
 func TestLaunchTravelsByAPortalThatFades(t *testing.T) {
 	t.Parallel()
@@ -89,6 +90,10 @@ func TestLaunchTravelsByAPortalThatFades(t *testing.T) {
 	f.frames(1, ui.KeyDown)
 	if !f.has("leaving") || f.has("dark") || !f.has("zone:Town") {
 		t.Fatal("stepping onto the portal starts the player leaving, in the town still")
+	}
+	f.frames(play.StepTicks, ui.KeyDown)
+	if !f.has("player:5,6") || !f.has("light") || !f.has("leaving") {
+		t.Fatal("the player is seen to stand on the portal before the screen changes")
 	}
 	f.frames(game.FadeTicks/2, ui.KeyDown)
 	if f.has("dark") || f.has("light") || !f.has("zone:Town") {
@@ -107,9 +112,13 @@ func TestLaunchTravelsByAPortalThatFades(t *testing.T) {
 		t.Fatal("the Harbour fades in around the player on the Jetty, with its music")
 	}
 	f.frames(play.StepTicks+1, ui.KeyRight)
-	f.frames(play.StepTicks)
+	f.frames(play.StepTicks - 1)
+	if !f.has("zone:Harbour") || !f.has("leaving") {
+		t.Fatal("two cells on, the player is stepping onto the portal back, in the Harbour still")
+	}
+	f.frames(2)
 	if !f.has("zone:Town") || !f.has("player:2,3") || !f.has("light") || !f.has("layer:music/town") {
-		t.Fatal("two cells on, a portal cuts back to the Well in the town")
+		t.Fatal("standing on it, the portal cuts back to the Well in the town")
 	}
 }
 

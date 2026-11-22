@@ -34,9 +34,10 @@ func still(played *game.Game, count int) {
 }
 
 // TestAStepOntoAPortalStartsThePlayerLeaving steps onto a portal that cuts:
-// the player is leaving by it at once and can be taken through at once,
-// nothing fades, and the keys wait while the world carries on. Entering the
-// zone it leads to ends the leaving, and the player walks there.
+// the player is leaving by it at once, and can be taken through once the
+// step has finished and they stand on its cell. Nothing fades, and the keys
+// wait while the world carries on. Entering the zone it leads to ends the
+// leaving, and the player walks there.
 func TestAStepOntoAPortalStartsThePlayerLeaving(t *testing.T) {
 	t.Parallel()
 	played, err := game.New(townWithDoor(t, tilefloor.ChangeCut))
@@ -48,8 +49,16 @@ func TestAStepOntoAPortalStartsThePlayerLeaving(t *testing.T) {
 	}
 	walk(played, play.South, 1)
 	portal, leaving := played.Leaving()
-	if !leaving || portal.ID != id(90) || !played.Dark() || played.Darkness() != 0 {
-		t.Fatalf("the player is leaving by the portal, with nothing to wait for: %+v %v", portal, leaving)
+	if !leaving || portal.ID != id(90) || played.Dark() || !played.Player().Moving() {
+		t.Fatalf("the player is leaving by the portal, and still stepping onto it: %+v %v", portal, leaving)
+	}
+	walk(played, play.South, play.StepTicks-1)
+	if played.Dark() {
+		t.Fatal("the step has a tick to go, so nothing changes yet")
+	}
+	walk(played, play.South, 1)
+	if !played.Dark() || played.Darkness() != 0 || played.Player().Moving() {
+		t.Fatal("standing on the portal, the player can be taken through, with nothing faded")
 	}
 	at, clock := played.Player().Cell, played.Clock().Seconds()
 	walk(played, play.South, 3*play.StepTicks)
@@ -71,9 +80,9 @@ func TestAStepOntoAPortalStartsThePlayerLeaving(t *testing.T) {
 	}
 }
 
-// TestAPortalThatFadesFadesOutAndIn steps onto a portal that fades: the
-// screen darkens a tick at a time, and only once it is black can the player
-// be taken through. Where it leads the screen fades in as long, the keys
+// TestAPortalThatFadesFadesOutAndIn steps onto a portal that fades: once
+// the player stands on it the screen darkens a tick at a time, and only once
+// it is black can the player be taken through. Where it leads the screen fades in as long, the keys
 // waiting until it has.
 func TestAPortalThatFadesFadesOutAndIn(t *testing.T) {
 	t.Parallel()
@@ -82,8 +91,9 @@ func TestAPortalThatFadesFadesOutAndIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	walk(played, play.South, 1)
-	if _, leaving := played.Leaving(); !leaving || played.Dark() || played.Darkness() != 0 {
-		t.Fatalf("the fade begins as the player steps on: %v", played.Darkness())
+	still(played, play.StepTicks)
+	if _, leaving := played.Leaving(); !leaving || played.Dark() || played.Darkness() != 0 || played.Player().Moving() {
+		t.Fatalf("the fade begins once the player stands on the portal: %v", played.Darkness())
 	}
 	still(played, game.FadeTicks/2)
 	if played.Dark() || played.Darkness() != 0.5 {
@@ -124,7 +134,7 @@ func TestStayCallsALeavingOff(t *testing.T) {
 	}
 	played.Stay()
 	walk(played, play.South, 1)
-	still(played, game.FadeTicks/2)
+	still(played, play.StepTicks+game.FadeTicks/2)
 	played.Stay()
 	if _, leaving := played.Leaving(); leaving || played.Darkness() != 0.5 {
 		t.Fatalf("the leaving is off, and the screen as dark as it had got: %v", played.Darkness())
@@ -153,7 +163,10 @@ func TestAPortalLeadsWithinItsZone(t *testing.T) {
 		t.Fatal(err)
 	}
 	walk(played, play.South, 1)
-	still(played, game.FadeTicks)
+	still(played, play.StepTicks+game.FadeTicks)
+	if !played.Dark() {
+		t.Fatal("the screen is black")
+	}
 	if err := played.Place(id(upperID), image.Pt(1, 1)); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +234,7 @@ func TestAGameWithPortalsRepeats(t *testing.T) {
 			t.Fatal(err)
 		}
 		var seen []moment
-		for tick := range 4 * game.FadeTicks {
+		for tick := range 5 * game.FadeTicks {
 			if played.Dark() {
 				if err := played.Enter(harbour(t)); err != nil {
 					t.Fatal(err)

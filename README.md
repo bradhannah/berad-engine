@@ -90,10 +90,10 @@ game's project is.
   ([increment 63](docs/increments/0063-preview-on-the-runtime.md)).
 - **Portals:** right-click a cell on a Map and choose Add portal here…,
   choose the zone it leads into, then click an anchor in that zone's Map.
-  Launch's player, and a game's, is taken to the anchor when they step onto
-  the cell; a Preview stays in its zone and says where the portal leads.
-  The way back is a portal of its own, and a portal's menu changes its cut
-  to a fade through black
+  Launch's player, and a game's, is taken to the anchor once they have
+  stepped onto the cell; a Preview stays in its zone and says where the portal leads.
+  The way back is a portal of its own. A new portal fades through black
+  once the player stands on it; its menu changes that to a cut
   ([increment 64](docs/increments/0064-portals.md)).
 - **Text:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
   Escape reverts; "Pick on map" chooses an anchor in a Map.

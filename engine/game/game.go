@@ -147,7 +147,7 @@ func New(project Project) (*Game, error) {
 		npcs:   nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
 		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(), cueTicks: nil,
-		signals: project.Signals, sent: nil, passage: passage{leaving: nil, out: 0, in: 0},
+		signals: project.Signals, sent: nil, passage: passage{leaving: nil, landed: false, out: 0, in: 0},
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)

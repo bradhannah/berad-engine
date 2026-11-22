@@ -28,8 +28,8 @@ import (
 // Portals are cells that lead to an anchor (increment 64), in another zone
 // or in this one. The right-click menu adds one, opens where it leads,
 // leads it somewhere else, changes how the screen changes, moves it or
-// removes it; the Map draws each as a teal diamond with where it leads
-// beside it, red when it leads nowhere. Where a portal leads is chosen by
+// removes it; a new one fades. The Map draws each as a teal diamond with
+// where it leads beside it, red when it leads nowhere. Where a portal leads is chosen by
 // zone, then by clicking an anchor in that zone's Map.
 
 const (
@@ -355,7 +355,8 @@ func leadingHere(floorData *floor.Floor, floorID, anchorID ids.ULID) []string {
 
 // drawPortals draws each portal on the floor: a teal diamond, with where it
 // leads beside its cell when there is room, and how it changes the screen
-// when that is not a cut. One that leads nowhere is red, and says so.
+// when that is not the fade a new portal has. One that leads nowhere is
+// red, and says so.
 func (s *State) drawPortals(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle) {
 	size := float32(s.camera.cellSize())
 	for _, portal := range floorData.Portals() {
@@ -376,7 +377,7 @@ func (s *State) drawPortals(area *ebiten.Image, floorData *floor.Floor, grid ima
 			continue
 		}
 		label := portalArrow + name
-		if portal.Change != floor.ChangeCut {
+		if portal.Change != floor.Changes()[0] {
 			label += " · " + portal.Change
 		}
 		labelX, labelY := rect.Max.X+ui.Half, rect.Min.Y-ui.Gap
