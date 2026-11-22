@@ -156,8 +156,42 @@ func (s *State) layoutHead(top, right int) int {
 		button.On = view == shown
 		button.Rect = trails[position]
 	}
+	s.joinViews(offered)
 
 	return bottom + pad
+}
+
+// joinViews moves the views' buttons up against one another when they
+// stand on one line, ending where the last one ends, so they are drawn as
+// one control (increment 66). Wrapped onto lines of their own in a narrow
+// window, they stay apart.
+func (s *State) joinViews(offered []string) {
+	for position := 1; position < len(offered); position++ {
+		if s.viewBns[offered[position]].Rect.Min.Y != s.viewBns[offered[0]].Rect.Min.Y {
+			return
+		}
+	}
+	for position := len(offered) - ui.Half; position >= 0; position-- {
+		button, next := s.viewBns[offered[position]], s.viewBns[offered[position+1]]
+		button.Rect = image.Rect(next.Rect.Min.X-button.Rect.Dx(), button.Rect.Min.Y, next.Rect.Min.X, button.Rect.Max.Y)
+	}
+}
+
+// viewsJoined lists the views' buttons shown, in order, and reports whether
+// they stand against one another.
+func (s *State) viewsJoined() ([]*ui.Button, bool) {
+	offered := viewsOf(s.place)
+	shown := make([]*ui.Button, 0, len(offered))
+	joined := true
+	for _, view := range offered {
+		button := s.viewBns[view]
+		if len(shown) > 0 && button.Rect.Min != image.Pt(shown[len(shown)-1].Rect.Max.X, shown[0].Rect.Min.Y) {
+			joined = false
+		}
+		shown = append(shown, button)
+	}
+
+	return shown, joined && len(shown) > 1
 }
 
 // updateHead handles the strip: a view's button shows the place in that
@@ -199,8 +233,12 @@ func (s *State) drawHead(screen *ebiten.Image) {
 	}
 	top := s.headPath.Min.Y + (ui.ButtonH-ui.TextSize)/ui.Half - 1
 	s.theme.DrawText(screen, s.theme.FitText(s.placePath(), s.headPath.Dx()), s.headPath.Min.X, top, ui.ColorInk())
-	for _, view := range []string{viewRows, viewCards, viewPictures, viewPreview} {
-		s.viewBns[view].Draw(screen, s.theme)
+	if shown, joined := s.viewsJoined(); joined {
+		ui.DrawJoined(screen, s.theme, shown)
+	} else {
+		for _, button := range shown {
+			button.Draw(screen, s.theme)
+		}
 	}
 	for _, button := range s.sizeBns {
 		button.Draw(screen, s.theme)

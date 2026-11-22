@@ -98,3 +98,26 @@ func (s *State) Head(docs frame.Docs) []frametest.Part {
 
 	return parts
 }
+
+// FacetCross returns the middle of the cross on a set facet's button, and
+// whether the facet is set; FacetLook, whether its button is quiet and
+// washed as set.
+func (s *State) FacetCross(facet string) (image.Point, bool) {
+	button := s.facetBns[facet]
+
+	return ui.Center(facetCross(button)), button.On
+}
+
+// FacetLook reports whether a facet's button is quiet, and whether it shows
+// a triangle to open it.
+func (s *State) FacetLook(facet string) (bool, bool) {
+	return s.facetBns[facet].Quiet, s.facetBns[facet].Caret
+}
+
+// ViewsJoined reports whether the views' buttons stand against one another
+// as one control, and how many there are.
+func (s *State) ViewsJoined() (int, bool) {
+	shown, joined := s.viewsJoined()
+
+	return len(shown), joined
+}
