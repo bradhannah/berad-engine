@@ -74,14 +74,14 @@ func (s *State) floorAndID(item, prefix string) (ids.ULID, ids.ULID, bool) {
 	return floorID, id, floorErr == nil && idErr == nil && indexOf(s.floors, floorID) >= 0
 }
 
-// showAnchor shows the floor an anchor is on and selects it, with the
-// Anchors tool.
+// showAnchor shows the floor an anchor is on and selects it, with Select
+// in hand.
 func (s *State) showAnchor(item string, ctx *frame.Context) {
 	floorID, anchorID, ok := s.floorAndID(item, AnchorItem)
 	if !ok {
 		return
 	}
 	s.switchFloor(floorID, ctx)
-	s.setTool(ToolAnchor)
+	s.setTool(ToolSelect)
 	s.selectAnchor(anchorID)
 }

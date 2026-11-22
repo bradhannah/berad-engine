@@ -66,3 +66,16 @@ func (s *State) LeftParts() (image.Rectangle, int, []frametest.Part) {
 		{Name: "Show floor below", Rect: s.below.Rect}, {Name: "Preview", Rect: s.previewBn.Rect},
 	}
 }
+
+// InspectorButton reports whether the inspector shows a button for the
+// selected ambient sound or portal, and whether it is disabled, or the
+// chosen one of its set.
+func (s *State) InspectorButton(id string) (bool, bool, bool) {
+	for _, button := range s.inspect.buttons() {
+		if button.ID == id {
+			return !button.Rect.Empty(), button.Disabled, button.On
+		}
+	}
+
+	return false, false, false
+}

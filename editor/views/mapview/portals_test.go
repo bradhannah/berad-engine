@@ -74,8 +74,10 @@ func (f *fixture) leadTo(zone ids.ULID, open []protocol.PickMap, anchorFloor, an
 
 // TestAddingAPortal adds a portal from a cell's menu: the zone is chosen
 // first, the anchor picked in that zone's Map, opened for the pick when none
-// shows it. The portal fades until told to cut; it opens where it leads, is
-// moved, led somewhere else and removed, each one floor edit with undo.
+// shows it. Select then selects it, and the inspector opens where it
+// leads, tells it to cut and leads it somewhere else; a drag moves it; the
+// menu, which only adds and removes, removes it. Each is one floor edit
+// with undo.
 func TestAddingAPortal(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -103,37 +105,47 @@ func TestAddingAPortal(t *testing.T) {
 		t.Fatal("the portal is on the map, fades, and leads to Foot")
 	}
 	f.rightClick("cell:9,8")
-	if got := f.menu(); !strings.Contains(got, "open-portal, lead-portal, portal-change:cut, move-portal, remove-portal") {
-		t.Fatalf("the portal's choices: %s", got)
+	if got := f.menu(); !strings.HasPrefix(got, "remove-portal, ") || strings.Contains(got, "add-portal") {
+		t.Fatalf("on a cell with a portal the menu removes it, and sets nothing: %s", got)
 	}
-	f.click("menu:open-portal")
+	f.keys("Escape")
+	f.keys("S")
+	f.click("cell:9,8")
+	if !f.has("selected:portal:9,8") {
+		t.Fatal("Select selects the portal")
+	}
+	if shown, disabled, on := f.state.InspectorButton("portal-fade"); !shown || disabled || !on {
+		t.Fatalf("the inspector shows that the portal fades: %v %v %v", shown, disabled, on)
+	}
+	f.click("ui:portal-open")
 	opened := f.requests.Opened[len(f.requests.Opened)-1]
 	if opened.View != mapview.ViewName || opened.Target != cellarID ||
 		opened.Item != mapview.AnchorItem+cellarFloorID.String()+":"+footID.String() {
 		t.Fatalf("the Cellar's Map opens on Foot: %+v", opened)
 	}
-	f.rightClick("cell:9,8")
-	f.click("menu:portal-change:cut")
+	f.click("ui:portal-cut")
 	var cuts tilefloor.UpdatePortalArgs
 	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 1 || updates[0].Decode(&cuts) != nil ||
 		cuts.Portal.Change != floor.ChangeCut || cuts.Portal.ID != portalID {
 		t.Fatalf("cut %+v", cuts)
 	}
 	f.apply(groundID, tilefloor.UpdatePortal{}, cuts)
-	f.rightClick("cell:9,8")
-	if !f.has("portal:9,8:cut") || !strings.Contains(f.menu(), "portal-change:fade") {
-		t.Fatalf("it cuts now, and can be told to fade: %s", f.menu())
+	f.keys()
+	if _, _, on := f.state.InspectorButton("portal-cut"); !f.has("portal:9,8:cut") || !on {
+		t.Fatal("it cuts now, and the inspector shows Cut chosen")
 	}
-	f.click("menu:move-portal")
-	f.click("cell:10,8")
+	f.click("ui:portal-cut")
+	if len(f.requests.Of(tilefloor.UpdatePortalEdit)) != 1 {
+		t.Fatal("choosing the way it already changes sends nothing")
+	}
+	f.drag("cell:9,8", "cell:10,8")
 	var moved tilefloor.UpdatePortalArgs
 	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 2 || updates[1].Decode(&moved) != nil ||
 		moved.Portal.Col != 10 || moved.Portal.Change != floor.ChangeCut {
 		t.Fatalf("move %+v", moved)
 	}
 	f.apply(groundID, tilefloor.UpdatePortal{}, moved)
-	f.rightClick("cell:10,8")
-	f.click("menu:lead-portal")
+	f.click("ui:portal-lead")
 	here := []protocol.PickMap{
 		{Window: otherMapID, Zone: zoneID, Shows: true}, {Window: frametest.ID(99), Zone: zoneID, Shows: true},
 		{Window: frametest.ID(98), Zone: cellarID, Shows: true},
@@ -202,11 +214,14 @@ func TestAPortalThatLeadsNowhereSaysSo(t *testing.T) {
 	if !f.has("portal:9,8:nowhere") || f.has("portal:10,8:nowhere") || !f.has("portal:10,8:to:Desk") {
 		t.Fatal("the portal to an anchor that is gone leads nowhere; the other leads to the Desk")
 	}
-	f.rightClick("cell:9,8")
-	if !strings.Contains(f.menu(), "open-portal (disabled), lead-portal") {
-		t.Fatalf("where it leads cannot be opened, and it can be led somewhere else: %s", f.menu())
+	f.keys("S")
+	f.click("cell:9,8")
+	if shown, disabled, _ := f.state.InspectorButton("portal-open"); !shown || !disabled {
+		t.Fatal("where it leads cannot be opened")
 	}
-	f.keys("Escape")
+	if shown, disabled, _ := f.state.InspectorButton("portal-lead"); !shown || disabled {
+		t.Fatal("it can be led somewhere else")
+	}
 	f.rightClick("cell:4,4")
 	f.click("menu:delete-anchor")
 	if len(f.requests.Uses) != 1 {

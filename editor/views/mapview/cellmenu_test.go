@@ -32,7 +32,7 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.rightClick("cell:4,4")
-	if got := f.menu(); got != "rename-anchor, delete-anchor, add-anchor (disabled), place-npc (disabled), place-sound (disabled), add-portal, preview-here, play-here, set-start" {
+	if got := f.menu(); got != "delete-anchor, add-anchor (disabled), place-npc (disabled), place-sound (disabled), add-portal, preview-here, play-here, set-start" {
 		t.Fatalf("anchor menu: %s", got)
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
@@ -41,7 +41,7 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 		t.Fatal("Escape keeps the menu open")
 	}
 	f.rightClick("cell:2,2")
-	want := "select-walls, add-anchor, place-npc (disabled), clear-top, place-sound (disabled), add-portal, preview-here (disabled), play-here (disabled), set-start (disabled)"
+	want := "add-anchor, place-npc (disabled), clear-top, place-sound (disabled), add-portal, preview-here (disabled), play-here (disabled), set-start (disabled)"
 	if got := f.menu(); got != want {
 		t.Fatalf("wall menu: %s", got)
 	}
@@ -60,9 +60,9 @@ func TestRightClickMenuOffersWhatIsThere(t *testing.T) {
 	}
 }
 
-// TestRightClickMenuActions adds an anchor, renames and deletes one, clears
-// a wall, selects walls, extends the floor and starts a preview, each from
-// the menu.
+// TestRightClickMenuActions adds an anchor, deletes one, clears a wall,
+// extends the floor and starts a game, each from the menu, which adds and
+// removes only: renaming an anchor and selecting walls belong to Select.
 func TestRightClickMenuActions(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -71,10 +71,11 @@ func TestRightClickMenuActions(t *testing.T) {
 	if added := f.requests.Of(tilefloor.AddAnchorEdit); len(added) != 1 {
 		t.Fatalf("add anchor commands %d", len(added))
 	}
-	f.rightClick("cell:4,4")
-	f.click("menu:rename-anchor")
+	f.keys("S")
+	f.click("cell:4,4")
+	f.click("ui:anchor-name")
 	if f.state.SelectedAnchor() != deskID || f.state.Focused() == nil {
-		t.Fatal("rename selects the anchor and focuses its name")
+		t.Fatal("Select selects the anchor, and a click in its name field focuses it")
 	}
 	f.keys("Escape")
 	f.rightClick("cell:4,4")
@@ -93,10 +94,9 @@ func TestRightClickMenuActions(t *testing.T) {
 		!slices.Equal(paint.Cells, []tilefloor.Cell{{Col: 3, Row: 2, Layer: tilefloor.LayerTop, Tile: ""}}) {
 		t.Fatalf("clear sent %+v", paint)
 	}
-	f.rightClick("cell:2,4")
-	f.click("menu:select-walls")
+	f.click("cell:2,4")
 	if f.state.Tool() != mapview.ToolSelect || len(f.state.Selected()) == 0 {
-		t.Fatalf("select walls: tool %q, %d selected", f.state.Tool(), len(f.state.Selected()))
+		t.Fatalf("Select on a wall selects its run: tool %q, %d selected", f.state.Tool(), len(f.state.Selected()))
 	}
 	f.rightClick("cell:14,-1")
 	f.click("menu:extend-floor")
@@ -118,8 +118,8 @@ func TestRightClickMenuActions(t *testing.T) {
 	}
 }
 
-// TestRightClickOnAnNPC selects the placement, opens its behaviour once the
-// NPC has loaded, and removes it.
+// TestRightClickOnAnNPC offers only to remove the NPC; Select selects it,
+// and the inspector opens its behaviour.
 func TestRightClickOnAnNPC(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -130,12 +130,15 @@ func TestRightClickOnAnNPC(t *testing.T) {
 	}
 	f.docs.Put(groundID, "Ground", ground)
 	f.rightClick("cell:9,8")
-	want := "select-npc, open-behaviour, remove-npc, add-anchor, place-npc (disabled), place-sound (disabled), add-portal, preview-here, play-here, set-start"
+	want := "remove-npc, add-anchor, place-npc (disabled), place-sound (disabled), add-portal, preview-here, play-here, set-start"
 	if got := f.menu(); got != want {
 		t.Fatalf("NPC menu: %s", got)
 	}
-	f.click("menu:open-behaviour")
+	f.keys("Escape")
+	f.keys("S")
+	f.click("cell:9,8")
 	f.idle(2)
+	f.click("ui:open-behaviour")
 	if opened := f.requests.Opened; len(opened) != 1 || opened[0].Target != routineID {
 		t.Fatalf("opened %+v", opened)
 	}

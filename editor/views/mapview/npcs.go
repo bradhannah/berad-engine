@@ -37,11 +37,6 @@ const (
 	placementButtonsTop = ui.Inset + 10*ui.LineHeight
 )
 
-type placementDrag struct {
-	id   ids.ULID
-	from Cell
-}
-
 // npcRows lists the project's NPCs for the Place NPC tool: those that live
 // in the map's zone, those that live nowhere yet, and those that live
 // elsewhere, each under its heading, the last with the zone they live in.
@@ -241,33 +236,15 @@ func initials(name string) string {
 // updateNPCTool places the chosen NPC on an empty cell, selects a placement
 // that is clicked, and moves one that is dragged.
 func (s *State) updateNPCTool(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
-	if input.Pressed && onFloor {
-		if existing, found := floorData.PlacementAt(cell.X, cell.Y); found {
-			s.selectPlacement(existing.ID)
-			s.placing = &placementDrag{id: existing.ID, from: cell}
-
-			return
-		}
-		s.placeNPC(ctx, floorData, cell)
+	if !input.Pressed || !onFloor {
+		return
 	}
-	if s.placing != nil && !input.Down {
-		drag := s.placing
-		s.placing = nil
-		if !onFloor || cell == drag.from {
-			return
-		}
-		if _, taken := floorData.PlacementAt(cell.X, cell.Y); taken {
-			ctx.Frame.Refuse("Another NPC is already there")
+	if _, found := floorData.PlacementAt(cell.X, cell.Y); found {
+		ctx.Frame.Refuse("An NPC is already here. Select (S) selects it, to move or remove it.")
 
-			return
-		}
-		if moved, _, found := floorData.Placement(drag.id); found {
-			moved.Col, moved.Row = cell.X, cell.Y
-			update := tilefloor.UpdatePlacementArgs{Placement: moved}
-			says := fmt.Sprintf("Moved %s to %d, %d", s.names.Name(moved.NPC, "an NPC"), cell.X, cell.Y)
-			s.commandSaying(ctx, s.floor, tilefloor.UpdatePlacementEdit, "", says, update, nil)
-		}
+		return
 	}
+	s.placeNPC(ctx, floorData, cell)
 }
 
 // placeNPC puts the NPC chosen on the left on a cell.
@@ -333,8 +310,8 @@ func (s *State) placeNPC(ctx *frame.Context, floorData *floor.Floor, cell Cell) 
 }
 
 func (s *State) selectPlacement(placementID ids.ULID) {
+	s.clearSelection()
 	s.placement = placementID
-	s.anchor, s.selected = ids.ULID{}, nil
 	s.focus.Set(nil)
 }
 

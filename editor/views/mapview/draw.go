@@ -140,6 +140,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 			s.drawPlacements(area, floorDoc.Floor, grid)
 		}
 		s.drawSelection(area, grid)
+		s.drawPicked(area, floorDoc.Floor, grid)
 		s.drawPlayer(area, grid)
 		s.drawStartCell(area, floorDoc.Floor, grid)
 		if s.pick != nil {
@@ -458,7 +459,11 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	case ToolWalls:
 		tileHeading = "WALL FAMILY"
 	case ToolSelect:
-		tileHeading = "CHANGE SELECTED WALLS TO"
+		// The wall families are offered only while walls are selected.
+		tileHeading = ""
+		if len(s.selected) > 0 {
+			tileHeading = "CHANGE SELECTED WALLS TO"
+		}
 	case ToolNPC:
 		tileHeading = "NPC TO PLACE"
 		for index, line := range s.npcHintLines() {
@@ -542,6 +547,12 @@ func (s *State) drawSelected(screen *ebiten.Image, floorData *floor.Floor, textX
 		s.drawAnchorInspector(screen, floorData, textX, textY)
 	case !s.placement.IsZero():
 		s.drawPlacementInspector(screen, floorData, textX, textY)
+	case !s.sound.IsZero():
+		s.drawSoundInspector(screen, floorData, textX, textY)
+	case !s.portal.IsZero():
+		s.drawPortalInspector(screen, floorData, textX, textY)
+	case s.startPicked:
+		s.drawStartInspector(screen, textX, textY)
 	case len(s.selected) > 0:
 		s.theme.DrawText(screen, fmt.Sprintf("%d walls selected", len(s.selected)), textX, *textY, ui.ColorInk())
 		s.replace.Draw(screen, s.theme)

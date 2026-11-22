@@ -34,13 +34,7 @@ import (
 
 const (
 	menuAddPortal    = "add-portal"
-	menuOpenPortal   = "open-portal"
-	menuLeadPortal   = "lead-portal"
-	menuMovePortal   = "move-portal"
 	menuRemovePortal = "remove-portal"
-	// portalChangeItem prefixes the way the screen changes in the item that
-	// gives a portal that way.
-	portalChangeItem = "portal-change:"
 	// portalOwner is who the Map's picks are for.
 	portalOwner  = "portal"
 	portalLead   = "lead"
@@ -55,11 +49,10 @@ const (
 )
 
 // portalParts is the Map's part for portals: its own picks, the portal
-// being moved, the portal waiting for where it leads, and where each portal
-// of the shown floor leads, as last found.
+// waiting for where it leads, and where each portal of the shown floor
+// leads, as last found.
 type portalParts struct {
 	picker *picker.Picker
-	moving ids.ULID
 	asking *askedPortal
 	leads  map[ids.ULID]portalLeads
 }
@@ -85,7 +78,7 @@ type portalLeads struct {
 }
 
 func newPortalParts(window ids.ULID) portalParts {
-	return portalParts{picker: picker.New(window), moving: ids.ULID{}, asking: nil, leads: map[ids.ULID]portalLeads{}}
+	return portalParts{picker: picker.New(window), asking: nil, leads: map[ids.ULID]portalLeads{}}
 }
 
 // syncPortals finds where each portal of the shown floor leads, asking for
@@ -126,51 +119,37 @@ func (s *State) syncPortals(ctx *frame.Context) {
 }
 
 // markItems are the cell menu's choices for what marks a cell without
-// standing on it: an ambient sound and a portal.
-func (s *State) markItems(floorData *floor.Floor, cell Cell) []ui.MenuItem {
-	return append(s.soundItems(floorData, cell), s.portalItems(floorData, cell)...)
+// standing on it, an ambient sound and a portal: those that remove what is
+// there, and those that add what is not.
+func (s *State) markItems(floorData *floor.Floor, cell Cell) ([]ui.MenuItem, []ui.MenuItem) {
+	var remove, add []ui.MenuItem
+	for _, item := range append(s.soundItems(floorData, cell), s.portalItems(floorData, cell)...) {
+		if item.Danger {
+			remove = append(remove, item)
+		} else {
+			add = append(add, item)
+		}
+	}
+
+	return remove, add
 }
 
-// chooseMark carries out a choice for an ambient sound or a portal.
+// chooseMark carries out a choice for an ambient sound or a portal, or of
+// which of a cell's things to select.
 func (s *State) chooseMark(ctx *frame.Context, floorData *floor.Floor, chosen string, cell Cell) {
-	if !s.choosePortal(ctx, floorData, chosen, cell) {
+	if !s.chooseWhich(ctx, floorData, chosen, cell) && !s.choosePortal(ctx, floorData, chosen, cell) {
 		s.chooseSound(ctx, floorData, chosen, cell)
 	}
 }
 
-// portalItems are the cell menu's choices for a portal on the cell, or for
-// adding one.
+// portalItems are the cell menu's choices for a portal: removing the one
+// on the cell, or adding one.
 func (s *State) portalItems(floorData *floor.Floor, cell Cell) []ui.MenuItem {
-	portal, found := floorData.PortalAt(cell.X, cell.Y)
-	if !found {
-		return []ui.MenuItem{menuItem(menuAddPortal, "Add portal here…", false)}
-	}
-	var open ui.MenuItem
-	switch leads := s.portals.leads[portal.ID]; leads.state {
-	case gameload.Held:
-		open = menuItem(menuOpenPortal, "Open where the portal leads: "+leads.place, false)
-	case gameload.Waiting:
-		open = menuItem(menuOpenPortal, "Finding where the portal leads…", true)
-	case gameload.Missing:
-		open = menuItem(menuOpenPortal, "The portal leads nowhere: "+leads.why, true)
-	}
-	items := []ui.MenuItem{open, menuItem(menuLeadPortal, "Lead the portal somewhere else…", false)}
-	for _, change := range floor.Changes() {
-		if change != portal.Change {
-			items = append(items, menuItem(portalChangeItem+change, "Change the portal to "+changeNoun(change), false))
-		}
+	if _, found := floorData.PortalAt(cell.X, cell.Y); found {
+		return []ui.MenuItem{dangerItem(menuRemovePortal, "Remove portal")}
 	}
 
-	return append(items, menuItem(menuMovePortal, "Move portal", false), dangerItem(menuRemovePortal, "Remove portal"))
-}
-
-// changeNoun names a way the screen changes, as "a cut".
-func changeNoun(change string) string {
-	if change == floor.ChangeFade {
-		return "a fade through black"
-	}
-
-	return "a cut"
+	return []ui.MenuItem{menuItem(menuAddPortal, "Add portal here…", false)}
 }
 
 // changeVerb says how a portal changes the screen, as "cuts".
@@ -186,32 +165,22 @@ func changeVerb(change string) string {
 // whether the choice was one.
 func (s *State) choosePortal(ctx *frame.Context, floorData *floor.Floor, chosen string, cell Cell) bool {
 	portal, found := floorData.PortalAt(cell.X, cell.Y)
-	change, changing := strings.CutPrefix(chosen, portalChangeItem)
 	switch {
 	case chosen == menuAddPortal:
 		s.askLeads(askedPortal{floor: s.floor, cell: cell, portal: ids.ULID{}})
-	case chosen == menuLeadPortal && found:
-		s.askLeads(askedPortal{floor: s.floor, cell: cell, portal: portal.ID})
-	case chosen == menuOpenPortal && found:
-		if leads := s.portals.leads[portal.ID]; leads.state == gameload.Held {
-			ctx.Requests.OpenItem(ViewName, leads.start.Zone,
-				AnchorItem+portal.To.Floor.String()+":"+portal.To.Anchor.String())
-		}
-	case changing && found:
-		portal.Change = change
-		s.command(ctx, s.floor, tilefloor.UpdatePortalEdit, "", tilefloor.UpdatePortalArgs{Portal: portal},
-			func(protocol.Result) { ctx.Frame.Status("The portal now " + changeVerb(change) + ".") })
-	case chosen == menuMovePortal && found:
-		s.portals.moving = portal.ID
-		ctx.Frame.Status("Click the cell to move the portal to. Escape cancels.")
 	case chosen == menuRemovePortal && found:
-		s.command(ctx, s.floor, tilefloor.RemovePortalEdit, "", tilefloor.RemovePortalArgs{ID: portal.ID},
-			func(protocol.Result) { ctx.Frame.Status("Removed the portal. Undo brings it back.") })
+		s.removePortal(ctx, portal.ID)
 	default:
 		return false
 	}
 
 	return true
+}
+
+// removePortal takes a portal off the floor; undo puts it back.
+func (s *State) removePortal(ctx *frame.Context, portalID ids.ULID) {
+	s.command(ctx, s.floor, tilefloor.RemovePortalEdit, "", tilefloor.RemovePortalArgs{ID: portalID},
+		func(protocol.Result) { ctx.Frame.Status("Removed the portal. Undo brings it back.") })
 }
 
 // askLeads asks which zone a portal leads into, this zone first in the
@@ -295,29 +264,6 @@ func (s *State) leadPortal(ctx *frame.Context, asked askedPortal, leads floor.An
 		func(protocol.Result) {
 			ctx.Frame.Status("The portal now leads to " + labelOr(name, "the anchor") + ".")
 		})
-}
-
-// updateMovingPortal moves the portal being moved to the clicked cell, or
-// stops on Escape.
-func (s *State) updateMovingPortal(
-	input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool,
-) {
-	stop, place := movingClick(input, ctx, onFloor)
-	moving := s.portals.moving
-	if stop || place {
-		s.portals.moving = ids.ULID{}
-	}
-	portal, _, found := floorData.Portal(moving)
-	_, taken := floorData.PortalAt(cell.X, cell.Y)
-	switch {
-	case !place || !found:
-	case taken:
-		ctx.Frame.Refuse("Another portal is already there")
-	default:
-		portal.Col, portal.Row = cell.X, cell.Y
-		s.command(ctx, s.floor, tilefloor.UpdatePortalEdit, "", tilefloor.UpdatePortalArgs{Portal: portal},
-			func(protocol.Result) { ctx.Frame.Status(fmt.Sprintf("Moved the portal to %d,%d", cell.X, cell.Y)) })
-	}
 }
 
 // meetPortal keeps a preview in its zone (increment 64): when the player
@@ -420,10 +366,21 @@ func (s *State) locateDialog(value string) (image.Point, bool) {
 }
 
 // hasMark answers the states of what marks a cell: "ambient:" for an
-// ambient sound and "portal:" for a portal.
+// ambient sound, "portal:" for a portal, and "selected:" for which thing is
+// selected.
 func (s *State) hasMark(state string, docs frame.Docs) bool {
 	if value, portal := strings.CutPrefix(state, "portal:"); portal {
 		return s.hasPortal(value, docs)
+	}
+	if value, selected := strings.CutPrefix(state, "selected:"); selected {
+		found := false
+		docs.View(s.floor, func(document client.Document) {
+			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+				found = s.hasSelected(value, floorDoc.Floor)
+			}
+		})
+
+		return found
 	}
 
 	return s.hasSound(strings.TrimPrefix(state, "ambient:"), docs)
