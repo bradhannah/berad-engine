@@ -118,7 +118,7 @@ func (s *State) layoutPalette() {
 				top += groupSpace
 			}
 			entry.rect = image.Rect(left, top, right, top+paletteItem)
-			top += paletteItem + paletteGap
+			top += paletteItem + paletteRowGap
 		}
 	} else {
 		top += ui.LineHeight
@@ -291,16 +291,29 @@ func (s *State) drawPalette(screen *ebiten.Image) {
 	s.drawTooltip(screen)
 }
 
-// drawPaletteEntries draws every entry under its group's heading.
+// drawPaletteEntries draws every entry under its group's heading, which
+// says how many it holds. An entry is a plain row with the grip of
+// something to drag, not a box of its own, so twenty of them do not shout
+// over the canvas (increment 66).
 func (s *State) drawPaletteEntries(area *ebiten.Image) {
 	group := ""
+	counts := map[string]int{}
+	for _, entry := range s.palette {
+		counts[entry.kind.Group]++
+	}
 	for _, entry := range s.palette {
 		if entry.kind.Group != group {
 			group = entry.kind.Group
-			s.theme.Heading(area, group, ui.Inset, entry.rect.Min.Y-groupSpace/ui.Half-ui.Gap-1)
+			top := entry.rect.Min.Y - groupSpace/ui.Half - ui.Gap - 1
+			s.theme.Heading(area, group, ui.Inset, top)
+			count := strconv.Itoa(counts[group])
+			s.theme.DrawMono(area, count, entry.rect.Max.X-ui.Gap-s.theme.MonoWidth(count), top, ui.ColorMuted())
 		}
-		s.drawEntryBox(area, entry)
-		s.theme.DrawTextIn(area, entry.kind.Label, entry.rect, ui.ColorInk())
+		s.drawEntryRow(area, entry)
+		grip := image.Pt(entry.rect.Min.X+ui.Gap, entry.rect.Min.Y+(entry.rect.Dy()-ui.IconSize)/ui.Half)
+		ui.DrawIconInk(area, ui.IconGrip, grip, ui.ColorRule())
+		label := image.Rect(grip.X+ui.IconSize, entry.rect.Min.Y, entry.rect.Max.X, entry.rect.Max.Y)
+		s.theme.DrawTextIn(area, entry.kind.Label, label, ui.ColorInk())
 	}
 	if s.workflow != nil && s.workflow.Purpose() == flow.PurposeZoneLoop && len(s.palette) > 0 {
 		top := s.palette[len(s.palette)-1].rect.Max.Y + groupSpace
@@ -310,22 +323,36 @@ func (s *State) drawPaletteEntries(area *ebiten.Image) {
 	}
 }
 
-// drawEntryBox draws an entry's box: hovered, marked by the arrow keys or
-// showing its help, and a Note's dashed.
+// drawEntryRow draws what lies behind an entry's row: the desk's tone
+// under the pointer, a blue ring while it shows its help, and a Note's
+// dashes. At rest a row has no box.
+func (s *State) drawEntryRow(area *ebiten.Image, entry paletteEntry) {
+	if s.cursor.In(entry.rect) {
+		ui.FillRound(area, entry.rect, paletteRadius, ui.ColorHover())
+	}
+	switch entry.kind.Name {
+	case s.pal.help:
+		ui.StrokeRound(area, entry.rect, paletteRadius, ui.Half*ui.Border, ui.ColorSelect())
+	case flow.KindNote:
+		strokeDashed(area, entry.rect, ui.Hairline, ui.ColorMuted())
+	}
+}
+
+// drawEntryBox draws a search result's box, which holds a name and its
+// lines: white, with a hairline, the desk's tone under the pointer, and a
+// blue ring while it shows its help.
 func (s *State) drawEntryBox(area *ebiten.Image, entry paletteEntry) {
 	fill := ui.ColorField()
 	if s.cursor.In(entry.rect) {
 		fill = ui.ColorHover()
 	}
 	ui.FillRound(area, entry.rect, paletteRadius, fill)
-	switch entry.kind.Name {
-	case s.pal.help:
+	if entry.kind.Name == s.pal.help {
 		ui.StrokeRound(area, entry.rect, paletteRadius, ui.Half*ui.Border, ui.ColorSelect())
-	case flow.KindNote:
-		strokeDashed(area, entry.rect, ui.Border, ui.ColorInk())
-	default:
-		ui.StrokeRound(area, entry.rect, paletteRadius, ui.Border, ui.ColorInk())
+
+		return
 	}
+	ui.StrokeRound(area, entry.rect, paletteRadius, ui.Hairline, ui.ColorRule())
 }
 
 // drawResults draws how many entries match and each result: its name, its
