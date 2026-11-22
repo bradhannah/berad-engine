@@ -331,6 +331,20 @@ under consideration), **open** (undecided).
   the cell itself (add an anchor, place the chosen NPC, remove what is on
   top, preview from here). On a cell beyond the floor bounds it offers
   Extend floor to here.
+- **Agreed (2026-11-21):** a thing on a cell is **selected, then set in the
+  inspector**. One **Select** tool, first in the list, selects an anchor, an
+  NPC, an ambient sound, a portal, the player start, or a wall's run; where
+  a cell holds several, a menu at the cell asks which. The inspector shows
+  the one selected with its controls, and dragging it moves it. A click
+  with Select never adds or changes anything. Its author's reason: "an
+  anchor should not be configured entirely with right click menu - it
+  should have an inspector after I selected it". See [increment
+  65](increments/0065-select-then-inspect.md).
+- **Agreed (2026-11-21):** the **right-click menu on a cell adds and
+  removes only**; how a thing is set is in the inspector. The **Anchors and
+  Place NPC tools only add**, and say so on a cell that already has one.
+  This replaces the menu's Rename anchor, Select NPC, Open behaviour,
+  Select walls, and its items that changed or moved a sound or a portal.
 - **Agreed:** the **zone origin**, cell 0,0, is fixed and shown on the map, and
   every floor of a zone shares it, so stairs line up. Floors grow or shrink on
   any side without moving what is already placed; cells left of or above the

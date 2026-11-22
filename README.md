@@ -67,13 +67,18 @@ game's project is.
   Create zones, floors, workflows, NPCs and art; rename in the inspector
   (Enter or the Rename button saves); delete with a where-used check; reorder
   floors; double-click or Enter opens.
-- **Map:** tools on the left (`G` ground, `W` walls, `O` doors, stairs
-  and pickups, `E` erase, `A` anchors, `S` select walls, `R` resize floor), `1`-`9`
-  pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
+- **Map:** tools on the left (`S` select, `G` ground, `W` walls, `O` doors,
+  stairs and pickups, `E` erase, `A` anchors, `N` place NPC, `R` resize
+  floor), `1`-`9` pick a tile or wall family. The zone origin, cell 0,0, is outlined, with axes
   along its edges; every floor of the zone shares it. Resize floor drags an edge
   or corner of the floor, or adds and removes rows and columns from buttons.
-  With Select walls, click a wall for its run, double-click inside a room for
-  its walls, or drag an area, then pick a family to change them all.
+  With Select, click an anchor, an NPC, an ambient sound, a portal or the
+  player start to select it: the inspector on the right shows it with its
+  controls, and dragging it moves it. A cell that holds several asks which.
+  Click a wall for its run, double-click inside a room for its walls, or
+  drag an area, then pick a family to change them all. The Anchors and
+  Place NPC tools add; a right-click on a cell adds and removes
+  ([increment 65](docs/increments/0065-select-then-inspect.md)).
   `PageUp` / `PageDown` change floor; the floor below shows faintly (`F`).
   Scroll pans, `Cmd`+scroll or `Cmd+=` / `Cmd+-` zoom, `Space`+drag pans.
 - **Preview:** in a Map press `P` (or the Preview button) and click a
@@ -93,7 +98,8 @@ game's project is.
   Launch's player, and a game's, is taken to the anchor once they have
   stepped onto the cell; a Preview stays in its zone and says where the portal leads.
   The way back is a portal of its own. A new portal fades through black
-  once the player stands on it; its menu changes that to a cut
+  once the player stands on it; select it and the inspector changes that
+  to a cut, or leads it somewhere else
   ([increment 64](docs/increments/0064-portals.md)).
 - **Text:** Enter saves, `Cmd+Enter` or `Ctrl+J` starts a new line,
   Escape reverts; "Pick on map" chooses an anchor in a Map.

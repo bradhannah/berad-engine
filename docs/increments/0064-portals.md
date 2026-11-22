@@ -187,6 +187,11 @@ never seen on the portal's cell.
   the portal's menu. This replaces "a cut unless changed" above. On the Map
   a portal's label now says "· cut" when it cuts, and nothing when it
   fades.
+- **A portal is set in the inspector, not from its menu.** Its author asked
+  for things on a cell to be selected and then set in an inspector;
+  [increment 65](0065-select-then-inspect.md) builds that, and moves Open
+  where it leads, Lead somewhere else, the change and moving out of the
+  cell's menu, which keeps Add portal here… and Remove portal.
 - **Checked again:** `make check` passes, and
   `TestAPortalLeadsToAnotherZone`, with its portal back now told to cut,
   passed five runs in five. Of the real-window suite's 85 tests, run from a
