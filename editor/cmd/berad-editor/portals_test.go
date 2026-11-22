@@ -8,7 +8,8 @@ import (
 // TestAPortalLeadsToAnotherZone makes portals by the Map's menus and walks
 // Launch's game through them (increment 64). A zone is made for the walk,
 // with an anchor. Its Map adds a portal back to the sample's Counter, the
-// anchor picked in the sample's Map, and tells it to cut; the sample's Map
+// anchor picked in the sample's Map, selects it and tells it to cut in the
+// inspector; the sample's Map
 // adds one that leads to the new zone's anchor, picked in that zone's Map,
 // which fades, as a new portal does. Launch's player then walks onto the
 // sample's portal: the screen fades, the game enters the new zone, where
@@ -33,9 +34,9 @@ func TestAPortalLeadsToAnotherZone(t *testing.T) {
 	}
 	zoneScript := script(
 		must("state:loaded", 600), wait(30), rightClick("cell:1,1"), must("menu:add-anchor", 120),
-		click("menu:add-anchor"), wait(30),
+		click("menu:add-anchor"), wait(30), keys("Escape"), wait(5),
 		lead("cell:3,1", "Sample zone"), must("state:portal:3,1:to:Counter", 1800), must("state:portal:3,1:fade", 60),
-		rightClick("cell:3,1"), must("menu:portal-change:cut", 120), click("menu:portal-change:cut"),
+		keys("S"), click("cell:3,1"), must("state:selected:portal:3,1", 120), click("ui:portal-cut"),
 		must("state:portal:3,1:cut", 300),
 		must("state:picking", 3600), wait(10), click("cell:1,1"), wait(1500), quit(),
 	)
