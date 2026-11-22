@@ -22,3 +22,7 @@ func (k *KeySheet) SheetRect() (image.Rectangle, int, int) { return k.rect, k.ro
 
 // Look exposes a button's fill, ink and edge for its state to tests.
 func (b *Button) Look() (color.RGBA, color.RGBA, color.RGBA) { return b.look() }
+
+// Hovers reports whether a list draws the row of an ID as under the
+// pointer.
+func (l *List) Hovers(id string) bool { return l.hovers(NewRow(id, "")) }

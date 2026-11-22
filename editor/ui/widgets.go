@@ -380,7 +380,10 @@ type List struct {
 	scroll        int
 	hover         string
 	hoverAdd      bool
-	drag          listDrag
+	// over says the pointer is over a row at all: a row's ID may be "",
+	// which hover alone could not tell from no row.
+	over bool
+	drag listDrag
 }
 
 // NewList returns an empty list with a row selected, or none for "".
@@ -390,7 +393,7 @@ func NewList(id, selected string) *List {
 		Grid: 0, CanDrop: nil, Faded: nil,
 		DragLabel: nil, DropElsewhere: nil,
 		scroll: 0,
-		hover:  "", hoverAdd: false, drag: noDrag(),
+		hover:  "", hoverAdd: false, over: false, drag: noDrag(),
 	}
 }
 
@@ -497,7 +500,7 @@ func (l *List) Update(input *Input) ListResult {
 		input.WheelY = 0
 	}
 	l.scroll = min(max(l.scroll, 0), max(l.Height()-l.Rect.Dy(), 0))
-	l.hover, l.hoverAdd = "", false
+	l.hover, l.hoverAdd, l.over = "", false, false
 	if l.updateDrag(input, &result) || !inside {
 		return result
 	}
@@ -511,7 +514,7 @@ func (l *List) Update(input *Input) ListResult {
 		if row.Heading && !row.Section {
 			continue
 		}
-		l.hover = row.ID
+		l.hover, l.over = row.ID, true
 		l.hoverAdd = row.Add && input.Cursor.In(addRect(rect))
 		if input.Pressed {
 			l.press(input, row, rect, &result)
@@ -711,7 +714,7 @@ func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
 			StrokeRound(area, highlight(rect), rowRadius, Hairline, ColorSelect())
 		case row.Ticked:
 			FillRound(area, highlight(rect), rowRadius, ColorSelectWash())
-		case row.ID == l.hover:
+		case l.hovers(row):
 			FillRound(area, highlight(rect), rowRadius, ColorHover())
 		}
 		if treeRow(row) {
@@ -844,15 +847,19 @@ func (l *List) FitsGrid(theme *Theme, columns int) bool {
 	return true
 }
 
+// hovers reports whether the pointer is over a row. A row whose ID is ""
+// is told from no row at all.
+func (l *List) hovers(row Row) bool { return l.over && row.ID == l.hover }
+
 // drawChip draws a row of a grid: a box of its own with its swatch, its
 // name and its key. The chosen one is washed blue with a ring; the others
 // are white, since each is something to choose.
 func (l *List) drawChip(area *ebiten.Image, theme *Theme, row Row, rect image.Rectangle) {
 	fill, edge, width := ColorField(), ColorRule(), float32(Hairline)
-	switch row.ID {
-	case l.Selected:
+	switch {
+	case row.ID == l.Selected:
 		fill, edge, width = ColorSelectWash(), ColorSelect(), Border
-	case l.hover:
+	case l.hovers(row):
 		fill = ColorHover()
 	}
 	FillRound(area, rect, rowRadius, fill)

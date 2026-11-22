@@ -27,7 +27,7 @@ in the engine changes. It is held to the same strict checks as [increment
 3. **Keys and counts are small caps** at a row's or a button's right edge,
    in the engine's own type.
 4. **The Map's tools are grouped by job,** and what the tool in hand paints
-   with is a grid of swatches under its own heading.
+   with is a set of swatches under its own heading.
 5. **Buttons that are one choice stand together as one control:** a
    place's views, a portal's Fade and Cut, the clock's hour steps.
 6. **Nothing a control does changes.** Every control keeps its ID, its key
@@ -66,12 +66,16 @@ Chosen while planning, and shown to its author in the plan:
 
 Chosen while building, for its author to check:
 
-- **The Map's panel is 240 points wide by default, where it was 190.** Two
-  swatches side by side with their names did not fit in 190. The divider
-  still drags it, and a width its author already set is kept.
-- **Swatches fall to one column when a name would not fit two.** Ground and
-  wall families show two to a row; doors, stairs and pickups, whose names
-  are long, show one. The NPCs to place stay a list.
+- **Swatches are one to a line in a panel as wide as it starts, and two
+  once it is dragged wide enough for every name.** The wireframe drew two
+  to a line. Two with their names whole need a panel about 240 points wide,
+  and the panel starts at 190. It was first built 240 wide; the real-window
+  suite then failed two walks, because a Workflow no longer fitted beside a
+  Map with its inspector folded in a window 1200 wide, and a small window's
+  Map lost a quarter of its stage. So the panel starts as wide as it was,
+  and the divider still drags it. Doors, stairs and pickups, whose names
+  are long, stay one to a line at any width tried. The NPCs to place stay a
+  list.
 - **A wall family's swatch is named "Family A" or "No family",** not by
   its full name, so two fit.
 - **Floors are numbered** with a cap, 1 at the bottom, and the first nine

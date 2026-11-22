@@ -117,3 +117,24 @@ func TestRowsCarryCapsAndGlyphs(t *testing.T) {
 	ui.DrawJoined(screen, theme(t), []*ui.Button{cards, rows})
 	ui.DrawJoined(screen, theme(t), nil)
 }
+
+// TestARowWithNoIDIsNotUnderThePointerByDefault lists a row whose ID is
+// empty, as the Map's unassigned ground is: it is drawn as under the
+// pointer only while the pointer is over it, not whenever the pointer is
+// over no row at all.
+func TestARowWithNoIDIsNotUnderThePointerByDefault(t *testing.T) {
+	t.Parallel()
+	tiles := ui.NewList("tiles", "grass")
+	tiles.Rect, tiles.Grid = image.Rect(0, 0, 200, 120), 1
+	tiles.Rows = []ui.Row{ui.NewRow("grass", "Grass"), ui.NewRow("", "Unassigned")}
+	away := ui.NewInput(image.Pt(400, 400))
+	tiles.Update(&away)
+	if tiles.Hovers("") || tiles.Hovers("grass") {
+		t.Fatal("with the pointer elsewhere, no row is under it")
+	}
+	over := ui.NewInput(ui.Center(tiles.RowRect(1)))
+	tiles.Update(&over)
+	if !tiles.Hovers("") || tiles.Hovers("grass") {
+		t.Fatal("with the pointer over the row with no ID, that row is under it")
+	}
+}

@@ -38,10 +38,10 @@ const ViewName = "map"
 
 // Panel sizes, in screen pixels.
 const (
-	// PanelWidth is the left panel's width until it is dragged: room for
-	// the ground's tiles as two columns of chips, the longest of their
-	// names whole (increment 66; it was 190).
-	PanelWidth = 240
+	// PanelWidth is the left panel's width until it is dragged. What a
+	// tool paints with is one chip to a line at this width, and two once
+	// the panel is dragged wide enough for the longest name (increment 66).
+	PanelWidth = 190
 	// toolRows is the tools and the headings of their four groups.
 	toolRows     = 12
 	floorRows    = 5

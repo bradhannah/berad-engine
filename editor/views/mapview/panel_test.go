@@ -37,15 +37,26 @@ func TestToolsAreGroupedByJob(t *testing.T) {
 	}
 }
 
-// TestWhatAToolPaintsWithIsChips lays the ground's tiles out as chips two
-// to a line, since every name fits; the doors, stairs and pickups one to a
-// line, since "Medium pickup" does not fit beside another; and the wall
-// families two to a line under shorter names. Select offers none until
-// walls are selected, and the NPCs to place stay a list.
+// widePanel is a left panel dragged wide enough for two of the ground's
+// tiles side by side.
+const widePanel = 240
+
+// TestWhatAToolPaintsWithIsChips lays the ground's tiles out as chips: one
+// to a line in a panel as wide as it starts, which is as wide as it was
+// before, and two to a line once the panel is dragged wide enough for every
+// name. Then the doors, stairs and pickups are still one to a line, since
+// "Medium pickup" does not fit beside another, and the wall families two
+// to a line under shorter names. Select offers none until walls are
+// selected, and the NPCs to place stay a list.
 func TestWhatAToolPaintsWithIsChips(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.keys("G")
+	f.keys()
+	if columns, names := f.state.TileChips(); columns != 1 || !slices.Contains(names, "Unassigned") {
+		t.Fatalf("in a panel as wide as it starts, one to a line, their names whole: %d %v", columns, names)
+	}
+	f.state.SetLeftWidth(widePanel)
 	f.keys()
 	if columns, names := f.state.TileChips(); columns != 2 || !slices.Contains(names, "Grass") {
 		t.Fatalf("the ground's tiles, two to a line: %d %v", columns, names)
