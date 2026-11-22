@@ -70,9 +70,9 @@ Chosen while building, for its author to check:
 - **On a cell with several things, a click always asks,** even when one of
   them is selected, so another can be chosen; a drag from that cell moves
   the one selected, and moves nothing when none is.
-- **The selected sound, portal or start is outlined in blue** on its cell,
-  and so is the cell a drag would land on. An anchor and an NPC keep the
-  rings they had.
+- **The selected thing's cell is outlined in blue,** and so is the cell a
+  drag would land on. An anchor and an NPC keep the rings they had as
+  well.
 - **The portal's section** says where it leads on two lines, the anchor
   and then its floor and zone, or "Nowhere" in red with why. Open where it
   leads is disabled for a portal that leads nowhere.
@@ -133,6 +133,15 @@ Not in a pull request yet.
   portal to cut in the inspector. The plan expected nine walks to change;
   the others only add with the Anchors and Place NPC tools, which still
   add.
+
+- **Checks:** `make check` passes: formatting, the strict lint with no
+  findings, vet, and every test with the race detector. The real-window
+  suite, run from a frozen copy with an empty screenshot folder, passed all
+  86 of its tests; `TestSelectThenInspect` passed ten runs in ten on its own
+  first, and the portals walk three in three. One change came after that
+  run: a selected anchor's or NPC's cell is outlined in blue as the other
+  kinds are, since one can stand over the other's ring on a cell. It is
+  drawing only, and was checked by `make check`, not in the real window.
 
 ## Changed after its author tried it
 

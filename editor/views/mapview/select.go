@@ -375,14 +375,21 @@ func (s *State) moveStart(ctx *frame.Context, floorData *floor.Floor, target Cel
 		})
 }
 
-// drawPicked outlines in blue the cell of the selected ambient sound,
-// portal or player start, and where a thing being dragged would land. An
-// anchor and an NPC show they are selected by their own rings.
+// drawPicked outlines in blue the cell of the selected thing, and where a
+// thing being dragged would land. An anchor and an NPC also show they are
+// selected by their own rings, but one may stand over the other on a cell,
+// so the cell is outlined for them too.
 func (s *State) drawPicked(area *ebiten.Image, floorData *floor.Floor, grid image.Rectangle) {
 	outline := func(cell Cell) {
 		if rect := s.camera.cellRect(cell, grid); rect.Overlaps(grid) {
 			ui.StrokeRect(area, rect, ui.Outline, ui.ColorSelect())
 		}
+	}
+	if anchor, _, found := floorData.Anchor(s.anchor); found && !s.anchor.IsZero() {
+		outline(Cell{X: anchor.Col, Y: anchor.Row})
+	}
+	if placement, _, found := floorData.Placement(s.placement); found && !s.placement.IsZero() {
+		outline(Cell{X: placement.Col, Y: placement.Row})
 	}
 	if sound, _, found := floorData.Sound(s.sound); found && !s.sound.IsZero() {
 		outline(Cell{X: sound.Col, Y: sound.Row})
