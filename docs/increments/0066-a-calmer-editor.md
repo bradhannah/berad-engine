@@ -1,6 +1,6 @@
 # Increment 66: A calmer editor
 
-**Status:** Built
+**Status:** Judged by its author on 2026-11-22
 
 The editor's shared controls get quieter strengths, and six places use
 them. Its author found the Map's left panel "jarring and old looking". From
@@ -158,7 +158,8 @@ Not in a pull request yet.
 
 ## Changed after its author tried it
 
-- None yet.
+Tried by its author on 2026-11-22, who said of increments 64 to 66, "They are
+good". Nothing was changed.
 
 ## Not in this increment
 

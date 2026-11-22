@@ -1,6 +1,6 @@
 # Increment 65: Select a thing on the Map, then set it in the inspector
 
-**Status:** Built
+**Status:** Judged by its author on 2026-11-22
 
 The Map gets one way to select what sits on a cell, and an inspector for
 each kind of thing. Its author tried [portals](0064-portals.md) and found
@@ -145,7 +145,8 @@ Not in a pull request yet.
 
 ## Changed after its author tried it
 
-- None yet.
+Tried by its author on 2026-11-22, who said of increments 64 to 66, "They are
+good". Nothing was changed.
 
 ## Not in this increment
 
