@@ -137,8 +137,9 @@ func (s toolStroke) grip() {
 
 // DrawJoined draws buttons that stand side by side as one control
 // (increment 66): one outline round them all, a hairline between each, and
-// the one that is On filled with ink. The buttons keep their own places and
-// take their own presses; only their boxes are drawn as one.
+// the one that is On filled with ink. Quiet buttons make a quiet control: the
+// page's tone inside a hairline. The buttons keep their own places and take
+// their own presses; only their boxes are drawn as one.
 func DrawJoined(screen *ebiten.Image, theme *Theme, buttons []*Button) {
 	if len(buttons) == 0 || buttons[0].Rect.Empty() {
 		return
@@ -147,9 +148,13 @@ func DrawJoined(screen *ebiten.Image, theme *Theme, buttons []*Button) {
 	for _, button := range buttons[1:] {
 		whole = whole.Union(button.Rect)
 	}
-	FillRound(screen, whole, Radius, ColorField())
+	ground, edge, width := ColorField(), ColorInk(), float32(Border)
+	if buttons[0].Quiet {
+		ground, edge, width = ColorPage(), ColorRule(), Hairline
+	}
+	FillRound(screen, whole, Radius, ground)
 	for index, button := range buttons {
-		fill, ink := ColorField(), ColorInk()
+		fill, ink := ground, ColorInk()
 		switch {
 		case button.Disabled:
 			ink = ColorSubdued()
@@ -158,7 +163,7 @@ func DrawJoined(screen *ebiten.Image, theme *Theme, buttons []*Button) {
 		case button.hover:
 			fill = ColorHover()
 		}
-		if fill != ColorField() {
+		if fill != ground {
 			FillRound(screen, button.Rect, Radius, fill)
 		}
 		if index > 0 && !button.On && !buttons[index-1].On {
@@ -167,5 +172,5 @@ func DrawJoined(screen *ebiten.Image, theme *Theme, buttons []*Button) {
 		theme.DrawText(screen, button.Label, button.Rect.Min.X+(button.Rect.Dx()-theme.TextWidth(button.Label))/Half,
 			button.Rect.Min.Y+(button.Rect.Dy()-TextSize)/Half-1, ink)
 	}
-	StrokeRound(screen, whole, Radius, Border, ColorInk())
+	StrokeRound(screen, whole, Radius, width, edge)
 }

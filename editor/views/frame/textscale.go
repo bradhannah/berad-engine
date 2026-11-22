@@ -43,7 +43,7 @@ type textScaleState struct {
 }
 
 func newTextScaleState() textScaleState {
-	button := ui.NewButton(textScaleID, "Text 100%")
+	button := ui.NewQuietButton(textScaleID, "Text 100%")
 	button.Caret = true
 
 	return textScaleState{shown: 1, asked: 0, button: button, menu: ui.Menu{Items: nil, Width: 0}}
