@@ -209,9 +209,11 @@ func inside(character *npcrun.NPC, target ids.ULID) bool {
 var ErrPlace = errors.New("the player cannot be moved there")
 
 // Place moves the player to a cell of a floor of the zone being played
-// (increment 63), as an author trying a game moves them. Nothing else
-// changes: the NPCs carry on, and the clock and the values are as they were.
-// A floor the zone lacks, or a cell the player cannot stand on, is refused.
+// (increment 63), as an author trying a game moves them, and as a portal
+// that leads to an anchor of this zone takes them. Nothing else changes: the
+// NPCs carry on, and the clock and the values are as they were. A floor the
+// zone lacks, or a cell the player cannot stand on, is refused. A player who
+// was leaving by a portal has arrived.
 func (g *Game) Place(floorID ids.ULID, cell image.Point) error {
 	if !slices.Contains(g.levels.Floors(), floorID) {
 		return fmt.Errorf("%w: that floor is not in the zone being played", ErrPlace)
@@ -220,6 +222,7 @@ func (g *Game) Place(floorID ids.ULID, cell image.Point) error {
 		return fmt.Errorf("%w: nothing can stand on cell %d,%d", ErrPlace, cell.X, cell.Y)
 	}
 	g.run.Place(floorID, cell)
+	g.arrived()
 
 	return nil
 }
@@ -237,7 +240,8 @@ func (g *Game) Place(floorID ids.ULID, cell image.Point) error {
 //     again starts its NPCs afresh in the same way.
 //
 // A project with no start or no zone, or a start the player cannot stand
-// on, is refused, and the game goes on where it was.
+// on, is refused, and the game goes on where it was. A player who was
+// leaving by a portal has arrived.
 func (g *Game) Enter(project Project) error {
 	start := project.Settings.Start
 	if start.IsZero() || project.Zone == nil {
@@ -259,6 +263,7 @@ func (g *Game) Enter(project Project) error {
 	g.syncRunners()
 	g.follow(project)
 	g.startLoop(project)
+	g.arrived()
 
 	return nil
 }

@@ -40,6 +40,9 @@ func (d *Docs) Put(id ids.ULID, name string, document model.Document) {
 	d.docs[id] = &client.Document{ID: id, Name: name, Format: document.Format(), Revision: revision, Model: document}
 }
 
+// Remove takes a document away, as one the window has not been sent yet.
+func (d *Docs) Remove(id ids.ULID) { delete(d.docs, id) }
+
 // Touch raises a document's revision, as an edit applied to it in place
 // does.
 func (d *Docs) Touch(id ids.ULID) {

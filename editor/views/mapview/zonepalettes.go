@@ -13,7 +13,7 @@ import (
 // zonePalettesShown reports whether the inspector shows the zone's palettes:
 // nothing is selected, picked or being resized.
 func (s *State) zonePalettesShown() bool {
-	return s.pick == nil && s.anchor.IsZero() && s.placement.IsZero() && len(s.selected) == 0 && s.tool != ToolResize
+	return s.pick == nil && !s.anySelected() && s.tool != ToolResize
 }
 
 // zonePalettesTop is where the list starts: below the inspector's heading

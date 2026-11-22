@@ -70,8 +70,9 @@ type historyState struct {
 func newHistoryState() historyState {
 	return historyState{
 		log: nil, refusal: "", open: false, list: ui.NewList("history", ""),
-		button: ui.NewButton("history", "History"), dismiss: ui.NewButton("dismiss", "Dismiss"), panel: ui.Zero(),
-		hand: "", chosen: "", chosenName: "",
+		button: ui.NewQuietButton("history", "History"), dismiss: ui.NewQuietButton("dismiss", "Dismiss"),
+		panel: ui.Zero(),
+		hand:  "", chosen: "", chosenName: "",
 	}
 }
 

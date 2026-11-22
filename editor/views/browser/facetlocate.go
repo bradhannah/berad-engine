@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradhannah/berad-engine/editor/ui"
 	"github.com/bradhannah/berad-engine/editor/views/frame"
 )
 
@@ -12,9 +13,10 @@ import (
 const stateKind = "state"
 
 // locateFacets finds, for input scripts, "facet:<Facet>/<value>", a value
-// in an open facet's dropdown; "more:<Facet>", its "N more…"; "view:<name>",
-// a saved view under the places; and "place:<name>", a place. It answers
-// the narrowing's states too. handled is false for anything else.
+// in an open facet's dropdown; "more:<Facet>", its "N more…";
+// "clear:<Facet>", the cross on a set facet's button; "view:<name>", a saved
+// view under the places; and "place:<name>", a place. It answers the
+// narrowing's states too. handled is false for anything else.
 func (s *State) locateFacets(kind, value string, docs frame.Docs) (image.Point, bool, bool) {
 	none := image.Pt(0, 0)
 	switch kind {
@@ -30,6 +32,13 @@ func (s *State) locateFacets(kind, value string, docs frame.Docs) (image.Point, 
 		point, located := s.facets.Locate(morePrefix + facetID(value))
 
 		return point, located, true
+	case "clear":
+		button, known := s.facetBns[facetID(value)]
+		if !known || !button.On {
+			return none, false, true
+		}
+
+		return ui.Center(facetCross(button)), true, true
 	case "view":
 		s.places.Reveal(viewPrefix + value)
 		point, located := s.places.Locate(viewPrefix + value)

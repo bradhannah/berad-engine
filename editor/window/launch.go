@@ -59,13 +59,17 @@ func (s *shell) tellShown() {
 	}
 }
 
-// drawLaunch draws Launch on the bar.
+// drawLaunch draws Launch on the bar, as the bar's one main button
+// (increment 66): filled with the selection's blue, its key on a cap.
 func (s *shell) drawLaunch(screen *ebiten.Image) {
 	rect := s.launchRect()
 	ui.Divider(screen, image.Pt(rect.Min.X, ui.Gap), image.Pt(rect.Min.X, rowHeight-ui.Gap))
-	ui.DrawIcon(screen, ui.IconPlay, image.Pt(rect.Min.X+tabPad, (rowHeight-ui.IconSize)/ui.Half))
-	left := rect.Min.X + tabPad + ui.IconSize + ui.Gap*ui.Half
-	s.theme.DrawText(screen, "Launch", left, (rowHeight-ui.TextSize)/ui.Half-1, ui.ColorInk())
-	key := rect.Max.X - tabPad - s.theme.MonoWidth(launchKey)
-	s.theme.DrawMono(screen, launchKey, key, (rowHeight-ui.MonoSize)/ui.Half-1, ui.ColorSubdued())
+	top := (rowHeight - ui.ButtonH) / ui.Half
+	box := image.Rect(rect.Min.X+ui.Half*ui.Gap, top, rect.Max.X-ui.Half*ui.Gap, top+ui.ButtonH)
+	ui.FillRound(screen, box, ui.Radius, ui.ColorSelect())
+	ui.DrawIconInk(screen, ui.IconPlay, image.Pt(box.Min.X+ui.Half*ui.Gap, (rowHeight-ui.IconSize)/ui.Half),
+		ui.ColorReverse())
+	left := box.Min.X + ui.Half*ui.Gap + ui.IconSize + ui.Gap
+	s.theme.DrawStrong(screen, "Launch", left, (rowHeight-ui.TextSize)/ui.Half-1, ui.ColorReverse())
+	ui.DrawCap(screen, s.theme, launchKey, box.Max.X-ui.Gap, rowHeight/ui.Half, true)
 }

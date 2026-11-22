@@ -67,7 +67,7 @@ func TestScrollingMatchesTheWorkflowWindow(t *testing.T) {
 func TestAnchorNameSavesAndAsksBeforeLeaving(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.keys("A")
+	f.keys("S")
 	f.click("cell:4,4")
 	f.click("ui:anchor-name")
 	f.typed(" two")

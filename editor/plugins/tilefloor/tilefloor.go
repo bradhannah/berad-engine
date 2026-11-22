@@ -227,8 +227,8 @@ func BoundsOf(rect image.Rectangle) Bounds {
 
 // ResizeArgs changes a floor's bounds, adding or removing rows and columns on
 // any side. Added cells get Ground and nothing on top; then Cells, Anchors,
-// Placements and Sounds, which must lie in added cells, are put back. Undo
-// uses them to restore what a resize removed.
+// Placements, Sounds and Portals, which must lie in added cells, are put
+// back. Undo uses them to restore what a resize removed.
 type ResizeArgs struct {
 	Bounds     Bounds             `json:"bounds"`
 	Ground     string             `json:"ground"`
@@ -236,6 +236,7 @@ type ResizeArgs struct {
 	Anchors    []AddAnchorArgs    `json:"anchors,omitempty"`
 	Placements []AddPlacementArgs `json:"placements,omitempty"`
 	Sounds     []AddSoundArgs     `json:"sounds,omitempty"`
+	Portals    []AddPortalArgs    `json:"portals,omitempty"`
 }
 
 // Resize is the edit kind that changes a floor's bounds.
@@ -276,20 +277,8 @@ func (Resize) Apply(document model.Document, args json.RawMessage) (model.Applie
 			return model.Applied{}, fmt.Errorf("restore after validation: %w", err)
 		}
 	}
-	for _, restored := range resize.Anchors {
-		if err := working.InsertAnchor(restored.Index, restored.Anchor); err != nil {
-			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-		}
-	}
-	for _, restored := range resize.Placements {
-		if err := working.InsertPlacement(restored.Index, restored.Placement); err != nil {
-			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-		}
-	}
-	for _, restored := range resize.Sounds {
-		if err := working.InsertSound(restored.Index, restored.Sound); err != nil {
-			return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
-		}
+	if err := restore(working, resize); err != nil {
+		return model.Applied{}, fmt.Errorf("%w: %w", model.ErrArgs, err)
 	}
 	inverseArgs, err := encodeArgs(inverse)
 	if err != nil {
@@ -300,6 +289,33 @@ func (Resize) Apply(document model.Document, args json.RawMessage) (model.Applie
 	return model.Applied{
 		Inverse: inverseArgs, InverseEdit: "", Touched: resizeTouched(old, next, inverse, resize), Covers: nil,
 	}, nil
+}
+
+// restore puts back the anchors, placements, sounds and portals a resize
+// names, each at its place in its stored order.
+func restore(working *floor.Floor, resize ResizeArgs) error {
+	for _, restored := range resize.Anchors {
+		if err := working.InsertAnchor(restored.Index, restored.Anchor); err != nil {
+			return fmt.Errorf("restore anchor: %w", err)
+		}
+	}
+	for _, restored := range resize.Placements {
+		if err := working.InsertPlacement(restored.Index, restored.Placement); err != nil {
+			return fmt.Errorf("restore placement: %w", err)
+		}
+	}
+	for _, restored := range resize.Sounds {
+		if err := working.InsertSound(restored.Index, restored.Sound); err != nil {
+			return fmt.Errorf("restore sound: %w", err)
+		}
+	}
+	for _, restored := range resize.Portals {
+		if err := working.InsertPortal(restored.Index, restored.Portal); err != nil {
+			return fmt.Errorf("restore portal: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // checkResize validates a resize: real new bounds, a bounded number of cells
@@ -332,8 +348,8 @@ func checkResize(old, next image.Rectangle, resize ResizeArgs) error {
 	return checkRestored(resize, added)
 }
 
-// checkRestored reports a restored anchor, placement or sound that is not on
-// a cell the resize adds.
+// checkRestored reports a restored anchor, placement, sound or portal that
+// is not on a cell the resize adds.
 func checkRestored(resize ResizeArgs, added func(col, row int) bool) error {
 	for _, restored := range resize.Anchors {
 		if !added(restored.Anchor.Col, restored.Anchor.Row) {
@@ -348,6 +364,11 @@ func checkRestored(resize ResizeArgs, added func(col, row int) bool) error {
 	for _, restored := range resize.Sounds {
 		if !added(restored.Sound.Col, restored.Sound.Row) {
 			return fmt.Errorf("%w: restored sound %s is not on a new cell", model.ErrArgs, restored.Sound.ID)
+		}
+	}
+	for _, restored := range resize.Portals {
+		if !added(restored.Portal.Col, restored.Portal.Row) {
+			return fmt.Errorf("%w: restored portal %s is not on a new cell", model.ErrArgs, restored.Portal.ID)
 		}
 	}
 
@@ -397,30 +418,42 @@ func resizeInverse(current *floor.Floor, next image.Rectangle) ResizeArgs {
 			cells = append(cells, Cell{Col: cell.X, Row: cell.Y, Layer: LayerTop, Tile: top})
 		}
 	}
-	var anchors []AddAnchorArgs
+	inverse := ResizeArgs{
+		Bounds: BoundsOf(current.Bounds()), Ground: fill, Cells: cells, Anchors: nil, Placements: nil, Sounds: nil,
+		Portals: nil,
+	}
 	for index, anchor := range current.Anchors() {
 		if !image.Pt(anchor.Col, anchor.Row).In(next) {
-			anchors = append(anchors, AddAnchorArgs{Anchor: anchor, Index: index})
+			inverse.Anchors = append(inverse.Anchors, AddAnchorArgs{Anchor: anchor, Index: index})
 		}
 	}
-
-	var placements []AddPlacementArgs
 	for index, placement := range current.Placements() {
 		if !image.Pt(placement.Col, placement.Row).In(next) {
-			placements = append(placements, AddPlacementArgs{Placement: placement, Index: index})
+			inverse.Placements = append(inverse.Placements, AddPlacementArgs{Placement: placement, Index: index})
 		}
 	}
+	inverse.Sounds, inverse.Portals = removedMarks(current, next)
+
+	return inverse
+}
+
+// removedMarks lists the sounds and portals a resize to next takes off a
+// floor, each with its place in its stored order, for putting them back.
+func removedMarks(current *floor.Floor, next image.Rectangle) ([]AddSoundArgs, []AddPortalArgs) {
 	var sounds []AddSoundArgs
 	for index, sound := range current.Sounds() {
 		if !image.Pt(sound.Col, sound.Row).In(next) {
 			sounds = append(sounds, AddSoundArgs{Sound: sound, Index: index})
 		}
 	}
-
-	return ResizeArgs{
-		Bounds: BoundsOf(current.Bounds()), Ground: fill, Cells: cells, Anchors: anchors, Placements: placements,
-		Sounds: sounds,
+	var portals []AddPortalArgs
+	for index, portal := range current.Portals() {
+		if !image.Pt(portal.Col, portal.Row).In(next) {
+			portals = append(portals, AddPortalArgs{Portal: portal, Index: index})
+		}
 	}
+
+	return sounds, portals
 }
 
 // resizeTouched lists what a resize changes: the bounds, both layers of every
@@ -445,6 +478,11 @@ func resizeTouched(old, next image.Rectangle, inverse, resize ResizeArgs) []stri
 	for _, sounds := range [][]AddSoundArgs{inverse.Sounds, resize.Sounds} {
 		for _, sound := range sounds {
 			touched = append(touched, SoundKey(sound.Sound.ID))
+		}
+	}
+	for _, portals := range [][]AddPortalArgs{inverse.Portals, resize.Portals} {
+		for _, portal := range portals {
+			touched = append(touched, PortalKey(portal.Portal.ID))
 		}
 	}
 
@@ -621,6 +659,7 @@ func Plugin() plugin.Plugin {
 		Edits: []model.EditKind{
 			Paint{}, Resize{}, AddAnchor{}, RemoveAnchor{}, UpdateAnchor{},
 			AddPlacement{}, RemovePlacement{}, UpdatePlacement{}, AddSound{}, RemoveSound{}, UpdateSound{},
+			AddPortal{}, RemovePortal{}, UpdatePortal{},
 		},
 		Required: nil,
 	}

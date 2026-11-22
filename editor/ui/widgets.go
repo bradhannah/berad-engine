@@ -25,7 +25,15 @@ type Button struct {
 	Danger bool
 	Caret  bool
 	// Icon, when set, is drawn before the label, as a place's ring.
-	Icon  Icon
+	Icon Icon
+	// Quiet buttons are a panel's secondary actions (increment 66): page
+	// tone with a hairline, and desk tone under the pointer, so the panel's
+	// one main button and its few plain ones stand out. A quiet button that
+	// is On is washed blue, as a toggle that is set.
+	Quiet bool
+	// Key is the key that presses the button, shown as a small cap after
+	// its label.
+	Key   string
 	hover bool
 }
 
@@ -33,8 +41,16 @@ type Button struct {
 func NewButton(id, label string) *Button {
 	return &Button{
 		ID: id, Label: label, Rect: image.Rect(0, 0, 0, 0), Disabled: false, Primary: false, On: false, Danger: false,
-		Caret: false, Icon: IconNone, hover: false,
+		Caret: false, Icon: IconNone, Quiet: false, Key: "", hover: false,
 	}
+}
+
+// NewQuietButton returns a quiet button, for a panel's secondary actions.
+func NewQuietButton(id, label string) *Button {
+	button := NewButton(id, label)
+	button.Quiet = true
+
+	return button
 }
 
 // Update reports whether the button was clicked this frame.
@@ -68,27 +84,19 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 	if b.Rect.Empty() {
 		return
 	}
-	fill, ink, edge := ColorField(), ColorInk(), ColorInk()
-	switch {
-	case b.Disabled:
-		ink, edge = ColorSubdued(), ColorRule()
-	case b.Primary:
-		fill, ink, edge = ColorSelect(), ColorReverse(), ColorSelect()
-	case b.On:
-		fill, ink = ColorInk(), ColorReverse()
-	case b.Danger:
-		ink, edge = ColorWarn(), ColorWarn()
-		if b.hover {
-			fill = ColorHover()
-		}
-	case b.hover:
-		fill = ColorHover()
+	fill, ink, edge := b.look()
+	stroke := Border
+	if b.Quiet && !b.Primary {
+		stroke = Hairline
 	}
 	FillRound(screen, b.Rect, Radius, fill)
-	StrokeRound(screen, b.Rect, Radius, Border, edge)
+	StrokeRound(screen, b.Rect, Radius, stroke, edge)
 	width := theme.TextWidth(b.Label) + b.iconWidth()
 	if b.Caret {
 		width += triangle*Half + labelGap
+	}
+	if b.Key != "" {
+		width += labelGap + CapWidth(theme, b.Key)
 	}
 	left := b.Rect.Min.X + (b.Rect.Dx()-width)/Half
 	if b.Icon != IconNone {
@@ -100,10 +108,86 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 		left += b.iconWidth()
 	}
 	theme.DrawText(screen, b.Label, left, b.Rect.Min.Y+(b.Rect.Dy()-TextSize)/Half-1, ink)
+	if b.Key != "" {
+		DrawCap(screen, theme, b.Key, left+width, b.Rect.Min.Y+b.Rect.Dy()/Half, b.Primary)
+
+		return
+	}
 	if b.Caret {
 		caret := image.Rect(left+width-triangle*Half, b.Rect.Min.Y, left+width, b.Rect.Max.Y)
 		DrawTriangle(screen, caret, true, ink)
 	}
+}
+
+// FitButton is a button's place cut down to the width of its label, from
+// its left edge and no wider than it was: for an action that should not
+// span its panel, such as Delete at an inspector's foot (increment 66).
+func FitButton(theme *Theme, button *Button) image.Rectangle {
+	rect := button.Rect
+	if rect.Empty() {
+		return rect
+	}
+	rect.Max.X = min(rect.Max.X, rect.Min.X+theme.TextWidth(button.Label)+Half*Inset)
+
+	return rect
+}
+
+// look is the button's fill, ink and edge for its state.
+func (b *Button) look() (color.RGBA, color.RGBA, color.RGBA) {
+	fill, ink, edge := ColorField(), ColorInk(), ColorInk()
+	if b.Quiet {
+		fill, edge = ColorPage(), ColorRule()
+	}
+	switch {
+	case b.Disabled && b.Quiet:
+		ink, edge = ColorSubdued(), ColorRuleSoft()
+	case b.Disabled:
+		ink, edge = ColorSubdued(), ColorRule()
+	case b.Primary:
+		fill, ink, edge = ColorSelect(), ColorReverse(), ColorSelect()
+	case b.On && b.Quiet:
+		fill, edge = ColorSelectWash(), ColorSelect()
+	case b.On:
+		fill, ink = ColorInk(), ColorReverse()
+	case b.Danger:
+		ink, edge = ColorWarn(), ColorWarn()
+		if b.hover {
+			fill = ColorHover()
+		}
+	case b.hover:
+		fill = ColorHover()
+	}
+
+	return fill, ink, edge
+}
+
+// A small cap is a key or a count on a row or a button, a smaller cousin of
+// the key sheet's caps: its height, the room either side of its text, and
+// the least it is wide.
+const (
+	smallCapHeight = 16
+	smallCapPad    = 4
+	smallCapMin    = 16
+)
+
+// CapWidth is how wide a small cap of some text is.
+func CapWidth(theme *Theme, text string) int {
+	return max(smallCapMin, theme.MonoWidth(text)+Half*smallCapPad)
+}
+
+// DrawCap draws a key or a count as a small chip in the engine's own type,
+// its right edge and its middle at a point: desk tone with muted text, or,
+// on something filled with the selection's blue, a deeper blue with
+// reversed text (increment 66).
+func DrawCap(screen *ebiten.Image, theme *Theme, text string, right, middle int, onFilled bool) {
+	width := CapWidth(theme, text)
+	chip := image.Rect(right-width, middle-smallCapHeight/Half, right, middle+smallCapHeight/Half)
+	fill, ink := ColorDesk(), ColorMuted()
+	if onFilled {
+		fill, ink = ColorSelectDeep(), ColorReverse()
+	}
+	FillRound(screen, chip, capRadius, fill)
+	theme.DrawMono(screen, text, chip.Min.X+(width-theme.MonoWidth(text))/Half, middle-MonoSize/Half-1, ink)
 }
 
 // Toggle is a labelled on/off box.
@@ -196,6 +280,11 @@ type Row struct {
 	Ticked bool
 	// Cells are a table row's other columns, drawn at the list's Columns.
 	Cells []string
+	// Key is the key that chooses the row, or how many it holds, drawn as a
+	// cap at the row's right edge. Glyph is a plain mark before a plain
+	// row's label, in the label's own ink, where Icon is a document's.
+	Key   string
+	Glyph Icon
 }
 
 // ink is the colour a row's label is drawn in: muted for a muted row.
@@ -212,7 +301,7 @@ func NewRow(id, label string) Row {
 	return Row{
 		ID: id, Label: label, Detail: "", Indent: 0, Swatch: nil, Heading: false, Marked: false, Icon: IconNone,
 		Strong: false, Guide: GuideNone, Toggle: DisclosureNone, Section: false, Add: false, Aside: "", Tree: false,
-		Muted: false, Ticked: false, Cells: nil,
+		Muted: false, Ticked: false, Cells: nil, Key: "", Glyph: IconNone,
 	}
 }
 
@@ -270,7 +359,18 @@ type List struct {
 	// Columns, when set, are where each of a row's Cells starts, that far
 	// from the list's left; a tree row's label is cut short before the
 	// first.
-	Columns   []int
+	Columns []int
+	// InHand draws the selected row filled with the selection's blue, its
+	// text reversed, for the one thing a panel is about: the tool in hand,
+	// the place the author is in. Without it the selected row is washed
+	// blue with a thin ring, as one choice among others (increment 66).
+	InHand bool
+	// Caps draws a tree row's detail as a cap at its right edge.
+	Caps bool
+	// Grid, when above zero, lays the rows out as chips in that many
+	// columns, each a swatch and a name on a box of its own, for what a
+	// tool paints with.
+	Grid      int
 	CanDrop   func(dragged, target string) bool
 	Faded     func(dragged, row string) bool
 	DragLabel func(dragged, over string) string
@@ -280,16 +380,20 @@ type List struct {
 	scroll        int
 	hover         string
 	hoverAdd      bool
-	drag          listDrag
+	// over says the pointer is over a row at all: a row's ID may be "",
+	// which hover alone could not tell from no row.
+	over bool
+	drag listDrag
 }
 
 // NewList returns an empty list with a row selected, or none for "".
 func NewList(id, selected string) *List {
 	return &List{
-		ID: id, Rect: Zero(), Rows: nil, Selected: selected, DetailAt: 0, Columns: nil, CanDrop: nil, Faded: nil,
+		ID: id, Rect: Zero(), Rows: nil, Selected: selected, DetailAt: 0, Columns: nil, InHand: false, Caps: false,
+		Grid: 0, CanDrop: nil, Faded: nil,
 		DragLabel: nil, DropElsewhere: nil,
 		scroll: 0,
-		hover:  "", hoverAdd: false, drag: noDrag(),
+		hover:  "", hoverAdd: false, over: false, drag: noDrag(),
 	}
 }
 
@@ -341,6 +445,9 @@ type ListResult struct {
 // RowRect returns the screen rectangle of a row, which may lie outside the
 // list when scrolled away.
 func (l *List) RowRect(index int) image.Rectangle {
+	if l.Grid > 0 {
+		return l.chipRect(index)
+	}
 	top := l.Rect.Min.Y + index*RowHeight - l.scroll
 
 	return image.Rect(l.Rect.Min.X, top, l.Rect.Max.X, top+RowHeight)
@@ -392,8 +499,8 @@ func (l *List) Update(input *Input) ListResult {
 		l.scroll -= int(input.WheelY * RowHeight)
 		input.WheelY = 0
 	}
-	l.scroll = min(max(l.scroll, 0), max(len(l.Rows)*RowHeight-l.Rect.Dy(), 0))
-	l.hover, l.hoverAdd = "", false
+	l.scroll = min(max(l.scroll, 0), max(l.Height()-l.Rect.Dy(), 0))
+	l.hover, l.hoverAdd, l.over = "", false, false
 	if l.updateDrag(input, &result) || !inside {
 		return result
 	}
@@ -407,7 +514,7 @@ func (l *List) Update(input *Input) ListResult {
 		if row.Heading && !row.Section {
 			continue
 		}
-		l.hover = row.ID
+		l.hover, l.over = row.ID, true
 		l.hoverAdd = row.Add && input.Cursor.In(addRect(rect))
 		if input.Pressed {
 			l.press(input, row, rect, &result)
@@ -518,11 +625,11 @@ func (l *List) Reveal(id string) {
 		if row.ID != id {
 			continue
 		}
-		top := index * RowHeight
+		top := l.RowRect(index).Min.Y - l.Rect.Min.Y + l.scroll
 		if top < l.scroll {
 			l.scroll = top
 		}
-		if bottom := top + RowHeight; bottom > l.scroll+l.Rect.Dy() {
+		if bottom := top + l.RowRect(index).Dy(); bottom > l.scroll+l.Rect.Dy() {
 			l.scroll = bottom - l.Rect.Dy()
 		}
 	}
@@ -596,12 +703,18 @@ func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
 			theme.Heading(area, row.Label, rect.Min.X+Inset/2+row.Indent*Inset, rect.Min.Y+(RowHeight-TextSize)/2)
 
 			continue
+		case l.Grid > 0:
+			l.drawChip(area, theme, row, rect)
+
+			continue
+		case row.ID == l.Selected && l.InHand:
+			FillRound(area, highlight(rect), rowRadius, ColorSelect())
 		case row.ID == l.Selected:
 			FillRound(area, highlight(rect), rowRadius, ColorSelectWash())
-			StrokeRound(area, highlight(rect), rowRadius, Outline, ColorSelect())
+			StrokeRound(area, highlight(rect), rowRadius, Hairline, ColorSelect())
 		case row.Ticked:
 			FillRound(area, highlight(rect), rowRadius, ColorSelectWash())
-		case row.ID == l.hover:
+		case l.hovers(row):
 			FillRound(area, highlight(rect), rowRadius, ColorHover())
 		}
 		if treeRow(row) {
@@ -650,11 +763,24 @@ func (l *List) drawPlainRow(area *ebiten.Image, theme *Theme, row Row, rect imag
 		StrokeRound(area, swatch, swatchRadius, Border, ColorInk())
 		left += 20
 	}
+	filled := l.InHand && row.ID == l.Selected
+	ink, quiet := row.ink(), ColorSubdued()
+	if filled {
+		ink, quiet = ColorReverse(), ColorReverse()
+	}
+	if row.Glyph != IconNone {
+		glyph := ColorMuted()
+		if filled {
+			glyph = ColorReverse()
+		}
+		DrawIconInk(area, row.Glyph, image.Pt(left, rect.Min.Y+(rect.Dy()-IconSize)/Half), glyph)
+		left += IconSize + labelGap
+	}
 	labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
 	if row.ID == l.Selected || row.Strong {
-		theme.DrawStrong(area, row.Label, left, labelTop, row.ink())
+		theme.DrawStrong(area, row.Label, left, labelTop, ink)
 	} else {
-		theme.DrawText(area, row.Label, left, labelTop, row.ink())
+		theme.DrawText(area, row.Label, left, labelTop, ink)
 	}
 	after := left + max(theme.TextWidth(row.Label), theme.StrongWidth(row.Label)) + labelGap
 	if row.Marked {
@@ -662,7 +788,101 @@ func (l *List) drawPlainRow(area *ebiten.Image, theme *Theme, row Row, rect imag
 		after += 14
 	}
 	if row.Detail != "" {
-		theme.DrawText(area, row.Detail, after, labelTop, ColorSubdued())
+		theme.DrawText(area, row.Detail, after, labelTop, quiet)
+	}
+	if row.Key != "" {
+		DrawCap(area, theme, row.Key, rect.Max.X-Gap*Half-Gap, rect.Min.Y+rect.Dy()/Half, filled)
+	}
+}
+
+// Chips of a grid: how tall each is, the gap between them, the room inside
+// one's edge and between its parts, and the size of the swatch on one.
+const (
+	chipHeight = 30
+	chipGap    = 6
+	chipPad    = 5
+	chipSwatch = 16
+)
+
+// Height is how tall the list's rows are together.
+func (l *List) Height() int {
+	if l.Grid > 0 {
+		lines := (len(l.Rows) + l.Grid - 1) / l.Grid
+
+		return max(lines*(chipHeight+chipGap)-chipGap, 0)
+	}
+
+	return len(l.Rows) * RowHeight
+}
+
+// chipRect is where a row of a grid is: a chip in its column and line.
+func (l *List) chipRect(index int) image.Rectangle {
+	inner := l.Rect.Dx() - Half*Gap
+	width := (inner - (l.Grid-1)*chipGap) / l.Grid
+	left := l.Rect.Min.X + Gap + (index%l.Grid)*(width+chipGap)
+	top := l.Rect.Min.Y + (index/l.Grid)*(chipHeight+chipGap) - l.scroll
+
+	return image.Rect(left, top, left+width, top+chipHeight)
+}
+
+// FitsGrid reports whether every row's name fits on a chip when the list,
+// as wide as it is now, lays its rows out in some number of columns, so a
+// name is never cut short for the sake of a second column.
+func (l *List) FitsGrid(theme *Theme, columns int) bool {
+	inner := l.Rect.Dx() - Half*Gap
+	width := (inner - (columns-1)*chipGap) / columns
+	for _, row := range l.Rows {
+		room := width - Half*chipPad
+		if row.Swatch != nil {
+			room -= chipSwatch + chipPad
+		}
+		if row.Key != "" {
+			room -= theme.MonoWidth(row.Key) + chipPad
+		}
+		if theme.StrongWidth(row.Label) > room {
+			return false
+		}
+	}
+
+	return true
+}
+
+// hovers reports whether the pointer is over a row. A row whose ID is ""
+// is told from no row at all.
+func (l *List) hovers(row Row) bool { return l.over && row.ID == l.hover }
+
+// drawChip draws a row of a grid: a box of its own with its swatch, its
+// name and its key. The chosen one is washed blue with a ring; the others
+// are white, since each is something to choose.
+func (l *List) drawChip(area *ebiten.Image, theme *Theme, row Row, rect image.Rectangle) {
+	fill, edge, width := ColorField(), ColorRule(), float32(Hairline)
+	switch {
+	case row.ID == l.Selected:
+		fill, edge, width = ColorSelectWash(), ColorSelect(), Border
+	case l.hovers(row):
+		fill = ColorHover()
+	}
+	FillRound(area, rect, rowRadius, fill)
+	StrokeRound(area, rect, rowRadius, width, edge)
+	left := rect.Min.X + chipPad
+	if row.Swatch != nil {
+		top := rect.Min.Y + (rect.Dy()-chipSwatch)/Half
+		swatch := image.Rect(left, top, left+chipSwatch, top+chipSwatch)
+		FillRound(area, swatch, swatchRadius, *row.Swatch)
+		StrokeRound(area, swatch, swatchRadius, Hairline, ColorInk())
+		left += chipSwatch + chipPad
+	}
+	room := rect.Max.X - chipPad - left
+	if row.Key != "" {
+		room -= theme.MonoWidth(row.Key) + chipPad
+		theme.DrawMono(area, row.Key, rect.Max.X-chipPad-theme.MonoWidth(row.Key), rect.Min.Y+(rect.Dy()-MonoSize)/Half-1,
+			ColorMuted())
+	}
+	labelTop := rect.Min.Y + (rect.Dy()-TextSize)/Half - 1
+	if row.ID == l.Selected {
+		theme.DrawStrong(area, theme.FitText(row.Label, room), left, labelTop, row.ink())
+	} else {
+		theme.DrawText(area, theme.FitText(row.Label, room), left, labelTop, row.ink())
 	}
 }
 
@@ -694,18 +914,35 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 		stub := left + treeToggle + IconSize/Half
 		Line(area, image.Pt(stub, iconTop+IconSize+Hairline), image.Pt(stub, rect.Max.Y), Hairline, ColorRule())
 	}
-	DrawIcon(area, row.Icon, image.Pt(left+treeToggle, iconTop))
-	labelLeft := left + treeToggle + IconSize + treeLabelGap
+	if l.InHand && row.ID == l.Selected && !Chipped(row.Icon) {
+		// An icon with no chip of its own is reversed on the row in hand's
+		// blue, where its own ink would not show.
+		DrawIconInk(area, row.Icon, image.Pt(left+treeToggle, iconTop), ColorReverse())
+	} else {
+		DrawIcon(area, row.Icon, image.Pt(left+treeToggle, iconTop))
+	}
+	l.drawTreeLabel(area, theme, row, rect, left+treeToggle+IconSize+treeLabelGap)
+}
+
+// drawTreeLabel draws a tree row's label, its aside, its mark and its
+// detail: in a column, as a cap at the right edge, or as text there. The
+// row in hand has them reversed on its blue.
+func (l *List) drawTreeLabel(area *ebiten.Image, theme *Theme, row Row, rect image.Rectangle, labelLeft int) {
 	labelTop := rect.Min.Y + (RowHeight-TextSize)/2 - 1
 	label := row.Label
 	if len(l.Columns) > 0 {
 		label = theme.FitText(label, rect.Min.X+l.Columns[0]-labelGap-labelLeft)
 		l.drawCells(area, theme, row, rect, labelTop)
 	}
-	if row.Strong {
-		theme.DrawStrong(area, label, labelLeft, labelTop, row.ink())
+	filled := l.InHand && row.ID == l.Selected
+	ink, quiet := row.ink(), ColorSubdued()
+	if filled {
+		ink, quiet = ColorReverse(), ColorReverse()
+	}
+	if row.Strong || filled {
+		theme.DrawStrong(area, label, labelLeft, labelTop, ink)
 	} else {
-		theme.DrawText(area, label, labelLeft, labelTop, row.ink())
+		theme.DrawText(area, label, labelLeft, labelTop, ink)
 	}
 	if row.Aside != "" {
 		asideLeft := labelLeft + theme.StrongWidth(row.Label) + labelGap
@@ -713,17 +950,20 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 		if row.Detail != "" {
 			room -= theme.TextWidth(row.Detail) + labelGap
 		}
-		theme.DrawText(area, theme.FitText(row.Aside, room), asideLeft, labelTop, ColorSubdued())
+		theme.DrawText(area, theme.FitText(row.Aside, room), asideLeft, labelTop, quiet)
 	}
 	if row.Marked {
 		theme.DrawText(area, "●", labelLeft+theme.StrongWidth(row.Label)+labelGap, labelTop, ColorSelect())
 	}
-	if row.Detail != "" && l.DetailAt > 0 {
+	switch right := rect.Max.X - Inset/Half - Gap*Half; {
+	case row.Detail == "":
+	case l.DetailAt > 0:
 		at := max(rect.Min.X+l.DetailAt, labelLeft+theme.StrongWidth(row.Label)+labelGap)
-		theme.DrawText(area, theme.FitText(row.Detail, rect.Max.X-Inset/Half-at), at, labelTop, ColorSubdued())
-	} else if row.Detail != "" {
-		right := rect.Max.X - Inset/Half - Gap*Half
-		theme.DrawText(area, row.Detail, right-theme.TextWidth(row.Detail), labelTop, ColorSubdued())
+		theme.DrawText(area, theme.FitText(row.Detail, rect.Max.X-Inset/Half-at), at, labelTop, quiet)
+	case l.Caps:
+		DrawCap(area, theme, row.Detail, right+Gap, rect.Min.Y+rect.Dy()/Half, filled)
+	default:
+		theme.DrawText(area, row.Detail, right-theme.TextWidth(row.Detail), labelTop, quiet)
 	}
 }
 

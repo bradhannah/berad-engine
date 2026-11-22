@@ -86,6 +86,8 @@ type Game struct {
 	// tick, which land on the next.
 	signals []worldstate.Signal
 	sent    []npcrun.Sent
+	// passage is the player on their way through a portal.
+	passage passage
 }
 
 // Character is an NPC as the game shows it: which NPC, the floor it is on,
@@ -145,7 +147,7 @@ func New(project Project) (*Game, error) {
 		npcs:   nil, flows: map[ids.ULID]*flow.Workflow{}, behaviours: map[ids.ULID]ids.ULID{},
 		workflows: project.Workflows, clock: clock.New(project.Seconds, clock.MinutePerSecond), values: nil,
 		loop: nil, loopFlow: nil, loopID: ids.ULID{}, names: project.Names, stage: show.NewStage(), cueTicks: nil,
-		signals: project.Signals, sent: nil,
+		signals: project.Signals, sent: nil, passage: passage{leaving: nil, landed: false, out: 0, in: 0},
 	}
 	if project.Values != nil {
 		game.values = worldstate.NewStore(project.Values)
@@ -221,14 +223,18 @@ func (g *Game) Step(input play.Input) Step {
 }
 
 // Walk moves the player for one tick, unless a message box holds them until
-// they close it. On its own it leaves the world as it is, as when an author
-// pauses the NPCs and walks on.
+// they close it, or they are on their way through a portal. A step that
+// lands on a portal starts them leaving by it; see Leaving. On its own Walk
+// leaves the world as it is, as when an author pauses the NPCs and walks on.
 func (g *Game) Walk(input play.Input) play.Outcome {
-	if g.stage.Holding() {
+	if g.stage.Holding() || g.waiting() {
 		input = play.Input{Held: 0, Pressed: 0}
 	}
+	before := g.run.Player()
+	outcome := g.run.Step(g.levels, input)
+	g.pass(before, outcome)
 
-	return g.run.Step(g.levels, input)
+	return outcome
 }
 
 // Tick runs the world for one tick without the player: the boxes and the

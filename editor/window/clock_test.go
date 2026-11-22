@@ -92,3 +92,37 @@ func TestKeysStayWithTheTabInFront(t *testing.T) {
 		t.Fatal("a press outside the panel closes it")
 	}
 }
+
+// TestTheBarsControlsAreQuiet lays out the clock's controls on the bar: all
+// three are quiet, since Launch is the bar's one main button, the two hour
+// steps stand against one another as one control, and Stop stands apart.
+// Launch and the controls draw (increment 66).
+func TestTheBarsControlsAreQuiet(t *testing.T) {
+	t.Parallel()
+	theme, err := ui.NewTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(theme.Close)
+	view := &clockStandIn{running: false, asked: nil}
+	shown := &shell{size: image.Pt(1400, 900), theme: theme, clock: &pane{view: "clock", host: &host{view: view}}}
+	buttons := shown.clockButtons()
+	for _, button := range buttons {
+		if !button.Quiet || button.Primary {
+			t.Fatalf("%s is quiet on the bar", button.Label)
+		}
+	}
+	back, on, stop := buttons[0], buttons[1], buttons[2]
+	if back.Rect.Max.X != on.Rect.Min.X || back.Rect.Dx() != on.Rect.Dx() {
+		t.Fatalf("the hour steps stand against one another, as wide as each other: %v %v", back.Rect, on.Rect)
+	}
+	if stop.Rect.Min.X <= on.Rect.Max.X || !stop.Disabled {
+		t.Fatalf("Stop stands apart, pale while no preview runs: %v %v", on.Rect, stop.Rect)
+	}
+	if launch := shown.launchRect(); launch.Max.X > back.Rect.Min.X || launch.Dx() != launchWidth {
+		t.Fatalf("Launch keeps its place, left of the clock's controls: %v", launch)
+	}
+	screen := ebiten.NewImage(shown.size.X, rowHeight)
+	shown.drawLaunch(screen)
+	shown.drawClockButtons(screen)
+}

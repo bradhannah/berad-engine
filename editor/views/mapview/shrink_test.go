@@ -26,6 +26,12 @@ func TestAShrinkListsAllThatGoes(t *testing.T) {
 	if err := ground.Floor.InsertSound(0, floor.Sound{ID: frametest.ID(72), Cue: "waves", Col: 11, Row: 6}); err != nil {
 		t.Fatal(err)
 	}
+	if err := ground.Floor.InsertPortal(0, floor.Portal{
+		ID: frametest.ID(73), Col: 11, Row: 8, To: floor.AnchorRef{Floor: upperID, Anchor: frametest.ID(74)},
+		Change: floor.ChangeCut,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ground.Floor.SetTop(11, 3, "stairs.up"); err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +52,7 @@ func TestAShrinkListsAllThatGoes(t *testing.T) {
 	lines := strings.Join(f.state.DialogLines(), "\n")
 	for _, want := range []string{
 		"This takes 1 NPC off the map", "This removes the ambient sound: waves.", "This removes the stairs at 11,3.",
+		"This removes the portal at 11,8.",
 		"It leaves the stairs on Upper at 11,4, which lead down into them, leading nowhere.",
 	} {
 		if !strings.Contains(lines, want) {

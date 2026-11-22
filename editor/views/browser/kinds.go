@@ -40,7 +40,8 @@ type loopPanel struct {
 
 func newLoopPanel() *loopPanel {
 	return &loopPanel{
-		top: 0, box: ui.Zero(), choose: ui.NewButton(chooseLoopID, chooseLoopText), open: ui.NewButton(openLoopID, "Open"),
+		top: 0, box: ui.Zero(), choose: ui.NewQuietButton(chooseLoopID, chooseLoopText),
+		open: ui.NewQuietButton(openLoopID, "Open"),
 		flag: "",
 	}
 }

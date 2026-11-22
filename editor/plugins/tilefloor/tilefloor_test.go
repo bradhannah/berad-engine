@@ -448,3 +448,61 @@ func TestSoundEditsMeetUndoContract(t *testing.T) {
 		t.Fatalf("a new sound gets its ID when prepared: %s %v", prepared, err)
 	}
 }
+
+// TestPortalEditsMeetUndoContract adds, changes and removes a portal,
+// checking each edit restores the floor exactly when undone, that a resize
+// which takes a portal off the floor puts it back when undone, and that the
+// floor lists the anchor each portal leads to for where-used.
+func TestPortalEditsMeetUndoContract(t *testing.T) {
+	t.Parallel()
+	lookup := registry(t).Edit
+	document, err := tilefloor.NewDocumentAt(floor.Centered(6, 6), "grass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leads := floor.AnchorRef{Floor: anchorID(40), Anchor: anchorID(41)}
+	door := floor.Portal{ID: anchorID(1), Col: 2, Row: 0, To: leads, Change: floor.ChangeCut}
+	add := encode(t, tilefloor.AddPortalArgs{Portal: door, Index: 0})
+	if err := model.VerifyUndo(document, tilefloor.AddPortal{}, add, lookup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (tilefloor.AddPortal{}).Apply(document, add); err != nil {
+		t.Fatal(err)
+	}
+	fades := door
+	fades.Col, fades.Change = 1, floor.ChangeFade
+	shrunk := floor.Centered(6, 6)
+	shrunk.Max.X = 2
+	for _, check := range []struct {
+		kind model.EditKind
+		args json.RawMessage
+	}{
+		{tilefloor.UpdatePortal{}, encode(t, tilefloor.UpdatePortalArgs{Portal: fades})},
+		{tilefloor.Resize{}, encode(t, tilefloor.ResizeArgs{
+			Bounds: tilefloor.BoundsOf(shrunk), Ground: "grass", Cells: nil, Anchors: nil, Placements: nil, Sounds: nil,
+			Portals: nil,
+		})},
+		{tilefloor.RemovePortal{}, encode(t, tilefloor.RemovePortalArgs{ID: door.ID})},
+	} {
+		if err := model.VerifyUndo(document, check.kind, check.args, lookup); err != nil {
+			t.Fatalf("%s: %v", check.kind.Name(), err)
+		}
+	}
+	references := document.References()
+	if len(references) != 1 || references[0].Document != leads.Floor || references[0].Item != leads.Anchor.String() ||
+		references[0].Label != tilefloor.PortalLabel+"2, 0" {
+		t.Fatalf("references %+v", references)
+	}
+	nowhere := door
+	nowhere.ID, nowhere.Col = anchorID(2), 0
+	nowhere.To = floor.AnchorRef{Floor: ids.ULID{}, Anchor: ids.ULID{}}
+	if _, err := (tilefloor.AddPortal{}).Apply(document, encode(t, tilefloor.AddPortalArgs{Portal: nowhere, Index: 1})); !errors.Is(err, model.ErrArgs) {
+		t.Fatalf("a portal that leads nowhere is refused: %v", err)
+	}
+	prepared, err := (tilefloor.AddPortal{}).Prepare(document, encode(t, tilefloor.AddPortalArgs{
+		Portal: floor.Portal{ID: anchorID(0), Col: 1, Row: 1, To: leads, Change: floor.ChangeCut}, Index: 1,
+	}), func() (ids.ULID, error) { return anchorID(30), nil })
+	if err != nil || !strings.Contains(string(prepared), anchorID(30).String()) {
+		t.Fatalf("a new portal gets its ID when prepared: %s %v", prepared, err)
+	}
+}

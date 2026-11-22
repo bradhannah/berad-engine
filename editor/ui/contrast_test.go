@@ -42,7 +42,7 @@ func TestTextReadsOnEveryGround(t *testing.T) {
 		check(t, named{"reverse", ui.ColorReverse()}, named{tint.Name + " ink", tint.Ink})
 	}
 	filled := []named{
-		{"select", ui.ColorSelect()}, {"ink", ui.ColorInk()}, {"warn", ui.ColorWarn()}, {"live", ui.ColorLive()},
+		{"select", ui.ColorSelect()}, {"select deep", ui.ColorSelectDeep()}, {"ink", ui.ColorInk()}, {"warn", ui.ColorWarn()}, {"live", ui.ColorLive()},
 		{"zone", ui.ColorZone()}, {"workflow", ui.ColorWorkflow()}, {"NPC", ui.ColorNPC()},
 		{"sound", ui.ColorSound()}, {"art", ui.ColorArt()},
 	}

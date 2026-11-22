@@ -25,11 +25,12 @@ func PlacementKey(id ids.ULID) string {
 // PlacementOfKey is the placement a PlacementKey names.
 func PlacementOfKey(key string) (ids.ULID, bool) { return idOfKey(key, placementPrefix) }
 
-// References lists the NPCs the floor places and the cues of its ambient
-// sounds, so deleting an NPC or a cue shows where it is.
+// References lists the NPCs the floor places, the cues of its ambient
+// sounds and the anchors its portals lead to, so deleting an NPC, a cue or
+// an anchor shows where it is.
 func (d *Document) References() []model.Reference {
-	placements, sounds := d.Floor.Placements(), d.Floor.Sounds()
-	references := make([]model.Reference, 0, len(placements)+len(sounds))
+	placements, sounds, portals := d.Floor.Placements(), d.Floor.Sounds(), d.Floor.Portals()
+	references := make([]model.Reference, 0, len(placements)+len(sounds)+len(portals))
 	for _, placement := range placements {
 		references = append(references, model.Reference{
 			Document: placement.NPC, Item: "",
@@ -40,6 +41,12 @@ func (d *Document) References() []model.Reference {
 		references = append(references, model.Reference{
 			Document: model.AudioLibraryID(), Item: sound.Cue,
 			Label: "ambient sound at " + strconv.Itoa(sound.Col) + ", " + strconv.Itoa(sound.Row),
+		})
+	}
+	for _, portal := range portals {
+		references = append(references, model.Reference{
+			Document: portal.To.Floor, Item: portal.To.Anchor.String(),
+			Label: PortalLabel + strconv.Itoa(portal.Col) + ", " + strconv.Itoa(portal.Row),
 		})
 	}
 

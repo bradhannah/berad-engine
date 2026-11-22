@@ -76,9 +76,12 @@ func TestPlacingAnNPC(t *testing.T) {
 		t.Fatal("the window does not see the placement")
 	}
 	f.state.Draw(ebiten.NewImage(1200, 800), f.ctx.Docs)
-	f.frame(pointer(f.at("cell:9,8"), true, true, false))
-	f.frame(pointer(f.at("cell:10,8"), false, true, false))
-	f.frame(pointer(f.at("cell:10,8"), false, false, true))
+	f.click("cell:9,8")
+	if len(f.requests.Of(tilefloor.AddPlacementEdit)) != 1 || !strings.Contains(f.status(), "An NPC is already here") {
+		t.Fatalf("the Place NPC tool only adds, and says so on a taken cell: %q", f.status())
+	}
+	f.keys("S")
+	f.drag("cell:9,8", "cell:10,8")
 	moved := f.requests.Of(tilefloor.UpdatePlacementEdit)
 	var update tilefloor.UpdatePlacementArgs
 	if len(moved) != 1 || moved[0].Decode(&update) != nil || update.Placement.Col != 10 || update.Placement.ID != placedID {

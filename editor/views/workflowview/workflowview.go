@@ -43,6 +43,9 @@ const (
 	toolbarHeight = 40
 	paletteItem   = 24
 	paletteGap    = 4
+	// paletteRowGap is the gap between the palette's entries, which are
+	// plain rows with no box to keep apart (increment 66).
+	paletteRowGap = 1
 	paletteTop    = toolbarHeight + ui.Inset
 	groupSpace    = 26
 	arrangeWidth  = 110

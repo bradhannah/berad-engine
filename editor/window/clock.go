@@ -22,6 +22,7 @@ const (
 	readoutWidth  = 210
 	controlWidth  = 52
 	clockControls = 3
+	clockSteps    = 2
 	controlsWidth = controlWidth*clockControls + ui.Gap
 )
 
@@ -102,9 +103,10 @@ func (s *shell) pressReadout(point image.Point) {
 	}
 }
 
-// clockButtons are the clock's controls on the bar: an hour back, an hour
-// on, and Stop or Start for the preview's clock, which is pale while no
-// preview runs.
+// clockButtons are the clock's controls on the bar: an hour back and an hour
+// on, which stand against one another as one control (increment 66), and
+// Stop or Start for the preview's clock, which is pale while no preview
+// runs. All three are quiet: the bar's one main button is Launch.
 func (s *shell) clockButtons() []*ui.Button {
 	right := s.size.X - readoutWidth - ui.Gap
 	labels := [][2]string{{clockview.AskHourBack, "−1h"}, {clockview.AskHourOn, "+1h"}, {clockview.AskStopStart, "Stop"}}
@@ -112,10 +114,12 @@ func (s *shell) clockButtons() []*ui.Button {
 	top := (rowHeight - ui.ButtonH) / ui.Half
 	for index, label := range labels {
 		left := right - (len(labels)-index)*controlWidth
-		button := ui.NewButton("clock-"+label[0], label[1])
+		button := ui.NewQuietButton("clock-"+label[0], label[1])
 		button.Rect = image.Rect(left+ui.Gap/ui.Half, top, left+controlWidth-ui.Gap/ui.Half, top+ui.ButtonH)
 		buttons = append(buttons, button)
 	}
+	seam := right - (len(labels)-1)*controlWidth
+	buttons[0].Rect.Max.X, buttons[1].Rect.Min.X = seam, seam
 	if asker, ok := s.clock.host.view.(clockAsker); ok {
 		running, stopped := asker.Controls()
 		buttons[len(buttons)-1].Disabled = !running
@@ -135,7 +139,9 @@ func (s *shell) drawClockButtons(screen *ebiten.Image) {
 	if s.clock == nil {
 		return
 	}
-	for _, button := range s.clockButtons() {
+	buttons := s.clockButtons()
+	ui.DrawJoined(screen, s.theme, buttons[:clockSteps])
+	for _, button := range buttons[clockSteps:] {
 		button.Draw(screen, s.theme)
 	}
 }

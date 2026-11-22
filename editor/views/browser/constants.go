@@ -144,8 +144,8 @@ func (p *constantsPanel) row(constant worldstate.Held) *constantRow {
 	}
 	made := &constantRow{
 		held: constant, value: worldstate.NoValue(), own: false, mine: false,
-		write: ui.NewButton(constantWritePre+constant.Path, "Write…"),
-		clear: ui.NewButton(constantClearPre+constant.Path, "Default"),
+		write: ui.NewQuietButton(constantWritePre+constant.Path, "Write…"),
+		clear: ui.NewQuietButton(constantClearPre+constant.Path, "Default"),
 		number: ui.NewTextField(constantFieldPre+constant.Path, textedit.NewField("", false, maxConstantDigit), false,
 			p.theme),
 		rect: ui.Zero(),

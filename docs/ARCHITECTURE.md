@@ -432,6 +432,16 @@ back with a short reason the pane shows.
   running game's player: within its zone during a preview, and for Launch's
   game into any zone, where the zone left stops and the values and the clock
   carry over. See [increment 63](increments/0063-preview-on-the-runtime.md).
+- *As built (increment 64):* a floor holds portals, cells that lead to an
+  anchor. The runtime knows only its own zone, so it does not travel by
+  itself: a step onto a portal starts the player leaving, held on the cell
+  until the step has finished and the screen has faded if the portal fades,
+  and whoever runs the game
+  finds where the portal leads, gathers that zone as a launch gathers one,
+  and tells the runtime to enter it, or to stay. A game's window reads the
+  zone from its folder at once; the Play tab asks for its documents and the
+  player waits until they arrive; a Preview tells the runtime to stay. See
+  [increment 64](increments/0064-portals.md).
 
 ## D16 — Code layout
 

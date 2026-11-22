@@ -38,8 +38,12 @@ const ViewName = "map"
 
 // Panel sizes, in screen pixels.
 const (
-	PanelWidth   = 190
-	toolRows     = 8
+	// PanelWidth is the left panel's width until it is dragged. What a
+	// tool paints with is one chip to a line at this width, and two once
+	// the panel is dragged wide enough for the longest name (increment 66).
+	PanelWidth = 190
+	// toolRows is the tools and the headings of their four groups.
+	toolRows     = 12
 	floorRows    = 5
 	panelGap     = 10
 	headingSpace = 22
@@ -66,24 +70,64 @@ const (
 	ToolResize  Tool = "resize"
 )
 
+// toolInfo is a tool: its name in the status bar and the inspector, its key
+// and what it does; and, in the tool list, the group it is listed under by
+// its job, its shorter name there, and its icon (increment 66).
 type toolInfo struct {
 	tool  Tool
 	label string
 	key   ui.Key
 	help  string
+	group string
+	short string
+	icon  ui.Icon
 }
+
+// The tools' groups, by job.
+const (
+	groupSelect = "SELECT"
+	groupPaint  = "PAINT"
+	groupAdd    = "ADD"
+	groupFloor  = "FLOOR"
+	// toolGroup prefixes a group's heading row in the tool list.
+	toolGroup = "tool-group:"
+)
 
 func tools() []toolInfo {
 	return []toolInfo{
-		{ToolGround, "Ground", "G", "Drag to paint the ground."},
-		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family."},
-		{ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup."},
-		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
-		{ToolAnchor, "Anchors", "A", "Click to add an anchor, a place NPCs go to; drag one to move it."},
-		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left; drag one to move it."},
-		{ToolSelect, "Select walls", "S", "Click a wall for its run, double-click a room, or drag an area."},
-		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor."},
+		{
+			ToolSelect, "Select", "S", "Click a thing to select it; drag it to move it. A wall selects its run.",
+			groupSelect, "Select", ui.IconSelect,
+		},
+		{ToolGround, "Ground", "G", "Drag to paint the ground.", groupPaint, "Ground", ui.IconGround},
+		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family.", groupPaint, "Walls", ui.IconWalls},
+		{
+			ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup.",
+			groupPaint, "Doors, stairs, pickups", ui.IconDoor,
+		},
+		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground.", groupPaint, "Erase", ui.IconErase},
+		{ToolAnchor, "Anchors", "A", "Click to add an anchor, a place NPCs go to.", groupAdd, "Anchor", ui.IconPlace},
+		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left.", groupAdd, "NPC", ui.IconNPC},
+		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor.", groupFloor, "Resize floor", ui.IconResize},
 	}
+}
+
+// toolListRows lists the tools under the heading of each group, each with
+// its icon and its key as a cap.
+func toolListRows() []ui.Row {
+	var rows []ui.Row
+	group := ""
+	for _, info := range tools() {
+		if info.group != group {
+			group = info.group
+			rows = append(rows, ui.NewHeading(toolGroup+group, group))
+		}
+		row := ui.NewRow(string(info.tool), info.short)
+		row.Glyph, row.Key = info.icon, string(info.key)
+		rows = append(rows, row)
+	}
+
+	return rows
 }
 
 // tilesFor returns the stand-ins a tool paints with.
@@ -122,11 +166,6 @@ type rectDrag struct {
 	from, to Cell
 }
 
-type anchorDrag struct {
-	id   ids.ULID
-	from Cell
-}
-
 type dialogKind int
 
 const (
@@ -134,6 +173,7 @@ const (
 	dialogDeleteAnchor
 	dialogReplace
 	dialogResize
+	dialogPortalZone
 )
 
 // State is one Map window.
@@ -143,6 +183,9 @@ type State struct {
 	// playerStart is the project's player start, kept from its game settings.
 	playerStart game.Start
 	ambient     ambientSounds
+	portals     portalParts
+	// inspect is the inspector's buttons for a selected sound or portal.
+	inspect inspectParts
 	// zonePalettes are the palettes the zone lists, ending at zoneListFoot.
 	zonePalettes *zonepalettes.List
 	zoneListFoot int
@@ -175,14 +218,20 @@ type State struct {
 	outside  bool
 	stroke   stroke
 	rect     *rectDrag
-	drag     *anchorDrag
-	selected []Cell
-	anchor   ids.ULID
-	// placement is the selected NPC placement; placing drags one. names is
-	// this frame's copy of the project index, placedNPC the selected
-	// placement's NPC and behaviour its behaviour workflow.
+	// One thing is selected at a time (increment 65): the walls in
+	// selected, the anchor, the NPC placement, the ambient sound, the
+	// portal, or the player start when startPicked. moving is a press with
+	// Select that may become a drag of the selected thing.
+	moving      *thingDrag
+	selected    []Cell
+	anchor      ids.ULID
+	sound       ids.ULID
+	portal      ids.ULID
+	startPicked bool
+	// placement is the selected NPC placement. names is this frame's copy
+	// of the project index, placedNPC the selected placement's NPC and
+	// behaviour its behaviour workflow.
 	placement ids.ULID
-	placing   *placementDrag
 	names     *project.Index
 	// resizeAsked is a resize asked for while the floor was read, finished
 	// once it is not (increment 58).
@@ -203,18 +252,17 @@ type State struct {
 	floorsFor    ids.ULID
 	floorsAsking bool
 	behaviour    ids.ULID
-	// menu is the open right-click menu; openLoaded is the placement whose
-	// behaviour it asked to open, waiting for the NPC to load.
-	menu       *cellMenu
-	openLoaded ids.ULID
-	pick       *protocol.PickStart
-	picking    pickParts
-	wheel      float64
-	lastPan    image.Point
-	panning    bool
-	framed     bool
-	resizing   *resizeDrag
-	cursor     image.Point
+	// menu is the open right-click menu, or the menu that asks which of a
+	// cell's things to select.
+	menu     *cellMenu
+	pick     *protocol.PickStart
+	picking  pickParts
+	wheel    float64
+	lastPan  image.Point
+	panning  bool
+	framed   bool
+	resizing *resizeDrag
+	cursor   image.Point
 	// choosing waits for the cell where a preview's player starts; starting
 	// waits for the orchestrator to agree. preview is this window's own
 	// preview, remote another window's preview of the zone.
@@ -265,17 +313,19 @@ type State struct {
 func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	view := &State{
 		window: window, zone: zone, playerStart: game.NoStart(),
-		ambient: ambientSounds{library: nil, asking: false, moving: ids.ULID{}, changing: ids.ULID{}}, theme: theme,
+		ambient: ambientSounds{library: nil, asking: false, changing: ids.ULID{}}, theme: theme,
+		portals: newPortalParts(window), inspect: newInspectParts(),
 		floors: nil, floor: ids.ULID{}, subs: map[ids.ULID]bool{}, playing: false, arriving: map[ids.ULID]bool{},
 		tool: ToolGround, tile: map[Tool]string{ToolGround: "grass", ToolWalls: tiles.UnassignedWall, ToolObjects: "door"},
 		camera: newCamera(), sprites: newSpriteArt(), size: image.Pt(0, 0), hover: image.Pt(0, 0), hovering: false,
 		outside: false,
 		stroke:  stroke{active: false, count: 0, last: image.Pt(0, 0), left: false, cells: 0},
-		rect:    nil, drag: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{}, placing: nil,
+		rect:    nil, moving: nil, selected: nil, anchor: ids.ULID{}, placement: ids.ULID{},
+		sound: ids.ULID{}, portal: ids.ULID{}, startPicked: false,
 		names: project.NewIndex(nil), resizeAsked: nil, placedNPC: ids.ULID{}, zoneNPCs: map[ids.ULID]int{},
 		homes: map[ids.ULID]ids.ULID{}, watchedFloor: ids.ULID{}, floorsOf: 0,
 		floorsFor: ids.ULID{}, floorsAsking: false, behaviour: ids.ULID{},
-		menu: nil, openLoaded: ids.ULID{},
+		menu: nil,
 		pick: nil, picking: newPickParts(), wheel: 0, lastPan: image.Pt(0, 0), panning: false, framed: false, resizing: nil,
 		cursor:   image.Pt(0, 0),
 		choosing: false, starting: false, preview: nil, remote: nil,
@@ -298,16 +348,16 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		focus:  ui.Focus{},
 		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
-	view.deleteBtn.Danger = true
-	view.focus.Register(view.nameField)
-	for _, info := range tools() {
-		row := ui.NewRow(string(info.tool), info.label)
-		row.Detail = string(info.key)
-		if info.tool == ToolAnchor {
-			row.Icon = ui.IconPlace
-		}
-		view.toolList.Rows = append(view.toolList.Rows, row)
+	view.deleteBtn.Danger, view.removeBn.Danger = true, true
+	// An inspector has one main button; its other actions are quiet
+	// (increment 66).
+	view.openBn.Primary = true
+	for _, quiet := range []*ui.Button{view.deleteBtn, view.removeBn, view.clockBn, view.watchBn, view.keysBn} {
+		quiet.Quiet = true
 	}
+	view.focus.Register(view.nameField)
+	view.toolList.Rows, view.toolList.InHand = toolListRows(), true
+	view.previewBn.Key = "P"
 
 	return view
 }
@@ -385,6 +435,11 @@ func (s *State) Changed(update client.Update, ctx *frame.Context) {
 		s.floorsFor = ids.ULID{}
 		s.syncStart(ctx)
 	}
+	// A pick of the Map's own, for a portal, may be answered in this very
+	// Map; a cancel of it then also ends the Map's picking.
+	if s.portals.picker.Changed(update, ctx) && update.PickCancel == nil {
+		return
+	}
 	switch {
 	case update.PreviewStart != nil, update.PreviewState != nil, update.PreviewStop != nil:
 		s.previewChanged(update, ctx)
@@ -432,15 +487,15 @@ func (s *State) attend(update client.Update, ctx *frame.Context) {
 // as "placement:<floor>:<placement>".
 const PlacementItem = "placement:"
 
-// showPlacement shows the floor a placement is on and selects it, with the
-// Place NPC tool.
+// showPlacement shows the floor a placement is on and selects it, with
+// Select in hand.
 func (s *State) showPlacement(item string, ctx *frame.Context) {
 	floorID, placementID, ok := s.floorAndID(item, PlacementItem)
 	if !ok {
 		return
 	}
 	s.switchFloor(floorID, ctx)
-	s.setTool(ToolNPC)
+	s.setTool(ToolSelect)
 	s.selectPlacement(placementID)
 }
 
@@ -516,7 +571,8 @@ func (s *State) switchFloor(id ids.ULID, ctx *frame.Context) {
 		return
 	}
 	s.floor = id
-	s.selected, s.anchor, s.rect, s.drag = nil, ids.ULID{}, nil, nil
+	s.selected, s.anchor, s.rect, s.moving = nil, ids.ULID{}, nil, nil
+	s.sound, s.portal, s.startPicked = ids.ULID{}, ids.ULID{}, false
 	s.stroke.active = false
 	s.focus.Set(nil)
 	s.subscribeVisible(ctx)
@@ -561,17 +617,15 @@ func onStage(point image.Point) image.Point { return pen.CanvasPoint(point) }
 func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
-	rowY := ui.Inset + headingSpace - s.lists.Offset
+	rowY := ui.Half*ui.Gap - s.lists.Offset
 	s.toolList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
 	s.tileList.Rows = s.tileRows()
 	if s.tool == ToolSelect {
 		s.tileList.Selected = ""
 	}
-	tilesHeight := max(len(s.tileList.Rows), 1) * ui.RowHeight
-	if s.tool == ToolNPC {
-		tilesHeight = min(max(len(s.tileList.Rows), 1), npcRows) * ui.RowHeight
-	}
+	s.tileList.Rect = image.Rect(0, rowY, s.panelFull(), rowY)
+	tilesHeight := s.layoutTiles()
 	// With no NPCs to list, the list's place holds the hint's lines.
 	tilesHeight = max(tilesHeight, ui.Gap+len(s.npcHintLines())*ui.LineHeight)
 	s.tileList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+tilesHeight)
@@ -586,11 +640,11 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.fitLists()
 	switch {
 	case s.preview != nil:
-		s.previewBn.Label = "Stop preview (P)"
+		s.previewBn.Label = "Stop preview"
 	case s.choosing:
-		s.previewBn.Label = "Cancel preview (P)"
+		s.previewBn.Label = "Cancel preview"
 	default:
-		s.previewBn.Label = "Preview (P)"
+		s.previewBn.Label = "Preview"
 	}
 
 	s.layoutFold()
@@ -600,6 +654,26 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		max(bodyTop(inspector), footTop(inspector)-ui.ButtonH-ui.Inset-s.previewHeight(docs)-ui.Gap))
 	s.layoutInspector()
 	s.layoutZonePalettes(docs)
+}
+
+// layoutTiles chooses how the list of what the tool paints with is laid
+// out, and returns its height: a grid of chips, two to a line when every
+// name fits and one when not; the NPCs to place stay a list under their
+// headings.
+func (s *State) layoutTiles() int {
+	s.tileList.Grid = 0
+	switch {
+	case s.tool == ToolNPC:
+		return min(max(len(s.tileList.Rows), 1), npcRows) * ui.RowHeight
+	case len(s.tileList.Rows) == 0:
+		return ui.RowHeight
+	}
+	s.tileList.Grid = 1
+	if s.tileList.FitsGrid(s.theme, ui.Half) {
+		s.tileList.Grid = ui.Half
+	}
+
+	return s.tileList.Height()
 }
 
 // layoutInspector places the inspector's widgets for what is selected.
@@ -621,15 +695,16 @@ func (s *State) layoutInspector() {
 		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
 		deleteTop := s.save.Rect.Max.Y + ui.Half*ui.Gap
 		s.deleteBtn.Rect = image.Rect(left, deleteTop, left+width, deleteTop+ui.ButtonH)
+		s.deleteBtn.Rect = ui.FitButton(s.theme, s.deleteBtn)
 	}
 	if len(s.selected) > 0 {
 		s.replace.Rect = image.Rect(left, s.down(replaceTop), left+width, s.down(replaceTop)+ui.ButtonH)
 	}
+	s.layoutInspect(left, width)
 	s.keysBn.Rect = image.Rect(left+width-keysWidth, inspector.Max.Y-ui.Inset-ui.ButtonH, left+width,
 		inspector.Max.Y-ui.Inset)
 	s.layoutPreview(left, width, footTop(inspector))
-	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && len(s.selected) == 0 && s.anchor.IsZero() &&
-		s.placement.IsZero())
+	s.layoutSides(left, s.tool == ToolResize && s.pick == nil && !s.anySelected())
 }
 
 // down is where a part of the inspector laid out at a height from its top
@@ -643,7 +718,8 @@ func bodyTop(inspector image.Rectangle) int { return inspector.Min.Y + ui.Inset 
 // inspecting names what the inspector shows, so another thing starts at its
 // top: the anchor or NPC selected, the walls selected, or the tool.
 func (s *State) inspecting() string {
-	return s.anchor.String() + s.placement.String() + strconv.Itoa(len(s.selected)) + string(s.tool)
+	return s.anchor.String() + s.placement.String() + s.sound.String() + s.portal.String() +
+		strconv.FormatBool(s.startPicked) + strconv.Itoa(len(s.selected)) + string(s.tool)
 }
 
 // footTop is where the inspector's sections at its foot end, above the
@@ -664,16 +740,19 @@ func (s *State) tileRows() []ui.Row {
 	if s.tool == ToolNPC {
 		return s.npcRows()
 	}
+	if s.tool == ToolSelect && len(s.selected) == 0 {
+		// Select offers the wall families only for walls it has selected.
+		return nil
+	}
 	offered := tilesFor(s.tool)
 	rows := make([]ui.Row, 0, len(offered))
 	for index, definition := range offered {
 		swatch := ui.Hex(definition.Color)
-		detail := ""
+		row := ui.NewRow(definition.ID, chipName(definition))
 		if index < numberedTiles {
-			detail = strconv.Itoa(index + 1)
+			row.Key = strconv.Itoa(index + 1)
 		}
-		row := ui.NewRow(definition.ID, definition.Name)
-		row.Detail, row.Swatch = detail, &swatch
+		row.Swatch = &swatch
 		rows = append(rows, row)
 	}
 
@@ -690,10 +769,27 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 				name = projectIndex.Name(floorID, name)
 			}
 		})
-		rows = append(rows, ui.NewRow(floorID.String(), name))
+		row := ui.NewRow(floorID.String(), name)
+		row.Key = strconv.Itoa(index + 1)
+		rows = append(rows, row)
 	}
 
 	return rows
+}
+
+// chipName is a stand-in's name on its chip. A wall family drops "Wall",
+// which its heading already says, so two fit on a line.
+func chipName(definition tiles.Definition) string {
+	if !definition.IsWall() {
+		return definition.Name
+	}
+	name := strings.TrimSpace(strings.TrimPrefix(definition.Name, "Wall"))
+	name = strings.TrimSuffix(strings.TrimPrefix(name, "("), ")")
+	if name == "" {
+		return definition.Name
+	}
+
+	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 // Update handles one frame of input.
@@ -731,7 +827,6 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	s.subscribeNPC(ctx)
 	s.subscribeNPCs(ctx)
 	s.askPlacing(ctx)
-	s.openWhenLoaded(ctx)
 	if s.preview != nil {
 		s.stepPreview(input, ctx)
 	} else {
@@ -741,6 +836,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 	if s.floor.IsZero() {
 		return
 	}
+	s.syncPortals(ctx)
 	loaded := ctx.Docs.View(s.floor, func(document client.Document) {
 		if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
 			if !s.framed {
@@ -749,6 +845,7 @@ func (s *State) Update(input *ui.Input, ctx *frame.Context) {
 			}
 			s.syncAnchorField(floorDoc.Floor)
 			s.syncPlacement(floorDoc.Floor)
+			s.syncSelection(floorDoc.Floor)
 			s.updateGrid(input, ctx, floorDoc.Floor)
 			s.updateSides(input, ctx, floorDoc.Floor)
 		}
@@ -842,17 +939,24 @@ func (s *State) keys(input *ui.Input, ctx *frame.Context) {
 	case input.Consume(ui.KeyBackspace, plain), input.Consume(ui.KeyDelete, plain):
 		s.deleteSelection(ctx)
 	case s.pick == nil && input.Consume(ui.KeyEscape, plain):
-		s.selected, s.anchor, s.placement, s.rect = nil, ids.ULID{}, ids.ULID{}, nil
+		s.clearSelection()
+		s.rect, s.moving = nil, nil
 	}
 }
 
-// deleteSelection deletes the selected anchor or removes the selected NPC.
+// deleteSelection deletes the selected anchor, or removes the selected NPC,
+// ambient sound or portal. The player start and walls are not removed this
+// way.
 func (s *State) deleteSelection(ctx *frame.Context) {
 	switch {
 	case !s.anchor.IsZero():
 		s.deleteAnchor(ctx)
 	case !s.placement.IsZero():
 		s.removePlacement(ctx)
+	case !s.sound.IsZero():
+		s.removeSound(ctx, s.sound)
+	case !s.portal.IsZero():
+		s.removePortal(ctx, s.portal)
 	}
 }
 
@@ -877,7 +981,7 @@ func (s *State) setTool(tool Tool) {
 	s.tool = tool
 	s.toolList.Selected = string(tool)
 	s.tileList.Selected = s.tile[tool]
-	s.stroke.active, s.rect, s.drag, s.resizing, s.placing = false, nil, nil, nil, nil
+	s.stroke.active, s.rect, s.moving, s.resizing = false, nil, nil, nil
 }
 
 func (s *State) stepFloor(delta int, ctx *frame.Context) {
@@ -980,6 +1084,7 @@ func (s *State) updateInspectorButtons(input *ui.Input, ctx *frame.Context) {
 	if s.removeBn.Update(input) && !s.placement.IsZero() {
 		s.removePlacement(ctx)
 	}
+	s.updateInspect(input, ctx)
 }
 
 // updateGrid handles panning, zooming and the current tool on the floor.
@@ -1017,8 +1122,6 @@ func (s *State) updateGridMode(
 		s.updatePick(input, ctx, floorData, cell, onFloor)
 	case s.choosing:
 		s.updateChoosing(input, ctx, floorData, cell, onFloor)
-	case !s.ambient.moving.IsZero():
-		s.updateMovingSound(input, ctx, floorData, cell, onFloor)
 	case input.Secondary && inGrid && !s.zoom.contains(input.Cursor):
 		s.openMenu(ctx, floorData, cell, onFloor, input.Cursor)
 	case s.closeBox(input):
@@ -1162,33 +1265,19 @@ func (s *State) commandSaying(
 	})
 }
 
+// updateAnchor handles the Anchors tool, which only adds (increment 65): a
+// click on a cell with no anchor adds one; one that has an anchor is left
+// as it is, and the status bar says how to change it.
 func (s *State) updateAnchor(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
-	if input.Pressed && onFloor {
-		if existing, found := floorData.AnchorAt(cell.X, cell.Y); found {
-			s.selectAnchor(existing.ID)
-			s.drag = &anchorDrag{id: existing.ID, from: cell}
-
-			return
-		}
-		s.addAnchor(ctx, floorData, cell)
+	if !input.Pressed || !onFloor {
+		return
 	}
-	if s.drag != nil && !input.Down {
-		drag := s.drag
-		s.drag = nil
-		if !onFloor || cell == drag.from {
-			return
-		}
-		if _, taken := floorData.AnchorAt(cell.X, cell.Y); taken {
-			ctx.Frame.Refuse("Another anchor is already there")
+	if _, found := floorData.AnchorAt(cell.X, cell.Y); found {
+		ctx.Frame.Refuse("An anchor is already here. Select (S) selects it, to rename, move or delete it.")
 
-			return
-		}
-		if moved, _, found := floorData.Anchor(drag.id); found {
-			moved.Col, moved.Row = cell.X, cell.Y
-			says := fmt.Sprintf("Moved %s to %d, %d", anchorName(moved.Name), cell.X, cell.Y)
-			s.commandSaying(ctx, s.floor, tilefloor.UpdateAnchorEdit, "", says, tilefloor.UpdateAnchorArgs{Anchor: moved}, nil)
-		}
+		return
 	}
+	s.addAnchor(ctx, floorData, cell)
 }
 
 // addAnchor adds an anchor on a cell with a name not yet used, selects it
@@ -1234,8 +1323,8 @@ func (s *State) selectAnchor(anchorID ids.ULID) {
 	if s.anchor != anchorID {
 		s.focus.Set(nil)
 	}
+	s.clearSelection()
 	s.anchor = anchorID
-	s.selected, s.placement = nil, ids.ULID{}
 }
 
 // syncAnchorField keeps the name field showing the selected anchor, and drops
@@ -1269,7 +1358,7 @@ func (s *State) guardAnchor() {
 	}
 	wanted := s.anchor
 	s.anchor = s.named
-	s.selected, s.drag = nil, nil
+	s.selected, s.moving = nil, nil
 	s.focus.Set(nil)
 	s.guard.Ask(1, s.nameField.Field.Saved(), func() { s.anchor = wanted })
 }
@@ -1359,14 +1448,26 @@ func (s *State) deleteAnchor(ctx *frame.Context) {
 
 			return
 		}
-		if len(uses) == 0 {
+		// The project's answer leaves out the anchor's own floor, whose
+		// portals may lead to it.
+		var here []string
+		ctx.Docs.View(floorID, func(document client.Document) {
+			if floorDoc, ok := document.Model.(*tilefloor.Document); ok {
+				here = leadingHere(floorDoc.Floor, floorID, anchorID)
+			}
+		})
+		if len(uses)+len(here) == 0 {
 			s.removeAnchor(ctx, floorID, anchorID)
 
 			return
 		}
-		lines := []string{fmt.Sprintf("This anchor is used in %d %s:", len(uses), plural(len(uses), "place", "places"))}
+		count := len(uses) + len(here)
+		lines := []string{fmt.Sprintf("This anchor is used in %d %s:", count, plural(count, "place", "places"))}
 		for _, use := range uses {
 			lines = append(lines, "  "+use.Name+" ("+use.Label+")")
+		}
+		for _, portal := range here {
+			lines = append(lines, "  "+s.names.Name(floorID, "This floor")+" ("+portal+")")
 		}
 		lines = append(lines, "Deleting leaves those references broken. You can undo it.")
 		s.dialog = ui.NewDialog("Delete this anchor?", lines,
@@ -1391,38 +1492,6 @@ func plural(count int, one, many string) string {
 	}
 
 	return many
-}
-
-func (s *State) updateSelect(input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool) {
-	if input.Pressed && onFloor {
-		s.anchor = ids.ULID{}
-		switch {
-		case input.DoubleClick && !isWallAt(floorData, cell):
-			walls, closed := RoomWalls(floorData, cell)
-			if !closed {
-				ctx.Frame.Refuse("That space is not closed in by walls and doors")
-
-				return
-			}
-			s.selected = walls
-			ctx.Frame.Status(fmt.Sprintf("Selected the %d walls around this room", len(walls)))
-		case isWallAt(floorData, cell):
-			s.selected = WallRun(floorData, cell)
-			ctx.Frame.Status(fmt.Sprintf("Selected a run of %d walls", len(s.selected)))
-		default:
-			s.rect = &rectDrag{from: cell, to: cell}
-		}
-	}
-	if s.rect != nil && input.Down && onFloor {
-		s.rect.to = cell
-	}
-	if s.rect != nil && !input.Down {
-		s.selected = WallsIn(floorData, s.rect.from, s.rect.to)
-		if s.rect.from != s.rect.to || len(s.selected) > 0 {
-			ctx.Frame.Status(fmt.Sprintf("Selected %d walls", len(s.selected)))
-		}
-		s.rect = nil
-	}
 }
 
 // applyFamily changes the family of every selected wall in one undo step.
@@ -1546,6 +1615,8 @@ func (s *State) updateDialog(input *ui.Input, ctx *frame.Context) {
 		s.removeAnchor(ctx, s.floor, s.anchor)
 	case kind == dialogResize && resize != nil:
 		s.sendResize(ctx, *resize)
+	case kind == dialogPortalZone && dialog.List != nil:
+		s.pickLeads(ctx, dialog.List.Selected)
 	case kind == dialogReplace && dialog.List != nil:
 		floors := []ids.ULID{s.floor}
 		if choice == "zone" {
@@ -1751,8 +1822,9 @@ func (s *State) hasState(state string, docs frame.Docs) bool {
 		return s.hasNPCState(state, docs)
 	case strings.HasPrefix(state, "placement:"):
 		return s.hasPlacement(strings.TrimPrefix(state, "placement:"), docs)
-	case strings.HasPrefix(state, "ambient:"):
-		return s.hasSound(strings.TrimPrefix(state, "ambient:"), docs)
+	case strings.HasPrefix(state, "ambient:"), strings.HasPrefix(state, "portal:"),
+		strings.HasPrefix(state, "selected:"):
+		return s.hasMark(state, docs)
 	case strings.HasPrefix(state, "clock:"):
 		return s.clockShows(strings.TrimPrefix(state, "clock:"))
 	case strings.HasPrefix(state, "player:"), strings.HasPrefix(state, "remote-player:"),
@@ -1799,7 +1871,7 @@ func (s *State) locateOver(kind, value string) (image.Point, bool, bool) {
 
 		return point, found, true
 	case s.dialog != nil:
-		point, found := s.dialog.Locate(value, image.Rectangle{Min: image.Pt(0, 0), Max: s.size})
+		point, found := s.locateDialog(value)
 
 		return point, found, true
 	case s.menu != nil && kind == "menu":
@@ -1856,11 +1928,20 @@ func (s *State) locateWidget(widget string) (image.Point, bool) {
 	if at, found := s.save.Locate(widget); found {
 		return at, true
 	}
+
+	return s.locateButton(widget)
+}
+
+// locateButton finds a button of the inspector's section for a selected
+// sound or portal, or one that grows or shrinks a side of the floor.
+func (s *State) locateButton(widget string) (image.Point, bool) {
+	shown := s.inspect.buttons()
 	for _, side := range s.sides {
-		for _, button := range []*ui.Button{side.grow, side.shrink} {
-			if button.ID == widget {
-				return center(button.Rect), true
-			}
+		shown = append(shown, side.grow, side.shrink)
+	}
+	for _, button := range shown {
+		if button.ID == widget && !button.Rect.Empty() {
+			return ui.Center(button.Rect), true
 		}
 	}
 

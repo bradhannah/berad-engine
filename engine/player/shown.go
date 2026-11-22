@@ -207,7 +207,8 @@ const (
 // its workflows show: each line said by an NPC in view, in a bubble over its
 // head, and the box at the foot. A speaker off screen speaks unseen. The
 // game is placed in the room's pixels, and what it shows is written in
-// points, each the writer's scale of them.
+// points, each the writer's scale of them. Last, the whole of the game's
+// screen is darkened as far as a portal that fades has faded it.
 func (s *Screen) DrawShown(room *ebiten.Image, played *game.Game, write Writer) {
 	view := played.View()
 	points := func(pixels image.Point) image.Point {
@@ -227,4 +228,13 @@ func (s *Screen) DrawShown(room *ebiten.Image, played *game.Game, write Writer) 
 		}
 	}
 	write.DrawBox(room, shown, BoxOf(played.Stage()))
+	if darkness := played.Darkness(); darkness > 0 {
+		size := image.Pt(int(math.Ceil(float64(view.Columns*s.tile)*s.scale)),
+			int(math.Ceil(float64(view.Rows*s.tile)*s.scale)))
+		fillRect(room, image.Rectangle{Min: s.origin, Max: s.origin.Add(size)},
+			color.RGBA{R: 0, G: 0, B: 0, A: uint8(math.Round(darkness * opaque))})
+	}
 }
+
+// opaque is the alpha of a colour nothing shows through.
+const opaque = 0xff

@@ -47,7 +47,10 @@ func barFacets() []facetDef {
 func newFacetButtons() map[string]*ui.Button {
 	buttons := map[string]*ui.Button{}
 	for _, def := range barFacets() {
-		button := ui.NewButton(facetBnPrefix+def.id, def.label)
+		// A facet's button is quiet until it is set (increment 66): then it
+		// is washed blue, says what it is set to, and carries a cross that
+		// clears it.
+		button := ui.NewQuietButton(facetBnPrefix+def.id, def.label)
 		button.Caret = true
 		buttons[def.id] = button
 	}
@@ -148,13 +151,7 @@ func (s *State) layoutBar(docs frame.Docs, bar image.Rectangle, labels facetLabe
 	left := bar.Min.X + ui.Inset
 	s.search.Rect = image.Rect(left, top, left+min(searchWidth, max(0, right-left)), top+ui.ButtonH)
 	left = s.search.Rect.Max.X + ui.Gap
-	widths, total := map[string]int{}, 0
-	for _, def := range barFacets() {
-		button := s.facetBns[def.id]
-		button.Label, button.On = s.facetLabel(def, labels), len(s.ticks[def.id]) > 0
-		widths[def.id] = s.theme.TextWidth(button.Label) + facetPad
-		total += widths[def.id] + ui.Gap
-	}
+	widths, total := s.facetWidths(labels)
 	bottom := bar.Max.Y
 	if left+total > right {
 		left, top, right = bar.Min.X+ui.Inset, top+barHeight, bar.Max.X-ui.Inset
@@ -171,6 +168,25 @@ func (s *State) layoutBar(docs frame.Docs, bar image.Rectangle, labels facetLabe
 	}
 
 	return bottom
+}
+
+// facetWidths names each facet's button and marks it set or not, and
+// returns how wide each is and how wide they are together: a set one is
+// washed and carries a cross in place of its triangle.
+func (s *State) facetWidths(labels facetLabels) (map[string]int, int) {
+	widths, total := map[string]int{}, 0
+	for _, def := range barFacets() {
+		button := s.facetBns[def.id]
+		button.Label, button.On = s.facetLabel(def, labels), len(s.ticks[def.id]) > 0
+		button.Caret = !button.On
+		widths[def.id] = s.theme.TextWidth(button.Label) + facetPad
+		if button.On {
+			widths[def.id] += ui.IconSize + ui.Gap
+		}
+		total += widths[def.id] + ui.Gap
+	}
+
+	return widths, total
 }
 
 // facetLabel names a facet's button: the facet, then its ticked value, as
@@ -238,6 +254,12 @@ func (s *State) showing() string {
 // naming a view, save it, or delete the view shown.
 func (s *State) updateBar(input *ui.Input, ctx *frame.Context) {
 	for _, def := range barFacets() {
+		if button := s.facetBns[def.id]; button.On && input.Pressed && input.Cursor.In(facetCross(button)) {
+			input.ClearPointer()
+			s.clearFacet(def.id)
+
+			continue
+		}
 		if s.facetBns[def.id].Update(input) {
 			s.focus.Set(nil)
 			if s.facetOpen == def.id {
@@ -334,6 +356,25 @@ func (s *State) clearNarrowing() {
 	s.search.Field.SetSaved("")
 	s.search.Field.Revert()
 	s.facetOpen, s.naming = "", false
+	s.focus.Set(nil)
+}
+
+// facetCross is where a set facet's cross is on its button: at its right
+// end, where an unset one has its triangle.
+func facetCross(button *ui.Button) image.Rectangle {
+	right := button.Rect.Max.X - ui.Gap - ui.Half
+	top := button.Rect.Min.Y + (button.Rect.Dy()-ui.IconSize)/ui.Half
+
+	return image.Rect(right-ui.IconSize, top, right, top+ui.IconSize)
+}
+
+// clearFacet takes every tick of one facet away, as the cross on its
+// button does, and closes its values if they were open.
+func (s *State) clearFacet(facet string) {
+	delete(s.ticks, facet)
+	if s.facetOpen == facet {
+		s.facetOpen = ""
+	}
 	s.focus.Set(nil)
 }
 
@@ -483,7 +524,11 @@ func (s *State) drawBar(screen *ebiten.Image) {
 	ui.Divider(screen, image.Pt(s.places.Rect.Max.X, barBottom), image.Pt(frame.Content(s.size).Max.X, barBottom))
 	s.search.Draw(screen)
 	for _, def := range barFacets() {
-		s.facetBns[def.id].Draw(screen, s.theme)
+		button := s.facetBns[def.id]
+		button.Draw(screen, s.theme)
+		if button.On {
+			ui.DrawIconInk(screen, ui.IconCross, facetCross(button).Min, ui.ColorSelect())
+		}
 	}
 	if s.narrowed() {
 		at := s.clearBn.Rect.Min.X - ui.Gap - s.theme.TextWidth(s.showing())

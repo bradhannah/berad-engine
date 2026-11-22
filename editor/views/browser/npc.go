@@ -58,10 +58,10 @@ func newNPCPanel(theme *ui.Theme) *npcPanel {
 	path.Placeholder = "such as george"
 
 	return &npcPanel{
-		npc: ids.ULID{}, path: path, notes: notes, choose: ui.NewButton("choose-behaviour", "Choose…"),
-		open: ui.NewButton("open-behaviour", "Open"), chooseSprite: ui.NewButton("choose-sprite", "Choose…"),
-		openSprite: ui.NewButton("open-sprite", "Open"), behaviour: ui.Zero(), sprite: ui.Zero(), top: 0,
-		spriteTop: 0, zone: ui.Zero(), placedTop: 0, showOnMap: ui.NewButton(showOnMapID, "Show on map"),
+		npc: ids.ULID{}, path: path, notes: notes, choose: ui.NewQuietButton("choose-behaviour", "Choose…"),
+		open: ui.NewQuietButton("open-behaviour", "Open"), chooseSprite: ui.NewQuietButton("choose-sprite", "Choose…"),
+		openSprite: ui.NewQuietButton("open-sprite", "Open"), behaviour: ui.Zero(), sprite: ui.Zero(), top: 0,
+		spriteTop: 0, zone: ui.Zero(), placedTop: 0, showOnMap: ui.NewQuietButton(showOnMapID, "Show on map"),
 		behaviourTop: 0, flag: "",
 	}
 }

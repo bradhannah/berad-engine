@@ -132,6 +132,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 		s.drawOrigin(area, grid)
 		s.drawAnchors(area, floorDoc.Floor, grid)
 		s.drawSounds(area, floorDoc.Floor, grid)
+		s.drawPortals(area, floorDoc.Floor, grid)
 		s.drawStart(area, grid)
 		if s.preview != nil || s.remote != nil {
 			s.drawLiveNPCs(area, grid)
@@ -139,6 +140,7 @@ func (s *State) drawFloors(area *ebiten.Image, docs frame.Docs, grid image.Recta
 			s.drawPlacements(area, floorDoc.Floor, grid)
 		}
 		s.drawSelection(area, grid)
+		s.drawPicked(area, floorDoc.Floor, grid)
 		s.drawPlayer(area, grid)
 		s.drawStartCell(area, floorDoc.Floor, grid)
 		if s.pick != nil {
@@ -450,14 +452,17 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}
-	heading("TOOLS", s.toolList)
 	s.toolList.Draw(screen, s.theme)
-	tileHeading := "TILES"
+	tileHeading := "PAINTING WITH"
 	switch s.tool {
 	case ToolWalls:
-		tileHeading = "WALL FAMILY"
+		tileHeading = "DRAWING WITH"
 	case ToolSelect:
-		tileHeading = "CHANGE SELECTED WALLS TO"
+		// The wall families are offered only while walls are selected.
+		tileHeading = ""
+		if len(s.selected) > 0 {
+			tileHeading = "CHANGE SELECTED WALLS TO"
+		}
 	case ToolNPC:
 		tileHeading = "NPC TO PLACE"
 		for index, line := range s.npcHintLines() {
@@ -465,13 +470,16 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 		}
 	case ToolErase, ToolAnchor, ToolResize:
 		tileHeading = ""
-	case ToolGround, ToolObjects:
+	case ToolObjects:
+		tileHeading = "PLACING"
+	case ToolGround:
 	}
 	heading(tileHeading, s.tileList)
 	s.tileList.Draw(screen, s.theme)
 	heading(floorsHeading, s.floorList)
 	s.floorList.Draw(screen, s.theme)
 	s.below.Draw(window, s.theme)
+	ui.DrawCap(window, s.theme, "F", s.below.Rect.Max.X, s.below.Rect.Min.Y+s.below.Rect.Dy()/ui.Half, false)
 	s.previewBn.Draw(window, s.theme)
 	s.lists.DrawThumb(window)
 	_ = docs
@@ -541,6 +549,12 @@ func (s *State) drawSelected(screen *ebiten.Image, floorData *floor.Floor, textX
 		s.drawAnchorInspector(screen, floorData, textX, textY)
 	case !s.placement.IsZero():
 		s.drawPlacementInspector(screen, floorData, textX, textY)
+	case !s.sound.IsZero():
+		s.drawSoundInspector(screen, floorData, textX, textY)
+	case !s.portal.IsZero():
+		s.drawPortalInspector(screen, floorData, textX, textY)
+	case s.startPicked:
+		s.drawStartInspector(screen, textX, textY)
 	case len(s.selected) > 0:
 		s.theme.DrawText(screen, fmt.Sprintf("%d walls selected", len(s.selected)), textX, *textY, ui.ColorInk())
 		s.replace.Draw(screen, s.theme)

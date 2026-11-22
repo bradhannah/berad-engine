@@ -91,11 +91,11 @@ func New(theme *ui.Theme) *List {
 		theme: theme, zone: ids.ULID{},
 		palettes: section{
 			heading: "PALETTES · OFFERED FIRST", removePrefix: RemovePrefix, chips: nil,
-			add: ui.NewButton(AddID, "+ Palette"), top: 0,
+			add: ui.NewQuietButton(AddID, "+ Palette"), top: 0,
 		},
 		sounds: section{
 			heading: "SOUNDS · PLAYED THROUGHOUT", removePrefix: RemoveSoundPrefix, chips: nil,
-			add: ui.NewButton(AddSoundID, "+ Sound"), top: 0,
+			add: ui.NewQuietButton(AddSoundID, "+ Sound"), top: 0,
 		},
 		menu: ui.Menu{Items: nil, Width: 0}, window: image.Pt(0, 0), library: nil, asked: false,
 	}
@@ -198,7 +198,7 @@ func (s *section) layout(theme *ui.Theme, items []item, left, top, width int) in
 			across, top = left, top+ui.ButtonH+ui.Gap
 		}
 		rect := image.Rect(across, top, across+chipWidth, top+ui.ButtonH)
-		remove := ui.NewButton(s.removePrefix+each.name, "×")
+		remove := ui.NewQuietButton(s.removePrefix+each.name, "×")
 		remove.Rect = image.Rect(rect.Max.X-removeBox-ui.Gap, rect.Min.Y+ui.Gap, rect.Max.X-ui.Gap, rect.Max.Y-ui.Gap)
 		s.chips = append(s.chips, chip{item: each, rect: rect, remove: remove})
 		across = rect.Max.X + ui.Gap

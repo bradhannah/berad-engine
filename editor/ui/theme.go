@@ -83,6 +83,9 @@ const (
 	hexSubdued    = 0x5f646d
 	hexSelect     = 0x1f5fbf
 	hexSelectWash = 0xdbe6f8
+	// hexSelectDeep is a key's or a count's cap on a row or button filled
+	// with the selection's blue (increment 66).
+	hexSelectDeep = 0x184a96
 	hexEdge       = 0xb7b3a6
 	hexRule       = 0xc7c3b7
 	hexRuleSoft   = 0xdedbd0
@@ -185,6 +188,10 @@ func ColorSubdued() color.RGBA { return Hex(hexSubdued) }
 // ColorSelect is the colour of where the author is: the selection, the field
 // with the keyboard, the tool in hand and a panel's main button.
 func ColorSelect() color.RGBA { return Hex(hexSelect) }
+
+// ColorSelectDeep is the darker blue of a cap on something filled with the
+// selection's colour.
+func ColorSelectDeep() color.RGBA { return Hex(hexSelectDeep) }
 
 // ColorSelectWash is the background of selected text and rows.
 func ColorSelectWash() color.RGBA { return Hex(hexSelectWash) }

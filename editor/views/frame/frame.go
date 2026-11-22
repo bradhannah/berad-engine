@@ -413,6 +413,21 @@ func (f *Frame) layoutStatus(size image.Point) {
 	f.layoutHistory(size)
 }
 
+// drawStatusToggle draws one of the status bar's toggles as a quiet button,
+// washed blue while it is on (increment 66): the bar's controls are all
+// quiet, so its message is what is read first. The toggle keeps its place,
+// its size and its click.
+func drawStatusToggle(screen *ebiten.Image, theme *ui.Theme, toggle *ui.Toggle) {
+	if toggle.Rect.Empty() {
+		return
+	}
+	button := ui.NewQuietButton(toggle.ID, toggle.Label)
+	top := toggle.Rect.Min.Y + (toggle.Rect.Dy()-ui.ButtonH)/ui.Half
+	button.Rect = image.Rect(toggle.Rect.Min.X, top, toggle.Rect.Max.X, top+ui.ButtonH)
+	button.On = toggle.On
+	button.Draw(screen, theme)
+}
+
 // UpdateStatus handles a click on the status bar's toggles.
 func (f *Frame) UpdateStatus(input *ui.Input, size image.Point) {
 	f.layoutStatus(size)
@@ -503,9 +518,9 @@ func (f *Frame) DrawStatus(screen *ebiten.Image, theme *ui.Theme) {
 	}
 	message = theme.FitText(message, room)
 	theme.DrawText(screen, message, ui.Inset, bar.Min.Y+(StatusHeight-ui.TextSize)/ui.Half-1, ink)
-	f.ShowInspector.Draw(screen, theme)
+	drawStatusToggle(screen, theme, f.ShowInspector)
 	f.text.button.Draw(screen, theme)
-	f.OnTop.Draw(screen, theme)
+	drawStatusToggle(screen, theme, f.OnTop)
 	f.history.button.Draw(screen, theme)
 	if !f.history.dismiss.Rect.Empty() {
 		f.history.dismiss.Draw(screen, theme)

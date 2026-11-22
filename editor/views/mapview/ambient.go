@@ -26,8 +26,6 @@ import (
 
 const (
 	menuPlaceSound  = "place-sound"
-	menuChangeSound = "change-sound"
-	menuMoveSound   = "move-sound"
 	menuRemoveSound = "remove-sound"
 	// soundCueItem prefixes a cue's ID in the menu that chooses one.
 	soundCueItem = "sound-cue:"
@@ -37,11 +35,10 @@ const (
 )
 
 // ambientSounds is the Map's part for ambient sounds: the audio library as
-// last listed, and the sound being moved or given another cue.
+// last listed, and the sound being given another cue.
 type ambientSounds struct {
 	library  *protocol.AudioLibrary
 	asking   bool
-	moving   ids.ULID
 	changing ids.ULID
 }
 
@@ -107,17 +104,11 @@ func (s *State) cueName(cueID string) string {
 	return cueID
 }
 
-// soundItems are the cell menu's choices for an ambient sound on the cell,
-// or for placing one.
+// soundItems are the cell menu's choices for an ambient sound: removing
+// the one on the cell, or placing one.
 func (s *State) soundItems(floorData *floor.Floor, cell Cell) []ui.MenuItem {
 	if sound, found := floorData.SoundAt(cell.X, cell.Y); found {
-		name := "“" + s.cueName(sound.Cue) + "”"
-
-		return []ui.MenuItem{
-			menuItem(menuChangeSound, "Change ambient sound "+name+"…", len(s.ambientCues()) == 0),
-			menuItem(menuMoveSound, "Move ambient sound", false),
-			dangerItem(menuRemoveSound, "Remove ambient sound "+name),
-		}
+		return []ui.MenuItem{dangerItem(menuRemoveSound, "Remove ambient sound “"+s.cueName(sound.Cue)+"”")}
 	}
 
 	return []ui.MenuItem{menuItem(menuPlaceSound, "Place ambient sound here…", len(s.ambientCues()) == 0)}
@@ -129,32 +120,35 @@ func (s *State) chooseSound(ctx *frame.Context, floorData *floor.Floor, chosen s
 	switch {
 	case chosen == menuPlaceSound:
 		s.ambient.changing = ids.ULID{}
-		s.openCueMenu(cell, "")
-	case chosen == menuChangeSound && found:
-		s.ambient.changing = sound.ID
-		s.openCueMenu(cell, sound.Cue)
-	case chosen == menuMoveSound && found:
-		s.ambient.moving = sound.ID
-		ctx.Frame.Status("Click the cell to move the ambient sound to. Escape cancels.")
+		s.openCueMenu(cell, "", s.atCell(cell), s.Grid())
 	case chosen == menuRemoveSound && found:
-		s.command(ctx, s.floor, tilefloor.RemoveSoundEdit, "", tilefloor.RemoveSoundArgs{ID: sound.ID},
-			func(protocol.Result) { ctx.Frame.Status("Removed the ambient sound") })
+		s.removeSound(ctx, sound.ID)
 	case strings.HasPrefix(chosen, soundCueItem):
 		s.placeSound(ctx, floorData, cell, strings.TrimPrefix(chosen, soundCueItem))
 	}
 }
 
+// removeSound takes an ambient sound off the floor; undo puts it back.
+func (s *State) removeSound(ctx *frame.Context, soundID ids.ULID) {
+	s.command(ctx, s.floor, tilefloor.RemoveSoundEdit, "", tilefloor.RemoveSoundArgs{ID: soundID},
+		func(protocol.Result) { ctx.Frame.Status("Removed the ambient sound. Undo brings it back.") })
+}
+
 // openCueMenu offers the library's ambient cues for a cell, the current one
 // ticked off.
-func (s *State) openCueMenu(cell Cell, current string) {
+func (s *State) openCueMenu(cell Cell, current string, corner image.Point, within image.Rectangle) {
 	cues := s.ambientCues()
 	items := make([]ui.MenuItem, 0, len(cues))
 	for _, cue := range cues {
 		items = append(items, menuItem(soundCueItem+cue.ID, cue.Name, cue.ID == current))
 	}
-	at := pen.WindowRect(s.camera.cellRect(cell, s.stage())).Max
 	s.menu = &cellMenu{Menu: ui.Menu{Items: items, Width: ui.MenuWidth(items, s.theme)}, cell: cell}
-	s.menu.OpenAt(at, s.Grid())
+	s.menu.OpenAt(corner, within)
+}
+
+// atCell is where a menu about a cell opens: at its far corner.
+func (s *State) atCell(cell Cell) image.Point {
+	return pen.WindowRect(s.camera.cellRect(cell, s.stage())).Max
 }
 
 // placeSound places an ambient cue on a cell, or gives the sound being
@@ -185,37 +179,6 @@ func (s *State) heardWithin(cueID string) string {
 	}
 
 	return fmt.Sprintf("within %g cells", cue.Ambient.RadiusTiles)
-}
-
-// updateMovingSound moves the sound being moved to the clicked cell, or
-// stops on Escape.
-func (s *State) updateMovingSound(
-	input *ui.Input, ctx *frame.Context, floorData *floor.Floor, cell Cell, onFloor bool,
-) {
-	if input.Consume(ui.KeyEscape, ui.Plain()) {
-		s.ambient.moving = ids.ULID{}
-		ctx.Frame.Status("Move cancelled")
-
-		return
-	}
-	if !input.Pressed || !onFloor {
-		return
-	}
-	sound, _, found := floorData.Sound(s.ambient.moving)
-	s.ambient.moving = ids.ULID{}
-	if !found {
-		return
-	}
-	if _, taken := floorData.SoundAt(cell.X, cell.Y); taken {
-		ctx.Frame.Refuse("Another ambient sound is already there")
-
-		return
-	}
-	sound.Col, sound.Row = cell.X, cell.Y
-	s.command(ctx, s.floor, tilefloor.UpdateSoundEdit, "", tilefloor.UpdateSoundArgs{Sound: sound},
-		func(protocol.Result) {
-			ctx.Frame.Status(fmt.Sprintf("Moved the ambient sound to %d,%d", cell.X, cell.Y))
-		})
 }
 
 // drawSounds draws each ambient sound on the floor: a purple marker with its

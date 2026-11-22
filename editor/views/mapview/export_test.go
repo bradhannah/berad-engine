@@ -66,3 +66,47 @@ func (s *State) LeftParts() (image.Rectangle, int, []frametest.Part) {
 		{Name: "Show floor below", Rect: s.below.Rect}, {Name: "Preview", Rect: s.previewBn.Rect},
 	}
 }
+
+// InspectorButton reports whether the inspector shows a button for the
+// selected ambient sound or portal, and whether it is disabled, or the
+// chosen one of its set.
+func (s *State) InspectorButton(id string) (bool, bool, bool) {
+	for _, button := range s.inspect.buttons() {
+		if button.ID == id {
+			return !button.Rect.Empty(), button.Disabled, button.On
+		}
+	}
+
+	return false, false, false
+}
+
+// ToolRows lists the tool list's rows as "id=label [key]", a group's
+// heading as "# label", and reports whether its selected row is drawn as
+// the one in hand.
+func (s *State) ToolRows() ([]string, bool) {
+	rows := make([]string, 0, len(s.toolList.Rows))
+	for _, row := range s.toolList.Rows {
+		if row.Heading {
+			rows = append(rows, "# "+row.Label)
+
+			continue
+		}
+		rows = append(rows, row.ID+"="+row.Label+" ["+row.Key+"]")
+	}
+
+	return rows, s.toolList.InHand
+}
+
+// TileChips returns how many columns the list of what a tool paints with is
+// laid out in, none for a plain list, and its rows' names.
+func (s *State) TileChips() (int, []string) {
+	names := make([]string, 0, len(s.tileList.Rows))
+	for _, row := range s.tileList.Rows {
+		names = append(names, row.Label)
+	}
+
+	return s.tileList.Grid, names
+}
+
+// PreviewButton returns the Preview button's label and key.
+func (s *State) PreviewButton() (string, string) { return s.previewBn.Label, s.previewBn.Key }

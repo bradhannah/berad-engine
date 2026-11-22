@@ -66,6 +66,21 @@ under consideration), **open** (undecided).
   save bar that stays in place and goes quiet when nothing waits. The seven
   tints stay organisation, not meaning, and a type's muted colour stays on
   its icon, drawn as a filled chip. At most one filled button in a panel.
+- **Agreed (2026-11-22):** **a control is as strong as its job.** With
+  every button an ink outline and every selected row a heavy blue one, the
+  author found the Map's left panel "jarring and old looking". A button has
+  three strengths: *main*, filled blue, one a panel; *plain*, a white box
+  with an ink outline, for a panel's few real choices; *quiet*, the page's
+  tone inside a hairline, for the rest. A selected row has two: *in hand*,
+  filled blue, for the one thing a panel is about, and *chosen*, a wash in
+  a thin ring, for a choice under it. Keys and counts are small caps at the
+  right edge. A tool list is grouped by job, and what the tool in hand
+  paints with is a grid of swatches. Buttons that are one choice stand
+  together as one control. Text stays the size it is, and no control moves
+  or changes what it does. Built for the Map's left panel, the Project
+  window's list, filters and inspector, the Map's inspector, the Workflow's
+  palette and the window and status bars; the other views' inspectors wait.
+  See [increment 66](increments/0066-a-calmer-editor.md).
 - **Agreed (2026-11-11):** **a history that can be read.** Every change is a
   sentence saying what kind of change, to what, and where it went. The
   first is what Cmd+Z will undo, and Undo answers with it in place of
@@ -331,6 +346,20 @@ under consideration), **open** (undecided).
   the cell itself (add an anchor, place the chosen NPC, remove what is on
   top, preview from here). On a cell beyond the floor bounds it offers
   Extend floor to here.
+- **Agreed (2026-11-21):** a thing on a cell is **selected, then set in the
+  inspector**. One **Select** tool, first in the list, selects an anchor, an
+  NPC, an ambient sound, a portal, the player start, or a wall's run; where
+  a cell holds several, a menu at the cell asks which. The inspector shows
+  the one selected with its controls, and dragging it moves it. A click
+  with Select never adds or changes anything. Its author's reason: "an
+  anchor should not be configured entirely with right click menu - it
+  should have an inspector after I selected it". See [increment
+  65](increments/0065-select-then-inspect.md).
+- **Agreed (2026-11-21):** the **right-click menu on a cell adds and
+  removes only**; how a thing is set is in the inspector. The **Anchors and
+  Place NPC tools only add**, and say so on a cell that already has one.
+  This replaces the menu's Rename anchor, Select NPC, Open behaviour,
+  Select walls, and its items that changed or moved a sound or a portal.
 - **Agreed:** the **zone origin**, cell 0,0, is fixed and shown on the map, and
   every floor of a zone shares it, so stairs line up. Floors grow or shrink on
   any side without moving what is already placed; cells left of or above the
@@ -341,6 +370,18 @@ under consideration), **open** (undecided).
   visibility editing) and enrich it over time.
 - **Agreed:** portal-linked maps do not need to be shown stitched together;
   convenient access through their doorways is enough.
+- **Agreed (2026-11-21):** a **portal** is a cell that leads to an anchor, in
+  another zone or its own. A cell's menu adds one: the zone is chosen, then
+  the anchor is clicked in that zone's Map, which opens if none shows it.
+  Each leads one way; the way back is another portal. The Map draws it as a
+  teal diamond with where it leads beside it, red when it leads nowhere,
+  and its menu opens where it leads, leads it somewhere else, moves it and
+  removes it. See [increment 64](increments/0064-portals.md).
+- **Agreed (2026-11-21):** the player first walks onto a portal's cell and
+  is seen standing there; then the screen changes as that portal says: a
+  **fade** through black of a third of a second each way, during which the
+  keys wait, or a **cut** at once. A new portal fades, since a cut alone
+  looked like a teleport when its author tried it. More kinds can be added.
 - **Candidate:** finding what to paint through an atlas, a tree, keyword
   search, packs, or a combination, with the same definition possibly appearing
   in several groups.
@@ -921,6 +962,10 @@ its author on 2026-10-25, over several rounds of questions and wireframes:
   player always centred. NPC cues, ambient sounds placed on the map and a
   zone's own sounds are heard. The player and each NPC show one sprite. See
   [increment 14](increments/0014-launch.md).
+- **Agreed (2026-11-21):** Launch's game travels by portals, as a game's own
+  window does: the zone left stops, the one entered starts, and the values
+  and the clock carry over. A Map's Preview stays in its zone: stepping onto
+  a portal says where it leads and leaves the player there.
 - **Agreed:** a global clock for testing routines; on a jump, NPCs adapt to the
   new time immediately rather than simulating the gap: each restarts its
   workflow from the start and walks to wherever its new branch sends it.

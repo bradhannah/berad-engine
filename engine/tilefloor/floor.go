@@ -30,8 +30,9 @@ const FormatName = "tilefloor"
 // FormatVersion is the tile floor format version this package writes.
 // Version 2 split cells into ground and top layers and added anchors; version
 // 3 placed the floor relative to the zone origin; version 4 added NPC
-// placements; version 5 added ambient sounds, and reads version 4 unchanged.
-const FormatVersion = 5
+// placements; version 5 added ambient sounds, and reads version 4 unchanged; version 6
+// added portals, and reads version 5 unchanged.
+const FormatVersion = 6
 
 // MaxSide bounds a floor's width and height.
 const MaxSide = 1024
@@ -83,6 +84,7 @@ type Floor struct {
 	anchors    []Anchor
 	placements []Placement
 	sounds     []Sound
+	portals    []Portal
 }
 
 // wireFloor is the saved form. MinCol and MinRow are the floor's top-left
@@ -97,6 +99,7 @@ type wireFloor struct {
 	Anchors    []Anchor    `json:"anchors"`
 	Placements []Placement `json:"placements"`
 	Sounds     []Sound     `json:"sounds,omitempty"`
+	Portals    []Portal    `json:"portals,omitempty"`
 }
 
 // New returns a floor of the given size whose top-left cell is the zone
@@ -118,7 +121,7 @@ func NewAt(bounds image.Rectangle, ground string) (*Floor, error) {
 
 	return &Floor{
 		bounds: bounds, ground: cells, top: make([]string, len(cells)), anchors: []Anchor{}, placements: []Placement{},
-		sounds: []Sound{},
+		sounds: []Sound{}, portals: []Portal{},
 	}, nil
 }
 
@@ -289,18 +292,19 @@ func (f *Floor) checkAnchor(anchor Anchor, self ids.ULID) error {
 	return nil
 }
 
-// Removed is what a resize took off a floor: anchors, placements and sounds
-// outside its new bounds, in their stored order.
+// Removed is what a resize took off a floor: anchors, placements, sounds and
+// portals outside its new bounds, in their stored order.
 type Removed struct {
 	Anchors    []Anchor
 	Placements []Placement
 	Sounds     []Sound
+	Portals    []Portal
 }
 
 // Resize changes the floor's bounds. Cells inside both the old and the new
 // bounds keep their tiles; new cells get the ground tile and nothing on top.
-// Anchors, placements and sounds outside the new bounds are removed and
-// returned.
+// Anchors, placements, sounds and portals outside the new bounds are removed
+// and returned.
 func (f *Floor) Resize(bounds image.Rectangle, ground string) (Removed, error) {
 	var removed Removed
 	resized, err := NewAt(bounds, ground)
@@ -335,6 +339,13 @@ func (f *Floor) Resize(bounds image.Rectangle, ground string) (Removed, error) {
 			removed.Sounds = append(removed.Sounds, sound)
 		}
 	}
+	for _, portal := range f.portals {
+		if resized.In(portal.Col, portal.Row) {
+			resized.portals = append(resized.portals, portal)
+		} else {
+			removed.Portals = append(removed.Portals, portal)
+		}
+	}
 	*f = *resized
 
 	return removed, nil
@@ -344,17 +355,17 @@ func (f *Floor) Resize(bounds image.Rectangle, ground string) (Removed, error) {
 func (f *Floor) Clone() *Floor {
 	return &Floor{
 		bounds: f.bounds, ground: slices.Clone(f.ground), top: slices.Clone(f.top), anchors: slices.Clone(f.anchors),
-		placements: slices.Clone(f.placements), sounds: slices.Clone(f.sounds),
+		placements: slices.Clone(f.placements), sounds: slices.Clone(f.sounds), portals: slices.Clone(f.portals),
 	}
 }
 
 // Equal reports whether two floors hold the same bounds, tiles, anchors,
-// placements and sounds.
+// placements, sounds and portals.
 func (f *Floor) Equal(other *Floor) bool {
 	return f.bounds == other.bounds &&
 		slices.Equal(f.ground, other.ground) && slices.Equal(f.top, other.top) &&
 		slices.Equal(f.anchors, other.anchors) && slices.Equal(f.placements, other.placements) &&
-		slices.Equal(f.sounds, other.sounds)
+		slices.Equal(f.sounds, other.sounds) && slices.Equal(f.portals, other.portals)
 }
 
 // Encode returns the floor's saved data.
@@ -362,6 +373,7 @@ func (f *Floor) Encode() (json.RawMessage, error) {
 	data, err := json.Marshal(wireFloor{
 		MinCol: f.bounds.Min.X, MinRow: f.bounds.Min.Y, Width: f.Width(), Height: f.Height(),
 		Ground: f.ground, Top: f.top, Anchors: f.anchors, Placements: f.placements, Sounds: f.sounds,
+		Portals: f.portals,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode floor: %w", err)
@@ -402,6 +414,11 @@ func Decode(data json.RawMessage) (*Floor, error) {
 			return nil, fmt.Errorf("%w: %w", ErrData, err)
 		}
 	}
+	for _, portal := range wire.Portals {
+		if err := floor.InsertPortal(len(floor.portals), portal); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrData, err)
+		}
+	}
 
 	return floor, nil
 }
@@ -413,7 +430,7 @@ func Format() content.Format {
 		Current: FormatVersion,
 		Migrations: map[int]content.Migration{
 			1: upgradeFrom1, 2: upgradeFrom2, 3: upgradeFrom3,
-			4: func(data json.RawMessage) (json.RawMessage, error) { return data, nil },
+			4: unchanged, 5: unchanged,
 		},
 	}
 }
@@ -499,6 +516,7 @@ func upgradeFrom3(data json.RawMessage) (json.RawMessage, error) {
 	encoded, err := json.Marshal(wireFloor{
 		MinCol: old.MinCol, MinRow: old.MinRow, Width: old.Width, Height: old.Height,
 		Ground: old.Ground, Top: old.Top, Anchors: old.Anchors, Placements: []Placement{}, Sounds: nil,
+		Portals: nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("upgrade floor: %w", err)
@@ -506,6 +524,9 @@ func upgradeFrom3(data json.RawMessage) (json.RawMessage, error) {
 
 	return encoded, nil
 }
+
+// unchanged reads a version whose data the next version reads as it is.
+func unchanged(data json.RawMessage) (json.RawMessage, error) { return data, nil }
 
 func (f *Floor) at(layer []string, col, row int) (string, error) {
 	index, err := f.index(col, row)

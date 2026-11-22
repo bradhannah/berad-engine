@@ -1,0 +1,261 @@
+package mapview_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/bradhannah/berad-engine/editor/client"
+	"github.com/bradhannah/berad-engine/editor/plugins/project"
+	"github.com/bradhannah/berad-engine/editor/plugins/tilefloor"
+	zoneplugin "github.com/bradhannah/berad-engine/editor/plugins/zone"
+	"github.com/bradhannah/berad-engine/editor/protocol"
+	"github.com/bradhannah/berad-engine/editor/ui"
+	"github.com/bradhannah/berad-engine/editor/views/frame/frametest"
+	"github.com/bradhannah/berad-engine/editor/views/mapview"
+	"github.com/bradhannah/berad-engine/engine/ids"
+	"github.com/bradhannah/berad-engine/engine/play"
+	floor "github.com/bradhannah/berad-engine/engine/tilefloor"
+)
+
+var (
+	cellarID      = frametest.ID(60)
+	cellarFloorID = frametest.ID(61)
+	footID        = frametest.ID(62)
+	portalID      = frametest.ID(63)
+	otherMapID    = frametest.ID(64)
+)
+
+// withCellar adds a second zone to the fixture's project: the Cellar, one
+// floor with the anchor Foot at 2,2.
+func (f *fixture) withCellar() {
+	f.t.Helper()
+	below, err := tilefloor.NewDocument(8, 8, "stone")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if err := below.Floor.InsertAnchor(0, floor.Anchor{ID: footID, Name: "Foot", Col: 2, Row: 2}); err != nil {
+		f.t.Fatal(err)
+	}
+	cellar := zoneplugin.NewDocument()
+	if err := cellar.Zone.Insert(0, cellarFloorID); err != nil {
+		f.t.Fatal(err)
+	}
+	f.docs.Put(cellarID, "Cellar", cellar)
+	f.docs.Put(cellarFloorID, "Cellar floor", below)
+	f.docs.Put(project.IndexID(), "Project", project.NewIndex([]project.Entry{
+		{ID: zoneID, Name: "Town", Format: "zone"}, {ID: groundID, Name: "Ground", Format: floor.FormatName},
+		{ID: upperID, Name: "Upper", Format: floor.FormatName}, {ID: cellarID, Name: "Cellar", Format: "zone"},
+		{ID: cellarFloorID, Name: "Cellar floor", Format: floor.FormatName},
+	}))
+	index := project.IndexID()
+	f.state.Changed(client.Update{Snapshot: &index}, f.ctx)
+	f.keys()
+}
+
+// leadTo chooses a zone in the dialog that asks where a portal leads, says
+// which Maps are open, and answers the pick that follows with an anchor.
+func (f *fixture) leadTo(zone ids.ULID, open []protocol.PickMap, anchorFloor, anchor ids.ULID, name string) protocol.PickStart {
+	f.t.Helper()
+	f.click("ui:" + zone.String())
+	f.click("ui:lead")
+	if len(f.requests.PickAsks) == 0 {
+		f.t.Fatal("the Map asks which Maps are open")
+	}
+	f.requests.PickAsks[len(f.requests.PickAsks)-1](open, nil)
+	if len(f.requests.PickStarts) == 0 {
+		f.t.Fatal("a pick starts")
+	}
+	start := f.requests.PickStarts[len(f.requests.PickStarts)-1]
+	answer := protocol.PickAnswer{Pick: start.Pick, Floor: anchorFloor, Item: anchor.String(), Name: name}
+	f.state.Changed(client.Update{PickAnswer: &answer}, f.ctx)
+
+	return start
+}
+
+// TestAddingAPortal adds a portal from a cell's menu: the zone is chosen
+// first, the anchor picked in that zone's Map, opened for the pick when none
+// shows it. Select then selects it, and the inspector opens where it
+// leads, tells it to cut and leads it somewhere else; a drag moves it; the
+// menu, which only adds and removes, removes it. Each is one floor edit
+// with undo.
+func TestAddingAPortal(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withCellar()
+	f.rightClick("cell:9,8")
+	if !strings.Contains(f.menu(), "add-portal") {
+		t.Fatalf("a portal can be added: %s", f.menu())
+	}
+	f.click("menu:add-portal")
+	start := f.leadTo(cellarID, nil, cellarFloorID, footID, "Foot")
+	if start.Zone != cellarID || !start.Window.IsZero() || !strings.Contains(start.Label, "the portal at 9,8 of Ground") {
+		t.Fatalf("with no Map of the Cellar open, one is opened for the pick: %+v", start)
+	}
+	added := f.requests.Of(tilefloor.AddPortalEdit)
+	var add tilefloor.AddPortalArgs
+	want := floor.AnchorRef{Floor: cellarFloorID, Anchor: footID}
+	if len(added) != 1 || added[0].Decode(&add) != nil || added[0].Command.Document != groundID || add.Portal.Col != 9 ||
+		add.Portal.Row != 8 || add.Portal.To != want || add.Portal.Change != floor.ChangeFade {
+		t.Fatalf("add %d %+v", len(added), add)
+	}
+	add.Portal.ID = portalID
+	f.apply(groundID, tilefloor.AddPortal{}, add)
+	f.keys()
+	if !f.has("portal:9,8") || !f.has("portal:9,8:fade") || !f.has("portal:9,8:to:Foot") || f.has("portal:9,8:nowhere") {
+		t.Fatal("the portal is on the map, fades, and leads to Foot")
+	}
+	f.rightClick("cell:9,8")
+	if got := f.menu(); !strings.HasPrefix(got, "remove-portal, ") || strings.Contains(got, "add-portal") {
+		t.Fatalf("on a cell with a portal the menu removes it, and sets nothing: %s", got)
+	}
+	f.keys("Escape")
+	f.keys("S")
+	f.click("cell:9,8")
+	if !f.has("selected:portal:9,8") {
+		t.Fatal("Select selects the portal")
+	}
+	if shown, disabled, on := f.state.InspectorButton("portal-fade"); !shown || disabled || !on {
+		t.Fatalf("the inspector shows that the portal fades: %v %v %v", shown, disabled, on)
+	}
+	f.click("ui:portal-open")
+	opened := f.requests.Opened[len(f.requests.Opened)-1]
+	if opened.View != mapview.ViewName || opened.Target != cellarID ||
+		opened.Item != mapview.AnchorItem+cellarFloorID.String()+":"+footID.String() {
+		t.Fatalf("the Cellar's Map opens on Foot: %+v", opened)
+	}
+	f.click("ui:portal-cut")
+	var cuts tilefloor.UpdatePortalArgs
+	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 1 || updates[0].Decode(&cuts) != nil ||
+		cuts.Portal.Change != floor.ChangeCut || cuts.Portal.ID != portalID {
+		t.Fatalf("cut %+v", cuts)
+	}
+	f.apply(groundID, tilefloor.UpdatePortal{}, cuts)
+	f.keys()
+	if _, _, on := f.state.InspectorButton("portal-cut"); !f.has("portal:9,8:cut") || !on {
+		t.Fatal("it cuts now, and the inspector shows Cut chosen")
+	}
+	f.click("ui:portal-cut")
+	if len(f.requests.Of(tilefloor.UpdatePortalEdit)) != 1 {
+		t.Fatal("choosing the way it already changes sends nothing")
+	}
+	f.drag("cell:9,8", "cell:10,8")
+	var moved tilefloor.UpdatePortalArgs
+	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 2 || updates[1].Decode(&moved) != nil ||
+		moved.Portal.Col != 10 || moved.Portal.Change != floor.ChangeCut {
+		t.Fatalf("move %+v", moved)
+	}
+	f.apply(groundID, tilefloor.UpdatePortal{}, moved)
+	f.click("ui:portal-lead")
+	here := []protocol.PickMap{
+		{Window: otherMapID, Zone: zoneID, Shows: true}, {Window: frametest.ID(99), Zone: zoneID, Shows: true},
+		{Window: frametest.ID(98), Zone: cellarID, Shows: true},
+	}
+	start = f.leadTo(zoneID, here, groundID, deskID, "Desk")
+	if start.Window != frametest.ID(99) || start.Now.Item != footID.String() || start.Now.Name != "Foot" {
+		t.Fatalf("a portal into this zone is picked in this Map, with where it leads now marked: %+v", start)
+	}
+	var led tilefloor.UpdatePortalArgs
+	desk := floor.AnchorRef{Floor: groundID, Anchor: deskID}
+	if updates := f.requests.Of(tilefloor.UpdatePortalEdit); len(updates) != 3 || updates[2].Decode(&led) != nil ||
+		led.Portal.To != desk || led.Portal.Col != 10 {
+		t.Fatalf("lead %+v", led)
+	}
+	f.apply(groundID, tilefloor.UpdatePortal{}, led)
+	f.keys()
+	if !f.has("portal:10,8:to:Desk") {
+		t.Fatal("the portal leads to the Desk, in its own zone")
+	}
+	f.rightClick("cell:10,8")
+	f.click("menu:remove-portal")
+	var removed tilefloor.RemovePortalArgs
+	if removes := f.requests.Of(tilefloor.RemovePortalEdit); len(removes) != 1 || removes[0].Decode(&removed) != nil ||
+		removed.ID != portalID {
+		t.Fatalf("remove %+v", removed)
+	}
+}
+
+// TestAPortalIsPickedInAMapAlreadyOpen picks a portal's anchor in a Map that
+// already shows the zone chosen, opening no other.
+func TestAPortalIsPickedInAMapAlreadyOpen(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withCellar()
+	f.rightClick("cell:9,8")
+	f.click("menu:add-portal")
+	start := f.leadTo(cellarID, []protocol.PickMap{
+		{Window: frametest.ID(99), Zone: zoneID, Shows: true}, {Window: otherMapID, Zone: cellarID, Shows: true},
+	}, cellarFloorID, footID, "Foot")
+	if start.Window != otherMapID {
+		t.Fatalf("the pick is in the Cellar's open Map: %+v", start)
+	}
+	f.rightClick("cell:8,8")
+	f.click("menu:add-portal")
+	f.click("ui:" + cellarID.String())
+	f.click("ui:cancel")
+	if len(f.requests.PickAsks) != 1 || len(f.requests.Of(tilefloor.AddPortalEdit)) != 1 {
+		t.Fatal("cancelling the question of which zone adds nothing")
+	}
+}
+
+// TestAPortalThatLeadsNowhereSaysSo flags a portal whose anchor is gone,
+// and offers no opening of where it leads; and deleting an anchor names the
+// portal of its own floor that leads to it.
+func TestAPortalThatLeadsNowhereSaysSo(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withCellar()
+	for index, portal := range []floor.Portal{
+		{ID: portalID, Col: 9, Row: 8, To: floor.AnchorRef{Floor: cellarFloorID, Anchor: frametest.ID(77)}, Change: floor.ChangeCut},
+		{ID: frametest.ID(65), Col: 10, Row: 8, To: floor.AnchorRef{Floor: groundID, Anchor: deskID}, Change: floor.ChangeFade},
+	} {
+		f.apply(groundID, tilefloor.AddPortal{}, tilefloor.AddPortalArgs{Portal: portal, Index: index})
+	}
+	f.keys()
+	if !f.has("portal:9,8:nowhere") || f.has("portal:10,8:nowhere") || !f.has("portal:10,8:to:Desk") {
+		t.Fatal("the portal to an anchor that is gone leads nowhere; the other leads to the Desk")
+	}
+	f.keys("S")
+	f.click("cell:9,8")
+	if shown, disabled, _ := f.state.InspectorButton("portal-open"); !shown || !disabled {
+		t.Fatal("where it leads cannot be opened")
+	}
+	if shown, disabled, _ := f.state.InspectorButton("portal-lead"); !shown || disabled {
+		t.Fatal("it can be led somewhere else")
+	}
+	f.rightClick("cell:4,4")
+	f.click("menu:delete-anchor")
+	if len(f.requests.Uses) != 1 {
+		t.Fatal("deleting the anchor asks where it is used")
+	}
+	f.requests.Uses[0](nil, nil)
+	lines := strings.Join(f.state.DialogLines(), "\n")
+	if !strings.Contains(lines, "used in 1 place") || !strings.Contains(lines, "Ground (a portal at 10, 8)") {
+		t.Fatalf("the portal on the anchor's own floor is named: %s", lines)
+	}
+}
+
+// TestAPreviewStaysInItsZone walks a preview's player onto a portal: the
+// preview says where it leads and leaves the player on it, free to walk on.
+func TestAPreviewStaysInItsZone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.withCellar()
+	f.apply(groundID, tilefloor.AddPortal{}, tilefloor.AddPortalArgs{Portal: floor.Portal{
+		ID: portalID, Col: 4, Row: 3, To: floor.AnchorRef{Floor: cellarFloorID, Anchor: footID}, Change: floor.ChangeFade,
+	}, Index: 0})
+	f.keys()
+	f.startPreview("cell:3,3")
+	f.walk(ui.KeyRight, 1)
+	if !f.has("previewing") || !f.has("player:4,3") {
+		t.Fatalf("the preview goes on, with the player on the portal: %s", f.status())
+	}
+	want := "This portal leads to Foot, Cellar floor, Cellar. A preview stays in its zone; Launch travels."
+	if f.status() != want {
+		t.Fatalf("the preview says where the portal leads: %q", f.status())
+	}
+	f.walk(ui.KeyRight, 2*play.StepTicks)
+	f.walk(ui.KeyRight, 1)
+	if !f.has("player:6,3") {
+		t.Fatalf("the player walks on from the portal: %s", f.status())
+	}
+}

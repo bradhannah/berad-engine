@@ -15,7 +15,7 @@ import (
 
 // TestAHistoryLineNamesAPlacementOrAnAnchor finds the NPC placement or the
 // anchor a change to one of the zone's floors touched, and shows it when
-// asked, with its tool in hand; cells and other documents name nothing
+// asked, with Select in hand; cells and other documents name nothing
 // (increment 45).
 func TestAHistoryLineNamesAPlacementOrAnAnchor(t *testing.T) {
 	t.Parallel()
@@ -34,8 +34,8 @@ func TestAHistoryLineNamesAPlacementOrAnAnchor(t *testing.T) {
 		t.Fatalf("a line names the NPC placed: %q %q %v", item, name, named)
 	}
 	f.state.Changed(client.Update{Attention: true, Item: item}, f.ctx)
-	if f.state.SelectedPlacement() != placedID || f.state.Tool() != mapview.ToolNPC {
-		t.Fatal("asked, the Map selects the placement with the NPC tool")
+	if f.state.SelectedPlacement() != placedID || f.state.Tool() != mapview.ToolSelect {
+		t.Fatal("asked, the Map selects the placement with Select in hand")
 	}
 	desk := protocol.Touching(groundID, []string{tilefloor.AnchorKey(deskID)})
 	item, name, named = f.state.Named(desk, f.ctx.Docs)
@@ -43,8 +43,8 @@ func TestAHistoryLineNamesAPlacementOrAnAnchor(t *testing.T) {
 		t.Fatalf("a line names the anchor: %q %q %v", item, name, named)
 	}
 	f.state.Changed(client.Update{Attention: true, Item: item}, f.ctx)
-	if f.state.SelectedAnchor() != deskID || f.state.Tool() != mapview.ToolAnchor {
-		t.Fatal("asked, the Map selects the anchor with the Anchors tool")
+	if f.state.SelectedAnchor() != deskID || f.state.Tool() != mapview.ToolSelect {
+		t.Fatal("asked, the Map selects the anchor with Select in hand")
 	}
 	if _, _, other := f.state.Named(protocol.Touching(frametest.ID(77), desk.Items), f.ctx.Docs); other {
 		t.Fatal("a change to a floor of another zone names nothing here")

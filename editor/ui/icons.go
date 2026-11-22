@@ -47,6 +47,18 @@ const (
 	IconHome
 	// IconConstant is a constant: a diamond.
 	IconConstant
+	// The Map's tools (increment 66): Select's pointer, Ground's tile,
+	// Walls' bricks, a door for doors, stairs and pickups, Erase's rubber,
+	// and Resize floor's corners. IconGrip is the dots of something that is
+	// dragged, and IconCross what clears something.
+	IconSelect
+	IconGround
+	IconWalls
+	IconDoor
+	IconErase
+	IconResize
+	IconGrip
+	IconCross
 )
 
 // Icon geometry, in screen pixels: icons are IconSize square.
@@ -106,7 +118,8 @@ func IconColor(icon Icon) color.RGBA {
 		return ColorSelect()
 	case IconConstant:
 		return ColorConstant()
-	case IconNone, IconProject, IconClock, IconSettings:
+	case IconNone, IconProject, IconClock, IconSettings, IconSelect, IconGround, IconWalls, IconDoor, IconErase,
+		IconResize, IconGrip, IconCross:
 	}
 
 	return ColorInk()
@@ -129,7 +142,7 @@ func Chipped(icon Icon) bool {
 	case IconZone, IconFloor, IconWorkflow, IconZoneLoop, IconNPC, IconSound, IconSprite, IconPalette, IconTemplate:
 		return true
 	case IconNone, IconFolder, IconProject, IconClock, IconWatch, IconSettings, IconPlay, IconPlace, IconSignal,
-		IconHome, IconConstant:
+		IconHome, IconConstant, IconSelect, IconGround, IconWalls, IconDoor, IconErase, IconResize, IconGrip, IconCross:
 	}
 
 	return false
@@ -194,6 +207,8 @@ func DrawIconInk(screen *ebiten.Image, icon Icon, corner image.Point, ink color.
 		drawMark(screen, icon, corner, ink)
 	case IconConstant:
 		drawDiamond(screen, left, top, ink)
+	case IconSelect, IconGround, IconWalls, IconDoor, IconErase, IconResize, IconGrip, IconCross:
+		drawToolIcon(screen, icon, left, top, ink)
 	case IconNone:
 	}
 }
@@ -280,7 +295,8 @@ func drawWindowIcon(screen *ebiten.Image, icon Icon, left, top float32, ink colo
 	case IconHome:
 		drawHouse(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconSprite,
-		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal, IconConstant:
+		IconPalette, IconSettings, IconPlay, IconTemplate, IconPlace, IconZoneLoop, IconSignal, IconConstant,
+		IconSelect, IconGround, IconWalls, IconDoor, IconErase, IconResize, IconGrip, IconCross:
 	}
 }
 
@@ -305,7 +321,8 @@ func drawArtIcon(screen *ebiten.Image, icon Icon, left, top float32, ink color.R
 	case IconTemplate:
 		drawFrame(screen, left, top, ink)
 	case IconNone, IconZone, IconFloor, IconWorkflow, IconNPC, IconFolder, IconSound, IconProject,
-		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome, IconConstant:
+		IconClock, IconWatch, IconPlay, IconPlace, IconZoneLoop, IconSignal, IconHome, IconConstant,
+		IconSelect, IconGround, IconWalls, IconDoor, IconErase, IconResize, IconGrip, IconCross:
 	}
 }
 
