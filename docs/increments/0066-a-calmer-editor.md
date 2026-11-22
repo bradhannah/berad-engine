@@ -120,7 +120,7 @@ Chosen while building, for its author to check:
 | 5. Inspectors | The Project window's and the Map's | Tests of every inspector button still finding and pressing it | Built |
 | 6. Search and filters | Quiet filters, set ones with a cross, the joined view switch | Browser tests of ticking, clearing and saved views | Built |
 | 7. The bars | Launch, the clock's controls, the status bar | Window and frame tests | Built |
-| 8. Walks and record | A walk in the real window, and this record | The checks below | Written; not yet run in the real window |
+| 8. Walks and record | A walk in the real window, and this record | The checks below | Built |
 
 ## Step results
 
@@ -135,19 +135,26 @@ Not in a pull request yet.
 - **The Map's left panel** lists its tools under SELECT, PAINT, ADD and
   FLOOR, each with an icon and its key. The other five places were changed
   by setting those strengths on the controls they already had.
-- **Walks and record:** `TestTheCalmerEditor` is written to select a zone
-  in the Project window, set and clear the Kind filter by its cross, take a
-  tool of each group in hand in the Map, open a new workflow, and
-  photograph each in the real window. Reading the earlier walks found none
-  that should need changing: they find controls by ID, and the ones that
-  count colours count them in the Play tab.
+- **Walks and record:** `TestTheCalmerEditor` in the real window selects a
+  zone in the Project window, sets the Kind filter and clears it by its
+  cross, takes a tool of each group in hand in the Map, opens a new
+  workflow, and photographs each. No earlier walk was changed: they find
+  controls by ID, and the ones that count colours count them in the Play
+  tab.
+- **Found by looking at the real window,** and fixed: the Home and Matches
+  icons, which have no chip of their own, did not show on the filled row
+  and are now reversed on it; the Unassigned swatch, whose row has no ID,
+  always looked as if the pointer were over it; and the panel's width,
+  above.
 
 - **Checks:** `make check` passes: formatting, the strict lint with no
-  findings, vet, and every test with the race detector. **Nothing of this
-  increment has been run or looked at in the real window yet:** not the new
-  walk, not the real-window suite, and no screenshot has been taken. Every
-  claim about how it looks rests on the wireframes and on tests that
-  measure places, sizes and contrast, not on anyone having seen it.
+  findings, vet, and every test with the race detector. The real-window
+  suite, run from a frozen copy with an empty screenshot folder, failed 2
+  of its 87 tests on its first run, `TestQuickOpenFromAMap` and
+  `TestViewsFitASmallWindow`, both from the wider panel. With the panel as
+  wide as it was, it passed all 87 on its second run, on the last code of
+  this increment. `TestTheCalmerEditor` passed each of the five times it
+  ran.
 
 ## Changed after its author tried it
 
