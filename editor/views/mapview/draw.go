@@ -452,12 +452,11 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 	heading := func(label string, list *ui.List) {
 		s.theme.Heading(screen, label, ui.Inset, list.Rect.Min.Y-headingSpace+ui.Gap)
 	}
-	heading("TOOLS", s.toolList)
 	s.toolList.Draw(screen, s.theme)
-	tileHeading := "TILES"
+	tileHeading := "PAINTING WITH"
 	switch s.tool {
 	case ToolWalls:
-		tileHeading = "WALL FAMILY"
+		tileHeading = "DRAWING WITH"
 	case ToolSelect:
 		// The wall families are offered only while walls are selected.
 		tileHeading = ""
@@ -471,13 +470,16 @@ func (s *State) drawPanel(screen *ebiten.Image, docs frame.Docs) {
 		}
 	case ToolErase, ToolAnchor, ToolResize:
 		tileHeading = ""
-	case ToolGround, ToolObjects:
+	case ToolObjects:
+		tileHeading = "PLACING"
+	case ToolGround:
 	}
 	heading(tileHeading, s.tileList)
 	s.tileList.Draw(screen, s.theme)
 	heading(floorsHeading, s.floorList)
 	s.floorList.Draw(screen, s.theme)
 	s.below.Draw(window, s.theme)
+	ui.DrawCap(window, s.theme, "F", s.below.Rect.Max.X, s.below.Rect.Min.Y+s.below.Rect.Dy()/ui.Half, false)
 	s.previewBn.Draw(window, s.theme)
 	s.lists.DrawThumb(window)
 	_ = docs

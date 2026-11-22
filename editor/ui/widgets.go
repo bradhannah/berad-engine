@@ -354,7 +354,7 @@ type List struct {
 	InHand bool
 	// Caps draws a tree row's detail as a cap at its right edge.
 	Caps bool
-	// Grid, when above one, lays the rows out as chips in that many
+	// Grid, when above zero, lays the rows out as chips in that many
 	// columns, each a swatch and a name on a box of its own, for what a
 	// tool paints with.
 	Grid      int
@@ -429,7 +429,7 @@ type ListResult struct {
 // RowRect returns the screen rectangle of a row, which may lie outside the
 // list when scrolled away.
 func (l *List) RowRect(index int) image.Rectangle {
-	if l.Grid > 1 {
+	if l.Grid > 0 {
 		return l.chipRect(index)
 	}
 	top := l.Rect.Min.Y + index*RowHeight - l.scroll
@@ -687,7 +687,7 @@ func (l *List) Draw(screen *ebiten.Image, theme *Theme) {
 			theme.Heading(area, row.Label, rect.Min.X+Inset/2+row.Indent*Inset, rect.Min.Y+(RowHeight-TextSize)/2)
 
 			continue
-		case l.Grid > 1:
+		case l.Grid > 0:
 			l.drawChip(area, theme, row, rect)
 
 			continue
@@ -779,17 +779,18 @@ func (l *List) drawPlainRow(area *ebiten.Image, theme *Theme, row Row, rect imag
 	}
 }
 
-// Chips of a grid: how tall each is, the gap between them, and the size of
-// the swatch on one.
+// Chips of a grid: how tall each is, the gap between them, the room inside
+// one's edge and between its parts, and the size of the swatch on one.
 const (
 	chipHeight = 30
 	chipGap    = 6
-	chipSwatch = 18
+	chipPad    = 5
+	chipSwatch = 16
 )
 
 // Height is how tall the list's rows are together.
 func (l *List) Height() int {
-	if l.Grid > 1 {
+	if l.Grid > 0 {
 		lines := (len(l.Rows) + l.Grid - 1) / l.Grid
 
 		return max(lines*(chipHeight+chipGap)-chipGap, 0)
@@ -800,12 +801,34 @@ func (l *List) Height() int {
 
 // chipRect is where a row of a grid is: a chip in its column and line.
 func (l *List) chipRect(index int) image.Rectangle {
-	inner := l.Rect.Dx() - Half*Gap*Half
+	inner := l.Rect.Dx() - Half*Gap
 	width := (inner - (l.Grid-1)*chipGap) / l.Grid
-	left := l.Rect.Min.X + Gap*Half + (index%l.Grid)*(width+chipGap)
+	left := l.Rect.Min.X + Gap + (index%l.Grid)*(width+chipGap)
 	top := l.Rect.Min.Y + (index/l.Grid)*(chipHeight+chipGap) - l.scroll
 
 	return image.Rect(left, top, left+width, top+chipHeight)
+}
+
+// FitsGrid reports whether every row's name fits on a chip when the list,
+// as wide as it is now, lays its rows out in some number of columns, so a
+// name is never cut short for the sake of a second column.
+func (l *List) FitsGrid(theme *Theme, columns int) bool {
+	inner := l.Rect.Dx() - Half*Gap
+	width := (inner - (columns-1)*chipGap) / columns
+	for _, row := range l.Rows {
+		room := width - Half*chipPad
+		if row.Swatch != nil {
+			room -= chipSwatch + chipPad
+		}
+		if row.Key != "" {
+			room -= theme.MonoWidth(row.Key) + chipPad
+		}
+		if theme.StrongWidth(row.Label) > room {
+			return false
+		}
+	}
+
+	return true
 }
 
 // drawChip draws a row of a grid: a box of its own with its swatch, its
@@ -821,18 +844,18 @@ func (l *List) drawChip(area *ebiten.Image, theme *Theme, row Row, rect image.Re
 	}
 	FillRound(area, rect, rowRadius, fill)
 	StrokeRound(area, rect, rowRadius, width, edge)
-	left := rect.Min.X + chipGap
+	left := rect.Min.X + chipPad
 	if row.Swatch != nil {
 		top := rect.Min.Y + (rect.Dy()-chipSwatch)/Half
 		swatch := image.Rect(left, top, left+chipSwatch, top+chipSwatch)
 		FillRound(area, swatch, swatchRadius, *row.Swatch)
 		StrokeRound(area, swatch, swatchRadius, Hairline, ColorInk())
-		left += chipSwatch + chipGap
+		left += chipSwatch + chipPad
 	}
-	room := rect.Max.X - chipGap - left
+	room := rect.Max.X - chipPad - left
 	if row.Key != "" {
-		room -= theme.MonoWidth(row.Key) + chipGap
-		theme.DrawMono(area, row.Key, rect.Max.X-chipGap-theme.MonoWidth(row.Key), rect.Min.Y+(rect.Dy()-MonoSize)/Half-1,
+		room -= theme.MonoWidth(row.Key) + chipPad
+		theme.DrawMono(area, row.Key, rect.Max.X-chipPad-theme.MonoWidth(row.Key), rect.Min.Y+(rect.Dy()-MonoSize)/Half-1,
 			ColorMuted())
 	}
 	labelTop := rect.Min.Y + (rect.Dy()-TextSize)/Half - 1

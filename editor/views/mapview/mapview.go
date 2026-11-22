@@ -38,8 +38,12 @@ const ViewName = "map"
 
 // Panel sizes, in screen pixels.
 const (
-	PanelWidth   = 190
-	toolRows     = 8
+	// PanelWidth is the left panel's width until it is dragged: room for
+	// the ground's tiles as two columns of chips, the longest of their
+	// names whole (increment 66; it was 190).
+	PanelWidth = 240
+	// toolRows is the tools and the headings of their four groups.
+	toolRows     = 12
 	floorRows    = 5
 	panelGap     = 10
 	headingSpace = 22
@@ -66,24 +70,64 @@ const (
 	ToolResize  Tool = "resize"
 )
 
+// toolInfo is a tool: its name in the status bar and the inspector, its key
+// and what it does; and, in the tool list, the group it is listed under by
+// its job, its shorter name there, and its icon (increment 66).
 type toolInfo struct {
 	tool  Tool
 	label string
 	key   ui.Key
 	help  string
+	group string
+	short string
+	icon  ui.Icon
 }
+
+// The tools' groups, by job.
+const (
+	groupSelect = "SELECT"
+	groupPaint  = "PAINT"
+	groupAdd    = "ADD"
+	groupFloor  = "FLOOR"
+	// toolGroup prefixes a group's heading row in the tool list.
+	toolGroup = "tool-group:"
+)
 
 func tools() []toolInfo {
 	return []toolInfo{
-		{ToolSelect, "Select", "S", "Click a thing to select it; drag it to move it. A wall selects its run."},
-		{ToolGround, "Ground", "G", "Drag to paint the ground."},
-		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family."},
-		{ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup."},
-		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground."},
-		{ToolAnchor, "Anchors", "A", "Click to add an anchor, a place NPCs go to."},
-		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left."},
-		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor."},
+		{
+			ToolSelect, "Select", "S", "Click a thing to select it; drag it to move it. A wall selects its run.",
+			groupSelect, "Select", ui.IconSelect,
+		},
+		{ToolGround, "Ground", "G", "Drag to paint the ground.", groupPaint, "Ground", ui.IconGround},
+		{ToolWalls, "Walls", "W", "Drag to draw walls in the current family.", groupPaint, "Walls", ui.IconWalls},
+		{
+			ToolObjects, "Doors, stairs, pickups", "O", "Drag to place a door, stairs or a pickup.",
+			groupPaint, "Doors, stairs, pickups", ui.IconDoor,
+		},
+		{ToolErase, "Erase", "E", "Drag to clear what sits on the ground.", groupPaint, "Erase", ui.IconErase},
+		{ToolAnchor, "Anchors", "A", "Click to add an anchor, a place NPCs go to.", groupAdd, "Anchor", ui.IconPlace},
+		{ToolNPC, "Place NPC", "N", "Click to place the NPC chosen on the left.", groupAdd, "NPC", ui.IconNPC},
+		{ToolResize, "Resize floor", "R", "Drag an edge or corner of the floor.", groupFloor, "Resize floor", ui.IconResize},
 	}
+}
+
+// toolListRows lists the tools under the heading of each group, each with
+// its icon and its key as a cap.
+func toolListRows() []ui.Row {
+	var rows []ui.Row
+	group := ""
+	for _, info := range tools() {
+		if info.group != group {
+			group = info.group
+			rows = append(rows, ui.NewHeading(toolGroup+group, group))
+		}
+		row := ui.NewRow(string(info.tool), info.short)
+		row.Glyph, row.Key = info.icon, string(info.key)
+		rows = append(rows, row)
+	}
+
+	return rows
 }
 
 // tilesFor returns the stand-ins a tool paints with.
@@ -306,14 +350,8 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 	}
 	view.deleteBtn.Danger = true
 	view.focus.Register(view.nameField)
-	for _, info := range tools() {
-		row := ui.NewRow(string(info.tool), info.label)
-		row.Detail = string(info.key)
-		if info.tool == ToolAnchor {
-			row.Icon = ui.IconPlace
-		}
-		view.toolList.Rows = append(view.toolList.Rows, row)
-	}
+	view.toolList.Rows, view.toolList.InHand = toolListRows(), true
+	view.previewBn.Key = "P"
 
 	return view
 }
@@ -573,17 +611,15 @@ func onStage(point image.Point) image.Point { return pen.CanvasPoint(point) }
 func (s *State) layoutWidgets(docs frame.Docs) {
 	s.camera.setTile(projectTileSize(docs))
 	s.refreshNPCs(docs)
-	rowY := ui.Inset + headingSpace - s.lists.Offset
+	rowY := ui.Half*ui.Gap - s.lists.Offset
 	s.toolList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+toolRows*ui.RowHeight)
 	rowY = s.toolList.Rect.Max.Y + panelGap + headingSpace
 	s.tileList.Rows = s.tileRows()
 	if s.tool == ToolSelect {
 		s.tileList.Selected = ""
 	}
-	tilesHeight := max(len(s.tileList.Rows), 1) * ui.RowHeight
-	if s.tool == ToolNPC {
-		tilesHeight = min(max(len(s.tileList.Rows), 1), npcRows) * ui.RowHeight
-	}
+	s.tileList.Rect = image.Rect(0, rowY, s.panelFull(), rowY)
+	tilesHeight := s.layoutTiles()
 	// With no NPCs to list, the list's place holds the hint's lines.
 	tilesHeight = max(tilesHeight, ui.Gap+len(s.npcHintLines())*ui.LineHeight)
 	s.tileList.Rect = image.Rect(0, rowY, s.panelFull(), rowY+tilesHeight)
@@ -598,11 +634,11 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 	s.fitLists()
 	switch {
 	case s.preview != nil:
-		s.previewBn.Label = "Stop preview (P)"
+		s.previewBn.Label = "Stop preview"
 	case s.choosing:
-		s.previewBn.Label = "Cancel preview (P)"
+		s.previewBn.Label = "Cancel preview"
 	default:
-		s.previewBn.Label = "Preview (P)"
+		s.previewBn.Label = "Preview"
 	}
 
 	s.layoutFold()
@@ -612,6 +648,26 @@ func (s *State) layoutWidgets(docs frame.Docs) {
 		max(bodyTop(inspector), footTop(inspector)-ui.ButtonH-ui.Inset-s.previewHeight(docs)-ui.Gap))
 	s.layoutInspector()
 	s.layoutZonePalettes(docs)
+}
+
+// layoutTiles chooses how the list of what the tool paints with is laid
+// out, and returns its height: a grid of chips, two to a line when every
+// name fits and one when not; the NPCs to place stay a list under their
+// headings.
+func (s *State) layoutTiles() int {
+	s.tileList.Grid = 0
+	switch {
+	case s.tool == ToolNPC:
+		return min(max(len(s.tileList.Rows), 1), npcRows) * ui.RowHeight
+	case len(s.tileList.Rows) == 0:
+		return ui.RowHeight
+	}
+	s.tileList.Grid = 1
+	if s.tileList.FitsGrid(s.theme, ui.Half) {
+		s.tileList.Grid = ui.Half
+	}
+
+	return s.tileList.Height()
 }
 
 // layoutInspector places the inspector's widgets for what is selected.
@@ -685,12 +741,11 @@ func (s *State) tileRows() []ui.Row {
 	rows := make([]ui.Row, 0, len(offered))
 	for index, definition := range offered {
 		swatch := ui.Hex(definition.Color)
-		detail := ""
+		row := ui.NewRow(definition.ID, chipName(definition))
 		if index < numberedTiles {
-			detail = strconv.Itoa(index + 1)
+			row.Key = strconv.Itoa(index + 1)
 		}
-		row := ui.NewRow(definition.ID, definition.Name)
-		row.Detail, row.Swatch = detail, &swatch
+		row.Swatch = &swatch
 		rows = append(rows, row)
 	}
 
@@ -707,10 +762,27 @@ func (s *State) floorRows(docs frame.Docs) []ui.Row {
 				name = projectIndex.Name(floorID, name)
 			}
 		})
-		rows = append(rows, ui.NewRow(floorID.String(), name))
+		row := ui.NewRow(floorID.String(), name)
+		row.Key = strconv.Itoa(index + 1)
+		rows = append(rows, row)
 	}
 
 	return rows
+}
+
+// chipName is a stand-in's name on its chip. A wall family drops "Wall",
+// which its heading already says, so two fit on a line.
+func chipName(definition tiles.Definition) string {
+	if !definition.IsWall() {
+		return definition.Name
+	}
+	name := strings.TrimSpace(strings.TrimPrefix(definition.Name, "Wall"))
+	name = strings.TrimSuffix(strings.TrimPrefix(name, "("), ")")
+	if name == "" {
+		return definition.Name
+	}
+
+	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 // Update handles one frame of input.
