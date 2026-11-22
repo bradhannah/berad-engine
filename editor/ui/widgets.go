@@ -907,7 +907,13 @@ func (l *List) drawTreeRow(area *ebiten.Image, theme *Theme, row Row, rect image
 		stub := left + treeToggle + IconSize/Half
 		Line(area, image.Pt(stub, iconTop+IconSize+Hairline), image.Pt(stub, rect.Max.Y), Hairline, ColorRule())
 	}
-	DrawIcon(area, row.Icon, image.Pt(left+treeToggle, iconTop))
+	if l.InHand && row.ID == l.Selected && !Chipped(row.Icon) {
+		// An icon with no chip of its own is reversed on the row in hand's
+		// blue, where its own ink would not show.
+		DrawIconInk(area, row.Icon, image.Pt(left+treeToggle, iconTop), ColorReverse())
+	} else {
+		DrawIcon(area, row.Icon, image.Pt(left+treeToggle, iconTop))
+	}
 	l.drawTreeLabel(area, theme, row, rect, left+treeToggle+IconSize+treeLabelGap)
 }
 
