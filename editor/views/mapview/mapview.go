@@ -348,7 +348,13 @@ func New(window, zone ids.ULID, theme *ui.Theme) *State {
 		focus:  ui.Focus{},
 		dialog: nil, dialogKind: dialogNone, replaceFrom: "", pendingResize: nil,
 	}
-	view.deleteBtn.Danger = true
+	view.deleteBtn.Danger, view.removeBn.Danger = true, true
+	// An inspector has one main button; its other actions are quiet
+	// (increment 66).
+	view.openBn.Primary = true
+	for _, quiet := range []*ui.Button{view.deleteBtn, view.removeBn, view.clockBn, view.watchBn, view.keysBn} {
+		quiet.Quiet = true
+	}
 	view.focus.Register(view.nameField)
 	view.toolList.Rows, view.toolList.InHand = toolListRows(), true
 	view.previewBn.Key = "P"
@@ -689,6 +695,7 @@ func (s *State) layoutInspector() {
 		s.save.Rect = image.Rect(left, saveTop, left+width, saveTop+ui.SaveBarHeight(width))
 		deleteTop := s.save.Rect.Max.Y + ui.Half*ui.Gap
 		s.deleteBtn.Rect = image.Rect(left, deleteTop, left+width, deleteTop+ui.ButtonH)
+		s.deleteBtn.Rect = ui.FitButton(s.theme, s.deleteBtn)
 	}
 	if len(s.selected) > 0 {
 		s.replace.Rect = image.Rect(left, s.down(replaceTop), left+width, s.down(replaceTop)+ui.ButtonH)

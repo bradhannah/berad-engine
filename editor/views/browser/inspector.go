@@ -117,10 +117,12 @@ func (s *State) layoutInspector(docs frame.Docs) {
 	s.save.Unsaved = s.Unsaved(docs)
 	if isFolder {
 		s.layoutFolder(docs, left, width)
+		s.remove.Rect = ui.FitButton(s.theme, s.remove)
 
 		return
 	}
 	s.remove.Label = "Delete " + kindOf(entry.Format).noun + "…"
+	s.remove.Rect = ui.FitButton(s.theme, s.remove)
 	if everyProjectHolds(entry.ID) {
 		s.name.Rect, s.remove.Disabled = ui.Zero(), true
 	}
@@ -170,7 +172,7 @@ func (s *State) layoutTags(entry project.Entry, left, width, shift int) int {
 		if chipLeft+chipWidth > left+width {
 			break
 		}
-		chip := ui.NewButton("tag:"+tag, label)
+		chip := ui.NewQuietButton("tag:"+tag, label)
 		chip.Rect = image.Rect(chipLeft, top, chipLeft+chipWidth, top+ui.ButtonH)
 		s.tagBns = append(s.tagBns, chip)
 		chipLeft += chipWidth + ui.Gap

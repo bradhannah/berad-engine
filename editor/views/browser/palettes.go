@@ -101,7 +101,7 @@ func (s *State) layoutSpritePalettes(docs frame.Docs, spriteID ids.ULID, left, t
 	top += ui.LineHeight
 	for _, paletteID := range used {
 		name := index.Name(paletteID, "a palette that is gone")
-		remove := ui.NewButton(removePrefix+name, "Remove…")
+		remove := ui.NewQuietButton(removePrefix+name, "Remove…")
 		remove.Rect = image.Rect(left+width-removeWidth, top, left+width, top+ui.ButtonH)
 		s.spritePalettes = append(s.spritePalettes, spritePalette{palette: paletteID, name: name, remove: remove})
 		top += ui.ButtonH + ui.Gap

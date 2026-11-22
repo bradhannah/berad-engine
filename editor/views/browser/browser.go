@@ -259,6 +259,15 @@ func New(window ids.ULID, theme *ui.Theme) *State {
 	}
 	view.viewBns, view.sizeBns = newViewButtons()
 	view.remove.Danger, view.newMenu.Caret, view.moveBn.Caret = true, true, true
+	// An inspector has one main button, to open what is selected; its other
+	// actions are quiet, so they do not all shout alike (increment 66).
+	view.open.Primary, view.audio.open.Primary, view.constants.open.Primary = true, true, true
+	for _, quiet := range []*ui.Button{
+		view.floorButton, view.up, view.down, view.remove, view.moveBn, view.newFolderBn, view.clearBn, view.saveViewBn,
+		view.deleteViewBn,
+	} {
+		quiet.Quiet = true
+	}
 	view.search.Placeholder, view.search.Unmarked = "Search names, folders and #tags", true
 	view.tags.Placeholder = "town, guards"
 	view.menu.Width = ui.MenuWidth(view.menu.Items, theme)

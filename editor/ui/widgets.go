@@ -119,6 +119,19 @@ func (b *Button) Draw(screen *ebiten.Image, theme *Theme) {
 	}
 }
 
+// FitButton is a button's place cut down to the width of its label, from
+// its left edge and no wider than it was: for an action that should not
+// span its panel, such as Delete at an inspector's foot (increment 66).
+func FitButton(theme *Theme, button *Button) image.Rectangle {
+	rect := button.Rect
+	if rect.Empty() {
+		return rect
+	}
+	rect.Max.X = min(rect.Max.X, rect.Min.X+theme.TextWidth(button.Label)+Half*Inset)
+
+	return rect
+}
+
 // look is the button's fill, ink and edge for its state.
 func (b *Button) look() (color.RGBA, color.RGBA, color.RGBA) {
 	fill, ink, edge := ColorField(), ColorInk(), ColorInk()

@@ -29,13 +29,17 @@ const (
 	sectionTop       = ui.Inset + 4*ui.LineHeight + ui.LineHeight/ui.Half
 	soundButtonsTop  = sectionTop + 4*ui.LineHeight + ui.LineHeight/ui.Half
 	portalButtonsTop = sectionTop + 6*ui.LineHeight
-	soundChangeID    = "sound-change"
-	soundRemoveID    = "sound-remove"
-	portalOpenID     = "portal-open"
-	portalLeadID     = "portal-lead"
-	portalFadeID     = "portal-fade"
-	portalCutID      = "portal-cut"
-	portalRemoveID   = "portal-remove"
+	// Fade through black takes this share of the joined control's width, of
+	// portalShares, since its name is the longer.
+	portalFadeShare = 2
+	portalShares    = 3
+	soundChangeID   = "sound-change"
+	soundRemoveID   = "sound-remove"
+	portalOpenID    = "portal-open"
+	portalLeadID    = "portal-lead"
+	portalFadeID    = "portal-fade"
+	portalCutID     = "portal-cut"
+	portalRemoveID  = "portal-remove"
 )
 
 // inspectParts are the inspector's buttons for a selected ambient sound and
@@ -55,6 +59,12 @@ func newInspectParts() inspectParts {
 	}
 	parts.soundChange.Caret = true
 	parts.soundRemove.Danger, parts.portalRemove.Danger = true, true
+	// Open where it leads is the portal's one main button; the rest are
+	// quiet, and Fade and Cut are drawn as one control (increment 66).
+	parts.portalOpen.Primary = true
+	for _, quiet := range []*ui.Button{parts.soundChange, parts.soundRemove, parts.portalLead, parts.portalRemove} {
+		quiet.Quiet = true
+	}
 
 	return parts
 }
@@ -80,16 +90,18 @@ func (s *State) layoutInspect(left, width int) {
 		top := s.down(soundButtonsTop)
 		parts.soundChange.Rect = row(top)
 		parts.soundRemove.Rect = row(top + ui.ButtonH + ui.Gap)
+		parts.soundRemove.Rect = ui.FitButton(s.theme, parts.soundRemove)
 	case !s.portal.IsZero():
 		top := s.down(portalButtonsTop)
 		parts.portalOpen.Rect = row(top)
 		top += ui.ButtonH + ui.Gap
 		parts.portalLead.Rect = row(top)
 		top += ui.ButtonH + ui.Half*ui.LineHeight
-		half := (width - ui.Gap) / ui.Half
-		parts.portalFade.Rect = image.Rect(left, top, left+half, top+ui.ButtonH)
-		parts.portalCut.Rect = image.Rect(left+half+ui.Gap, top, left+width, top+ui.ButtonH)
+		split := left + width*portalFadeShare/portalShares
+		parts.portalFade.Rect = image.Rect(left, top, split, top+ui.ButtonH)
+		parts.portalCut.Rect = image.Rect(split, top, left+width, top+ui.ButtonH)
 		parts.portalRemove.Rect = row(top + ui.ButtonH + ui.LineHeight)
+		parts.portalRemove.Rect = ui.FitButton(s.theme, parts.portalRemove)
 	}
 }
 
@@ -211,8 +223,7 @@ func (s *State) drawPortalInspector(screen *ebiten.Image, floorData *floor.Floor
 	parts.portalOpen.Draw(screen, s.theme)
 	parts.portalLead.Draw(screen, s.theme)
 	s.theme.Heading(screen, "HOW THE SCREEN CHANGES", textX, parts.portalFade.Rect.Min.Y-ui.LineHeight)
-	parts.portalFade.Draw(screen, s.theme)
-	parts.portalCut.Draw(screen, s.theme)
+	ui.DrawJoined(screen, s.theme, []*ui.Button{parts.portalFade, parts.portalCut})
 	parts.portalRemove.Draw(screen, s.theme)
 	*textY = parts.portalRemove.Rect.Max.Y + ui.Gap
 	line("Drag the diamond to move it.", ui.ColorMuted())
