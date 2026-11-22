@@ -24,6 +24,10 @@ func (s *State) Places(docs frame.Docs) []ui.Row {
 	return s.places.Rows
 }
 
+// PlacesLook reports how the places column draws its rows: the selected
+// one filled as the place in hand, and each place's count as a cap.
+func (s *State) PlacesLook() (bool, bool) { return s.places.InHand, s.places.Caps }
+
 // Show shows a place in the main pane, for tests.
 func (s *State) Show(place string) { s.pick(place) }
 

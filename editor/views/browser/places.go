@@ -167,14 +167,19 @@ func (s *State) placeRows(docs frame.Docs, index *project.Index, counted placeCo
 	if narrowed {
 		rows = append(rows, placeRow(placeMatches, "Matches", ui.IconFolder, strconv.Itoa(counted.kept[placeMatches])))
 	}
+	// Home, World state and Settings are places of the project itself; what
+	// it holds, by kind, is listed under a heading of its own (increment 66).
 	rows = append(rows, placeRow(sectionWorldState, worldstate.Name, ui.IconSettings, ""),
-		placeRow(settingsRow, "Settings", ui.IconSettings, ""))
+		placeRow(settingsRow, "Settings", ui.IconSettings, ""), ui.NewHeading(contentHeading, "CONTENT"))
 	for _, kind := range placeKinds() {
 		rows = append(rows, s.kindPlaces(index, kind, counted)...)
 	}
 
 	return append(rows, s.viewRows(docs)...)
 }
+
+// contentHeading is the heading over the kinds of thing a project holds.
+const contentHeading = "places-content"
 
 // placeRow is a place's row.
 func placeRow(id, label string, icon ui.Icon, detail string) ui.Row {
@@ -318,6 +323,9 @@ func (s *State) layoutPlaces(docs frame.Docs, index *project.Index, counted plac
 	s.places.Rect = image.Rect(0, toolbarHeight, width, content.Max.Y)
 	s.places.Rows = s.placeRows(docs, index, counted)
 	s.places.Selected = s.place
+	// The place the author is in is the column's one filled row, and how
+	// many each place holds is a cap at its right edge (increment 66).
+	s.places.InHand, s.places.Caps = true, true
 
 	return width
 }

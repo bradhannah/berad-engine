@@ -314,7 +314,8 @@ func TestNPCInspector(t *testing.T) {
 }
 
 // TestPlacesAndWhatTheyHold opens on Home and lists the places: Home, World
-// state, Settings, then each kind with how many it holds and a [+]. A kind
+// state, Settings, then, under a heading, each kind with how many it holds
+// and a [+]. A kind
 // shows its things: a zone with its floors, which close and open, and an
 // NPC with what it follows.
 func TestPlacesAndWhatTheyHold(t *testing.T) {
@@ -329,8 +330,12 @@ func TestPlacesAndWhatTheyHold(t *testing.T) {
 		places[row.Label] = row
 		order = append(order, row.Label)
 	}
-	if len(order) < 4 || !slices.Equal(order[:3], []string{"Home", "World state", "Settings"}) {
-		t.Fatalf("Home, World state and Settings come first: %v", order)
+	if len(order) < 5 || !slices.Equal(order[:4], []string{"Home", "World state", "Settings", "CONTENT"}) ||
+		!places["CONTENT"].Heading {
+		t.Fatalf("Home, World state and Settings come first, then what the project holds under a heading: %v", order)
+	}
+	if inHand, caps := f.state.PlacesLook(); !inHand || !caps {
+		t.Fatalf("the place in hand is the column's filled row, and counts are caps: %v %v", inHand, caps)
 	}
 	if zones := places["Zones"]; zones.Detail != "1" || !zones.Add || !zones.Strong {
 		t.Fatalf("Zones says how many and has a [+]: %+v", zones)
