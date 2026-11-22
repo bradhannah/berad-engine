@@ -187,6 +187,14 @@ never seen on the portal's cell.
   the portal's menu. This replaces "a cut unless changed" above. On the Map
   a portal's label now says "· cut" when it cuts, and nothing when it
   fades.
+- **Checked again:** `make check` passes, and
+  `TestAPortalLeadsToAnotherZone`, with its portal back now told to cut,
+  passed five runs in five. Of the real-window suite's 85 tests, run from a
+  frozen copy of this code, 84 passed. `TestAFloorChangedOnDiskIsTakenIn`
+  failed because the run reused the screenshot folder of the run before:
+  that test waits for a screenshot to appear, found the old one at once, and
+  acted before the editor had made its project. Alone, with an empty folder,
+  it passed.
 
 ## Not in this increment
 
